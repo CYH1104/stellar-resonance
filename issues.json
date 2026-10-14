@@ -1,0 +1,935 @@
+{
+  "version": 3,
+  "repository": "CYH1104/stellar-resonance",
+  "direction": "web-first",
+  "tasks": [
+    {
+      "id": "SR-01",
+      "title": "[项目基础] 初始化 Vue 3 + TypeScript + Vite 网页客户端",
+      "module": "infra",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "建立响应式网页客户端，配置开发、类型检查与网页构建命令；MVP 直接由手机和电脑浏览器访问",
+      "acceptance": [
+        "干净环境按 README 可启动网页并构建静态资源",
+        "手机与电脑浏览器显示基础页面",
+        "网页资源、source map 和浏览器存储不含作者私有设定"
+      ],
+      "depends_on": [],
+      "issue_number": 1,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/1"
+    },
+    {
+      "id": "SR-02",
+      "title": "[项目基础] 建立 Monorepo 目录与共享类型包",
+      "module": "infra",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "划分 apps/web、workers、packages，建立网页与服务端请求响应及变量类型",
+      "acceptance": [
+        "客户端与 Worker 复用契约",
+        "包依赖无循环",
+        "根目录有统一检查命令"
+      ],
+      "depends_on": [],
+      "issue_number": 2,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/2"
+    },
+    {
+      "id": "SR-03",
+      "title": "[项目基础] 配置 GitHub 分支保护与 PR 审核",
+      "module": "infra",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "确认私有仓库套餐支持后，设置 main 的 PR 合并与检查规则",
+      "acceptance": [
+        "记录可用规则及限制",
+        "一次示例 PR 验证流程",
+        "小团队能正常合并而不被不存在的检查阻断"
+      ],
+      "depends_on": [],
+      "issue_number": 3,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/3"
+    },
+    {
+      "id": "SR-04",
+      "title": "[后端] 创建 Cloudflare Workers 与 D1 开发环境",
+      "module": "backend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "创建独立开发配置，串通本地 Worker 和 D1",
+      "acceptance": [
+        "本地能运行健康检查及示例查询",
+        "开发生产数据隔离",
+        "不提交真实账号凭据"
+      ],
+      "depends_on": [
+        "SR-02"
+      ],
+      "issue_number": 4,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/4"
+    },
+    {
+      "id": "SR-05",
+      "title": "[安全] 配置环境变量、密钥管理和本地开发脚本",
+      "module": "security",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "提供空值环境模板、忽略规则及密钥注入说明",
+      "acceptance": [
+        "示例无真实密钥",
+        "本地配置不进入 Git",
+        "CI 和应用日志不输出凭据"
+      ],
+      "depends_on": [
+        "SR-02",
+        "SR-04"
+      ],
+      "issue_number": 5,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/5"
+    },
+    {
+      "id": "SR-06",
+      "title": "[项目基础] 建立网页与 Worker 的 CI 检查和构建流程",
+      "module": "infra",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "配置类型、格式、核心引擎测试、网页生产构建及 Worker 配置校验；生产部署作为独立发布步骤",
+      "acceptance": [
+        "PR 触发网页和服务端检查",
+        "类型错误或核心测试失败不能通过",
+        "构建产物与公开 source map 不含 Key 或作者隐藏设定"
+      ],
+      "depends_on": [
+        "SR-01",
+        "SR-02",
+        "SR-05"
+      ],
+      "issue_number": 6,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/6"
+    },
+    {
+      "id": "SR-07",
+      "title": "[前端] 设计手机与电脑浏览器的响应式游戏布局",
+      "module": "frontend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "设计聊天区、基础角色标识、状态与设置入口；手机竖屏使用折叠面板，电脑使用多栏布局",
+      "acceptance": [
+        "360px 手机与常见电脑宽度可用，长中文不横向溢出",
+        "手机软键盘弹出后输入与发送按钮仍可操作",
+        "键盘操作、触控、加载、无消息和错误状态可用"
+      ],
+      "depends_on": [
+        "SR-01"
+      ],
+      "issue_number": 7,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/7"
+    },
+    {
+      "id": "SR-08",
+      "title": "[前端] 实现聊天消息、输入框和流式输出",
+      "module": "frontend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "实现网页发送、停止、重试、基础角色姓名和头像，以及 SSE 回复；MVP 先用少量测试角色验证完整聊天路径",
+      "acceptance": [
+        "回复分片逐步显示，中文和跨分片字符正确",
+        "手机触控与电脑键盘均可发送和停止",
+        "取消和断线不重复写消息，已有回复可以恢复",
+        "客户端接口响应不包含完整私有 Prompt"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-15",
+        "SR-38"
+      ],
+      "issue_number": 12,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/12"
+    },
+    {
+      "id": "SR-09",
+      "title": "[前端] 实现角色立绘、头像与角色切换",
+      "module": "frontend",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "建立公开角色资产与发言人显示、切换行为",
+      "acceptance": [
+        "资产加载失败有占位",
+        "切换后发言身份正确",
+        "仅展示已公开或已解锁资料"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-27",
+        "SR-29"
+      ],
+      "issue_number": 18,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/18"
+    },
+    {
+      "id": "SR-10",
+      "title": "[前端] 开发角色资料与关系状态面板",
+      "module": "frontend",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "展示玩家可见角色档案、关系和状态",
+      "acceptance": [
+        "更新变量后面板同步",
+        "隐藏字段不下发",
+        "多角色关系不混用"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-29",
+        "SR-34"
+      ],
+      "issue_number": 21,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/21"
+    },
+    {
+      "id": "SR-11",
+      "title": "[前端] 开发玩家 User 人设编辑器",
+      "module": "frontend",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "编辑玩家名称、描述和可用字段，并保存到玩家存档",
+      "acceptance": [
+        "长度与格式校验有效",
+        "重启后保留",
+        "人设不能覆盖系统权限与剧情规则"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-17"
+      ],
+      "issue_number": 22,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/22"
+    },
+    {
+      "id": "SR-12",
+      "title": "[前端] 开发 API 设置、模型选择与预设管理界面",
+      "module": "frontend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "网页设置允许的供应商、模型、玩家 Key 与基础参数；MVP 提供一个默认预设，高级预设排序与导入在 Alpha 的 SR-23 中实现",
+      "acceptance": [
+        "Key 输入遮罩并可清除，只保留页面内存",
+        "只可选择服务端认可的 providerId 与模型",
+        "模型和参数错误有明确提示，手机设置界面可操作",
+        "基础预设不能覆盖服务端授权和作者秘密边界"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-36",
+        "SR-37",
+        "SR-38"
+      ],
+      "issue_number": 23,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/23"
+    },
+    {
+      "id": "SR-13",
+      "title": "[前端] 实现地图、背包与事件记录面板",
+      "module": "frontend",
+      "priority": "P2",
+      "phase": "Beta",
+      "scope": "展示已解锁地图、物品和玩家剧情事件",
+      "acceptance": [
+        "未解锁信息不返回",
+        "背包改动由服务端校验",
+        "事件记录可追溯"
+      ],
+      "depends_on": [
+        "SR-10",
+        "SR-35"
+      ],
+      "issue_number": 25,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/25"
+    },
+    {
+      "id": "SR-14",
+      "title": "[前端] 实现网页设置、主题与云端存档管理界面",
+      "module": "frontend",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "浏览器持久保存非敏感主题和偏好，聊天、变量与存档通过已认证服务端同步；管理存档切换和允许的导入导出",
+      "acceptance": [
+        "主题和偏好刷新后恢复，Key 不随设置持久化",
+        "同一账号可恢复自己的云端存档",
+        "损坏存档有明确提示",
+        "导出不包含 Key、作者隐藏资料或其他玩家的数据"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-19",
+        "SR-33"
+      ],
+      "issue_number": 27,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/27"
+    },
+    {
+      "id": "SR-15",
+      "title": "[后端] 开发 Gateway 请求入口与玩家身份验证",
+      "module": "backend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "建立公开网关、身份检查与版本化 API 契约",
+      "acceptance": [
+        "未认证请求被拒绝",
+        "身份从已验证会话派生",
+        "修改请求中的 playerId 不会越权"
+      ],
+      "depends_on": [
+        "SR-04",
+        "SR-05",
+        "SR-02"
+      ],
+      "issue_number": 8,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/8"
+    },
+    {
+      "id": "SR-16",
+      "title": "[后端] 建立作者私有 D1 数据库及迁移脚本",
+      "module": "backend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "设计作者设定库、私有规则与版本记录",
+      "acceptance": [
+        "可重复迁移开发库",
+        "只有私有服务绑定",
+        "公开 API 无全量导出入口",
+        "测试采用虚构数据",
+        "作者设定定期加密导出到受控独立备份位置，备份不进入网页构建产物或 Git 仓库",
+        "迁移前记录恢复点，并在独立测试库验证一次作者资料恢复"
+      ],
+      "depends_on": [
+        "SR-04",
+        "SR-27"
+      ],
+      "issue_number": 14,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/14"
+    },
+    {
+      "id": "SR-17",
+      "title": "[后端] 建立玩家状态 D1 数据库及访问隔离",
+      "module": "backend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "保存玩家、会话、变量和存档，并对全部查询约束所有者",
+      "acceptance": [
+        "读写删除都校验玩家归属",
+        "篡改资源 ID 无法串档",
+        "并发更新有版本冲突处理",
+        "聊天、变量和存档以云端数据库为准，清空浏览器缓存并重新登录后仍可恢复",
+        "记录当前套餐的 D1 恢复窗口，玩家数据库每日备份到受控独立位置并定义保留期限",
+        "在独立测试库完成备份恢复，验证两名玩家数据完整且归属正确"
+      ],
+      "depends_on": [
+        "SR-04",
+        "SR-15",
+        "SR-32"
+      ],
+      "issue_number": 16,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/16"
+    },
+    {
+      "id": "SR-18",
+      "title": "[后端] 实现私有 Worker 间 Service Bindings 通信",
+      "module": "backend",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "让 Gateway 通过绑定调用私有剧情服务，取消私有服务公开路由",
+      "acceptance": [
+        "私有服务未配置公共域名、routes 或 workers.dev 入口",
+        "本地绑定可调用",
+        "只返回必要可见数据"
+      ],
+      "depends_on": [
+        "SR-04",
+        "SR-15",
+        "SR-16"
+      ],
+      "issue_number": 28,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/28"
+    },
+    {
+      "id": "SR-19",
+      "title": "[后端] 开发游戏会话、聊天历史与存档接口",
+      "module": "backend",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "提供会话创建、消息分页、恢复与存档操作",
+      "acceptance": [
+        "断线后能恢复已完成消息",
+        "重复提交不重复落库",
+        "每个接口验证所有者"
+      ],
+      "depends_on": [
+        "SR-17",
+        "SR-33"
+      ],
+      "issue_number": 26,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/26"
+    },
+    {
+      "id": "SR-20",
+      "title": "[后端] 实现请求限流、异常处理与运行监控",
+      "module": "backend",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "约束请求频率、并发、超时与结构化脱敏日志",
+      "acceptance": [
+        "模拟过量请求可拒绝",
+        "上游失败返回稳定错误码",
+        "日志不含 Key、完整 Prompt 或隐藏设定"
+      ],
+      "depends_on": [
+        "SR-15",
+        "SR-38"
+      ],
+      "issue_number": 29,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/29"
+    },
+    {
+      "id": "SR-21",
+      "title": "[酒馆兼容] 实现角色卡 V2/V3 常用字段解析与导入",
+      "module": "st-compat",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "导入角色卡 JSON 与 PNG 元数据，区分作者导入和玩家导入",
+      "acceptance": [
+        "固定虚构 V2/V3 样例可导入",
+        "损坏和不支持字段有报告",
+        "导入内容不会执行脚本或覆盖私有角色"
+      ],
+      "depends_on": [
+        "SR-02",
+        "SR-27"
+      ],
+      "issue_number": 30,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/30"
+    },
+    {
+      "id": "SR-22",
+      "title": "[酒馆兼容] 实现世界书条目格式解析和兼容适配",
+      "module": "st-compat",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "规范化世界书 ID、内容、关键词、启用状态和注入属性",
+      "acceptance": [
+        "样例字段无静默丢失",
+        "未知字段有兼容报告",
+        "作者完整条目只存服务端"
+      ],
+      "depends_on": [
+        "SR-21",
+        "SR-27"
+      ],
+      "issue_number": 31,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/31"
+    },
+    {
+      "id": "SR-23",
+      "title": "[酒馆兼容] 实现常用预设字段、顺序与注入位置",
+      "module": "st-compat",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "适配预设提示条目、角色占位符和允许的模型参数",
+      "acceptance": [
+        "固定案例拼装顺序稳定",
+        "未知字段报告",
+        "玩家预设不能更改服务端秘密边界"
+      ],
+      "depends_on": [
+        "SR-22",
+        "SR-39"
+      ],
+      "issue_number": 33,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/33"
+    },
+    {
+      "id": "SR-24",
+      "title": "[酒馆兼容] 实现关键词触发、扫描深度、优先级与预算规则",
+      "module": "st-compat",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "实现最小世界书触发引擎并明确兼容规则",
+      "acceptance": [
+        "关键词、常驻、扫描深度和优先级案例通过",
+        "预算溢出有确定裁剪",
+        "隐藏条目先过权限筛选"
+      ],
+      "depends_on": [
+        "SR-22",
+        "SR-29",
+        "SR-39"
+      ],
+      "issue_number": 34,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/34"
+    },
+    {
+      "id": "SR-25",
+      "title": "[酒馆兼容] 实现常用输入输出正则与安全执行机制",
+      "module": "st-compat",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "在服务端实现文本变换顺序、大小与耗时约束；网页仅安全呈现处理结果，作者私有正则不下载到浏览器",
+      "acceptance": [
+        "输入输出样例通过",
+        "恶意正则不会无限阻塞",
+        "不使用 eval 或动态脚本",
+        "规则版本可追踪"
+      ],
+      "depends_on": [
+        "SR-22",
+        "SR-20"
+      ],
+      "issue_number": 35,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/35"
+    },
+    {
+      "id": "SR-26",
+      "title": "[酒馆兼容] 评估 MVU、酒馆助手脚本兼容范围",
+      "module": "st-compat",
+      "priority": "P2",
+      "phase": "Beta",
+      "scope": "列出可映射变量协议和无法直接运行的插件行为",
+      "acceptance": [
+        "形成支持矩阵",
+        "用样例证明支持项",
+        "任意用户脚本不进入可信运行环境"
+      ],
+      "depends_on": [
+        "SR-23",
+        "SR-25",
+        "SR-33"
+      ],
+      "issue_number": 36,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/36"
+    },
+    {
+      "id": "SR-27",
+      "title": "[世界书] 设计星际 ABO 世界观和角色数据结构",
+      "module": "worldbook",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "定义世界、群像角色、关系、事件及可见性结构",
+      "acceptance": [
+        "Schema 有版本",
+        "公开与隐藏字段可区分",
+        "仓库只包含虚构示例，不录入未提供的人设"
+      ],
+      "depends_on": [
+        "SR-02"
+      ],
+      "issue_number": 13,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/13"
+    },
+    {
+      "id": "SR-28",
+      "title": "[世界书] 实现作者专用世界书导入与版本管理",
+      "module": "worldbook",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "实现授权作者导入、校验、版本发布及回滚",
+      "acceptance": [
+        "玩家身份不能调用作者入口",
+        "失败导入不污染当前版本",
+        "回滚保留审计记录"
+      ],
+      "depends_on": [
+        "SR-16",
+        "SR-22",
+        "SR-27"
+      ],
+      "issue_number": 37,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/37"
+    },
+    {
+      "id": "SR-29",
+      "title": "[世界书] 实现公开、已解锁、隐藏设定分级",
+      "module": "worldbook",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "按条目可见性和玩家进度决定可返回与可注入内容",
+      "acceptance": [
+        "猜测 ID 不能读取隐藏条目",
+        "未达到条件的内容不注入",
+        "解锁记录按玩家隔离"
+      ],
+      "depends_on": [
+        "SR-16",
+        "SR-17",
+        "SR-27"
+      ],
+      "issue_number": 17,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/17"
+    },
+    {
+      "id": "SR-30",
+      "title": "[世界书] 实现按剧情状态检索与动态注入世界书",
+      "module": "worldbook",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "用服务端状态筛选条目，再按触发和预算拼装",
+      "acceptance": [
+        "同输入不同状态可选择不同条目",
+        "不向客户端返回完整 Prompt",
+        "选择结果可用脱敏 ID 调试"
+      ],
+      "depends_on": [
+        "SR-24",
+        "SR-29",
+        "SR-33",
+        "SR-39"
+      ],
+      "issue_number": 38,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/38"
+    },
+    {
+      "id": "SR-31",
+      "title": "[世界书] 实现群像 NPC 独立记忆与剧情事件触发",
+      "module": "worldbook",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "定义角色记忆归属、摘要和可见范围，驱动群像事件",
+      "acceptance": [
+        "NPC 和玩家记忆不串用",
+        "摘要限制预算",
+        "相同事件不会重复解锁或发奖励"
+      ],
+      "depends_on": [
+        "SR-19",
+        "SR-30",
+        "SR-35"
+      ],
+      "issue_number": 39,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/39"
+    },
+    {
+      "id": "SR-32",
+      "title": "[变量] 设计变量 Schema、默认值与数据类型",
+      "module": "variables",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "设计玩家和角色命名空间、类型、范围、默认值与版本",
+      "acceptance": [
+        "Schema 校验通过",
+        "缺失值可初始化",
+        "非法类型和越界值拒绝",
+        "迁移策略有记录"
+      ],
+      "depends_on": [
+        "SR-02",
+        "SR-27"
+      ],
+      "issue_number": 15,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/15"
+    },
+    {
+      "id": "SR-33",
+      "title": "[变量] 实现变量读取、更新、校验和持久化",
+      "module": "variables",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "实现服务端变量操作、版本控制和原子状态更新",
+      "acceptance": [
+        "刷新后变量保留",
+        "非法或未授权更新失败",
+        "并发写不静默覆盖",
+        "模型输出先校验"
+      ],
+      "depends_on": [
+        "SR-17",
+        "SR-32"
+      ],
+      "issue_number": 19,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/19"
+    },
+    {
+      "id": "SR-34",
+      "title": "[变量] 实现 ABO 专属状态及角色关系变量",
+      "module": "variables",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "依据作者确认的规则定义 ABO 状态及每角色关系字段",
+      "acceptance": [
+        "规则与默认值获确认",
+        "状态有边界校验",
+        "玩家不能直接写受保护状态",
+        "多角色独立"
+      ],
+      "depends_on": [
+        "SR-27",
+        "SR-32",
+        "SR-33"
+      ],
+      "issue_number": 20,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/20"
+    },
+    {
+      "id": "SR-35",
+      "title": "[变量] 实现服务端事件判定和剧情解锁规则",
+      "module": "variables",
+      "priority": "P1",
+      "phase": "Alpha",
+      "scope": "在服务端执行条件、效果、解锁与幂等判定",
+      "acceptance": [
+        "客户端不能提交自称已解锁的结果",
+        "重复事件不重复生效",
+        "事件与状态变更一致"
+      ],
+      "depends_on": [
+        "SR-29",
+        "SR-33",
+        "SR-34"
+      ],
+      "issue_number": 24,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/24"
+    },
+    {
+      "id": "SR-36",
+      "title": "[API] 实现网页端玩家 API Key 的安全传递与会话管理",
+      "module": "api",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "玩家 Key 默认只保留当前页面内存，刷新后重新输入；经 TLS 传给网关，服务端只用于当次请求",
+      "acceptance": [
+        "浏览器 localStorage、sessionStorage、IndexedDB、URL 与缓存不保存 Key",
+        "网页刷新或退出后清除内存 Key",
+        "网关数据库、日志和错误响应不含 Key",
+        "说明网关与选定模型供应商会处理玩家 Key 和请求内容"
+      ],
+      "depends_on": [
+        "SR-05",
+        "SR-15"
+      ],
+      "issue_number": 9,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/9"
+    },
+    {
+      "id": "SR-37",
+      "title": "[API] 实现官方 API 与指定中转站白名单",
+      "module": "api",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "由服务端配置 providerId 对应固定 HTTPS 目标和路径",
+      "acceptance": [
+        "客户端不能任填 baseURL",
+        "禁止内网和非 HTTPS",
+        "禁止跳转至非白名单",
+        "供应商列表待作者确认"
+      ],
+      "depends_on": [
+        "SR-15",
+        "SR-36"
+      ],
+      "issue_number": 10,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/10"
+    },
+    {
+      "id": "SR-38",
+      "title": "[API] 实现 OpenAI 兼容请求、模型参数与 SSE 流式响应",
+      "module": "api",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "适配允许的模型请求、参数校验与分片流转发",
+      "acceptance": [
+        "分片和 Unicode 边界正确",
+        "取消能停止上游",
+        "错误与 429 可识别",
+        "上游事件不透传敏感内部信息"
+      ],
+      "depends_on": [
+        "SR-15",
+        "SR-36",
+        "SR-37"
+      ],
+      "issue_number": 11,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/11"
+    },
+    {
+      "id": "SR-39",
+      "title": "[API] 实现服务端 Prompt 拼装与 Token 预算管理",
+      "module": "api",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "在服务端固定系统规则、当前已授权的设定、玩家人设、基础默认预设和历史的拼装边界；高级预设兼容独立在 Alpha 实现",
+      "acceptance": [
+        "顺序有固定样例",
+        "预算为回复预留空间",
+        "超限可解释",
+        "客户端和日志无完整私有 Prompt"
+      ],
+      "depends_on": [
+        "SR-29",
+        "SR-32"
+      ],
+      "issue_number": 32,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/32"
+    },
+    {
+      "id": "SR-40",
+      "title": "[安全] 实现网页注入、越权读取、SSRF 与会话防护",
+      "module": "security",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "分层处理模型提取秘密、跨玩家访问、恶意上游目标和网页 XSS；对会话 Cookie、CSRF、跨域与模型 Markdown 呈现定义并实现安全边界",
+      "acceptance": [
+        "未解锁秘密不进入模型上下文，API 不返回隐藏条目正文",
+        "越权、恶意 baseURL 和跨白名单跳转被拒绝",
+        "模型 Markdown 中脚本、危险链接和外部追踪资源按明确策略处理",
+        "认证会话若使用 Cookie，配置 HttpOnly/Secure/SameSite 与必要 CSRF 校验；跨域按实际入口限制",
+        "Key、完整 Prompt 和秘密不进入浏览器缓存或日志",
+        "记录模型可能透露已经注入内容的残余风险"
+      ],
+      "depends_on": [
+        "SR-15",
+        "SR-18",
+        "SR-29",
+        "SR-37",
+        "SR-39"
+      ],
+      "issue_number": 40,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/40"
+    },
+    {
+      "id": "SR-41",
+      "title": "[测试] 编写 MVP 世界书触发、变量与 Prompt 引擎测试",
+      "module": "testing",
+      "priority": "P1",
+      "phase": "MVP",
+      "scope": "MVP 为触发、可见性、变量和 Prompt 预算建立虚构 fixtures；Alpha 正则功能的测试随 SR-25 一起完成，不作为网页 MVP 的前置依赖",
+      "acceptance": [
+        "覆盖无匹配、未解锁过滤、预算边界、非法变量与并发冲突",
+        "CI 自动运行并能复现失败",
+        "测试资料不包含真实作者秘密",
+        "正则任务完成时补齐耗时约束与文本顺序测试"
+      ],
+      "depends_on": [
+        "SR-24",
+        "SR-29",
+        "SR-33",
+        "SR-39",
+        "SR-06"
+      ],
+      "issue_number": 41,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/41"
+    },
+    {
+      "id": "SR-42",
+      "title": "[测试] 测试 10～50 人负载与 Cloudflare 免费额度",
+      "module": "testing",
+      "priority": "P1",
+      "phase": "Beta",
+      "scope": "用 mock 模型模拟 10、25、50 个玩家，测 CPU、请求、D1 与流式连接",
+      "acceptance": [
+        "出具用量和延迟报告",
+        "区分 CPU 与等待时间",
+        "标出瓶颈及阈值",
+        "真实付费请求需单独预算授权"
+      ],
+      "depends_on": [
+        "SR-20",
+        "SR-38",
+        "SR-41"
+      ],
+      "issue_number": 42,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/42"
+    },
+    {
+      "id": "SR-43",
+      "title": "[测试] 测试不同玩家之间的存档和权限隔离",
+      "module": "testing",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "为两名测试玩家验证会话、变量、记忆、解锁和存档的读写删除隔离",
+      "acceptance": [
+        "篡改 ID 与身份失败",
+        "访问作者导入接口失败",
+        "日志与导出无其他玩家或秘密内容"
+      ],
+      "depends_on": [
+        "SR-17",
+        "SR-19",
+        "SR-29",
+        "SR-33",
+        "SR-40"
+      ],
+      "issue_number": 43,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/43"
+    },
+    {
+      "id": "SR-44",
+      "title": "[发布] 部署网页预览环境并完成朋友内测",
+      "module": "testing",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "建立 Cloudflare 网页静态资源与 Gateway 的预览发布方案，开发与生产数据隔离；仅向授权测试账号开放，先邀请 2～5 名朋友验证",
+      "acceptance": [
+        "测试者通过 HTTPS 链接在手机和电脑浏览器进入并登录",
+        "自填 Key 可流式聊天，刷新后重新输入 Key 并恢复自己的聊天和变量",
+        "预览环境与生产 D1、密钥和数据隔离",
+        "未邀请玩家无法访问受保护游戏 API",
+        "网页与接口不包含作者全量世界书、私有 Prompt 或隐藏规则",
+        "核心引擎、跨浏览器和玩家隔离测试通过，有反馈入口与回退步骤",
+        "发布前完成作者资料与玩家存档的备份恢复演练，并记录备份位置、保留期限及恢复步骤"
+      ],
+      "depends_on": [
+        "SR-01",
+        "SR-07",
+        "SR-08",
+        "SR-12",
+        "SR-19",
+        "SR-43",
+        "SR-46",
+        "SR-06",
+        "SR-41"
+      ],
+      "issue_number": 44,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/44"
+    },
+    {
+      "id": "SR-45",
+      "title": "[无限期延后] Windows EXE 与 Android APK 独立客户端",
+      "module": "testing",
+      "priority": "P2",
+      "phase": "Deferred",
+      "scope": "独立桌面和移动安装包无限期延后，可能不实施；当前只推进响应式网页。仅在用户明确恢复方向后，重新评估需求、依赖与排期。手机和电脑浏览器适配继续保留",
+      "acceptance": [
+        "不进入 MVP、Alpha 或 Beta 的实施排期",
+        "不作为任何网页任务的阻塞依赖",
+        "仅在用户明确恢复后重新评估，再确定实现验收"
+      ],
+      "depends_on": [],
+      "issue_number": 45,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/45"
+    },
+    {
+      "id": "SR-46",
+      "title": "[测试] 验证手机与电脑浏览器的聊天、存档和安全边界",
+      "module": "testing",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "验证桌面 Chrome/Edge、Android Chrome 与 iOS Safari 的核心网页路径，覆盖软键盘、SSE、网络中断和安全呈现",
+      "acceptance": [
+        "目标浏览器可以登录、设置 Key、流式聊天、停止生成和恢复云端存档",
+        "手机软键盘、旋转与后台返回后可继续操作，断流有明确恢复方式",
+        "检查浏览器资源、接口响应、缓存和存储，不含 Key、完整私有 Prompt 与未解锁设定",
+        "用模型恶意 Markdown 样例验证 XSS 与外部资源策略",
+        "用虚构数据记录版本、设备、结果及已知限制"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-08",
+        "SR-12",
+        "SR-19",
+        "SR-40",
+        "SR-43"
+      ],
+      "issue_number": 47,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/47"
+    }
+  ]
+}
