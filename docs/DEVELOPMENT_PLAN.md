@@ -1,14 +1,14 @@
 # 开发计划
 
-当前方向：响应式网页优先。共有 46 项任务，第一阶段 MVP 34 项；Alpha 8 项；Beta 4 项。
+当前方向：响应式网页优先。共有 46 项任务，第一阶段 MVP 34 项；Alpha 8 项；Beta 3 项；无限期延后 1 项。
 
 第一阶段的五组推进顺序与交付标准见 [MVP_PLAN.md](MVP_PLAN.md)。阶段包含多个实现任务，任务数量不代表同时开工数量。
 
 ## 任务与看板
 
-[开发看板](https://github.com/users/CYH1104/projects/1)保留全部任务视图，并提供第一阶段筛选。模块、P0/P1/P2、phase:MVP/phase:Alpha/phase:Beta 为标签；状态为 Todo、In Progress、Testing、Done。开始时认领，PR 关联，完成实现后验收，验收通过后关闭。
+[开发看板](https://github.com/users/CYH1104/projects/1)保留全部任务视图，并提供第一阶段筛选。模块、P0/P1/P2、phase:MVP/phase:Alpha/phase:Beta/phase:Deferred 为标签；状态为 Todo、In Progress、Testing、Done；Deferred 表示无限期延后。开始时认领，PR 关联，完成实现后验收，验收通过后关闭。
 
-SR 编号是稳定计划编号。下表链接到实际 Issue，详细目标与勾选式验收以 Issue 和 issues.json 为准。Windows / Android 打包属于 Beta 的评估任务，不阻塞手机网页。
+SR 编号是稳定计划编号。下表链接到实际 Issue，详细目标与勾选式验收以 Issue 和 issues.json 为准。Windows / Android 独立安装包无限期延后，可能不实施；仅用户明确恢复后重新评估，不阻塞任何网页任务。
 
 ## 任务总表
 
@@ -58,7 +58,7 @@ SR 编号是稳定计划编号。下表链接到实际 Issue，详细目标与�
 | [SR-42 · #42](https://github.com/CYH1104/stellar-resonance/issues/42) | [测试] 测试 10～50 人负载与 Cloudflare 免费额度 | testing | P1 | Beta | [#29](https://github.com/CYH1104/stellar-resonance/issues/29), [#11](https://github.com/CYH1104/stellar-resonance/issues/11), [#41](https://github.com/CYH1104/stellar-resonance/issues/41) |
 | [SR-43 · #43](https://github.com/CYH1104/stellar-resonance/issues/43) | [测试] 测试不同玩家之间的存档和权限隔离 | testing | P0 | MVP | [#16](https://github.com/CYH1104/stellar-resonance/issues/16), [#26](https://github.com/CYH1104/stellar-resonance/issues/26), [#17](https://github.com/CYH1104/stellar-resonance/issues/17), [#19](https://github.com/CYH1104/stellar-resonance/issues/19), [#40](https://github.com/CYH1104/stellar-resonance/issues/40) |
 | [SR-44 · #44](https://github.com/CYH1104/stellar-resonance/issues/44) | [发布] 部署网页预览环境并完成朋友内测 | testing | P0 | MVP | [#1](https://github.com/CYH1104/stellar-resonance/issues/1), [#7](https://github.com/CYH1104/stellar-resonance/issues/7), [#12](https://github.com/CYH1104/stellar-resonance/issues/12), [#23](https://github.com/CYH1104/stellar-resonance/issues/23), [#26](https://github.com/CYH1104/stellar-resonance/issues/26), [#43](https://github.com/CYH1104/stellar-resonance/issues/43), [#47](https://github.com/CYH1104/stellar-resonance/issues/47), [#6](https://github.com/CYH1104/stellar-resonance/issues/6), [#41](https://github.com/CYH1104/stellar-resonance/issues/41) |
-| [SR-45 · #45](https://github.com/CYH1104/stellar-resonance/issues/45) | [后续平台] 评估 Windows EXE 与 Android APK 打包 | testing | P2 | Beta | [#44](https://github.com/CYH1104/stellar-resonance/issues/44), [#27](https://github.com/CYH1104/stellar-resonance/issues/27) |
+| [SR-45 · #45](https://github.com/CYH1104/stellar-resonance/issues/45) | [无限期延后] Windows EXE 与 Android APK 独立客户端 | testing | P2 | Deferred | 无当前实施依赖 |
 | [SR-46 · #47](https://github.com/CYH1104/stellar-resonance/issues/47) | [测试] 验证手机与电脑浏览器的聊天、存档和安全边界 | testing | P0 | MVP | [#7](https://github.com/CYH1104/stellar-resonance/issues/7), [#12](https://github.com/CYH1104/stellar-resonance/issues/12), [#23](https://github.com/CYH1104/stellar-resonance/issues/23), [#26](https://github.com/CYH1104/stellar-resonance/issues/26), [#40](https://github.com/CYH1104/stellar-resonance/issues/40), [#43](https://github.com/CYH1104/stellar-resonance/issues/43) |
 
 ## 边界

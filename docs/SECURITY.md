@@ -30,8 +30,20 @@ Key 默认只保留当前页面内存，刷新或退出后重新输入；不放�
 
 已注入模型的设定可能通过反问或生成结果透露；提示词约束和输出检查不能提供绝对保密。未解锁秘密根本不进入当前上下文。解密后交给客户端的内容应视为可被提取。
 
+## 数据持久化与恢复
+
+GitHub 私有仓库保护源代码的访问权限，不能替代网站认证或运行数据库。GitHub Pages 是静态托管；个人仓库私有不代表发布后的网页私有。任何下发的网页 JavaScript、JSON 与接口响应均应视为玩家可读取。
+
+聊天、变量和存档以 D1 为准，浏览器只缓存可丢弃的显示状态。清空缓存、换设备或更新网页后，重新登录可恢复云端数据；玩家 Key 仍需重新输入。存档接口成功前须确认服务端写入结果，写入失败不能显示为已保存。
+
+作者库与玩家库定期加密导出到受控独立备份位置；玩家库每日备份，作者库每次正式导入或修改后备份。上线前明确保留期限、访问控制、负责人和恢复步骤。备份不进入 Git 仓库、网页静态资源或公开下载入口，也不包含 API Key。
+
+D1 Time Travel 当前免费套餐可恢复近 7 天、付费套餐近 30 天的数据库状态；实施时按实际套餐复核。此窗口之外的恢复依赖独立备份，不承诺永不丢失。数据库迁移前记录恢复点；先在隔离测试库演练恢复，验证作者资料及两名玩家的聊天、变量、存档完整且归属正确。回退前评估恢复点之后新增数据的处理方式。
+
+参考：[GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)、[私有仓库与 Pages 网站可见性](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site)、[D1 Time Travel 与备份](https://developers.cloudflare.com/d1/reference/time-travel/)。
+
 ## 网页内测门槛
 
-核心引擎测试、两名玩家跨资源读写删除隔离、未授权作者入口测试和目标浏览器验收通过；Key 与隐藏资料不在客户端、缓存或日志；取消与断线恢复可用；反馈和回退说明齐全。
+核心引擎测试、两名玩家跨资源读写删除隔离、未授权作者入口测试和目标浏览器验收通过；Key 与隐藏资料不在客户端、缓存或日志；取消与断线恢复可用；反馈、回退和备份恢复演练记录齐全。
 
 参考：[OWASP 前端安全](https://cheatsheetseries.owasp.org/cheatsheets/Web_Frontend_Security_Cheat_Sheet.html)、[OWASP LLM 注入防护](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html)。

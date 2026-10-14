@@ -2,7 +2,7 @@
 
 ## 当前方向
 
-响应式网页优先：Vue 3 + TypeScript + Vite 前端，Cloudflare Workers + D1 后端。手机和电脑通过浏览器使用。Windows EXE / Android APK 属于网页内测后的评估项。
+响应式网页优先：Vue 3 + TypeScript + Vite 前端，Cloudflare Workers + D1 后端。手机和电脑通过浏览器使用。Windows EXE / Android APK 无限期延后，可能不实施；仅在用户明确恢复方向后重新评估与排期。
 
 开始任务前阅读 docs/PROJECT_OVERVIEW.md 和目标 Issue。第一阶段执行顺序见 docs/MVP_PLAN.md；任务全集见 docs/DEVELOPMENT_PLAN.md。涉及接口与资源绑定时阅读 ARCHITECTURE.md；涉及内容呈现、身份、Key、模型请求、作者资料或存档时阅读 SECURITY.md；涉及导入与兼容时阅读 ST_COMPATIBILITY.md。文档均位于 docs/。
 
@@ -21,4 +21,4 @@
 
 网页 MVP 覆盖桌面 Chrome/Edge、Android Chrome 和 iOS Safari 的核心路径。模型 Markdown 作为不可信内容处理。高级预设、正则、群像记忆和地图背包在后续阶段逐步实现。
 
-上线门槛：核心引擎、玩家隔离、跨浏览器验收通过，Key 与隐藏资料不在客户端和日志中，具备反馈与回退步骤。生产部署、付费请求、PR 合并与访问授权按当次任务的明确授权执行。
+上线门槛：核心引擎、玩家隔离、跨浏览器验收通过，Key 与隐藏资料不在客户端和日志中，具备反馈、回退和经过演练的数据备份恢复步骤。生产部署、付费请求、PR 合并与访问授权按当次任务的明确授权执行。
