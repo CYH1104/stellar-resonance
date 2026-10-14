@@ -1,18 +1,19 @@
 {
-  "version": 1,
+  "version": 2,
   "repository": "CYH1104/stellar-resonance",
+  "direction": "web-first",
   "tasks": [
     {
       "id": "SR-01",
-      "title": "[项目基础] 初始化 Vue 3 + TypeScript + Tauri 2 客户端",
+      "title": "[项目基础] 初始化 Vue 3 + TypeScript + Vite 网页客户端",
       "module": "infra",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "建立 Windows 客户端，配置类型检查与开发命令",
+      "scope": "建立响应式网页客户端，配置开发、类型检查与网页构建命令；MVP 直接由手机和电脑浏览器访问",
       "acceptance": [
-        "干净环境按 README 可启动",
-        "窗口显示基础界面",
-        "客户端产物不含作者私有设定"
+        "干净环境按 README 可启动网页并构建静态资源",
+        "手机与电脑浏览器显示基础页面",
+        "网页资源、source map 和浏览器存储不含作者私有设定"
       ],
       "depends_on": [],
       "issue_number": 1,
@@ -24,7 +25,7 @@
       "module": "infra",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "划分 apps、workers、packages，建立请求响应及变量类型",
+      "scope": "划分 apps/web、workers、packages，建立网页与服务端请求响应及变量类型",
       "acceptance": [
         "客户端与 Worker 复用契约",
         "包依赖无循环",
@@ -89,15 +90,15 @@
     },
     {
       "id": "SR-06",
-      "title": "[项目基础] 建立 CI 自动检查和构建流程",
+      "title": "[项目基础] 建立网页与 Worker 的 CI 检查和构建流程",
       "module": "infra",
       "priority": "P1",
       "phase": "MVP",
-      "scope": "配置类型、格式、关键测试和 Windows 构建检查",
+      "scope": "配置类型、格式、核心引擎测试、网页生产构建及 Worker 配置校验；生产部署作为独立发布步骤",
       "acceptance": [
-        "PR 触发检查",
-        "类型错误会阻止通过",
-        "产物不含私有设定与调试秘密"
+        "PR 触发网页和服务端检查",
+        "类型错误或核心测试失败不能通过",
+        "构建产物与公开 source map 不含 Key 或作者隐藏设定"
       ],
       "depends_on": [
         "SR-01",
@@ -109,15 +110,15 @@
     },
     {
       "id": "SR-07",
-      "title": "[前端] 设计游戏主界面和响应式布局",
+      "title": "[前端] 设计手机与电脑浏览器的响应式游戏布局",
       "module": "frontend",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "设计聊天区、角色区、状态入口和设置入口",
+      "scope": "设计聊天区、基础角色标识、状态与设置入口；手机竖屏使用折叠面板，电脑使用多栏布局",
       "acceptance": [
-        "Windows 常见窗口尺寸可用",
-        "长中文文本不溢出",
-        "基础键盘操作可达"
+        "360px 手机与常见电脑宽度可用，长中文不横向溢出",
+        "手机软键盘弹出后输入与发送按钮仍可操作",
+        "键盘操作、触控、加载、无消息和错误状态可用"
       ],
       "depends_on": [
         "SR-01"
@@ -131,12 +132,12 @@
       "module": "frontend",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "实现发送、停止、重试与角色消息，接入 SSE",
+      "scope": "实现网页发送、停止、重试、基础角色姓名和头像，以及 SSE 回复；MVP 先用少量测试角色验证完整聊天路径",
       "acceptance": [
-        "分片回复逐步显示",
-        "取消和断线不产生重复消息",
-        "错误可重试",
-        "完整提示词不回传前端"
+        "回复分片逐步显示，中文和跨分片字符正确",
+        "手机触控与电脑键盘均可发送和停止",
+        "取消和断线不重复写消息，已有回复可以恢复",
+        "客户端接口响应不包含完整私有 Prompt"
       ],
       "depends_on": [
         "SR-07",
@@ -211,11 +212,12 @@
       "module": "frontend",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "设置受支持供应商、模型、玩家 Key 与可用参数",
+      "scope": "网页设置允许的供应商、模型、玩家 Key 与基础参数；MVP 提供一个默认预设，高级预设排序与导入在 Alpha 的 SR-23 中实现",
       "acceptance": [
-        "Key 遮罩并可清除",
-        "无效参数有提示",
-        "供应商只可选择服务器认可的入口"
+        "Key 输入遮罩并可清除，只保留页面内存",
+        "只可选择服务端认可的 providerId 与模型",
+        "模型和参数错误有明确提示，手机设置界面可操作",
+        "基础预设不能覆盖服务端授权和作者秘密边界"
       ],
       "depends_on": [
         "SR-07",
@@ -247,15 +249,16 @@
     },
     {
       "id": "SR-14",
-      "title": "[前端] 实现本地设置、主题与存档管理界面",
+      "title": "[前端] 实现网页设置、主题与云端存档管理界面",
       "module": "frontend",
       "priority": "P1",
       "phase": "Alpha",
-      "scope": "管理主题、设置、存档切换和允许的导入导出",
+      "scope": "浏览器持久保存非敏感主题和偏好，聊天、变量与存档通过已认证服务端同步；管理存档切换和允许的导入导出",
       "acceptance": [
-        "设置重启后恢复",
+        "主题和偏好刷新后恢复，Key 不随设置持久化",
+        "同一账号可恢复自己的云端存档",
         "损坏存档有明确提示",
-        "导出无 Key 和作者隐藏资料"
+        "导出不包含 Key、作者隐藏资料或其他玩家的数据"
       ],
       "depends_on": [
         "SR-07",
@@ -466,7 +469,7 @@
       "module": "st-compat",
       "priority": "P1",
       "phase": "Alpha",
-      "scope": "实现文本变换顺序、大小与耗时约束，限制执行能力",
+      "scope": "在服务端实现文本变换顺序、大小与耗时约束；网页仅安全呈现处理结果，作者私有正则不下载到浏览器",
       "acceptance": [
         "输入输出样例通过",
         "恶意正则不会无限阻塞",
@@ -682,16 +685,16 @@
     },
     {
       "id": "SR-36",
-      "title": "[API] 实现玩家自填 API Key 的安全传递与存储",
+      "title": "[API] 实现网页端玩家 API Key 的安全传递与会话管理",
       "module": "api",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "Key 经 TLS 使用，默认只保留当前会话；设计可选安全凭据存储",
+      "scope": "玩家 Key 默认只保留当前页面内存，刷新后重新输入；经 TLS 传给网关，服务端只用于当次请求",
       "acceptance": [
-        "请求与错误日志无 Key",
-        "网页不默认明文持久化",
-        "客户端清除有效",
-        "服务器不落库玩家 Key"
+        "浏览器 localStorage、sessionStorage、IndexedDB、URL 与缓存不保存 Key",
+        "网页刷新或退出后清除内存 Key",
+        "网关数据库、日志和错误响应不含 Key",
+        "说明网关与选定模型供应商会处理玩家 Key 和请求内容"
       ],
       "depends_on": [
         "SR-05",
@@ -747,7 +750,7 @@
       "module": "api",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "固定系统规则、当前允许设定、玩家人设、预设和历史的拼装边界",
+      "scope": "在服务端固定系统规则、当前已授权的设定、玩家人设、基础默认预设和历史的拼装边界；高级预设兼容独立在 Alpha 实现",
       "acceptance": [
         "顺序有固定样例",
         "预算为回复预留空间",
@@ -763,15 +766,18 @@
     },
     {
       "id": "SR-40",
-      "title": "[安全] 实现提示词注入、越权读取与 SSRF 防护",
+      "title": "[安全] 实现网页注入、越权读取、SSRF 与会话防护",
       "module": "security",
       "priority": "P0",
       "phase": "MVP",
-      "scope": "对提取秘密、跨玩家访问及恶意上游目标建立分层防护",
+      "scope": "分层处理模型提取秘密、跨玩家访问、恶意上游目标和网页 XSS；对会话 Cookie、CSRF、跨域与模型 Markdown 呈现定义并实现安全边界",
       "acceptance": [
-        "未解锁秘密从输入上下文排除",
-        "越权与重定向样例被拒绝",
-        "记录模型仍可能透露已注入内容的残余风险"
+        "未解锁秘密不进入模型上下文，API 不返回隐藏条目正文",
+        "越权、恶意 baseURL 和跨白名单跳转被拒绝",
+        "模型 Markdown 中脚本、危险链接和外部追踪资源按明确策略处理",
+        "认证会话若使用 Cookie，配置 HttpOnly/Secure/SameSite 与必要 CSRF 校验；跨域按实际入口限制",
+        "Key、完整 Prompt 和秘密不进入浏览器缓存或日志",
+        "记录模型可能透露已经注入内容的残余风险"
       ],
       "depends_on": [
         "SR-15",
@@ -785,20 +791,22 @@
     },
     {
       "id": "SR-41",
-      "title": "[测试] 编写世界书触发、变量、正则的单元测试",
+      "title": "[测试] 编写 MVP 世界书触发、变量与 Prompt 引擎测试",
       "module": "testing",
       "priority": "P1",
       "phase": "MVP",
-      "scope": "为领域引擎边界建立虚构 fixtures 和回归案例",
+      "scope": "MVP 为触发、可见性、变量和 Prompt 预算建立虚构 fixtures；Alpha 正则功能的测试随 SR-25 一起完成，不作为网页 MVP 的前置依赖",
       "acceptance": [
-        "覆盖无匹配、预算边界、非法变量、并发和恶意正则",
-        "CI 自动运行",
-        "测试不包含真实作者秘密"
+        "覆盖无匹配、未解锁过滤、预算边界、非法变量与并发冲突",
+        "CI 自动运行并能复现失败",
+        "测试资料不包含真实作者秘密",
+        "正则任务完成时补齐耗时约束与文本顺序测试"
       ],
       "depends_on": [
         "SR-24",
-        "SR-25",
+        "SR-29",
         "SR-33",
+        "SR-39",
         "SR-06"
       ],
       "issue_number": 41,
@@ -849,40 +857,45 @@
     },
     {
       "id": "SR-44",
-      "title": "[测试] 构建 Windows EXE 并完成朋友内测",
+      "title": "[发布] 部署网页预览环境并完成朋友内测",
       "module": "testing",
-      "priority": "P1",
+      "priority": "P0",
       "phase": "MVP",
-      "scope": "打包 Windows 安装程序，整理 Key 设置、更新及内测步骤",
+      "scope": "建立 Cloudflare 网页静态资源与 Gateway 的预览发布方案，开发与生产数据隔离；仅向授权测试账号开放，先邀请 2～5 名朋友验证",
       "acceptance": [
-        "干净 Windows 能运行",
-        "填写 Key 可聊天并恢复进度",
-        "产物不含作者秘密",
-        "有问题反馈模板"
+        "测试者通过 HTTPS 链接在手机和电脑浏览器进入并登录",
+        "自填 Key 可流式聊天，刷新后重新输入 Key 并恢复自己的聊天和变量",
+        "预览环境与生产 D1、密钥和数据隔离",
+        "未邀请玩家无法访问受保护游戏 API",
+        "网页与接口不包含作者全量世界书、私有 Prompt 或隐藏规则",
+        "核心引擎、跨浏览器和玩家隔离测试通过，有反馈入口与回退步骤"
       ],
       "depends_on": [
         "SR-01",
+        "SR-07",
         "SR-08",
         "SR-12",
         "SR-19",
         "SR-43",
-        "SR-06"
+        "SR-46",
+        "SR-06",
+        "SR-41"
       ],
       "issue_number": 44,
       "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/44"
     },
     {
       "id": "SR-45",
-      "title": "[测试] 适配 Android APK 与移动端布局",
+      "title": "[后续平台] 评估 Windows EXE 与 Android APK 打包",
       "module": "testing",
       "priority": "P2",
       "phase": "Beta",
-      "scope": "评估 Tauri Android 配置、软键盘、触控和安全凭据存储",
+      "scope": "网页 MVP 内测后再决定是否需要桌面或 Android 安装包；评估 Tauri 包装同一网页界面，复用云端身份、存档和保密边界",
       "acceptance": [
-        "可安装 APK",
-        "软键盘不遮挡输入",
-        "触控与流式回复可用",
-        "移动包不包含作者私有设定"
+        "记录安装包相对网页的实际需求与取舍，再决定是否实施",
+        "如实施，在 Windows 和 Android 验证安装、触控和更新",
+        "继续通过云端取得当前可见内容，安装包不含作者私有设定",
+        "安装包使用经过评估的 Key 存储方式"
       ],
       "depends_on": [
         "SR-44",
@@ -890,6 +903,31 @@
       ],
       "issue_number": 45,
       "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/45"
+    },
+    {
+      "id": "SR-46",
+      "title": "[测试] 验证手机与电脑浏览器的聊天、存档和安全边界",
+      "module": "testing",
+      "priority": "P0",
+      "phase": "MVP",
+      "scope": "验证桌面 Chrome/Edge、Android Chrome 与 iOS Safari 的核心网页路径，覆盖软键盘、SSE、网络中断和安全呈现",
+      "acceptance": [
+        "目标浏览器可以登录、设置 Key、流式聊天、停止生成和恢复云端存档",
+        "手机软键盘、旋转与后台返回后可继续操作，断流有明确恢复方式",
+        "检查浏览器资源、接口响应、缓存和存储，不含 Key、完整私有 Prompt 与未解锁设定",
+        "用模型恶意 Markdown 样例验证 XSS 与外部资源策略",
+        "用虚构数据记录版本、设备、结果及已知限制"
+      ],
+      "depends_on": [
+        "SR-07",
+        "SR-08",
+        "SR-12",
+        "SR-19",
+        "SR-40",
+        "SR-43"
+      ],
+      "issue_number": 47,
+      "issue_url": "https://github.com/CYH1104/stellar-resonance/issues/47"
     }
   ]
 }

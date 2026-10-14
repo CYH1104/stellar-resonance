@@ -1,29 +1,24 @@
 # 《群星共振》开发约定
 
-先阅读 docs/PROJECT_OVERVIEW.md、REQUIREMENTS.md、ARCHITECTURE.md、SECURITY.md、ST_COMPATIBILITY.md 和 DEVELOPMENT_PLAN.md。
+## 当前方向
 
-## 已确定目标
+响应式网页优先：Vue 3 + TypeScript + Vite 前端，Cloudflare Workers + D1 后端。手机和电脑通过浏览器使用。Windows EXE / Android APK 属于网页内测后的评估项。
 
-- 星际 ABO 背景的群像 AI 互动游戏。既有人设由作者提供，不自行编造为正式内容。
-- Vue 3 + TypeScript + Tauri 2 客户端，先 Windows，后续 Android。
-- Cloudflare Workers + D1 后端，模型请求通过服务端白名单网关。
-- 玩家可设置 API Key、模型、允许的预设和 User 人设。
-- 作者世界书、隐藏人设、核心正则与剧情规则保留在可信服务端，不打包到客户端或公共素材中。
-- 优先实现小规模 10～50 人内测的 MVP，再扩展群像玩法与兼容范围。
+开始任务前阅读 docs/PROJECT_OVERVIEW.md 和目标 Issue。第一阶段执行顺序见 docs/MVP_PLAN.md；任务全集见 docs/DEVELOPMENT_PLAN.md。涉及接口与资源绑定时阅读 ARCHITECTURE.md；涉及内容呈现、身份、Key、模型请求、作者资料或存档时阅读 SECURITY.md；涉及导入与兼容时阅读 ST_COMPATIBILITY.md。文档均位于 docs/。
 
-## 工作规则
+## 不可改变的内容边界
 
-- Issue 是开发任务来源；实现前阅读目标、验收标准及依赖，PR 关联 Issue。
-- 先检查仓库现状，使用小范围变更；不要把计划中的功能描述为已经实现。
-- 不提交真实 Key、部署凭据、真实私有世界书、完整聊天记录或玩家存档。
-- 客户端输入与模型输出均视为不可信。所有资源访问在服务端检查玩家归属。
-- 变量更新先校验，再持久化；模型输出只能提出变更，不能直接决定解锁。
-- 每次变更评估作者资料保密、玩家隔离和变量持久化。按风险验证相关边界。
-- 使用虚构测试资料。日志不得包含 Key、完整 Prompt 或隐藏条目正文。
-- 未经明确任务授权，不部署、不合并 PR、不邀请协作者、不更改仓库可见性、不产生付费负载。
-- 兼容目标是明确的格式与行为子集，不直接承诺运行完整 SillyTavern 或任意插件。
-- 不用客户端加密或混淆替代服务端保密；不得承诺提示词防泄漏的绝对效果。
+- 作者正式世界书、人设与素材由作者提供；开发和测试采用虚构样例。
+- 完整世界书、隐藏设定、私有正则与剧情判定保留在可信服务端。浏览器只获得当前玩家可见的结果。
+- 服务端先校验身份、资源归属和解锁状态，再检索或更新。模型输出只能提出变更，由规则引擎校验后持久化。
+- 玩家 Key 默认保留在当前页面内存，经 TLS 用于当次请求。浏览器持久存储、URL、服务器数据库与日志不得保存 Key。
+- 模型入口由服务端 providerId 白名单映射；注入最少必要内容，不能承诺模型绝对不会透露已注入片段。
+- 公开代码、网页资源、浏览器缓存和存档导出均不得包含作者私有资料或完整私有 Prompt。
 
-## 协作约定
+## 实现与验收
 
-文档位于 docs/。任务模块标签为 frontend、backend、worldbook、st-compat、variables、api、security、testing、infra；优先级为 P0/P1/P2；阶段为 MVP/Alpha/Beta；看板状态为 Todo、In Progress、Testing、Done。阶段和优先级不代替状态。
+任务以 Issue 的目标、依赖和勾选式验收为准，PR 关联 Issue。计划中的功能不写为已经实现。每次变更检查玩家隔离、变量持久化和秘密边界，并按风险验证。
+
+网页 MVP 覆盖桌面 Chrome/Edge、Android Chrome 和 iOS Safari 的核心路径。模型 Markdown 作为不可信内容处理。高级预设、正则、群像记忆和地图背包在后续阶段逐步实现。
+
+上线门槛：核心引擎、玩家隔离、跨浏览器验收通过，Key 与隐藏资料不在客户端和日志中，具备反馈与回退步骤。生产部署、付费请求、PR 合并与访问授权按当次任务的明确授权执行。
