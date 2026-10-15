@@ -1,18 +1,28 @@
 <script setup lang="ts">
-import { reactive,ref,watch } from 'vue';import type { ViewModel } from '../app/useWorkspace';import { uid } from '../domain/story';
-const props=defineProps<{w:ViewModel}>();const chosen=ref(props.w.preferences.mainProfile),presetText=ref(''),shortcut=ref('');
-const persona=reactive({name:'',appearance:'',personality:'',background:''});
-watch(()=>props.w.active?.id,()=>{if(props.w.active)Object.assign(persona,props.w.active.persona);},{immediate:true});
+import { reactive,ref,watch } from 'vue';import type { ViewModel } from '../app/useWorkspace';import PresetManager from './PresetManager.vue';
+import {blankPersona} from '../domain/persona';
+import ApiSettings from './ApiSettings.vue';
+const props=defineProps<{w:ViewModel}>();const shortcut=ref('');
+const persona=reactive(blankPersona());
+watch(()=>props.w.active?.id,()=>{Object.assign(persona,blankPersona(),props.w.active?.persona||{});},{immediate:true});
 function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.push(shortcut.value.trim());shortcut.value='';}}
 </script>
-<template><section class="surface settings-view"><header class="panel-heading"><div><p class="eyebrow">SETTINGS / 模型与预设</p><h1>功能配置</h1></div><button @click="w.save()">保存配置</button></header>
-  <label>回复来源<select v-model="w.preferences.mode" :disabled="w.busy||w.workingMemory"><option value="demo">演示模式 · 不调用真实 AI</option><option value="server">真实服务器 · 需要接通接口</option></select></label>
-  <p class="hint">Key 只保留在本次页面内存，刷新后重新填写。接口档案与备份不保存 Key。</p>
-  <div class="field-grid roles"><label>主模型<select v-model="w.preferences.mainProfile" :disabled="w.busy"><option v-for="p in w.preferences.profiles" :key="p.id" :value="p.id">{{p.name}}</option></select></label><label>副模型<select v-model="w.preferences.auxiliaryProfile" :disabled="w.busy"><option v-for="p in w.preferences.profiles" :key="p.id" :value="p.id">{{p.name}}</option></select></label><label>向量模型<select v-model="w.preferences.embeddingProfile" :disabled="w.busy||w.workingMemory"><option v-for="p in w.preferences.profiles" :key="p.id" :value="p.id">{{p.name}}</option></select></label></div>
-  <section class="subsection"><header class="panel-heading"><h2>接口档案</h2><button :disabled="w.busy||w.workingMemory" @click="chosen=w.addProfile()">新增接口档案</button></header><div class="actions"><button v-for="p in w.preferences.profiles" :key="p.id" :class="{selected:chosen===p.id}" @click="chosen=p.id">{{p.name}}</button></div>
-    <template v-for="p in w.preferences.profiles" :key="p.id"><div v-if="chosen===p.id" class="profile-editor"><div class="field-grid"><label>档案名称<input v-model="p.name" maxlength="80" :disabled="w.busy" /></label><label>供应商标识<input v-model="p.providerId" maxlength="100" :disabled="w.busy" /></label><label>模型名称<input v-model="p.model" maxlength="150" :disabled="w.busy||w.workingMemory" /></label><label>本次 API Key<input v-model="w.credentials[p.id]" type="password" autocomplete="off" :disabled="w.busy||w.workingMemory" placeholder="演示模式无需填写" /></label><label>Temperature<input v-model.number="p.temperature" type="number" min="0" max="2" step="0.1" :disabled="w.busy" /></label><label>最大输出 Token<input v-model.number="p.maxTokens" type="number" min="1" max="32000" :disabled="w.busy" /></label></div><div class="actions"><button :disabled="w.busy||w.workingMemory" @click="w.credentials[p.id]=''">清除 Key</button><button :disabled="w.busy||w.workingMemory||w.preferences.profiles.length<=1" @click="w.removeProfile(p.id);chosen=w.preferences.mainProfile">移除档案</button></div><p class="muted">供应商实际可用范围由服务器决定。副模型未填 Key 时，辅助任务可使用主模型。</p></div></template>
-  </section>
-  <section class="subsection"><header class="panel-heading"><h2>基础预设</h2><button :disabled="w.busy" @click="w.preferences.presets.push({id:uid(),name:'新预设',content:'',enabled:true})">新增预设</button></header><p class="muted">只提供文字预设与顺序，不提供角色卡、正则或宏。</p><article v-for="(p,i) in w.preferences.presets" :key="p.id" class="list-entry"><div class="field-grid"><label>预设名称<input v-model="p.name" :disabled="w.busy" /></label><label class="toggle"><input v-model="p.enabled" type="checkbox" :disabled="w.busy" />启用</label></div><label>内容<textarea v-model="p.content" rows="3" maxlength="8000" :disabled="w.busy" /></label><div class="actions"><button :disabled="i===0||w.busy" @click="w.movePreset(i,-1)">上移</button><button :disabled="i===w.preferences.presets.length-1||w.busy" @click="w.movePreset(i,1)">下移</button><button @click="w.exportPreset(p.id)">导出预设</button><button :disabled="w.busy" @click="w.preferences.presets.splice(i,1)">删除预设</button></div></article><form @submit.prevent="w.importPreset(presetText)"><label>导入基础预设 JSON<textarea v-model="presetText" rows="3" placeholder='{"name":"预设名称","content":"叙事要求","enabled":true}' /></label><button type="submit" :disabled="w.busy">导入预设</button></form></section>
+<template><section class="surface settings-view"><header class="panel-heading"><div><p class="eyebrow">SETTINGS / 模型与预设</p><h1>功能配置</h1></div><div class="actions"><button v-if="!w.active" @click="w.enterStory()">返回</button><button @click="w.save()">保存配置</button></div></header>
+  <ApiSettings :w="w" />
+  <PresetManager :w="w" />
   <section class="subsection"><h2>文本快捷按钮</h2><ul class="plain-list"><li v-for="(s,i) in w.preferences.shortcuts" :key="i"><input v-model="w.preferences.shortcuts[i]" :aria-label="`快捷文字 ${i+1}`" maxlength="500" :disabled="w.busy" /><button :disabled="w.busy" @click="w.preferences.shortcuts.splice(i,1)">删除</button></li></ul><form class="search-row" @submit.prevent="addShortcut"><label>新快捷文字<input v-model="shortcut" maxlength="500" /></label><button type="submit" :disabled="w.busy">添加快捷按钮</button></form></section>
-  <section v-if="w.active" class="subsection"><h2>当前玩家人设</h2><form @submit.prevent="w.savePersona(persona)"><div class="field-grid"><label>姓名<input v-model="persona.name" required maxlength="80" /></label><label>外貌<input v-model="persona.appearance" maxlength="500" /></label></div><label>性格<textarea v-model="persona.personality" rows="2" maxlength="1500" /></label><label>背景<textarea v-model="persona.background" rows="3" maxlength="3000" /></label><button type="submit" :disabled="w.busy">保存玩家人设</button></form></section>
+  <section v-if="w.active" class="subsection"><h2>当前玩家人设</h2>
+    <form @submit.prevent="w.savePersona(persona)">
+      <div class="field-grid"><label>姓名<input v-model="persona.name" required maxlength="80" /></label><label>外貌<input v-model="persona.appearance" maxlength="500" /></label></div>
+      <div class="field-grid"><label>第一性别<input v-model="persona.primaryGender" maxlength="100" /></label><label>第二性别<input v-model="persona.secondaryGender" maxlength="100" /></label></div>
+      <label>身份（院系/职业）<input v-model="persona.identity" maxlength="200" /></label>
+      <label>性格<textarea v-model="persona.personality" rows="2" maxlength="1500" /></label>
+      <label>背景<textarea v-model="persona.background" rows="3" maxlength="3000" /></label>
+      <label>精神体<textarea v-model="persona.spiritAnimal" rows="2" maxlength="1500" /></label>
+      <label>同人文配对偏好<select v-model="persona.pairingPreference"><option value="">按明确人设判断／暂未指定</option><option value="BL-攻">BL · user 为攻</option><option value="BL-受">BL · user 为受</option><option value="BG">BG</option><option value="GB">GB</option></select></label>
+      <label>其他<textarea v-model="persona.other" rows="3" maxlength="3000" /></label>
+      <button type="submit" :disabled="w.busy||!persona.name.trim()">保存玩家人设</button>
+    </form>
+  </section>
 </section></template>
+

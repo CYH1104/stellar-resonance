@@ -1,9 +1,18 @@
-import type { Gateway, GenerateEvent, GenerateRequest, Outcome, Profile } from '../domain/contracts';
+import type { Gateway, GenerateEvent, GenerateRequest, LocalService, Outcome, Persona, Profile, WorldState } from '../domain/contracts';
+import { normalizePersona } from '../domain/persona';
+const apiMessages:Record<string,string>={PLAYER_SPIRIT_THOUGHT_MISSING:'AI 未生成本轮的玩家精神体 OS。正文已保留，状态未更新；可点击继续续写补齐。',AUTO_CONTINUE_LIMIT:'已自动续写3次，仍未确认完整结束。正文已保留，状态未更新；可点击“继续续写”或重试。',MODEL_RESPONSE_INCOMPLETE:'回复尚未完整结束，已保留正文。',INVALID_COMPLETION_MARKER:'模型的结束标记不符合要求，已保留正文，状态未更新。',INVALID_CONTINUATION:'当前没有可续写的正文，或正文超过长度限制。',INVALID_DICE:'骰点或吉凶判定不一致，请刷新后重试。',DICE_EVENT_MISSING:'模型没有返回本轮骰子事件，正文已保留为未完成稿；请重试。',DICE_EVENT_MISMATCH:'骰子事件与本轮吉凶不一致，未提交新状态；请重试。',DICE_EVENT_UNEXPECTED:'本轮未开启骰子，模型却返回骰子事件；未提交新状态。',INVALID_EMBEDDING_REQUEST:'向量文本为空或超过接口批次／长度限制，请缩短文本后重试。',INVALID_EMBEDDING_RESPONSE:'向量模型返回的数量、维度或数值不正确，请检查向量模型。',EMBEDDING_NOT_SUPPORTED:'该地址不支持 embeddings，请使用支持向量编码的接口和模型。',PRESET_CONTEXT_TOO_LARGE:'当前启用的预设文字超过30万字，请关闭不需要的条目；已导入的文件内容仍保留。',MODEL_TIMEOUT:'本轮生成超时，已保留正文和上一轮状态，可重试。',MODEL_NOT_CONFIGURED:'请先在模型设置确认要使用的服务地址和模型。',MODEL_KEY_REQUIRED:'请填写 API Key，并确认此接口配置。',INVALID_MODEL_URL:'接口地址须为 HTTPS 基础地址（本地模型可用 HTTP），不能包含凭据或查询参数。',INVALID_MODEL_PROFILE:'请检查模型名、Temperature 和输出长度。',MODEL_UNREACHABLE:'无法连接模型服务，请检查地址及网络。',UPSTREAM_AUTH:'模型服务拒绝凭据，请检查 Key。',UPSTREAM_RATE_LIMIT:'模型服务限流，请稍后重试。',UPSTREAM_REJECTED:'模型服务拒绝请求，请检查模型名和参数。',MODEL_STATE_MISSING:'剧情未包含完整状态结果，已保留正文，未更新在场角色。',INVALID_MODEL_STATE:'模型状态格式不合要求，原有状态保留。',UNKNOWN_MODEL_CHARACTER:'模型返回了未登记角色，原有状态保留。',MODEL_STREAM_INTERRUPTED:'模型流中断，已保留正文。',CAST_IS_AI_CONTROLLED:'在场角色由 AI 根据剧情判断，请刷新新版页面。'};
 export class HttpGateway implements Gateway {
-  capabilities = { continue: false };
+  // Upstream errors are mapped to public messages, never displayed verbatim.
+  capabilities:{continue:boolean;keyRequired?:boolean;embeddings?:boolean} = { continue: false, keyRequired:true };
+  async bootstrap():Promise<LocalService|undefined>{const response=await fetch('/api/bootstrap',{credentials:'same-origin'});if(response.status===404)return; if(!response.ok)throw new Error('无法连接本机后台'); const value=await response.json() as LocalService;if(value.runtime!=='local-card'||!Array.isArray(value.characters)||!Array.isArray(value.places)||!Array.isArray(value.greeting))throw new Error('本机资料接口格式不正确');this.capabilities=value.capabilities;return value;}
+  async configure(profile:Profile):Promise<{origin:string}>{return(await this.post('connection',{profileId:profile.id,apiBaseUrl:profile.apiBaseUrl})).json();}
+  async models(apiBaseUrl:string,key:string,signal:AbortSignal):Promise<string[]>{const data=await(await this.post('models',{apiBaseUrl,key},signal)).json();if(!Array.isArray(data.models)||data.models.some((id:unknown)=>typeof id!=='string'||!id.trim()||id.length>150))throw new Error('模型列表格式不正确，可以手动填写模型名。');return data.models;}
+  async newGame(persona:Persona):Promise<{dataset:string;opening:string;initial:WorldState}>{return (await this.post('new-game',{persona})).json();}
+  async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal):Promise<Persona>{const data=await(await this.post('persona',{wish,draft,profile,key},signal)).json();try{return normalizePersona(data.persona);}catch{throw new Error('AI 返回的人设格式不正确，现有表格未修改。');}}
+  async place(id:string):Promise<{id:string;name:string;description:string}>{return (await this.post('place',{id})).json();}
   private async post(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
     const response=await fetch(`/api/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
-    if(!response.ok) throw new Error(response.status===404?'服务器接口尚未接通，请切换演示模式。':response.status===401||response.status===403?'访问未获授权，请在首页验证邀请。':`接口请求失败（${response.status}），请重试。`);
+    if(!response.ok){let code='';try{const value=await response.json() as {code?:unknown};if(typeof value.code==='string')code=value.code;}catch{}const personaErrors:Record<string,string>={PLAYER_NAME_REQUIRED:'请填写玩家姓名后再开始。',INVALID_PERSONA:'人设表格的内容或长度不正确，请检查后重试。',INVALID_PERSONA_WISH:'请用不超过3000字描述想玩的人设。',INVALID_PERSONA_RESULT:'AI 返回的人设格式不正确，现有表格未修改，可以重试。',MODEL_LIST_NOT_SUPPORTED:'该服务不支持获取模型列表，请手动填写模型名。',INVALID_MODEL_LIST:'服务返回的模型列表格式不正确，可以手动填写模型名。',MODEL_LIST_TOO_LARGE:'模型列表过大，请手动填写模型名。',MODEL_LIST_FAILED:'获取模型列表失败，请检查地址；也可手动填写模型名。'};throw new Error(personaErrors[code]||apiMessages[code]||(response.status===404?'服务器接口尚未接通。':response.status===501?'此模型功能尚未配置。':response.status===401||response.status===403?'本机会话已失效，请刷新页面后重新确认接口。':`接口请求失败（${response.status}），请重试。`));}
     return response;
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
@@ -22,8 +31,9 @@ export class HttpGateway implements Gateway {
           let event:Record<string,unknown>;
           try {event=JSON.parse(data) as Record<string,unknown>;}catch{throw new Error('流式数据格式不正确');}
           if(event.type==='delta' && typeof event.text==='string') yield {type:'delta',text:event.text};
+          else if(event.type==='continuation'&&Number.isInteger(event.attempt)&&Number(event.attempt)>=1&&Number(event.attempt)<=3&&event.maxAttempts===3)yield {type:'continuation',attempt:Number(event.attempt),maxAttempts:3};
           else if(event.type==='done') {finished=true;yield {type:'done',outcome:event.outcome as Outcome};return;}
-          else if(event.type==='error') throw new Error('生成接口报告错误，请重试。');
+          else if(event.type==='error') throw new Error(apiMessages[String(event.code)]||'生成接口报告错误，请重试。');
         }
         if(next.done) break;
         if(buffer.length>1024*1024) throw new Error('流式分片超过允许大小');

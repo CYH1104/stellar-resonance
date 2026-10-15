@@ -1,0 +1,111 @@
+import { createServer } from 'node:http';
+import { readFile, realpath } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { resolve, extname, sep } from 'node:path';
+import { buildMessages, buildPersonaMessages, parsePersonaResult, completionChunks, endpoint, modelError, openCompletion } from './ai.mjs';
+import { normalizePersona } from '../src/domain/persona.ts';
+import {publicActor} from './card.mjs';
+import {fetchModelList} from './models.mjs';
+import {requestEmbeddings} from './embeddings.mjs';
+import {continuedMessages,streamStory} from './story-stream.mjs';
+import {loadCard} from './load-card.mjs';
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
+const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
+
+export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card}){
+  const source=card||await loadCard(projectRoot);
+  const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
+  const projectId=createHash('sha256').update(projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
+  const capabilities={continue:true,keyRequired:true,embeddings:true};
+  const sessions=new Map(),cookieName=`stellar_${projectId}`;
+  const worldName=source.world.greeting?.[0]?.match(/欢迎您，(.+?)第/)?.[1]||'';
+  let server;
+  function json(response,status,value,headers={}){response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});response.end(JSON.stringify(value));}
+  function token(request){return request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(cookieName+'='))?.slice(cookieName.length+1);}
+  function session(request){const value=sessions.get(token(request));if(!value||value.expires<=Date.now())throw modelError(401,'LOCAL_SESSION_REQUIRED');return value;}
+  function authorize(request,response){try{return session(request);}catch{}if(sessions.size>=512)sessions.clear();const fresh=randomBytes(24).toString('hex');const value={expires:Date.now()+86400000,connections:new Map()};sessions.set(fresh,value);response.setHeader('Set-Cookie',`${cookieName}=${fresh}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=86400`);return value;}
+  async function body(request){if(!request.headers['content-type']?.startsWith('application/json'))throw modelError(415,'JSON_REQUIRED');let size=0;const chunks=[];for await(const chunk of request){size+=chunk.length;if(size>2*1024*1024)throw modelError(413,'REQUEST_TOO_LARGE');chunks.push(chunk);}try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value;}catch{throw modelError(400,'INVALID_JSON');}}
+  function connection(current,data){const selected=current.connections.get(data.profile?.id);if(!selected)throw modelError(412,'MODEL_NOT_CONFIGURED');if(data.profile.apiBaseUrl&&endpoint(data.profile.apiBaseUrl)!==selected.url)throw modelError(412,'MODEL_NOT_CONFIGURED');return selected;}
+  function createGame(data){
+    if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
+    if(!data.persona||!safeString(data.persona.name,80)||!data.persona.name.trim())throw modelError(400,'PLAYER_NAME_REQUIRED');
+    try{normalizePersona(data.persona);}catch{throw modelError(400,'INVALID_PERSONA');}
+    const player={id:'player',name:data.persona.name.trim(),present:true};
+    if(data.persona.spiritAnimal)player.spiritAnimal=data.persona.spiritAnimal;
+    if(data.persona.identity)player.identity=data.persona.identity;
+    for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
+    return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
+  }
+  server=createServer(async(request,response)=>{
+    const currentPort=server.address()?.port||port,allowedHosts=new Set([`127.0.0.1:${currentPort}`,`localhost:${currentPort}`]);
+    if(!allowedHosts.has(request.headers.host)){json(response,403,{code:'LOCAL_HOST_ONLY'});return;}
+    if(request.headers.origin&&![...allowedHosts].some(host=>request.headers.origin===`http://${host}`)){json(response,403,{code:'SAME_ORIGIN_ONLY'});return;}
+    response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
+    let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
+    try{
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.11.2',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
+      if(path.startsWith('/api/')){
+        if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
+        if(path==='/api/connection'){
+          if(!safeString(data.profileId,128)||!data.profileId||!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
+          const url=endpoint(data.apiBaseUrl);if(current.connections.size>=30&&!current.connections.has(data.profileId))throw modelError(400,'TOO_MANY_CONNECTIONS');
+          current.connections.set(data.profileId,{url});json(response,200,{profileId:data.profileId,origin:new URL(url).origin,registered:true});return;
+        }
+        if(path==='/api/models'){
+          if(!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
+          const controller=new AbortController();response.on('close',()=>controller.abort());
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
+          const result=await fetchModelList({apiBaseUrl:data.apiBaseUrl,key:data.key,signal,fetchImpl});
+          signal.throwIfAborted();json(response,200,result);return;
+        }
+        if(path==='/api/new-game'){json(response,200,createGame(data));return;}
+        if(path==='/api/persona'){
+          const selected=connection(current,data),messages=buildPersonaMessages(source,data.wish,data.draft);
+          const controller=new AbortController();response.on('close',()=>controller.abort());
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(90000)]);
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});
+          let content='';for await(const chunk of completionChunks(upstream)){signal.throwIfAborted();content+=chunk;if(content.length>16000)throw modelError(502,'INVALID_PERSONA_RESULT');}
+          signal.throwIfAborted();json(response,200,{persona:parsePersonaResult(content)});return;
+        }
+        if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
+        if(path==='/api/generate'){
+          if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
+          let partial='';
+          if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>k!=='partial')||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;}
+          const selected=connection(current,data),{messages,state,theaterSettings,dice}=buildMessages(source,data);
+          const controller=new AbortController();response.on('close',()=>controller.abort());
+          const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);
+          const initialMessages=partial?continuedMessages(messages,partial):messages;
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
+          response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
+          const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
+          try{for await(const event of streamStory({card:source,state,options:{theaterSettings,persona:data.persona,dice},messages,partial,connection:selected,profile:data.profile,key:data.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl})){response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
+          catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code})}\n\n`);}
+          finally{clearInterval(heartbeat);}
+          return;
+        }
+        if(path==='/api/utility'){
+          if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');
+          const selected=connection(current,data),signal=AbortSignal.timeout(60000);
+          const instruction=data.task==='summary'?'将下面公开剧情简要整理为一条事实摘要。':'仅根据下面公开剧情提供最多四条可选的玩家行动，每行一条。不替玩家执行行动，不编造作者固定设定。';
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(data.texts)}],signal,fetchImpl});
+          let result='';for await(const chunk of completionChunks(upstream)){result+=chunk;if(result.length>12000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');}
+          json(response,200,{items:data.task==='summary'?[result.trim()]:result.split('\n').map(s=>s.replace(/^\s*[-*\d.、)]+\s*/,'').trim()).filter(Boolean).slice(0,4)});return;
+        }
+        if(path==='/api/embeddings'){
+          const selected=connection(current,data),controller=new AbortController();response.on('close',()=>controller.abort());
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]);
+          const result=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:data.texts,signal,fetchImpl});signal.throwIfAborted();json(response,200,result);return;
+        }
+        throw modelError(404,'API_NOT_FOUND');
+      }
+      if(!['GET','HEAD'].includes(request.method))throw modelError(405,'GET_REQUIRED');
+      if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
+      const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
+      const bytes=await readFile(file);response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
+    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR'});}
+  });
+  return {server,dataset,start:()=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>resolve(server.address().port));})};
+}

@@ -1,22 +1,26 @@
-import type { ActorState, Dice, Memory, Outcome, Persona, Preferences, Session, Snapshot, Turn, Variant, WorldState } from './contracts';
+import type { ActorPatch, ActorState, Dice, ForumEntry, ForumPost, Memory, Outcome, Persona, Preferences, Session, Snapshot, Turn, Variant, WorldState } from './contracts';
+import { normalizePersona } from './persona.ts';
+import { cleanPreset } from './presets.ts';
+import { cleanTheaters,cleanTheaterScenes } from './theaters.ts';
+import {migrateApiSettings} from './apis.ts';
+import {diceGrade,cleanDiceEvent,assertDiceEventBinding} from './dice.ts';
+export {diceGrade} from './dice.ts';
 export const uid = () => crypto.randomUUID();
 export const copy = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 export const now = () => new Date().toISOString();
 export function defaults(): Preferences {
   const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 1600 });
-  return { mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '剧情接口', 'story-model'), profile('aux', '摘要与建议', 'utility-model'), profile('embed', '向量接口', 'embedding-model')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed', presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'] };
+  return { mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
 }
 export function initialState(name: string): WorldState {
-  const actor = (id: string, label: string, affinity: number): ActorState => ({ id, name: label, energy: 80, focus: 70, affinity, present: true });
+  const actor = (id: string, label: string, affinity: number): ActorState => ({ id, name: label, energy: 80, focus: 70, affinity, present: true, primaryGender: '', secondaryGender: '', innerThought: '' });
   return { player: actor('player', name || '玩家', 0), characters: [actor('guide', '样例引导员', 30), actor('engineer', '样例巡检员', 20)] };
 }
 export function newSession(name: string, persona: Persona, opening: string): Session {
-  return { id: uid(), name: name.trim() || '新的旅程', createdAt: now(), updatedAt: now(), persona: copy(persona), opening: opening.trim() || '你来到一处虚构的星际接待站。引导员向你招手，等待你开口。', initial: initialState(persona.name), turns: [], memories: [], suggestions: [] };
+  persona=normalizePersona(persona);
+  return { id: uid(), name: name.trim() || '新的旅程', createdAt: now(), updatedAt: now(), persona: copy(persona), opening: opening.trim() || '你来到一处虚构的星际接待站。引导员向你招手，等待你开口。', initial: initialState(persona.name), turns: [], memories: [], suggestions: [], forumActivity: {} };
 }
-export function diceGrade(value: number): string {
-  if (!Number.isInteger(value) || value < 1 || value > 100) throw new Error('骰点必须为 1～100 的整数');
-  return value <= 5 ? '大凶' : value <= 35 ? '不利' : value <= 65 ? '平平' : value <= 94 ? '顺遂' : '大吉';
-}
+
 export function rollDice(): Dice {
   const bytes = new Uint32Array(1); const limit = Math.floor(0x100000000 / 100) * 100;
   do { crypto.getRandomValues(bytes); } while (bytes[0] >= limit);
@@ -24,55 +28,128 @@ export function rollDice(): Dice {
   return { value, grade: diceGrade(value), rulesVersion: 'd100-v1' };
 }
 function bounded(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100; }
+function affinityValue(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER; }
+function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function shortText(value: unknown, max: number, required = false): value is string { return typeof value === 'string' && value.length <= max && (!required || !!value.trim()); }
+function actorPatch(value: unknown, character = false): ActorPatch {
+  if (!record(value)) throw new Error('MVU 人物更新格式不正确');
+  const allowed = ['identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
+  if (Object.keys(value).some(k => !allowed.includes(k))) throw new Error('MVU 人物更新包含未允许的字段');
+  const patch: ActorPatch = {};
+  for (const field of ['identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
+    if (value[field] === undefined) continue;
+    const limit = ['innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field === 'name' ? 80 : 100;
+    if (!shortText(value[field], limit, field === 'name')) throw new Error(`MVU ${field} 字段不正确`);
+    patch[field] = value[field];
+  }
+  if (value.affinity !== undefined) { if (!affinityValue(value.affinity)) throw new Error('好感度必须为有限数值'); patch.affinity = value.affinity; }
+  if (value.present !== undefined) { if (typeof value.present !== 'boolean') throw new Error('在场标记必须为布尔值'); patch.present = value.present; }
+  for (const field of ['energy', 'focus'] as const) if (value[field] !== undefined) { if (!bounded(value[field])) throw new Error('旧版状态数值不合法'); patch[field] = value[field]; }
+  return patch;
+}
+function forumPosts(value: unknown): ForumPost[] {
+  if (!Array.isArray(value) || value.length > 12) throw new Error('论坛动态格式或数量不正确');
+  const ids = new Set<string>();
+  return value.map(post => {
+    if (!record(post) || Object.keys(post).some(k => !['id', 'authorName', 'content', 'topic', 'comments'].includes(k)) || !shortText(post.id, 128, true) || ids.has(post.id) || !shortText(post.authorName, 80, true) || !shortText(post.content, 3000, true)) throw new Error('论坛动态不合法');
+    ids.add(post.id);
+    const item: ForumPost = { id: post.id, authorName: post.authorName, content: post.content };
+    if (post.topic !== undefined) { if (!shortText(post.topic, 80)) throw new Error('论坛话题不正确'); item.topic = post.topic; }
+    if (post.comments !== undefined) {
+      if (!Array.isArray(post.comments) || post.comments.length > 16) throw new Error('论坛评论数量不正确');
+      const commentIds = new Set<string>();
+      item.comments = post.comments.map(comment => {
+        if (!record(comment) || Object.keys(comment).some(k => !['id', 'authorName', 'content'].includes(k)) || !shortText(comment.id, 128, true) || commentIds.has(comment.id) || !shortText(comment.authorName, 80, true) || !shortText(comment.content, 1000, true)) throw new Error('论坛评论不合法');
+        commentIds.add(comment.id); return { id: comment.id, authorName: comment.authorName, content: comment.content };
+      });
+    }
+    return item;
+  });
+}
 export function validateOutcome(value: unknown, state: WorldState): Outcome {
-  if (!value || typeof value !== 'object') throw new Error('状态更新格式不正确');
+  if (!record(value)) throw new Error('状态更新格式不正确');
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(k => !['player', 'characters', 'event'].includes(k))) throw new Error('状态更新包含未允许的字段');
+  if (Object.keys(v).some(k => !['player', 'characters', 'event', 'diceEvent', 'forum','theaters'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
+  if(v.diceEvent!==undefined)out.diceEvent=cleanDiceEvent(v.diceEvent);
   if (v.player !== undefined) {
-    if (!v.player || typeof v.player !== 'object' || Array.isArray(v.player)) throw new Error('玩家更新格式不正确');
-    const p = v.player as Record<string, unknown>;
-    if (Object.keys(p).some(k => !['energy', 'focus'].includes(k)) || Object.values(p).some(x => !bounded(x))) throw new Error('玩家更新字段或范围不正确');
-    out.player = {};
-    if (p.energy !== undefined) out.player.energy = p.energy as number;
-    if (p.focus !== undefined) out.player.focus = p.focus as number;
+    out.player = actorPatch(v.player);
   }
   if (v.characters !== undefined) {
     if (!Array.isArray(v.characters) || v.characters.length > 50) throw new Error('人物更新格式不正确');
+    const actorIds = new Set<string>();
     out.characters = v.characters.map(c => {
-      if (!c || typeof c !== 'object' || Object.keys(c).some(k => !['id', 'affinity'].includes(k)) || typeof c.id !== 'string' || !state.characters.some(a => a.id === c.id) || !bounded(c.affinity)) throw new Error('人物更新不合法');
-      return { id: c.id, affinity: c.affinity };
+      if (!record(c) || typeof c.id !== 'string' || actorIds.has(c.id) || !state.characters.some(a => a.id === c.id)) throw new Error('人物更新不合法');
+      actorIds.add(c.id); return { id: c.id, ...actorPatch(c, true) };
     });
   }
+  if (v.forum !== undefined) out.forum = forumPosts(v.forum);
+  if(v.theaters!==undefined)out.theaters=cleanTheaterScenes(v.theaters);
   return out;
 }
 export function selected(turn: Turn): Variant | undefined { return turn.variants[turn.selected]; }
 export function stateAt(session: Session, before = session.turns.length): WorldState {
   const state = copy(session.initial);
+  if(state.player.identity===undefined&&session.persona.identity)state.player.identity=session.persona.identity;
+  if(state.player.spiritAnimal===undefined&&session.persona.spiritAnimal)state.player.spiritAnimal=session.persona.spiritAnimal;
   for (const turn of session.turns.slice(0, before)) {
     const v = selected(turn); if (v?.status !== 'complete' || !v.outcome) continue;
     try {
       const outcome = validateOutcome(v.outcome, state);
+      assertDiceEventBinding(outcome.diceEvent,turn.dice);
       Object.assign(state.player, outcome.player);
-      for (const change of outcome.characters || []) { const actor = state.characters.find(a => a.id === change.id); if (actor) actor.affinity = change.affinity; }
+      for (const change of outcome.characters || []) { const actor = state.characters.find(a => a.id === change.id); if (actor) { const { id: _id, ...patch } = change; Object.assign(actor, patch); } }
     } catch { /* Imported invalid patches never mutate the effective state. */ }
   }
   return state;
+}
+export function encounteredCharacters(session:Session,before=session.turns.length){
+  const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
+  for(const turn of session.turns.slice(0,before)){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const out=validateOutcome(v.outcome,session.initial);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true)ids.add(c.id);}catch{}}
+  return stateAt(session,before).characters.filter(c=>ids.has(c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
   const active = new Map(session.turns.slice(0, before).map(t => [t.id, selected(t)]));
   return session.memories.filter(m => !m.sourceTurn || (active.get(m.sourceTurn)?.status === 'complete' && active.get(m.sourceTurn)?.id === m.sourceVariant));
 }
-export function chronicle(session: Session) {
+/** Internal event summaries for long-term memory, not a chronicle UI. */
+export function effectiveEvents(session: Session) {
   return session.turns.flatMap((turn, index) => { const v = selected(turn); return v?.status === 'complete' && v.outcome ? [{ turnId: turn.id, title: v.outcome.event, time: v.createdAt, index: index + 1 }] : []; });
+}
+export function visibleForum(session: Session, before = session.turns.length): ForumEntry[] {
+  return session.turns.slice(0, before).flatMap((turn, index) => {
+    const variant = selected(turn);
+    if (variant?.status !== 'complete' || !variant.outcome) return [];
+    try {
+      const outcome = validateOutcome(variant.outcome, session.initial);
+      return (outcome.forum || []).map(post => ({ ...post, key: `forum/${variant.id}/${post.id}`, turnId: turn.id, variantId: variant.id, round: index + 1, createdAt: variant.createdAt }));
+    } catch { return []; }
+  }).reverse();
+}
+function pruneForum(session: Session): void {
+  const keys = new Set(session.turns.flatMap(t => t.variants.flatMap(v => (v.outcome?.forum || []).map(p => `forum/${v.id}/${p.id}`))));
+  for (const key of Object.keys(session.forumActivity || {})) if (!keys.has(key)) delete session.forumActivity![key];
+}
+export function likeForum(session: Session, key: string): void {
+  if (!visibleForum(session).some(post => post.key === key)) throw new Error('该动态已不属于当前剧情');
+  const reactions = session.forumActivity ||= {};
+  const activity = reactions[key] ||= { liked: false, replies: [] };
+  activity.liked = !activity.liked; session.updatedAt = now();
+}
+export function replyForum(session: Session, key: string, text: string): void {
+  if (!visibleForum(session).some(post => post.key === key)) throw new Error('该动态已不属于当前剧情');
+  if (!shortText(text, 1000, true)) throw new Error('评论须为 1～1000 字');
+  const activity = (session.forumActivity ||= {})[key] ||= { liked: false, replies: [] };
+  if (activity.replies.length >= 100) throw new Error('单条动态的本机评论已达上限');
+  activity.replies.push({ id: uid(), text: text.trim(), createdAt: now() }); session.updatedAt = now();
 }
 export function truncate(session: Session, count: number): void {
   if (!Number.isInteger(count) || count < 0 || count > session.turns.length) throw new Error('回退位置不正确');
   session.turns = session.turns.slice(0, count);
   const ids = new Set(session.turns.map(t => t.id));
   session.memories = session.memories.filter(m => !m.sourceTurn || ids.has(m.sourceTurn));
-  session.suggestions = []; session.updatedAt = now();
+  pruneForum(session); session.suggestions = []; session.updatedAt = now();
 }
 export function selectVariant(session: Session, index: number, variant: number): void {
   const turn = session.turns[index]; if (!turn?.variants[variant]) throw new Error('稿件不存在');
@@ -84,10 +161,12 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   if (role === 'user') { turn.input = text.trim(); turn.variants = []; turn.selected = 0; }
   else { const v = selected(turn); if (!v) throw new Error('稿件不存在'); v.text = text.trim(); v.status = 'incomplete'; delete v.outcome; }
   session.memories = session.memories.filter(m => m.sourceTurn !== turn.id);
+  pruneForum(session);
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
-  variant.outcome = validateOutcome(outcome, stateAt(session, turnIndex)); variant.status = 'complete';
-  session.memories.push({ id: uid(), text: `${variant.outcome.event}。${variant.text.slice(0,220)}`, kind: 'event', createdAt: now(), sourceTurn: session.turns[turnIndex].id, sourceVariant: variant.id });
+  const validated=validateOutcome(outcome,stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
+  variant.outcome=validated;variant.status='complete';
+  session.memories.push({ id: uid(), text: `${variant.outcome.event}。${variant.outcome.diceEvent?`骰子事件：${variant.outcome.diceEvent.description}。`:''}${variant.text.slice(0,220)}`, kind: 'event', createdAt: now(), sourceTurn: session.turns[turnIndex].id, sourceVariant: variant.id });
   session.updatedAt = now();
 }
 export function cosine(a: number[], b: number[]): number {
@@ -104,8 +183,9 @@ export function backup(snapshot: Snapshot): string {
   return JSON.stringify({ version: 1, sessions: copy(snapshot.sessions), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
 }
 export function cleanPreferences(p: Preferences): Preferences {
-  return { mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens })), presets: p.presets.map(x => ({id:x.id,name:x.name,content:x.content,enabled:!!x.enabled})), shortcuts:[...p.shortcuts] };
+  return migrateApiSettings({ mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presets: p.presets.map(cleanPreset), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
 }
+function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
 function inspect(value: unknown, depth = 0): void {
   if (depth > 18) throw new Error('备份结构过深');
@@ -121,24 +201,37 @@ export function parseBackup(text: string): Snapshot {
   for (const s of value.sessions) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
     ids.add(s.id);
-    for (const a of [s.initial.player, ...s.initial.characters]) if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || !bounded(a.energy) || !bounded(a.focus) || !bounded(a.affinity)) throw new Error('初始状态不合法');
+    normalizePersona(s.persona,false);
+    for (const a of [s.initial.player, ...s.initial.characters]) {
+      if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || (a.energy!==undefined&&!bounded(a.energy)) || (a.focus!==undefined&&!bounded(a.focus)) || (a.affinity!==undefined&&!affinityValue(a.affinity)) || typeof a.present !== 'boolean') throw new Error('初始状态不合法');
+      actorPatch({ name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
+    }
     const turnIds = new Set<string>();
     for (const t of s.turns) {
       if (!t || typeof t.id !== 'string' || turnIds.has(t.id) || typeof t.input !== 'string' || !Array.isArray(t.variants) || !Number.isInteger(t.selected) || t.selected < 0 || (t.variants.length && t.selected >= t.variants.length)) throw new Error('消息版本不合法');
       turnIds.add(t.id);
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
-      for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if (v.outcome) validateOutcome(v.outcome, s.initial); }
+      for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if (v.outcome) {const out=validateOutcome(v.outcome,s.initial);assertDiceEventBinding(out.diceEvent,t.dice);} }
     }
     for (const m of s.memories) {
       if (!m || typeof m.id !== 'string' || typeof m.text !== 'string' || !['note','event','chapter'].includes(m.kind)) throw new Error('记忆格式不正确');
       if (m.sourceTurn && (!turnIds.has(m.sourceTurn) || !s.turns.find(t=>t.id===m.sourceTurn)?.variants.some(v=>v.id===m.sourceVariant))) throw new Error('记忆来源不存在');
       if (m.vector && (typeof m.vector.model !== 'string' || !Array.isArray(m.vector.values) || m.vector.values.length > 8192 || m.vector.values.some(n=>typeof n!=='number'||!Number.isFinite(n)))) throw new Error('记忆向量不正确');
     }
+    if (s.forumActivity !== undefined) {
+      if (!record(s.forumActivity) || Object.keys(s.forumActivity).length > 10000) throw new Error('论坛互动记录不合法');
+      for (const activity of Object.values(s.forumActivity)) {
+        if (!record(activity) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true))) throw new Error('论坛评论记录不合法');
+      }
+    }
   }
   for (const p of value.preferences.profiles) if (!p || typeof p.id !== 'string' || typeof p.name !== 'string' || typeof p.providerId !== 'string' || typeof p.model !== 'string' || !Number.isFinite(p.temperature) || p.temperature < 0 || p.temperature > 2 || !Number.isInteger(p.maxTokens) || p.maxTokens < 1 || p.maxTokens > 32000) throw new Error('模型参数不正确');
+  for(const p of value.preferences.profiles)for(const [key,min,max] of [['topP',0,1],['frequencyPenalty',-2,2],['presencePenalty',-2,2]] as const)if(p[key]!==undefined&&(!Number.isFinite(p[key])||p[key]!<min||p[key]!>max))throw new Error('采样参数不正确');
+  for(const p of value.preferences.profiles)if(p.apiBaseUrl!==undefined&&!cleanApiUrl(p.apiBaseUrl))throw new Error('接口地址不能包含凭据、查询参数或片段');
   const profileIds=new Set(value.preferences.profiles.map(p=>p.id));
   if(profileIds.size!==value.preferences.profiles.length||[value.preferences.mainProfile,value.preferences.auxiliaryProfile,value.preferences.embeddingProfile].some(id=>!profileIds.has(id)))throw new Error('模型档案引用不正确');
-  for (const p of value.preferences.presets) if (typeof p.id !== 'string' || typeof p.name !== 'string' || typeof p.content !== 'string' || typeof p.enabled !== 'boolean') throw new Error('预设格式不正确');
+  value.preferences.presets.forEach(cleanPreset);
+  if(value.preferences.activePreset!==undefined&&typeof value.preferences.activePreset!=='string')throw new Error('预设引用不正确');
   if (value.preferences.shortcuts.some(x=>typeof x!=='string') || !['demo','server'].includes(value.preferences.mode)) throw new Error('偏好格式不正确');
   value.preferences = cleanPreferences(value.preferences); return value;
 }

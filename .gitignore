@@ -1,4 +1,6 @@
 node_modules/
+server/.local/
+server/private/
 dist/
 .env
 .env.*

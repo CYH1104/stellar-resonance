@@ -1,7 +1,20 @@
 <script setup lang="ts">
-import { computed,ref } from 'vue';import type {ViewModel} from '../app/useWorkspace';
-const props=defineProps<{w:ViewModel}>();const id=ref('player');
-const actors=computed(()=>props.w.state?[props.w.state.player,...props.w.state.characters.filter(a=>a.present)]:[]);
-const actor=computed(()=>actors.value.find(a=>a.id===id.value)||actors.value[0]);
+import { computed } from 'vue';
+import type { ViewModel } from '../app/useWorkspace';
+import { selected,encounteredCharacters } from '../domain/story';
+import ActorCard from './ActorCard.vue';
+const props = defineProps<{w:ViewModel}>();
+const present = computed(() => props.w.state?.characters.filter(actor => actor.present) || []);
+const met=computed(()=>props.w.active?encounteredCharacters(props.w.active):[]);
+const round = computed(() => props.w.active?.turns.reduce((last,turn,index) => selected(turn)?.status==='complete' && selected(turn)?.outcome ? index+1 : last,0) || 0);
 </script>
-<template><section v-if="actor" class="status-bar" aria-label="人物状态"><label>查看状态<select v-model="id"><option v-for="a in actors" :key="a.id" :value="a.id">{{a.id==='player'?'自己 · ':''}}{{a.name}}</option></select></label><div class="status-value"><span>体力</span><strong>{{actor.energy}}</strong><progress :value="actor.energy" max="100" /></div><div class="status-value"><span>专注</span><strong>{{actor.focus}}</strong><progress :value="actor.focus" max="100" /></div><div v-if="actor.id!=='player'" class="status-value"><span>已知关系值</span><strong>{{actor.affinity}}</strong><progress :value="actor.affinity" max="100" /></div><p class="muted">样例公开字段；正式字段接入时再定义。</p></section></template>
+<template>
+  <section v-if="w.state" class="status-panel" aria-label="人物状态">
+    <header class="rail-heading"><div><p class="eyebrow">MVU / 人物状态</p><h2>这一幕的状态</h2></div><span class="tag">{{ round ? `第 ${round} 轮` : '开局' }}</span></header>
+    <ActorCard :actor="w.state.player" :characters="met" player />
+    <div class="present-heading"><h2>在场角色</h2><span class="tag">{{ present.length }} 位</span></div>
+    <ActorCard v-for="actor in present" :key="actor.id" :actor="actor" />
+    <p v-if="!present.length" class="empty">{{round?'当前没有在场角色。':'等待 AI 生成第一幕并判断在场人物。'}}</p>
+    <p class="rail-note">{{w.localService&&w.preferences.mode==='server'?'在场名单、角色想法与精神体 OS 随有效剧情更新；好感度只列出已遇到角色，缺少数值规则时显示未提供。':w.preferences.mode==='demo'?'当前为演示 MVU 数据；性别取值与好感度规则等待正式资料。':'显示本轮 MVU 变量；正式字段映射与规则待接入。'}}</p>
+  </section>
+</template>

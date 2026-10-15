@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Variant } from '../src/domain/contracts';
-import { backup, chronicle, defaults, diceGrade, editMessage, finishVariant, newSession, parseBackup, selectVariant, stateAt, truncate, validateOutcome, visibleMemories } from '../src/domain/story';
+import { backup, effectiveEvents, defaults, diceGrade, editMessage, finishVariant, newSession, parseBackup, selectVariant, stateAt, truncate, validateOutcome, visibleMemories } from '../src/domain/story';
 
 function session() {
   return newSession('验收', { name: '访客', appearance: '', personality: '', background: '' }, '虚构开局');
@@ -17,7 +17,7 @@ describe('剧情、状态与记忆一致性', () => {
     const s = session(); append(s, 'first', 78);
     s.turns.push({ id: 'partial', input: '再问', variants: [{ id: 'partial-a', text: '只收到一半', status: 'incomplete', createdAt: '' }], selected: 0 });
     expect(stateAt(s).player.energy).toBe(78);
-    expect(chronicle(s)).toHaveLength(1);
+    expect(effectiveEvents(s)).toHaveLength(1);
     expect(visibleMemories(s)).toHaveLength(1);
   });
   it('切稿移除后续剧情，恢复该稿状态并排除旧稿记忆，骰点不变', () => {
@@ -30,7 +30,7 @@ describe('剧情、状态与记忆一致性', () => {
     expect(s.turns).toHaveLength(1);
     expect(stateAt(s).player.energy).toBe(65);
     expect(visibleMemories(s).map(m => m.sourceVariant)).toEqual(['first-b']);
-    expect(chronicle(s).map(e => e.title)).toEqual(['另一条事件']);
+    expect(effectiveEvents(s).map(e => e.title)).toEqual(['另一条事件']);
     expect(s.turns[0].dice?.value).toBe(73);
   });
   it('回退恢复初始状态并清理事件记忆，保留手记', () => {
@@ -38,7 +38,7 @@ describe('剧情、状态与记忆一致性', () => {
     s.memories.push({ id: 'manual', text: '独立手记', kind: 'note', createdAt: '' });
     truncate(s, 0);
     expect(stateAt(s).player.energy).toBe(80);
-    expect(chronicle(s)).toEqual([]);
+    expect(effectiveEvents(s)).toEqual([]);
     expect(visibleMemories(s).map(m => m.id)).toEqual(['manual']);
   });
   it('手工编辑回复使当前更新失效，删除后续轮，仍保留原骰点', () => {
@@ -73,6 +73,13 @@ describe('本地备份边界', () => {
     const preferences = defaults(); Object.assign(preferences.profiles[0], { key: 'synthetic-secret' });
     expect(backup({ version: 1, sessions: [], preferences })).not.toContain('synthetic-secret');
   });
+  it('接口地址可备份，但带凭据的地址不能随备份泄露或导入',()=>{
+    const preferences=defaults();preferences.profiles[0].apiBaseUrl='https://synthetic.example/v1';
+    expect(parseBackup(backup({version:1,sessions:[],preferences})).preferences.profiles[0].apiBaseUrl).toContain('synthetic.example');
+    preferences.profiles[0].apiBaseUrl='https://synthetic-secret@example.com/v1';
+    expect(backup({version:1,sessions:[],preferences})).not.toContain('synthetic-secret');
+    expect(()=>parseBackup(JSON.stringify({version:1,sessions:[],preferences}))).toThrow('凭据');
+  });
   it('导入拒绝凭据字段、坏来源和伪造骰子', () => {
     const s = session(); append(s, 'first', 78);
     const value = { version: 1 as const, sessions: [s], preferences: defaults() };
@@ -82,3 +89,4 @@ describe('本地备份边界', () => {
     expect(() => parseBackup(safe.replace('"value": 73', '"value": 101'))).toThrow();
   });
 });
+
