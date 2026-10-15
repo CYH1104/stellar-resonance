@@ -4,7 +4,7 @@ import ForumFeed from './ForumFeed.vue';
 defineProps<{w:ViewModel}>();
 </script>
 <template><section class="theater-rail-content" aria-label="右侧小剧场">
-  <header class="rail-heading"><h2>小剧场</h2><button @click="w.panel='forum'">设置</button></header>
+  <header class="rail-heading"><h2>小剧场</h2><button @click="w.settingsTab='theaters';w.panel='game-settings'">设置</button></header>
   <div class="theater-windows">
     <article v-for="s in w.preferences.theaters?.filter(t=>t.enabled)" :key="s.slot" class="theater-window">
       <ForumFeed v-if="s.kind==='forum'" :w="w" :title="s.title" />

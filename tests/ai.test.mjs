@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildMessages,endpoint,normalizeModelState,StoryDecoder,RESPONSE_END} from '../server/ai.mjs';
+import {buildMessages,endpoint,normalizeModelState,StoryDecoder,RESPONSE_END,completionChunks} from '../server/ai.mjs';
 import {spiritAnimalOf} from '../server/card.mjs';
 import {defaultTheaters} from '../src/domain/theaters.ts';
 import {applyPromptEntries} from '../server/presets.mjs';
@@ -10,8 +10,8 @@ import {requestEmbeddings} from '../server/embeddings.mjs';
 const card={characters:[{id:'one',name:'甲',sex:'Alpha',intro:'私有设定'},{id:'two',name:'乙',sex:'Beta'}],world:{greeting:['迎新']},places:[]};
 const state={player:{id:'player',name:'玩家',present:true},characters:card.characters.map(c=>({id:c.id,name:c.name,present:c.id==='one'}))};
 test('split markers never leak control JSON, full roster controls entrances and exits',()=>{
-  const d=new StoryDecoder();let text='';for(const c of '中文正文。<SR_STATE>{"presentCharacterIds":["two"],"event":"进入下一幕","characters":[{"id":"two","innerThought":"可展示想法","affinity":999}]}</SR_STATE>'+RESPONSE_END)text+=d.push(c);
-  assert.equal(text,'中文正文。');const out=d.finish(card,state);assert.deepEqual(out.characters,[{id:'one',present:false},{id:'two',present:true,innerThought:'可展示想法'}]);
+  const d=new StoryDecoder();let text='';for(const c of '中文正文。<SR_STATE>{"presentCharacterIds":["two"],"event":"进入下一幕","characters":[{"id":"two","innerThought":"可展示想法","affinity":36}]}</SR_STATE>'+RESPONSE_END)text+=d.push(c);
+  assert.equal(text,'中文正文。');const out=d.finish(card,state);assert.deepEqual(out.characters,[{id:'one',present:false},{id:'two',present:true,innerThought:'可展示想法',affinity:36}]);
 });
 test('empty scene is valid; omitted, duplicate and unknown rosters are rejected',()=>{
   assert.ok(normalizeModelState(card,state,{presentCharacterIds:[],event:'独处'}).characters.every(c=>!c.present));
@@ -120,4 +120,40 @@ test('forged dice labels are rejected; missing or opposite dice event cannot com
 test('a closed state block alone cannot prove completion; hidden final marker is required',()=>{
   const decoder=new StoryDecoder();decoder.push('尚未确认结束的正文<SR_STATE>{"presentCharacterIds":[],"event":"事件"}</SR_STATE>');
   assert.throws(()=>decoder.finish(card,state),{code:'MODEL_RESPONSE_INCOMPLETE'});
+});
+test('public state failures identify a safe category without revealing model values',()=>{
+  const valid={presentCharacterIds:[],event:'事件'};
+  for(const [patch,code]of [[{other:'synthetic-private-payload'},'MODEL_STATE_FIELDS_INVALID'],[{presentCharacterIds:null},'MODEL_STATE_ROSTER_INVALID'],[{event:''},'MODEL_STATE_EVENT_INVALID'],[{player:{identity:123}},'MODEL_STATE_PLAYER_INVALID'],[{characters:[{id:'one',innerThought:123}]},'MODEL_STATE_CHARACTERS_INVALID'],[{forum:[{content:'synthetic-private-payload'}]},'MODEL_STATE_FORUM_INVALID'],[{theaters:[{slot:2,kind:'group'}]},'MODEL_STATE_THEATERS_INVALID']])assert.throws(()=>normalizeModelState(card,state,{...valid,...patch}),error=>error.code===code&&!error.message.includes('synthetic-private-payload'));
+});
+test('provider reasoning channels, thinking content blocks and tagged content are never emitted',async()=>{
+  const response=new Response(JSON.stringify({choices:[{message:{reasoning_content:'separate-secret',reasoning:'another-secret',content:[{type:'thinking',thinking:'block-secret'},{type:'text',thought:true,text:'thought-secret'},{type:'text',text:'<Think_rules>tagged-secret</Think_rules>正文'}]}}]}),{headers:{'Content-Type':'application/json'}});let out='';for await(const part of completionChunks(response))out+=part;assert.equal(out,'正文');
+});
+test('encoded reasoning in state strings and old assistant history is removed, story OS stays visible',()=>{
+  const d=new StoryDecoder();d.push('正文<SR_STATE>'+JSON.stringify({presentCharacterIds:[],event:'事件',player:{spiritThought:'<think>synthetic-secret</think>想睡觉'}}).replaceAll('<','\\u003c')+'</SR_STATE>'+RESPONSE_END);assert.equal(d.finish(card,{...state,player:{...state.player,spiritAnimal:'白猫'}}).player.spiritThought,'想睡觉');
+  const built=buildMessages(card,{input:'行动',persona:{name:'玩家'},state,history:[{role:'assistant',content:'<think>history-secret</think>旧正文'}],memories:['<analysis>memory-secret</analysis>记忆'],presets:[]});assert.ok(!JSON.stringify(built.messages).includes('history-secret'));assert.ok(!JSON.stringify(built.messages).includes('memory-secret'));assert.ok(JSON.stringify(built.messages).includes('旧正文'));
+});
+test('same-depth injected prompts use user, assistant and system role groups before their order',()=>{
+  const base=[{role:'system',content:'rules'},{role:'system',content:'card'},{role:'system',content:'state'},{role:'user',content:'action'}];const entries=[['s','system',0],['a','assistant',0],['u2','user',9],['u1','user',1]].map(([id,role,order])=>({id,name:id,content:id,role,order,enabled:true,position:'in-chat',depth:0}));const out=applyPromptEntries(base,entries,{name:'玩家'},'角色');assert.deepEqual(out.slice(-4).map(m=>m.content),['u1','u2','a','s']);
+});
+
+test('finish_reason completes and cancels a relay stream even if DONE and socket close never arrive',async()=>{
+  let cancelled=false;const bytes=new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'正常正文'},finish_reason:'stop'}]})+'\n\n');
+  const response=new Response(new ReadableStream({start(c){c.enqueue(bytes);},cancel(){cancelled=true;}}),{headers:{'Content-Type':'text/event-stream'}});
+  let result='';for await(const part of completionChunks(response))result+=part;assert.equal(result,'正常正文');assert.equal(cancelled,true);
+});
+test('full messages in SSE, untyped text blocks and the final event without a blank separator are accepted',async()=>{
+  const response=new Response('data: '+JSON.stringify({choices:[{message:{content:[{text:'兼容正文'}]},finish_reason:'stop'}]}),{headers:{'Content-Type':'text/event-stream'}});
+  let result='';for await(const part of completionChunks(response))result+=part;assert.equal(result,'兼容正文');
+});
+test('empty, hidden-only and reasoning-only replies produce distinct safe errors and safe progress',async()=>{
+  for(const [message,code]of [[{content:''},'MODEL_EMPTY_RESPONSE'],[{content:null,reasoning_content:'synthetic-private-thought'},'MODEL_REASONING_ONLY'],[{content:'<think>synthetic-private-thought'},'MODEL_REASONING_UNCLOSED'],[{content:'<!--synthetic-private-thought-->'},'MODEL_NO_VISIBLE_CONTENT']]){
+    const progress=[];await assert.rejects(async()=>{for await(const part of completionChunks(new Response(JSON.stringify({choices:[{message}]}),{headers:{'Content-Type':'application/json'}}),{onProgress:p=>progress.push(p)}))assert.fail(part);},error=>error.code===code&&!error.message.includes('synthetic-private'));
+    assert.ok(!JSON.stringify(progress).includes('synthetic-private'));assert.equal(progress.at(-1).visibleChars,0);
+  }
+});
+test('abort interrupts a stalled body reader and cancels upstream',async()=>{
+  let cancelled=false;const controller=new AbortController();
+  const response=new Response(new ReadableStream({cancel(){cancelled=true;}}),{headers:{'Content-Type':'text/event-stream'}});
+  const result=(async()=>{for await(const part of completionChunks(response,{signal:controller.signal}))assert.fail(part);})();
+  controller.abort(new DOMException('timeout','TimeoutError'));await assert.rejects(result,{name:'TimeoutError'});assert.equal(cancelled,true);
 });

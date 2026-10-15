@@ -50,3 +50,8 @@ it('备份保留每个功能的选择并拒绝坏引用，不包含 Key',()=>{
   for(const task of textApiTasks){const invalid=JSON.parse(text);invalid.preferences[task.field]='embed';expect(()=>parseBackup(JSON.stringify(invalid))).toThrow('API 引用');}
   const invalid=JSON.parse(text);invalid.preferences.auxiliaryProfiles=['missing'];expect(()=>parseBackup(JSON.stringify(invalid))).toThrow('副 API');
 });
+it('论坛回复默认关闭，开启时才校验所选接口，设置和旧备份可以恢复',()=>{
+  const p=defaults();fill(p.profiles[0]);p.forumReplyProfile='aux';expect(p.forumReplyEnabled).toBe(false);expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);
+  p.forumReplyEnabled=true;expect(requiredApis(p).map(p=>p.id)).toEqual(['main','aux']);expect(apiConfigurationIssues(p,{main:'synthetic-key'},()=>true).join()).toContain('副 API');fill(p.profiles[1]);expect(apiConfigurationIssues(p,keys(p),()=>true)).toEqual([]);
+  const restored=parseBackup(backup({version:1,sessions:[],preferences:p}));expect(restored.preferences).toMatchObject({forumReplyEnabled:true,forumReplyProfile:'aux'});delete p.forumReplyEnabled;delete p.forumReplyProfile;expect(migrateApiSettings(p)).toMatchObject({forumReplyEnabled:false,forumReplyProfile:'main'});
+});

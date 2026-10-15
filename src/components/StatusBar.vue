@@ -15,6 +15,6 @@ const round = computed(() => props.w.active?.turns.reduce((last,turn,index) => s
     <div class="present-heading"><h2>在场角色</h2><span class="tag">{{ present.length }} 位</span></div>
     <ActorCard v-for="actor in present" :key="actor.id" :actor="actor" />
     <p v-if="!present.length" class="empty">{{round?'当前没有在场角色。':'等待 AI 生成第一幕并判断在场人物。'}}</p>
-    <p class="rail-note">{{w.localService&&w.preferences.mode==='server'?'在场名单、角色想法与精神体 OS 随有效剧情更新；好感度只列出已遇到角色，缺少数值规则时显示未提供。':w.preferences.mode==='demo'?'当前为演示 MVU 数据；性别取值与好感度规则等待正式资料。':'显示本轮 MVU 变量；正式字段映射与规则待接入。'}}</p>
+    <p class="rail-note">{{w.localService&&w.preferences.mode==='server'?'好感度（−100～100）由 AI 根据人设关系和剧情更新；精神体 OS 每轮生成。好感度只列出已遇到角色。':w.preferences.mode==='demo'?'当前为演示 MVU 数据；性别取值与好感度规则等待正式资料。':'显示本轮 MVU 变量；正式字段映射与规则待接入。'}}</p>
   </section>
 </template>

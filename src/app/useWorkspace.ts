@@ -1,13 +1,14 @@
 import { computed, reactive, ref, watch, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant } from '../domain/contracts';
-import { backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
+import {addForumAIReply,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
 import {apiAddress,type LocalApiCredentials} from '../storage/apiCredentials';
+import {drawSpecialEvent,awaitingSpecialEvent} from '../domain/randomEvents';
 import { MockGateway } from '../gateway/mock';
 import { HttpGateway } from '../gateway/http';
 import { retrieve } from '../memory/retrieval';
 import { blankPersona, mergePersonaDraft, normalizePersona } from '../domain/persona';
-import {activePromptEntries,importTavernPreset,exportTavernPreset,presetGroups,setId} from '../domain/presets';
+import {activePromptEntries,importTavernPreset,exportTavernPreset,presetGroups,setId,cleanSampling,pinnedPromptIds,reorderPresetEntries,newPresetEntries} from '../domain/presets';
 import {defaultTheaters,visibleTheaters} from '../domain/theaters';
 import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyApi,taskApi,textApiTasks} from '../domain/apis';
 
@@ -16,8 +17,13 @@ export function useWorkspace() {
   const presetWarnings=ref<string[]>([]);
   const presetSets=computed(()=>presetGroups(preferences.presets));
   const currentPreset=computed(()=>presetSets.value.find(g=>g.id===preferences.activePreset)?.id||presetSets.value[0]?.id||'legacy');
+  const presetParameters=computed(()=>{const map=preferences.presetParameters||=( {});return map[currentPreset.value]||=(cleanSampling(taskApi(preferences,'story')||preferences.profiles[0]));});
   const presetEntries=computed(()=>preferences.presets.filter(p=>setId(p)===currentPreset.value));
   const sessions=ref<Session[]>([]), sessionId=ref(''), panel=ref<Panel>('story');
+  const workingForumReply=ref(''),forumReplyPost=ref(''),forumReplyError=ref('');let forumController:AbortController|undefined;
+  function stopForumReply(){forumController?.abort();}
+  watch(()=>[preferences.forumReplyEnabled,preferences.forumReplyProfile,sessionId.value],()=>forumController?.abort());
+  const settingsTab=ref<'persona'|'theaters'|'shortcuts'>('persona');
   const localService=ref<LocalService>();
   const newGameDraft=reactive({title:'新的旅程',opening:'',wish:'',persona:blankPersona()});
   const workingPersona=ref(false),creatingGame=ref(false),personaNotice=ref('');
@@ -37,14 +43,17 @@ export function useWorkspace() {
     finally{workingPersona.value=false;personaController=undefined;}
   }
   const credentials=reactive<Record<string,string>>({});
+  watch(()=>{const p=preferences.profiles.find(p=>p.id===(preferences.forumReplyProfile||preferences.mainProfile));return[p?.apiBaseUrl,p?.model,credentials[p?.id||'']];},()=>forumController?.abort());
   const rememberApiKeys=ref(true);
   const approved=reactive<Record<string,string>>({});
   const connectionSignature=(p:Profile)=>JSON.stringify([apiAddress(p.apiBaseUrl),p.model,credentials[p.id]||'']);
   const connectionReady=(p:Profile)=>approved[p.id]===connectionSignature(p);
   async function connectProfile(p:Profile){try{const missing=apiFieldIssues(p,credentials[p.id]);if(missing.length)throw new Error(`请填写：${missing.join('、')}`);const signature=connectionSignature(p);await http.configure(copy(p));if(signature!==connectionSignature(p))throw new Error('配置已改变，请重新确认。');approved[p.id]=signature;problem.value='';if(!loading.value)await persist();notice.value=rememberApiKeys.value?'当前接口已确认并保存在此浏览器；尚未进行模型生成测试。':'当前接口已确认，仅在本次页面使用。';return true;}catch(e){problem.value=message(e);return false;}}
   async function fetchModels(p:Profile,signal:AbortSignal){if(!localService.value)throw new Error('请先连接本机后台，再获取模型。');return http.models(p.apiBaseUrl||'',key(p),signal);}
+  async function testProfile(p:Profile,embedding:boolean,signal:AbortSignal){if(!localService.value)throw new Error('本机后台未连接，请用启动预览.bat 启动。');const issues=apiFieldIssues(p,key(p));if(issues.length)throw new Error('请填写：'+issues.join('、'));return http.probe(copy(p),key(p),embedding?'embedding':'text',signal);}
+  const generationPhase=ref(''),generationStarted=ref(0);
   const loading=ref(true), authorized=ref(false), busy=ref(false), workingMemory=ref(false);
-  const configuringApis=ref(false),pendingSessionId=ref(''),continuationAttempt=ref(0);
+  const configuringApis=ref(false),pendingSessionId=ref(''),continuationAttempt=ref(0),repairingState=ref(false);
   const auxiliaryProfiles=computed(()=>auxiliaryApis(preferences));
   const storyProfile=computed(()=>storyApi(preferences));
   const summaryProfile=computed(()=>taskApi(preferences,'summary'));
@@ -62,6 +71,7 @@ export function useWorkspace() {
   const mock=new MockGateway(), http=new HttpGateway();
   const gateway=():Gateway=>localService.value?http:preferences.mode==='demo'?mock:http;
   const active=computed(()=>sessions.value.find(s=>s.id===sessionId.value));
+  const pendingRandomEvent=computed(()=>active.value?.turns.some(t=>awaitingSpecialEvent(t.randomEvent))||false);
   const state=computed(()=>active.value?stateAt(active.value):undefined);
   const memories=computed(()=>active.value?visibleMemories(active.value):[]);
   const forum=computed(()=>active.value?visibleForum(active.value):[]);
@@ -135,7 +145,22 @@ export function useWorkspace() {
     }
     return retrieve(list,text,fingerprint(p),vector);
   }
-  async function generate(text?:string,turnIndex?:number,continuePartial=false) {
+  async function prepareRandomEvent(session:Session,index:number){
+    const turn=session.turns[index],gate=turn.randomEvent;if(!gate||(gate.status!=='preparing'&&gate.status!=='failed'))return;const kind=gate.kind,p=copy(profile(preferences.randomEventProfile||preferences.mainProfile));
+    turn.randomEvent={status:'preparing',kind};busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在生成随机事件候选，正文尚未开始…';const current=new AbortController();controller=current;await safePersist();
+    try{
+      const proposal=localService.value?await http.randomEvent({kind,persona:copy(session.persona),input:turn.input,history:session.turns.slice(Math.max(0,index-6),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input.slice(-12000)},{role:'assistant' as const,content:v.text.slice(-12000)}]:[];}),presentCharacterIds:stateAt(session,index).characters.filter(c=>c.present).map(c=>c.id)},p,key(p),current.signal):{kind,title:'【演示】'+kind,description:'眼前出现了一个尚未发生的意外情境。你可以拒绝，也可以掷骰决定事件结果。'};
+      current.signal.throwIfAborted();turn.randomEvent={status:'pending',proposal};notice.value='随机事件候选已准备，请拒绝或掷骰后再生成正文。';
+    }catch(e){turn.randomEvent={status:'failed',kind};problem.value=message(e);notice.value='事件候选未完成，正文尚未生成。可重试或跳过本轮事件。';}
+    finally{busy.value=false;if(controller===current)controller=undefined;await safePersist();}
+  }
+  async function decideRandomEvent(index:number,accept:boolean){
+    const session=active.value;if(!session||busy.value||workingMemory.value)return;const turn=session.turns[index],gate=turn?.randomEvent;if(!gate)return;
+    if(gate.status==='pending'){turn.randomEvent={status:accept?'accepted':'declined',proposal:gate.proposal};if(accept)turn.dice=rollDice();else delete turn.dice;}
+    else if(!accept&&(gate.status==='preparing'||gate.status==='failed')){turn.randomEvent={status:'skipped'};delete turn.dice;}else return;
+    await safePersist();await generate(undefined,index);
+  }
+  async function generate(text?:string,turnIndex?:number,continuePartial=false,stateOnly=false) {
     const session=active.value;if(!session||busy.value||workingMemory.value)return;
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     const p=storyProfile.value!;
@@ -144,21 +169,30 @@ export function useWorkspace() {
     if(localService.value&&!connectionReady(p)){problem.value='请在模型设置填写服务地址、模型名称，并确认使用此服务。';panel.value='settings';return;}
     if(preferences.mode==='server'&&gateway().capabilities.keyRequired!==false&&!key(p)){problem.value='请在模型设置填写当前接口的 Key';panel.value='settings';return;}
     let index:number;
-    if(turnIndex===undefined){const content=(text??input.value).trim();if(!content){problem.value='请先输入本轮行动';return;}if(content.length>16000){problem.value='单条输入超过首版长度限制';return;}session.turns.push({id:uid(),input:content,dice:preferences.diceEnabled?rollDice():undefined,variants:[],selected:0});index=session.turns.length-1;input.value='';}
-    else{index=turnIndex;if(!session.turns[index])return;if(continuePartial&&(selected(session.turns[index])?.status!=='incomplete'||!selected(session.turns[index])?.text)){problem.value='当前没有需要续写的正文。';return;}truncate(session,index+1);}
-    const turn=session.turns[index];const partial=continuePartial?selected(turn)?.text||'':'';if(!continuePartial){turn.variants.push({id:uid(),text:'',status:'incomplete',createdAt:now()});turn.selected=turn.variants.length-1;}const variant=turn.variants[turn.selected];delete variant.outcome;
-    const generationType=continuePartial?'continue':turnIndex===undefined?'normal':'regenerate';continuationAttempt.value=0;
-    busy.value=true;problem.value='';controller=new AbortController();let done=false, checkpoint=Date.now();await safePersist();
+    if(turnIndex===undefined){if(pendingRandomEvent.value){problem.value='请先决定或跳过当前随机事件，再发送下一轮行动。';return;}const content=(text??input.value).trim();if(!content){problem.value='请先输入本轮行动';return;}if(content.length>16000){problem.value='单条输入超过首版长度限制';return;}const kind=preferences.diceEnabled?drawSpecialEvent():undefined;session.turns.push({id:uid(),input:content,randomEvent:kind?{status:'preparing',kind}:{status:'none'},variants:[],selected:0});index=session.turns.length-1;input.value='';}
+    else{index=turnIndex;if(!session.turns[index])return;if(continuePartial&&(!stateOnly&&selected(session.turns[index])?.status!=='incomplete'||!selected(session.turns[index])?.text)){problem.value='当前没有需要续写的正文。';return;}truncate(session,index+1);}
+    const turn=session.turns[index];if(turn.randomEvent?.status==='preparing'||turn.randomEvent?.status==='failed'){await prepareRandomEvent(session,index);return;}if(turn.randomEvent?.status==='pending'){notice.value='请先拒绝或掷骰，再生成本轮正文。';return;}const firstAttempt=turn.variants.length===0;const partial=continuePartial?selected(turn)?.text||'':'';if(!continuePartial){turn.variants.push({id:uid(),text:'',status:'incomplete',createdAt:now()});turn.selected=turn.variants.length-1;}const variant=turn.variants[turn.selected];const previousOutcome=stateOnly&&variant.status==='complete'?copy(variant.outcome):undefined;if(!previousOutcome)delete variant.outcome;
+    const generationType=continuePartial?'continue':firstAttempt?'normal':'regenerate';continuationAttempt.value=0;repairingState.value=stateOnly;
+    busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false, checkpoint=Date.now();await safePersist();
     try {
-      const recalled=await recall(session,turn.input,index);
-      const request:GenerateRequest={sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:recalled.map(m=>m.text.slice(0,1000)),state:stateAt(session,index),dice:copy(turn.dice),profile:copy(p),presets:[],promptEntries:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(preferences.theaters),continuation:partial?{partial}:undefined,forumContext:visibleForum(session,index).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>reply.text)}))};
+      const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index);
+      const request:GenerateRequest={specialEvent:turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:recalled.map(m=>m.text.slice(0,1000)),state:stateAt(session,index),dice:copy(turn.dice),profile:copy(p),presets:[],promptEntries:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(preferences.theaters),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:visibleForum(session,index).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};
+      generationPhase.value='等待模型返回（单次请求最长180秒）…';
       for await(const event of gateway().generate(request,key(p),controller.signal)) {
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
-        if(event.type==='delta'){variant.text+=event.text;if(Date.now()-checkpoint>700){checkpoint=Date.now();await safePersist();}}
-        else if(event.type==='continuation'){continuationAttempt.value=event.attempt;notice.value=`检测到截断，正在自动续写 ${event.attempt}/${event.maxAttempts}…`;}
-        else if(event.type==='done'){finishVariant(session,index,variant,event.outcome);done=true;}
+        if(event.type==='progress'){generationPhase.value=event.phase==='hidden'?'中转站正在返回数据，目前尚无可展示正文（思考内容保持隐藏）…':event.phase==='receiving'?'正在接收正文和隐藏状态…':'等待模型返回…';}
+        else if(event.type==='delta'){generationPhase.value='正在接收正文…';if(repairingState.value)continue;variant.text+=event.text;if(Date.now()-checkpoint>700){checkpoint=Date.now();await safePersist();}}
+        else if(event.type==='repair'){generationPhase.value='正文已保留，正在补修状态…';repairingState.value=true;continuationAttempt.value=event.attempt;notice.value=`正在补修状态 ${event.attempt}/${event.maxAttempts}：${event.reason}`;}
+        else if(event.type==='continuation'){generationPhase.value='回复截断，正在自动续写…';repairingState.value=false;continuationAttempt.value=event.attempt;notice.value=`检测到截断，正在自动续写 ${event.attempt}/${event.maxAttempts}…`;}
+        else if(event.type==='done'){
+          let outcome=event.outcome;
+          if(previousOutcome){outcome={...outcome,event:previousOutcome.event,player:{...previousOutcome.player,...outcome.player},...(previousOutcome.diceEvent?{diceEvent:previousOutcome.diceEvent}:{}),forum:previousOutcome.forum?.length?previousOutcome.forum:outcome.forum,theaters:outcome.theaters?.map(scene=>previousOutcome.theaters?.find(old=>old.slot===scene.slot&&old.kind===scene.kind&&(old.content.trim()||old.messages?.some(m=>m.content.trim())))||scene)};}
+          finishVariant(session,index,variant,outcome);done=true;
+        }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
+      if(stateOnly){notice.value='已补全状态和已开启的小剧场，正文及骰点保留。';return;}
+      generationPhase.value='正文已完成，正在生成建议／摘要…';
       const suggestionsApi=suggestionsProfile.value!,summaryApi=summaryProfile.value!;
       let auxiliaryFailed=false;
       try{session.suggestions=await gateway().utility('suggestions',[turn.input,variant.text],suggestionsApi,key(suggestionsApi),controller.signal);}catch{auxiliaryFailed=true;}
@@ -168,7 +202,7 @@ export function useWorkspace() {
       }
       if(auxiliaryFailed)notice.value='剧情已完成，摘要或建议暂不可用';
     }catch(e){problem.value=message(e);}
-    finally{busy.value=false;continuationAttempt.value=0;controller=undefined;session.updatedAt=now();await safePersist();}
+    finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){if(!active.value||busy.value)return;try{truncate(active.value,count);await safePersist();notice.value='已恢复对应剧情状态与记忆';}catch(e){problem.value=message(e);}}
@@ -176,7 +210,22 @@ export function useWorkspace() {
   async function savePersona(persona:Persona){if(!active.value||busy.value)return;try{const value=normalizePersona(persona);active.value.persona=value;Object.assign(active.value.initial.player,{name:value.name,primaryGender:value.primaryGender,secondaryGender:value.secondaryGender,identity:value.identity,spiritAnimal:value.spiritAnimal});await safePersist();}catch(e){problem.value=message(e);}}
   async function loadPlace(id:string){try{return await http.place(id);}catch(e){problem.value=message(e);return undefined;}}
   async function toggleForumLike(key:string){if(!active.value||busy.value||workingMemory.value)return;try{likeForum(active.value,key);await safePersist();}catch(e){problem.value=message(e);}}
-  async function replyToForum(key:string,text:string):Promise<boolean>{if(!active.value||busy.value||workingMemory.value)return false;try{replyForum(active.value,key,text);await persist();notice.value='评论已保存到本机，将作为后续剧情的上下文';return true;}catch(e){problem.value=message(e);return false;}}
+  async function replyToForum(keyValue:string,text:string):Promise<boolean>{
+    const session=active.value;if(!session||busy.value||workingMemory.value||workingForumReply.value)return false;
+    let replyId:string;try{replyId=replyForum(session,keyValue,text);await persist();}catch(e){problem.value=message(e);return false;}
+    notice.value='评论已保存到本机';if(!preferences.forumReplyEnabled)return true;
+    forumReplyPost.value=keyValue;forumReplyError.value='';const p=copy(profile(preferences.forumReplyProfile||preferences.mainProfile));
+    if(!localService.value||apiFieldIssues(p,key(p)).length||!connectionReady(p)){forumReplyError.value='你的评论已保存。请先保存所选论坛回复 API 的配置。';return true;}
+    const selectedPost=visibleForum(session).find(post=>post.key===keyValue)!;const activity=session.forumActivity![keyValue];
+    const comments=[...(selectedPost.comments||[]).map(c=>({authorName:c.authorName,content:c.content})),...activity.replies.map(r=>({authorName:r.kind==='ai'?r.authorName!:session.persona.name,content:r.text}))].slice(-12);
+    const signature=connectionSignature(p),current=new AbortController();forumController=current;workingForumReply.value=keyValue;
+    try{
+      const reply=await http.forumReply({userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments},p,key(p),current.signal);
+      current.signal.throwIfAborted();if(!sessions.value.some(s=>s.id===session.id)||signature!==connectionSignature(profile(p.id)))throw new Error('存档或接口已改变，本次回复未应用。');
+      addForumAIReply(session,keyValue,replyId,reply);await persist();notice.value='角色／NPC 已回复你的评论';
+    }catch(e){forumReplyError.value=(current.signal.aborted?'AI 回复已停止。':message(e))+' 你的评论已保留。';}
+    finally{if(forumController===current){forumController=undefined;workingForumReply.value='';}}return true;
+  }
   async function saveMemory(text:string,id?:string){const s=active.value;if(!s||busy.value||workingMemory.value||!text.trim())return;const m=s.memories.find(x=>x.id===id);if(m){m.text=text.trim();delete m.vector;}else s.memories.push({id:uid(),text:text.trim(),kind:'note',createdAt:now()});await safePersist();}
   async function removeMemory(id:string){if(!active.value||busy.value||workingMemory.value)return;active.value.memories=active.value.memories.filter(m=>m.id!==id);await safePersist();}
   async function indexMemories(){const s=active.value;if(!s||busy.value||workingMemory.value)return;if(!preferences.vectorEnabled){problem.value='请先开启向量检索并配置向量 API。';return;}const p=copy(profile(preferences.embeddingProfile));if(apiFieldIssues(p,key(p)).length||!connectionReady(p)){problem.value='请先填写并确认向量 API 的地址、模型和 Key。';panel.value='settings';return;}workingMemory.value=true;problem.value='';try{const pending=visibleMemories(s).filter(m=>m.vector?.model!==fingerprint(p)||m.vector.text!==m.text);for(let i=0;i<pending.length;i+=16){const batch=pending.slice(i,i+16);const vectors=await gateway().embed(batch.map(m=>m.text),copy(p),key(p),new AbortController().signal);batch.forEach((m,j)=>m.vector={model:fingerprint(p),values:vectors[j],text:m.text});}await safePersist();notice.value=preferences.mode==='demo'?'演示索引已生成（字频示例，不是真实语义向量）':'记忆向量已生成并保存本地';}catch(e){problem.value=message(e);}finally{workingMemory.value=false;}}
@@ -186,16 +235,19 @@ export function useWorkspace() {
   async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(replace){sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
   function exportBook(){const s=active.value;if(!s)return;const escape=(x:string)=>x.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');const body=s.turns.map(t=>{const v=selected(t);return v?.status==='complete'?`<section><p class="action">${escape(t.input)}</p><p>${escape(v.text)}</p></section>`:'';}).join('');download(`${s.name}-故事.html`,`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(s.name)}</title><style>body{max-width:44rem;margin:3rem auto;padding:0 1.5rem;font:18px/1.8 system-ui;color:#222}p{white-space:pre-wrap}.action{color:#666}section{margin-bottom:2rem}</style><h1>${escape(s.name)}</h1><p>${escape(s.opening)}</p>${body}</html>`,'text/html');}
   function addProfile(){if(preferences.profiles.length>=30){problem.value='接口总数最多30个，请先移除不需要的副 API。';return '';}const id=uid();preferences.profiles.push({id,name:`副 API ${(preferences.auxiliaryProfiles?.length||0)+1}`,providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600});(preferences.auxiliaryProfiles||=[]).push(id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;return id;}
-  function removeProfile(id:string){if(id===preferences.mainProfile||id===preferences.embeddingProfile)return;preferences.profiles=preferences.profiles.filter(p=>p.id!==id);delete credentials[id];delete approved[id];preferences.auxiliaryProfiles=(preferences.auxiliaryProfiles||[]).filter(value=>value!==id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;for(const task of textApiTasks)if(preferences[task.field]===id)preferences[task.field]=preferences.mainProfile;}
+  function removeProfile(id:string){if(id===preferences.mainProfile||id===preferences.embeddingProfile)return;preferences.profiles=preferences.profiles.filter(p=>p.id!==id);delete credentials[id];delete approved[id];preferences.auxiliaryProfiles=(preferences.auxiliaryProfiles||[]).filter(value=>value!==id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;for(const task of textApiTasks)if(preferences[task.field]===id)preferences[task.field]=preferences.mainProfile;if(preferences.randomEventProfile===id)preferences.randomEventProfile=preferences.mainProfile;if(preferences.forumReplyProfile===id){preferences.forumReplyProfile=preferences.mainProfile;forumController?.abort();}}
   function moveAuxiliary(index:number,offset:number){const ids=preferences.auxiliaryProfiles||[],to=index+offset;if(to<0||to>=ids.length||busy.value)return;[ids[index],ids[to]]=[ids[to],ids[index]];preferences.auxiliaryProfile=ids[0]||preferences.mainProfile;}
-  function importPreset(text:string,filename?:string){if(busy.value)return;try{const result=importTavernPreset(text,filename);preferences.presets.push(...result.entries);preferences.activePreset=result.id;Object.assign(storyProfile.value||profile(preferences.mainProfile),result.parameters);presetWarnings.value=result.warnings;problem.value='';notice.value=`已导入 ${result.name}，共 ${result.entries.length} 条；受支持的采样参数已应用到当前剧情接口。`;}catch(e){problem.value=message(e);}}
+  function importPreset(text:string,filename?:string){if(busy.value)return;try{const result=importTavernPreset(text,filename);preferences.presets.push(...result.entries);preferences.activePreset=result.id;(preferences.presetParameters||={})[result.id]={...cleanSampling(taskApi(preferences,'story')||profile(preferences.mainProfile)),...result.parameters};presetWarnings.value=result.warnings;problem.value='';notice.value=`已导入 ${result.name}，共 ${result.entries.length} 条；采样参数与当前预设单独保存，切换预设会一并切换。`;}catch(e){problem.value=message(e);}}
   function exportPreset(){download(`${presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设'}.json`,exportTavernPreset(copy(presetEntries.value),storyProfile.value||profile(preferences.mainProfile)));}
-  function addPresetSet(){const id=uid();preferences.activePreset=id;preferences.presets.push({id:uid(),setId:id,setName:'新预设',name:'主提示词',identifier:'main',role:'system',position:'before',depth:4,order:100,content:'',enabled:true});presetWarnings.value=[];}
+  function addPresetSet(){const id=uid();preferences.activePreset=id;preferences.presets.push(...newPresetEntries(id,'新预设'));(preferences.presetParameters||={})[id]=cleanSampling(taskApi(preferences,'story')||preferences.profiles[0]);presetWarnings.value=[];}
   function addPresetEntry(){const name=presetSets.value.find(s=>s.id===currentPreset.value)?.name||'原有预设';preferences.presets.push({id:uid(),setId:currentPreset.value,setName:name,name:'新条目',identifier:uid(),role:'system',position:'before',depth:4,order:100,content:'',enabled:true});}
-  function removePresetSet(){preferences.presets=preferences.presets.filter(p=>setId(p)!==currentPreset.value);preferences.activePreset=presetGroups(preferences.presets)[0]?.id;if(!preferences.presets.length)addPresetSet();presetWarnings.value=[];}
-  function movePreset(index:number,offset:number){const list=presetEntries.value,to=index+offset;if(to<0||to>=list.length)return;const a=preferences.presets.indexOf(list[index]),b=preferences.presets.indexOf(list[to]);[preferences.presets[a],preferences.presets[b]]=[preferences.presets[b],preferences.presets[a]];}
+  function removePresetSet(){if(busy.value)return;delete preferences.presetParameters?.[currentPreset.value];preferences.presets=preferences.presets.filter(p=>setId(p)!==currentPreset.value);preferences.activePreset=presetGroups(preferences.presets)[0]?.id;if(!preferences.presets.length)addPresetSet();presetWarnings.value=[];}
+  function movePresetTo(from:number,to:number){if(busy.value)return;const rows=reorderPresetEntries(presetEntries.value,from,to);let i=0;preferences.presets=preferences.presets.map(p=>setId(p)===currentPreset.value?rows[i++]:p);}
+  function movePreset(index:number,offset:number){movePresetTo(index,index+offset);}
+  function duplicatePresetSet(){if(busy.value)return;const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;preferences.activePreset=id;}
+  function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,auxiliaryProfiles,storyProfile,summaryProfile,suggestionsProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,suggestionsProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

@@ -1,0 +1,28 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {buildMessages,normalizeModelState,RESPONSE_END} from '../server/ai.mjs';
+import {streamStory} from '../server/story-stream.mjs';
+import {defaultTheaters} from '../src/domain/theaters.ts';
+const card={characters:[{id:'one',name:'甲',spiritAnimal:'白狐'}],world:{greeting:[]},places:[]};
+const state={player:{id:'player',name:'玩家',present:true},characters:[{id:'one',name:'甲',spiritAnimal:'白狐',affinity:36,present:false}]};
+const settings=defaultTheaters();settings[2].enabled=true;settings[3].enabled=true;
+const options={requireDynamicState:true,theaterSettings:settings,persona:{name:'玩家'}};
+const valid=()=>({presentCharacterIds:['one'],characters:[{id:'one',affinity:42,spiritThought:'想凑过去闻闻。'}],event:'在门口相遇',forum:[{id:'post',authorName:'路人',content:'今天广场很热闹'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'晚饭吃什么？'}]},{slot:3,kind:'fanfic',title:'同人文',content:'你和甲一起去买饮料。',participantIds:['player','one']},{slot:4,kind:'custom',title:'日记',content:'白狐在窗边晒太阳。'}]});
+test('AI affinity is retained as an MVU update and previous affinity reaches the next model request',()=>{
+  assert.equal(normalizeModelState(card,state,valid(),options).characters[0].affinity,42);
+  const {messages}=buildMessages(card,{persona:{name:'玩家',other:'与甲从小认识'},state,input:'打招呼',history:[],presets:[],memories:[],theaterSettings:settings});
+  assert.equal(JSON.parse(messages[2].content.split('：\n')[1]).state.characters[0].affinity,36);
+  assert.ok(!messages[0].content.includes('不输出或变更好感度'));
+});
+test('present characters must return affinity and known spirit OS; enabled scenes cannot silently disappear',()=>{
+  const a=valid();delete a.characters[0].affinity;assert.throws(()=>normalizeModelState(card,state,a,options),{code:'CHARACTER_AFFINITY_MISSING'});
+  const b=valid();delete b.characters[0].spiritThought;assert.throws(()=>normalizeModelState(card,state,b,options),{code:'CHARACTER_SPIRIT_THOUGHT_MISSING'});
+  for(const key of ['forum','theaters']){const c=valid();delete c[key];assert.throws(()=>normalizeModelState(card,state,c,options),{code:'MODEL_THEATERS_MISSING'});}
+  const empty=valid();empty.theaters[1].content=' ';assert.throws(()=>normalizeModelState(card,state,empty,options),{code:'MODEL_THEATERS_MISSING'});
+});
+test('missing dynamic fields trigger state-only repair, preserve prose and commit all four windows once',async()=>{
+  const json=text=>new Response(JSON.stringify({choices:[{message:{content:text}}]}),{headers:{'Content-Type':'application/json'}});
+  const first=valid();delete first.theaters;let calls=0;const events=[];
+  for await(const event of streamStory({card,state,options,messages:[],connection:{url:'https://synthetic.example/v1/chat/completions'},profile:{model:'test',temperature:0.7,maxTokens:2000},key:'synthetic-key',firstResponse:json('固定正文<SR_STATE>'+JSON.stringify(first)+'</SR_STATE>'+RESPONSE_END),signal:new AbortController().signal,fetchImpl:async()=>{calls++;return json('<SR_STATE>'+JSON.stringify(valid())+'</SR_STATE>'+RESPONSE_END);}}))events.push(event);
+  assert.equal(calls,1);assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),'固定正文');assert.equal(events.filter(e=>e.type==='done').length,1);assert.equal(events.at(-1).outcome.theaters.length,3);
+});

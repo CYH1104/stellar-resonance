@@ -51,6 +51,11 @@ small { font-size: 12px; }
 .prompt-row .toggle { margin:0; flex-shrink:0; }
 .prompt-title { flex:1; text-align:left; min-width:0; overflow-wrap:anywhere; }
 .prompt-editor { padding:0 16px 16px; }
+.preset-lock { padding:12px 16px; border:1px solid var(--color-border); background:var(--color-background); border-radius:8px; line-height:1.7; }
+.prompt-dragged { opacity:0.5; }
+.preset-manager .prompt-row { flex-wrap:wrap; }
+.preset-manager .prompt-title { flex-basis:180px; }
+.preset-manager fieldset { margin:16px 0; border:1px solid var(--color-border); padding:12px; }
 .file-button { margin:0; padding:8px 13px; border:1px solid var(--color-border); border-radius:var(--radius-control); cursor:pointer; }
 .file-button input { width:230px; max-width:100%; font-size:12px; }
 .import-report { margin:14px 0; padding:12px; border:1px solid var(--color-border); border-radius:7px; font-size:13px; }
@@ -269,3 +274,40 @@ button.danger { color:#a32626; border-color:#c98d8d; }
 
 .dice-event { border-left:3px solid var(--color-accent); padding:10px 14px; margin:14px 0; background:var(--color-surface); }
 .dice-event p { margin:6px 0 0; }
+
+/* Compact API settings: common controls stay in two rows. */
+.compact-api-card { padding:16px; margin:14px 0; }
+.compact-api-card .panel-heading { margin-bottom:6px; align-items:center; }
+.api-title { display:flex; align-items:center; gap:8px; }
+.api-title h3 { margin:0; }
+.api-help { display:inline-grid; place-items:center; border-radius:50%; width:23px; height:23px; padding:0; font-size:12px; }
+.api-identity-fields { display:grid; grid-template-columns:minmax(100px,1fr) minmax(160px,2fr) minmax(120px,1.5fr); gap:12px; }
+.api-identity-fields label { margin:8px 0; }
+.api-model-row,.api-aux-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:4px 0 12px; }
+.api-model-row>label,.api-aux-row>label { flex:1; min-width:160px; flex-direction:row; align-items:center; margin:0; }
+.api-model-row select,.api-aux-row select { flex:1; }
+.api-manual-toggle { color:var(--color-muted); background:transparent; }
+.api-manual-field { max-width:450px; }
+.api-feedback { margin:8px 0; font-size:12px; }
+.compact-embedding-guide { margin:14px 0 20px; font-size:13px; color:var(--color-muted); }
+.compact-embedding-guide p { margin:6px 0; }
+.api-extra { border-top:1px solid var(--color-border); padding:12px 0; }
+.api-extra summary { cursor:pointer; font-size:13px; }
+.api-ready-actions { margin-top:16px; font-size:12px; }
+@media(max-width:759px){.api-identity-fields{grid-template-columns:1fr;gap:0}.api-model-row>label,.api-aux-row>label{flex-basis:100%}.compact-api-card{padding:12px}}
+
+/* Preset Slate output is displayed as a scene heading, with ordinary story text around it. */
+.scene-slate { margin:18px 0 26px; padding:22px 24px 18px; border:1px solid var(--color-border); border-top:2px solid var(--color-accent); border-radius:var(--radius-surface); background:var(--color-surface-soft); overflow-wrap:anywhere; }
+.scene-number { font-size:10px; letter-spacing:2px; color:var(--color-muted); margin-bottom:12px; }
+.scene-number span { color:var(--color-accent); margin-left:6px; font-variant-numeric:tabular-nums; }
+.story-content .scene-title { font-size:24px; line-height:1.5; font-weight:600; letter-spacing:2px; margin:0 0 4px; white-space:pre-wrap; }
+.story-content .scene-english-title { margin:0 0 18px; color:var(--color-muted); font-size:12px; letter-spacing:1.5px; }
+.scene-quote { margin:16px 0 20px; padding:0 0 0 14px; border-left:2px solid var(--color-accent); font-size:13px; color:var(--color-muted); line-height:1.9; white-space:pre-wrap; }
+.scene-meta { display:flex; gap:14px 28px; flex-wrap:wrap; margin:16px 0 0; padding-top:12px; border-top:1px solid var(--color-border); }
+.scene-meta>div { display:flex; gap:8px; min-width:0; font-size:12px; }
+.scene-meta dt { color:var(--color-muted); flex-shrink:0; }
+.scene-meta dd { margin:0; white-space:pre-wrap; }
+.scene-pending { color:var(--color-muted); font-size:12px; }
+@media(max-width:759px){.scene-slate{padding:16px;margin:14px 0 20px}.story-content .scene-title{font-size:21px}.scene-meta{gap:8px}.scene-meta>div{flex-basis:100%}}
+
+.random-event-card { margin:14px 8px 18px 20px;padding:18px;border:1px solid var(--color-accent);border-radius:var(--radius-surface);background:var(--color-surface-soft); }.random-event-card h3 { margin:10px 0; }.random-event-card p { white-space:pre-wrap;line-height:1.9; }

@@ -1,8 +1,10 @@
 import type { ActorPatch, ActorState, Dice, ForumEntry, ForumPost, Memory, Outcome, Persona, Preferences, Session, Snapshot, Turn, Variant, WorldState } from './contracts';
+import {cleanRandomEventGate} from './randomEvents.ts';
 import { normalizePersona } from './persona.ts';
-import { cleanPreset } from './presets.ts';
+import { cleanPreset,cleanPresetParameters } from './presets.ts';
 import { cleanTheaters,cleanTheaterScenes } from './theaters.ts';
 import {migrateApiSettings} from './apis.ts';
+import {scrubModelData,stripReasoning} from './reasoning.ts';
 import {diceGrade,cleanDiceEvent,assertDiceEventBinding} from './dice.ts';
 export {diceGrade} from './dice.ts';
 export const uid = () => crypto.randomUUID();
@@ -10,7 +12,7 @@ export const copy = <T>(value: T): T => value === undefined ? value : JSON.parse
 export const now = () => new Date().toISOString();
 export function defaults(): Preferences {
   const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 1600 });
-  return { mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
+  return { randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
 }
 export function initialState(name: string): WorldState {
   const actor = (id: string, label: string, affinity: number): ActorState => ({ id, name: label, energy: 80, focus: 70, affinity, present: true, primaryGender: '', secondaryGender: '', innerThought: '' });
@@ -137,12 +139,19 @@ export function likeForum(session: Session, key: string): void {
   const activity = reactions[key] ||= { liked: false, replies: [] };
   activity.liked = !activity.liked; session.updatedAt = now();
 }
-export function replyForum(session: Session, key: string, text: string): void {
+export function replyForum(session: Session, key: string, text: string): string {
   if (!visibleForum(session).some(post => post.key === key)) throw new Error('该动态已不属于当前剧情');
   if (!shortText(text, 1000, true)) throw new Error('评论须为 1～1000 字');
   const activity = (session.forumActivity ||= {})[key] ||= { liked: false, replies: [] };
   if (activity.replies.length >= 100) throw new Error('单条动态的本机评论已达上限');
-  activity.replies.push({ id: uid(), text: text.trim(), createdAt: now() }); session.updatedAt = now();
+  activity.replies.push({ id: uid(), text: text.trim(), createdAt: now() }); session.updatedAt = now();return activity.replies.at(-1)!.id;
+}
+export function addForumAIReply(session:Session,key:string,replyTo:string,reply:{authorName:string;authorId:string;content:string}):void{
+  if(!visibleForum(session).some(post=>post.key===key))throw new Error('该动态已不属于当前剧情');
+  const activity=session.forumActivity?.[key];if(!activity||!activity.replies.some(r=>r.id===replyTo&&r.kind!=='ai'))throw new Error('原评论已不存在');
+  if(activity.replies.some(r=>r.kind==='ai'&&r.replyTo===replyTo))return;
+  const text=stripReasoning(reply.content).trim();if(!shortText(text,1000,true)||!shortText(reply.authorName,80,true)||!shortText(reply.authorId,128,true)||activity.replies.length>=100)throw new Error('论坛回复格式或数量不正确');
+  activity.replies.push({id:uid(),text,createdAt:now(),kind:'ai',authorName:reply.authorName,authorId:reply.authorId,replyTo});session.updatedAt=now();
 }
 export function truncate(session: Session, count: number): void {
   if (!Number.isInteger(count) || count < 0 || count > session.turns.length) throw new Error('回退位置不正确');
@@ -158,14 +167,17 @@ export function selectVariant(session: Session, index: number, variant: number):
 export function editMessage(session: Session, index: number, role: 'user' | 'assistant', text: string): void {
   const turn = session.turns[index]; if (!turn || !text.trim()) throw new Error('消息不能为空');
   truncate(session, index + 1);
-  if (role === 'user') { turn.input = text.trim(); turn.variants = []; turn.selected = 0; }
-  else { const v = selected(turn); if (!v) throw new Error('稿件不存在'); v.text = text.trim(); v.status = 'incomplete'; delete v.outcome; }
+  if (role === 'user') { turn.input = text.trim(); turn.variants = []; turn.selected = 0;
+    const gate=turn.randomEvent;if(gate?.status==='pending')turn.randomEvent={status:'preparing',kind:gate.proposal.kind};
+  }
+  else { const v = selected(turn); if (!v) throw new Error('稿件不存在'); v.text = stripReasoning(text.trim()); v.status = 'incomplete'; delete v.outcome; }
   session.memories = session.memories.filter(m => m.sourceTurn !== turn.id);
   pruneForum(session);
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
-  const validated=validateOutcome(outcome,stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
+  variant.text=stripReasoning(variant.text);const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
   variant.outcome=validated;variant.status='complete';
+  session.memories=session.memories.filter(m=>!(m.kind==='event'&&m.sourceTurn===session.turns[turnIndex].id&&m.sourceVariant===variant.id));
   session.memories.push({ id: uid(), text: `${variant.outcome.event}。${variant.outcome.diceEvent?`骰子事件：${variant.outcome.diceEvent.description}。`:''}${variant.text.slice(0,220)}`, kind: 'event', createdAt: now(), sourceTurn: session.turns[turnIndex].id, sourceVariant: variant.id });
   session.updatedAt = now();
 }
@@ -180,10 +192,19 @@ export function keywordScore(text: string, query: string): number {
   return words.reduce((n,w) => n + (text.toLowerCase().includes(w) ? 3 : 0), 0) + chars.reduce((n,c) => n + (text.toLowerCase().includes(c) ? 0.1 : 0), 0);
 }
 export function backup(snapshot: Snapshot): string {
-  return JSON.stringify({ version: 1, sessions: copy(snapshot.sessions), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
+  return JSON.stringify({ version: 1, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
+}
+function sanitizeSessions(sessions:Session[]):Session[]{
+  if(!Array.isArray(sessions))return sessions;
+  for(const s of sessions){if(!s||typeof s!=='object')continue;if(s.initial)s.initial=scrubModelData(s.initial);
+    for(const turn of Array.isArray(s.turns)?s.turns:[])for(const v of Array.isArray(turn?.variants)?turn.variants:[]){if(!v||typeof v!=='object')continue;const clean=scrubModelData(v);for(const key of Object.keys(v))delete (v as any)[key];Object.assign(v,clean);}
+    for(const m of Array.isArray(s.memories)?s.memories:[])if(m){if(typeof m.vector?.text==='string'&&stripReasoning(m.vector.text)!==m.vector.text)delete m.vector;if(m.kind!=='note'&&typeof m.text==='string'){const text=stripReasoning(m.text);if(text!==m.text)delete m.vector;m.text=text;}}
+    for(const activity of Object.values(s.forumActivity||{}))for(const r of activity.replies||[])if(r.kind==='ai')r.text=stripReasoning(r.text);
+    if(Array.isArray(s.suggestions))s.suggestions=s.suggestions.map(x=>typeof x==='string'?stripReasoning(x):x);
+  }return sessions;
 }
 export function cleanPreferences(p: Preferences): Preferences {
-  return migrateApiSettings({ mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presets: p.presets.map(cleanPreset), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
+  return migrateApiSettings({ randomEventProfile:p.randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile:p.forumReplyProfile,mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presetParameters:cleanPresetParameters(p.presetParameters),presets: p.presets.map(cleanPreset), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
 }
 function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
@@ -196,6 +217,7 @@ export function parseBackup(text: string): Snapshot {
   if (new TextEncoder().encode(text).length > 20*1024*1024) throw new Error('首版备份限制为 20MB');
   const value = JSON.parse(text) as Snapshot; inspect(value);
   if (!value || value.version !== 1 || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
+  value.sessions=sanitizeSessions(value.sessions);
   if (value.sessions.length > 100 || !value.preferences.profiles.length || value.preferences.profiles.length > 30) throw new Error('存档最多 100 份，接口档案必须为 1～30 份');
   const ids = new Set<string>();
   for (const s of value.sessions) {
@@ -210,6 +232,8 @@ export function parseBackup(text: string): Snapshot {
     for (const t of s.turns) {
       if (!t || typeof t.id !== 'string' || turnIds.has(t.id) || typeof t.input !== 'string' || !Array.isArray(t.variants) || !Number.isInteger(t.selected) || t.selected < 0 || (t.variants.length && t.selected >= t.variants.length)) throw new Error('消息版本不合法');
       turnIds.add(t.id);
+      t.randomEvent=cleanRandomEventGate(t.randomEvent,t.dice);
+      if(t.randomEvent&&['preparing','failed','pending'].includes(t.randomEvent.status)&&(t.variants.length||t!==s.turns.at(-1)))throw new Error('待决定的随机事件不能有正文或后续回合');
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
       for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if (v.outcome) {const out=validateOutcome(v.outcome,s.initial);assertDiceEventBinding(out.diceEvent,t.dice);} }
     }
@@ -221,7 +245,7 @@ export function parseBackup(text: string): Snapshot {
     if (s.forumActivity !== undefined) {
       if (!record(s.forumActivity) || Object.keys(s.forumActivity).length > 10000) throw new Error('论坛互动记录不合法');
       for (const activity of Object.values(s.forumActivity)) {
-        if (!record(activity) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true))) throw new Error('论坛评论记录不合法');
+        if (!record(activity) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true)||(r.kind!==undefined&&r.kind!=='ai')||(r.kind==='ai'&&(!shortText(r.authorName,80,true)||!shortText(r.authorId,128,true)||!shortText(r.replyTo,128,true))))) throw new Error('论坛评论记录不合法');
       }
     }
   }

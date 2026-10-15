@@ -1,7 +1,27 @@
 import type {Preset,Profile} from './contracts';
+export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
+export const promptTriggers=[{value:'normal',label:'正常回复'},{value:'continue',label:'续写'},{value:'regenerate',label:'重演／重试'},{value:'swipe',label:'切换生成'},{value:'impersonate',label:'代写玩家'},{value:'quiet',label:'后台生成'}];
+export function newPresetEntries(id:string,name:string):Preset[]{
+  const labels:Record<string,string>={main:'主提示词',nsfw:'辅助提示词',jailbreak:'历史后提示词',chatHistory:'聊天历史',worldInfoBefore:'服务器世界资料（前）',worldInfoAfter:'服务器世界资料（后）',personaDescription:'玩家人设',charDescription:'角色设定',charPersonality:'角色性格',scenario:'当前场景',dialogueExamples:'对话示例',enhanceDefinitions:'补充设定提示'};
+  const order=['main','worldInfoBefore','personaDescription','charDescription','charPersonality','scenario','enhanceDefinitions','nsfw','worldInfoAfter','dialogueExamples','chatHistory','jailbreak'];
+  return order.map(identifier=>({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:labels[identifier],role:'system',content:identifier==='main'?'使用清晰中文叙事，停在需要玩家选择的地方。':'',enabled:identifier!=='enhanceDefinitions',included:true,marker:!['main','nsfw','jailbreak','enhanceDefinitions'].includes(identifier),position:identifier==='jailbreak'?'after':'before',depth:4,order:100}));
+}
+export const samplingFields=[['temperature',0,2],['maxTokens',1,32000],['topP',0,1],['frequencyPenalty',-2,2],['presencePenalty',-2,2]] as const;
+export function cleanSampling(value:unknown):Partial<Profile>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('预设采样参数不正确');const out:Partial<Profile>={};
+  for(const [key,min,max]of samplingFields){const n=(value as any)[key];if(n===undefined)continue;if(typeof n!=='number'||!Number.isFinite(n)||n<min||n>max||key==='maxTokens'&&!Number.isInteger(n))throw new Error('预设采样参数不正确');out[key]=n;}return out;
+}
+export function cleanPresetParameters(value:unknown):Record<string,Partial<Profile>>{
+  if(value===undefined)return {};if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>500)throw new Error('预设参数集合不正确');
+  return Object.fromEntries(Object.entries(value).map(([key,v])=>{if(['__proto__','constructor','prototype'].includes(key))throw new Error('预设标识不正确');return[key,cleanSampling(v)];}));
+}
+export function reorderPresetEntries(entries:Preset[],from:number,to:number){
+  const out=[...entries];if(from<0||to<0||from>=out.length||to>=out.length)return out;const [p]=out.splice(from,1);out.splice(to,0,p);
+  const history=out.findIndex(p=>p.identifier==='chatHistory');if(history>=0)for(const [i,p]of out.entries())if(p.position!=='in-chat')p.position=i>history?'after':'before';return out;
+}
 export const setId=(p:Preset)=>p.setId||'legacy';
 export function presetGroups(list:Preset[]){return [...new Map(list.map(p=>[setId(p),{id:setId(p),name:p.setName||'原有预设'}])).values()];}
-export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.enabled&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
+export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.included!==false&&p.enabled&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
 export function cleanPreset(p:Preset):Preset{
   if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||p.content.length>50000||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
   if(p.role!==undefined&&!['system','user','assistant'].includes(p.role)||p.position!==undefined&&!['before','after','in-chat'].includes(p.position))throw new Error('预设角色或位置不正确');
@@ -10,6 +30,7 @@ export function cleanPreset(p:Preset):Preset{
   if(p.role)out.role=p.role;if(p.position)out.position=p.position;
   for(const key of ['depth','order'] as const)if(p[key]!==undefined){if(!Number.isInteger(p[key])||p[key]!<0||p[key]!>10000)throw new Error('预设注入深度或顺序不正确');out[key]=p[key];}
   if(p.marker!==undefined){if(typeof p.marker!=='boolean')throw new Error('预设标记不正确');out.marker=p.marker;}
+  if(p.included!==undefined){if(typeof p.included!=='boolean')throw new Error('预设列表状态不正确');out.included=p.included;}
   if(p.triggers!==undefined){if(!Array.isArray(p.triggers)||p.triggers.some(n=>!['normal','continue','impersonate','swipe','regenerate','quiet'].includes(n)))throw new Error('预设触发类型不正确');out.triggers=[...p.triggers];}
   return out;
 }
@@ -40,7 +61,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
     const role=p.role==='model'?'assistant':p.role||'system';
     if(p.role==='model')modelRoleCount++;
     const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:p.injection_depth??4,order:p.injection_order??100,...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
-    return item;
+    if(hasOrder&&!record)item.included=false;return item;
   });
   if(modelRoleCount)warnings.push(`已将 ${modelRoleCount} 条 model 消息角色转换为 assistant；提示词、启停和位置保留。`);
   entries.sort((a,b)=>{const ai=order.findIndex(o=>o.identifier===a.identifier),bi=order.findIndex(o=>o.identifier===b.identifier);return(ai<0?9999:ai)-(bi<0?9999:bi);});
@@ -49,12 +70,16 @@ export function importTavernPreset(text:string,filename='导入预设'){
   if(entries.some(p=>p.marker))warnings.push('角色、世界资料和聊天历史占位条目由服务器统一提供；不能借此移除服务器必需设定。');
   if(entries.some(p=>/\{\{(?!user\}\}|char\}\})/.test(p.content)))warnings.push('仅替换 {{user}}、{{char}}；复杂宏和脚本不会执行，使用前请检查对应条目。');
   if(raw.extensions)warnings.push('预设扩展、脚本和正则未导入或执行。');
+  const special=['top_k','top_a','min_p','repetition_penalty','seed','reasoning_effort','openai_max_context','continue_prefill','assistant_prefill','squash_system_messages'].filter(key=>raw[key]!==undefined);if(special.length)warnings.push(`供应商专属或尚未接入的设置未执行：${special.join('、')}。`);
+  const accepted=['name','prompts','prompt_order','content','enabled','system_prompt','jailbreak_prompt','temperature','openai_max_tokens','top_p','frequency_penalty','presence_penalty'];
+  const other=Object.keys(raw).filter(key=>!accepted.includes(key)&&!special.includes(key)&&/^[a-z][a-z0-9_]{0,64}$/i.test(key)&&!/(?:key|token|url|proxy|password|secret|header)/i.test(key));if(other.length)warnings.push(`其他未执行的酒馆选项：${other.slice(0,12).join('、')}${other.length>12?` 等${other.length}项`:''}。`);
+  warnings.push('模型思维链强制隐藏；导入的思考展示选项不能覆盖此规则。');
   warnings.push('仅应用提示词及受支持的采样参数；文件中的服务地址、模型与凭据不会导入。');
   return {id,name,entries,parameters,warnings};
 }
 export function exportTavernPreset(entries:Preset[],profile:Profile){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
-  const ordered=[...entries.filter(p=>p!==anchor&&p.position!=='after'),anchor,...entries.filter(p=>p!==anchor&&p.position==='after')];
+  const ordered=[...entries.filter(p=>p!==anchor&&p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p!==anchor&&p.included!==false&&p.position==='after')];
   return JSON.stringify({name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }

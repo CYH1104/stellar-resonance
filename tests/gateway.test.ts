@@ -11,6 +11,21 @@ function streamResponse(text: string, end = true) {
   return new Response(new ReadableStream<Uint8Array>({ start(c) { for (const byte of bytes) c.enqueue(new Uint8Array([byte])); if (end) c.close(); } }), { headers: { 'Content-Type': 'text/event-stream' } });
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+it('安全进度信息传入页面，只有推理或未闭合标签会显示明确错误',async()=>{
+  for(const code of ['MODEL_REASONING_ONLY','MODEL_REASONING_UNCLOSED','MODEL_EMPTY_RESPONSE']){
+    vi.stubGlobal('fetch',async()=>streamResponse('data: {"type":"progress","phase":"hidden"}\n\ndata: '+JSON.stringify({type:'error',code})+'\n\n'));
+    const events:GenerateEvent[]=[];
+    await expect((async()=>{for await(const e of new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal))events.push(e);})()).rejects.toThrow(/正文/);
+    expect(events).toEqual([{type:'progress',phase:'hidden'}]);
+  }
+});
+it('模型测活单独发送所选接口和类型，错误不泄露上游响应',async()=>{
+  const fetcher=vi.fn(async()=>new Response(JSON.stringify({kind:'text',durationMs:36,visibleChars:2})));vi.stubGlobal('fetch',fetcher);
+  const profile=request().profile;expect(await new HttpGateway().probe(profile,'synthetic-key','text',new AbortController().signal)).toMatchObject({durationMs:36});
+  expect(JSON.parse((fetcher.mock.calls[0] as unknown as [string,RequestInit])[1].body as string)).toEqual({profile,key:'synthetic-key',kind:'text'});
+  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:'UPSTREAM_AUTH',detail:'synthetic-secret'}),{status:502}));
+  await expect(new HttpGateway().probe(profile,'synthetic-key','text',new AbortController().signal)).rejects.toThrow('拒绝凭据');
+});
 
 it('SSE 支持中文 UTF-8 和 CRLF 在任意字节处分片，done 后结束', async () => {
   const spy = vi.fn(async () => streamResponse('data: {"type":"delta","text":"你好"}\r\n\r\ndata: {"type":"done","outcome":{"event":"见面"}}\r\n\r\n', false));
@@ -39,6 +54,10 @@ it('模型列表通过本机接口读取，不需要预先指定模型名',async
   const fetcher=vi.fn(async()=>new Response(JSON.stringify({models:['synthetic-model-a','synthetic-model-b']}),{headers:{'Content-Type':'application/json'}}));vi.stubGlobal('fetch',fetcher);
   expect(await new HttpGateway().models('https://synthetic.example/v1','synthetic-key',new AbortController().signal)).toEqual(['synthetic-model-a','synthetic-model-b']);
   expect(fetcher.mock.calls[0]).toBeDefined();
+});
+it('状态补修进度展示可读原因，三次失败给出具体类别且不泄露未知代码',async()=>{
+  vi.stubGlobal('fetch',async()=>streamResponse('data: {"type":"repair","attempt":1,"maxAttempts":3,"code":"MODEL_STATE_FORUM_INVALID"}\n\ndata: {"type":"repair","attempt":2,"maxAttempts":3,"code":"synthetic-private-error"}\n\ndata: {"type":"error","code":"STATE_REPAIR_LIMIT","reasonCode":"MODEL_STATE_FORUM_INVALID"}\n\n'));
+  const events:GenerateEvent[]=[];await expect((async()=>{for await(const event of new HttpGateway().generate(request(),'',new AbortController().signal))events.push(event);})()).rejects.toThrow('论坛帖子');expect(events[0]).toMatchObject({type:'repair',attempt:1,reason:expect.stringContaining('论坛帖子')});expect(JSON.stringify(events)).not.toContain('synthetic-private-error');expect(events.some(e=>e.type==='done')).toBe(false);
 });
 it('模拟续写只追加剩余文字，最终回复与原稿一致', async () => {
   vi.useFakeTimers(); const gateway = new MockGateway();

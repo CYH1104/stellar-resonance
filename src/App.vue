@@ -6,18 +6,19 @@ import HomeView from './components/HomeView.vue';
 import StoryView from './components/StoryView.vue';
 import StatusBar from './components/StatusBar.vue';
 import TheaterRail from './components/TheaterRail.vue';
-import TheaterSettings from './components/TheaterSettings.vue';
+import GameSettingsView from './components/GameSettingsView.vue';
 import MemoryView from './components/MemoryView.vue';
 import WorldView from './components/WorldView.vue';
 import SettingsView from './components/SettingsView.vue';
 import SavesView from './components/SavesView.vue';
 import OpeningView from './components/OpeningView.vue';
+import PresetManager from './components/PresetManager.vue';
 
 const w = reactive(useWorkspace());
 const entry=ref<'opening'|'new'|'continue'>('opening');
 function start(){w.home();w.resetNewGameDraft();entry.value='new';w.ensureApiConfiguration();}
 function resume(){w.home();entry.value='continue';}
-function settings(){w.home();entry.value='new';w.panel='settings';}
+function settings(){w.home();entry.value='new';w.panel='game-settings';}
 function opening(){if(w.busy||w.workingMemory||w.workingPersona||w.creatingGame)return;w.home();entry.value='opening';}
 function navigate(panel:Panel){if(panel==='story')w.enterStory();else w.panel=panel;}
 const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
@@ -25,9 +26,10 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
   { id: 'memory', label: '记忆', no: '02', needsGame: true },
   { id: 'relations', label: '人物关系', no: '03', needsGame: true },
   { id: 'map', label: '地图', no: '04', needsGame: true },
-  { id: 'forum', label: '小剧场设置', no: '05', needsGame: true },
-  { id: 'settings', label: '模型与预设', no: '06' },
-  { id: 'saves', label: '存档与导出', no: '07' }
+  { id: 'game-settings', label: '设置', no: '05' },
+  { id: 'settings', label: '模型设置', no: '06' },
+  { id: 'presets', label: '预设', no: '07' },
+  { id: 'saves', label: '存档与导出', no: '08' }
 ];
 </script>
 
@@ -62,10 +64,11 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
             <SettingsView v-else-if="w.panel==='story'" :w="w" />
             <MemoryView v-else-if="w.panel==='memory'" :w="w" />
             <WorldView v-else-if="w.panel==='relations' || w.panel==='map'" :w="w" :kind="w.panel" />
-            <TheaterSettings v-else-if="w.panel==='forum'" :w="w" />
+            <GameSettingsView v-else-if="w.panel==='game-settings'" :w="w" />
             <TheaterRail v-else-if="w.panel==='theaters'" :w="w" />
             <StatusBar v-else-if="w.panel==='status'" :w="w" />
             <SettingsView v-else-if="w.panel==='settings'" :w="w" />
+            <PresetManager v-else-if="w.panel==='presets'" :w="w" />
             <SavesView v-else-if="w.panel==='saves'" :w="w" />
           </template>
         </div>
@@ -73,6 +76,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <aside v-if="w.active && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
     </div>
 
-    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.11.2 · 外观待 PPT</small></footer>
+    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.15.0 · 外观待 PPT</small></footer>
   </div>
 </template>

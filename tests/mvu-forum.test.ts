@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Outcome, Variant } from '../src/domain/contracts';
-import { backup, defaults, finishVariant, likeForum, newSession, parseBackup, replyForum, selectVariant, stateAt, truncate, validateOutcome, visibleForum } from '../src/domain/story';
+import {addForumAIReply,backup, defaults, finishVariant, likeForum, newSession, parseBackup, replyForum, selectVariant, stateAt, truncate, validateOutcome, visibleForum } from '../src/domain/story';
 
 const fresh = () => newSession('状态与论坛验收', { name: '访客', appearance: '', personality: '', background: '' }, '虚构开局');
 function variant(id: string): Variant { return { id, text: '公开剧情', status: 'incomplete', createdAt: new Date().toISOString() }; }
@@ -46,6 +46,11 @@ describe('每轮 MVU 展示字段', () => {
 });
 
 describe('剧情内论坛的一致性与存档', () => {
+  it('AI回复保留作者及回复目标，可恢复、不重复、回退后失效，且不更新主线MVU',()=>{
+    const s=fresh();add(s,'one',{event:'主线',forum:[post('公开动态')]});const key=visibleForum(s)[0].key,replyId=replyForum(s,key,'我的评论'),before=JSON.stringify(stateAt(s));
+    const reply={authorId:'guide',authorName:'角色甲',content:'<think>synthetic-secret</think>给你的公开答复'};addForumAIReply(s,key,replyId,reply);addForumAIReply(s,key,replyId,reply);expect(s.forumActivity?.[key].replies).toHaveLength(2);
+    const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(restored.forumActivity?.[key].replies[1]).toMatchObject({kind:'ai',authorName:'角色甲',replyTo:replyId,text:'给你的公开答复'});expect(JSON.stringify(stateAt(restored))).toBe(before);truncate(restored,0);expect(restored.forumActivity?.[key]).toBeUndefined();expect(()=>addForumAIReply(restored,key,replyId,reply)).toThrow('当前剧情');
+  });
   it('切稿后只显示所选动态，同 ID 的另一稿不继承点赞或评论', () => {
     const s = fresh(); const first = add(s, 'one', { event: '第一稿事件', forum: [post('第一稿动态')] });
     const oldKey = visibleForum(s)[0].key;

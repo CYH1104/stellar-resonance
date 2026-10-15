@@ -1,4 +1,8 @@
-# 本机世界卡接口 v0.11.1
+# 本机世界卡接口 v0.12.0
+
+状态格式错误现在触发只重建隐藏状态的补修，正文及骰点保持固定；与截断续写共用最多3次额外请求。SSE新增 `{type:'repair',attempt,maxAttempts:3,code}`，code 仅为安全静态类别，不回传原 JSON、字段值或供应商错误。耗尽返回 STATE_REPAIR_LIMIT 和 reasonCode；网页将其映射为可读原因。补修时即使模型复述正文也不会产生公开delta，最终仍须合法状态与结束标记才提交。
+
+手动只补状态使用 `continuation:{partial:'已经完整的正文',mode:'state'}`，其他 mode 拒绝。第一条上游请求即要求完整状态块；可再追加最多3次。普通续写不带 mode。允许状态块内部的标准 JSON Markdown 围栏并去掉围栏后严格 JSON.parse，不执行脚本或猜测数值。未知角色、字段错误、事件摘要、人物状态、论坛和小剧场分别给出独立错误类别。骰子结果缺少或方向冲突依旧直接报错，不凭空创造剧情后果。
 
 player.spiritThought 是 AI 动态生成的精神体 OS。已设置玩家 spiritAnimal 时，每轮必须返回非空 OS，不接受“未提供”“未知”“待生成”等占位值；否则 SSE 报 PLAYER_SPIRIT_THOUGHT_MISSING，不发 done，正文保留。精神体尚未设置时，不擅自补种类或其 OS；这个要求与 user 自己的 innerThought 不同，后者仍过滤。未完成或旧回合不在读取时触发付费补写。
 
@@ -27,9 +31,9 @@ v0.6 生成请求增加 `promptEntries`、`generationType`、`theaterSettings`�
 
 生成 body 见 `src/domain/contracts.ts` 的 GenerateRequest，额外含本次临时 `key`。profile 的 `apiBaseUrl` 必须与登记地址一致，模型服务使用 `${基础地址}/chat/completions`。支持 SSE delta 和返回 JSON 的兼容接口。首次调用及每次续写各自超时180秒，最多首次+3次自动续写；辅助任务60秒。生成中每15秒发送 SSE 注释心跳。续写可能计费，页面说明且可随时停止。首次调用尚未建立响应时的认证／连接错误直接按 HTTP 错误返回。
 
-完整协议为正文 + `<SR_STATE>合法JSON</SR_STATE><SR_DONE>`，两种标记都在服务端隐藏，只有最后的结束标记加合法状态才发 done；仅服务商 `[DONE]` 或 finish_reason 不算完整。缺少完整状态或结束标记时，后台携带累计原始前缀从断点继续，并保持卡片、采样参数、原行动和骰点。边界只去除至少8字符的完全重复片段，不猜测语义重复。内容校验错误（如未知角色、骰子方向不符）直接拒绝提交，不靠自动续写纠错。
+完整协议为正文 + `<SR_STATE>合法JSON</SR_STATE><SR_DONE>`，两种标记都在服务端隐藏，只有最后的结束标记加合法状态才发 done；仅服务商 `[DONE]` 或 finish_reason 不算完整。缺少完整状态或结束标记时，后台携带累计原始前缀从断点继续，并保持卡片、采样参数、原行动和骰点。边界只去除至少8字符的完全重复片段，不猜测语义重复。格式、字段及未知角色 ID 会进入固定正文的状态补修；骰子方向冲突等内容错误仍直接拒绝，不能借补修改写剧情。
 
-手动续写传 `generationType:'continue'` 和 `continuation:{partial:'已保存正文'}`；partial 必须非空，最多200000字符，不允许额外 continuation 字段。首次手动请求也可再自动追加最多3次。前端复用当前未完成稿，只追加新正文；浏览器不保存或回传隐藏协议块。
+手动续写传 `generationType:'continue'` 和 `continuation:{partial:'已保存正文'}`；partial 必须非空，最多200000字符，另允许只补状态的 mode 字段，除此之外不允许其他字段。首次手动请求也可再自动追加最多3次。前端复用当前未完成稿，只追加新正文；浏览器不保存或回传隐藏协议块。
 
 人设辅助超时90秒，愿望最多3000字，模型结果必须为合法的人设 JSON。字段为 name、appearance、primaryGender、secondaryGender、personality、background、spiritAnimal、other；不允许额外字段。网页收到完整结果才补空白，不覆盖玩家原填写。精神体与其他会进入存档和后续叙事请求。
 

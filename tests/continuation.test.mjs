@@ -7,14 +7,30 @@ const profile={id:'story',model:'synthetic-model',temperature:0.7,maxTokens:1600
 const metadata=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'收到回复'})+STATE_CLOSE;
 const json=text=>new Response(JSON.stringify({choices:[{message:{content:text}}]}),{headers:{'Content-Type':'application/json'}});
 function sse(text){const bytes=new TextEncoder().encode([...text].map(c=>'data: '+JSON.stringify({choices:[{delta:{content:c}}]})+'\n\n').join('')+'data: [DONE]\n\n');return new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=7)c.enqueue(bytes.slice(i,i+7));c.close();}}),{headers:{'Content-Type':'text/event-stream'}});}
-async function run(parts,{partial='',controller=new AbortController(),firstSignal,onEvent,fetchFailure=false}={}){
+async function run(parts,{partial='',stateOnly=false,controller=new AbortController(),firstSignal,onEvent,fetchFailure=false}={}){
   const events=[],calls=[];let error;
-  try{for await(const event of streamStory({card,state,options:{},messages:[{role:'system',content:'固定规则'},{role:'system',content:'私有卡片'},{role:'user',content:'原行动'}],partial,connection:{url:'https://synthetic.example/v1/chat/completions'},profile,key:'synthetic-key',firstResponse:parts[0] instanceof Response?parts[0]:sse(parts[0]),firstSignal,signal:controller.signal,fetchImpl:async(url,options)=>{assert.equal(options.signal.aborted,false);calls.push({url,payload:JSON.parse(options.body),authorization:options.headers.Authorization});if(fetchFailure)throw new Error('synthetic-network-down');return sse(parts[calls.length]||'');}})){events.push(event);onEvent?.(event);}}
+  try{for await(const event of streamStory({card,state,options:{},messages:[{role:'system',content:'固定规则'},{role:'system',content:'私有卡片'},{role:'user',content:'原行动'}],partial,stateOnly,connection:{url:'https://synthetic.example/v1/chat/completions'},profile,key:'synthetic-key',firstResponse:parts[0] instanceof Response?parts[0]:sse(parts[0]),firstSignal,signal:controller.signal,fetchImpl:async(url,options)=>{assert.equal(options.signal.aborted,false);calls.push({url,payload:JSON.parse(options.body),authorization:options.headers.Authorization});if(fetchFailure)throw new Error('synthetic-network-down');return sse(parts[calls.length]||'');}})){events.push(event);onEvent?.(event);}}
   catch(e){error=e;}
   return {events,calls,error,text:events.filter(e=>e.type==='delta').map(e=>e.text).join('')};
 }
 test('first complete response has no continuation and exposes neither marker nor state',async()=>{
   const result=await run(['完整正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.text,'完整正文。');assert.equal(result.calls.length,0);assert.equal(result.events.filter(e=>e.type==='done').length,1);
+});
+test('model reasoning and fake state markers inside it are hidden before protocol decoding',async()=>{
+  const result=await run(['<think>synthetic-secret'+metadata+RESPONSE_END+'</think>正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.text,'正文。');assert.equal(result.calls.length,0);assert.ok(!JSON.stringify(result.events).includes('synthetic-secret'));
+});
+test('a reply containing only unclosed reasoning fails explicitly without extra billed continuations',async()=>{
+  const result=await run(['<thinking>synthetic-secret']);assert.equal(result.error.code,'MODEL_REASONING_UNCLOSED');assert.equal(result.text,'');assert.equal(result.calls.length,0);assert.ok(!JSON.stringify(result.events).includes('synthetic-secret'));
+});
+test('a new reasoning block in a fresh continuation cannot trap its body in the prior unclosed block',async()=>{
+  const result=await run(['已有正文。<thinking>synthetic-secret','<thinking>new-secret</thinking>续写正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.text,'已有正文。续写正文。');assert.equal(result.calls.length,1);assert.ok(!JSON.stringify(result.calls).includes('synthetic-secret'));assert.ok(!JSON.stringify(result.events).includes('new-secret'));
+});
+test('an actual continuation of a cut reasoning block stays hidden until its closing tag',async()=>{
+  const result=await run(['已有正文。<thinking>synthetic-secret','still-secret</thinking>续写正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.text,'已有正文。续写正文。');assert.ok(!JSON.stringify(result.events).includes('still-secret'));
+});
+test('malformed hidden JSON is repaired without appending or repeating any visible prose',async()=>{
+  const result=await run(['原正文已结束。'+STATE_OPEN+'{bad json}'+STATE_CLOSE+RESPONSE_END,'不要显示这句重写正文。'+metadata+RESPONSE_END]);
+  assert.equal(result.error,undefined);assert.equal(result.text,'原正文已结束。');assert.equal(result.calls.length,1);assert.equal(result.events.filter(e=>e.type==='done').length,1);assert.equal(result.events.find(e=>e.type==='repair').code,'MODEL_STATE_JSON_INVALID');assert.ok(result.calls[0].payload.messages.at(-1).content.includes('不重新掷骰'));
 });
 test('body cutoff appends exactly once, retains original card/model/key and completes state only at end',async()=>{
   const result=await run(['你在报到处等待。','老师拿来了登记表。'+metadata+RESPONSE_END]);
@@ -58,8 +74,22 @@ test('manual continuation primes existing prose and removes an exact repeated bo
 test('restarted state and end markers do not leak previously cut marker prefixes',async()=>{
   for(const parts of [['正文。<SR_ST',metadata+RESPONSE_END],['正文。'+metadata+'<SR_D',RESPONSE_END],['正文。'+STATE_OPEN+'{"presentChar',metadata+RESPONSE_END]]){const result=await run(parts);assert.equal(result.error,undefined);assert.equal(result.text,'正文。');}
 });
-test('complete but invalid game state is not repaired by paid continuation',async()=>{
-  const result=await run(['正文。'+STATE_OPEN+'{"presentCharacterIds":["unknown"],"event":"事件"}'+STATE_CLOSE+RESPONSE_END]);assert.equal(result.error?.code,'INVALID_MODEL_STATE');assert.equal(result.calls.length,0);
+test('invalid hidden state exhausts only three repairs and reports its precise reason without a commit',async()=>{
+  const broken=STATE_OPEN+'{"presentCharacterIds":["unknown"],"event":"事件"}'+STATE_CLOSE+RESPONSE_END;
+  const result=await run(['正文。'+broken,broken,broken,broken]);assert.equal(result.error?.code,'STATE_REPAIR_LIMIT');assert.equal(result.error?.reasonCode,'MODEL_STATE_ROSTER_INVALID');assert.equal(result.calls.length,3);assert.equal(result.text,'正文。');assert.ok(!result.events.some(e=>e.type==='done'));
+});
+
+test('continuation and metadata repair share the same extra-request budget',async()=>{
+  const result=await run(['前半句。','后半句。'+STATE_OPEN+'{bad}'+STATE_CLOSE+RESPONSE_END,metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.calls.length,2);assert.equal(result.text,'前半句。后半句。');assert.deepEqual(result.events.filter(e=>['continuation','repair'].includes(e.type)).map(e=>[e.type,e.attempt]),[['continuation',1],['repair',2]]);
+});
+test('user stopping metadata repair prevents its API call and never commits state',async()=>{
+  const controller=new AbortController();const result=await run(['正文。'+STATE_OPEN+'{bad}'+STATE_CLOSE+RESPONSE_END],{controller,onEvent:e=>{if(e.type==='repair')controller.abort();}});assert.equal(result.error?.name,'AbortError');assert.equal(result.calls.length,0);assert.ok(!result.events.some(e=>e.type==='done'));
+});
+test('manual state-only repair never modifies already saved prose, even if the model repeats it',async()=>{
+  const result=await run(['错误重复的正文。'+metadata+RESPONSE_END],{partial:'已存正文。',stateOnly:true});assert.equal(result.error,undefined);assert.equal(result.text,'');assert.equal(result.events.at(-1).type,'done');
+});
+test('fenced JSON in a hidden block is accepted without an extra model call',async()=>{
+  const result=await run(['正文。'+STATE_OPEN+'```json\n{"presentCharacterIds":[],"event":"完成"}\n```'+STATE_CLOSE+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.calls.length,0);assert.equal(result.text,'正文。');
 });
 test('completion marker alone is hidden and never proves a round is complete',()=>{
   const d=new StoryDecoder();let text='';for(const char of '正文。'+RESPONSE_END)text+=d.push(char);assert.equal(text,'正文。');assert.throws(()=>d.finish(card,state),{code:'MODEL_RESPONSE_INCOMPLETE'});

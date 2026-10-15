@@ -47,3 +47,11 @@ v0.6.2 修复：取消导入250条和全库30万字限制。5MB文件大小边�
 ## 精神体与好感
 
 原 pro 数据的 `str` 含“精神体 …”标签，从中提取种类；`shos` 是人物外号，不作精神体。模型只能更新允许公开的 `spiritThought`，不能改写固定种类。原资料缺少的种类和好感度仍保留未提供，不补设定。user 状态卡列出所有已登记 char 的好感，不只在场人物。
+# v0.13 独立预设与固定思维链过滤
+
+顶部“预设”独立于模型设置。提示词列表、库中未插入项、相对排序和跨历史占位拖动、深度注入、多选触发、角色、草稿保存／取消、新建／副本／改名／删除确认、导入导出均接通；每份参数独立存于 Preferences.presetParameters，按白名单覆盖剧情 profile，不导入地址、模型或密钥，不影响摘要与建议接口的基础采样。固定提示词不可删除，可启停；服务器设定和结构化协议始终受保护。
+
+参考官方 [Prompt Manager](https://docs.sillytavern.app/usage/prompts/prompt-manager/) 与 [Reasoning](https://docs.sillytavern.app/usage/prompts/reasoning/)。同深度按 User／Assistant／System分组，再按Order排序；深度注入不受相对拖动位置影响。并非复制上游代码或引入完整运行时。下方旧版说明中“模型与预设”入口已迁移，最新入口为顶部“预设”。
+
+思考展示固定关闭，导入文件不能覆盖。API独立reasoning_content、reasoning及thinking块不会被转发；固定标签解析器在正文协议之前运行，跨流式字节、续写、嵌套及未闭合保护。已识别的Think/Thinking/Think_rules/Analysis/Reasoning/Cot/Scratchpad等块和HTML注释不进入聊天、自动记忆、状态或导出，旧存档读取同步清理，向量文本有污染时丢弃索引。角色想法及精神体OS普通文字保留；玩家手工预设内容和笔记不改写。不能声称通用语义识别器可以识别任意无标记推理。
+

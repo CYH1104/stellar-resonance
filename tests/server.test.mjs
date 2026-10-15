@@ -12,6 +12,10 @@ let app,base,cookie,source,calls=[];
 const profile={id:'test',apiBaseUrl:'https://synthetic.example/v1',model:'synthetic-model',temperature:0.7,maxTokens:1600};
 const post=(path,body,headers={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,...headers},body:JSON.stringify(body)});
 const events=text=>text.split('\n\n').filter(t=>t.startsWith('data: ')).map(t=>JSON.parse(t.slice(6)));
+function sides(payload){
+  const context=JSON.parse(payload.messages[2].content.split('：\n')[1]);
+  return {forum:context.theaterPlans.some(t=>t.slot===1)?[{id:'test-post',authorName:'校园同学',content:'今天食堂上新了'}]:[],theaters:context.theaterPlans.filter(t=>t.slot>1).map(t=>({slot:t.slot,kind:t.kind,title:t.title,content:t.kind==='group'?'':'独立番外内容',...(t.kind==='group'?{messages:[{speaker:'同学',content:'群聊独有的问候'}]}:{}),...(t.kind==='fanfic'?{participantIds:t.participantIds||['player','pro-02']}:{} )}))};
+}
 function fakeFetch(url,options){
   if(options.method==='GET'){
     calls.push({url,...options});
@@ -20,12 +24,24 @@ function fakeFetch(url,options){
     return new Response(JSON.stringify({data:[{id:'model-z'},{id:'model-a'},{id:'model-a'},{id:null}]}),{headers:{'Content-Type':'application/json'}});
   }
   const payload=JSON.parse(options.body);calls.push({url,...options,payload});
+  if(payload.model.startsWith('probe-')){
+    if(payload.model==='probe-auth')return new Response('synthetic-private-key-and-error',{status:401});
+    if(payload.model==='probe-network')throw new TypeError('synthetic-private-network-detail');
+    if(Array.isArray(payload.input))return new Response(JSON.stringify({data:[{index:0,embedding:[0.5,0.1,0.2]}]}));
+    return new Response(JSON.stringify({choices:[{message:payload.model==='probe-reasoning'?{reasoning_content:'synthetic-private-thought',content:null}:{content:'OK'}}]}),{headers:{'Content-Type':'application/json'}});
+  }
   if(Array.isArray(payload.input))return new Response(JSON.stringify({data:payload.input.map((text,index)=>({index,embedding:[index+1,0.5]})).reverse()}),{headers:{'Content-Type':'application/json'}});
   const action=payload.messages.at(-1).content;
+  if(payload.messages[0].content.startsWith('你只设计一个尚未发生'))return new Response(JSON.stringify({choices:[{message:{content:'<think>不能展示</think>{"title":"意外来信","description":"一封未署名来信等待你决定是否查看。"}'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages[0].content.startsWith('你为剧情内的虚构校园论坛'))return new Response(JSON.stringify({choices:[{message:{content:'{"content":"我推荐食堂的新菜。"}'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages.some(m=>m.role==='user'&&m.content==='state-repair')){
+    const repairing=action.startsWith('[系统状态补修');const content=repairing?'<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'状态补修完成'})+'</SR_STATE>'+RESPONSE_END:'原正文完整。<SR_STATE>{bad}</SR_STATE>'+RESPONSE_END;
+    return new Response(JSON.stringify({choices:[{message:{content}}]}),{headers:{'Content-Type':'application/json'}});
+  }
   const scenario=payload.messages.find(m=>m.role==='user'&&['cut-success','cut-limit','cut-manual'].includes(m.content))?.content;
   if(scenario){
     const continuing=action.startsWith('[系统续写控制');
-    const ending='<SR_STATE>'+JSON.stringify({presentCharacterIds:[],event:'续写完成'})+'</SR_STATE>'+RESPONSE_END;
+    const ending='<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'续写完成'})+'</SR_STATE>'+RESPONSE_END;
     const content=scenario==='cut-limit'?'一段未完正文。':scenario==='cut-manual'?'接上新正文。'+ending:continuing?'后半句。'+ending:'前半句。';
     return new Response(JSON.stringify({choices:[{message:{content}}]}),{headers:{'Content-Type':'application/json'}});
   }
@@ -34,11 +50,11 @@ function fakeFetch(url,options){
     return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(persona)}}]}),{headers:{'Content-Type':'application/json'}});
   }
   if(action==='auth-error')return new Response('synthetic-key-and-private-internal',{status:401});
-  if(action==='invalid')return new Response(JSON.stringify({choices:[{message:{content:'正文仍可阅读，但状态不合法。<SR_STATE>{"presentCharacterIds":["invented"],"event":"错误"}</SR_STATE>'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages.some(m=>m.role==='user'&&m.content==='invalid'))return new Response(JSON.stringify({choices:[{message:{content:'正文仍可阅读，但状态不合法。<SR_STATE>{"presentCharacterIds":["invented"],"event":"错误"}</SR_STATE>'}}]}),{headers:{'Content-Type':'application/json'}});
   const ids=action==='leave'?[]:['pro-02'];
   const context=JSON.parse(payload.messages[2].content.split('：\n')[1]),plan=context.dicePlan;
   const diceEvent=plan?{direction:action==='dice-opposite'?'positive':plan.direction,description:plan.direction==='negative'?'报到资料缺页，需要补办。':plan.direction==='positive'?'值班人员帮你找到空闲窗口，报到进度提前。':'窗口换班时了解了公开流程。'}:undefined;
-  const text=(diceEvent?diceEvent.description:'')+'收到远程通讯；眼前人物由这一幕决定。<SR_STATE>'+JSON.stringify({presentCharacterIds:ids,characters:[{id:'pro-02',innerThought:'先听他说完。',affinity:99,spiritThought:'先观察门口。'}],event:diceEvent?.description||'本轮场景已推进',...(diceEvent&&action!=='dice-missing'?{diceEvent}:{}),...(action==='spirit-ok'?{player:{spiritThought:'竖起耳朵观察来人。'}}:{}),...(action==='identity'?{player:{identity:'项目助理',innerThought:'不应该返回玩家想法'}}:{}),forum:[],...(action==='theaters'?{player:{spiritThought:'想睡觉'},theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'群聊独有的问候'}]},{slot:3,kind:'fanfic',title:'番外',content:'user 与 char 的独立日常。',participantIds:['player','pro-02']},{slot:4,kind:'custom',title:'采访',content:'采访的独立内容。'}]}:{})})+'</SR_STATE>'+RESPONSE_END;
+  const text=(diceEvent?diceEvent.description:'')+'收到远程通讯；眼前人物由这一幕决定。<SR_STATE>'+JSON.stringify({presentCharacterIds:ids,characters:[{id:'pro-02',innerThought:'先听他说完。',affinity:99,spiritThought:'先观察门口。'}],event:diceEvent?.description||'本轮场景已推进',...(diceEvent&&action!=='dice-missing'?{diceEvent}:{}),...(action==='spirit-ok'?{player:{spiritThought:'竖起耳朵观察来人。'}}:{}),...(action==='identity'?{player:{identity:'项目助理',innerThought:'不应该返回玩家想法'}}:{}),...sides(payload),...(action==='theaters'?{player:{spiritThought:'想睡觉'},theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'群聊独有的问候'}]},{slot:3,kind:'fanfic',title:'番外',content:'user 与 char 的独立日常。',participantIds:['player','pro-02']},{slot:4,kind:'custom',title:'采访',content:'采访的独立内容。'}]}:{})})+'</SR_STATE>'+RESPONSE_END;
   const bytes=new TextEncoder().encode([...text].map(char=>'data: '+JSON.stringify({choices:[{delta:{content:char}}]})+'\r\n\r\n').join('')+'data: [DONE]\r\n\r\n');
   return new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=19)c.enqueue(bytes.slice(i,i+19));c.close();}}),{headers:{'Content-Type':'text/event-stream'}});
 }
@@ -75,13 +91,13 @@ test('registering address makes no external request; URL credentials rejected',a
 });
 test('actual model request includes private card; SSE exposes story and validated full scene only',async()=>{
   const result=events(await(await post('/api/generate',await request())).text());const story=result.filter(e=>e.type==='delta').map(e=>e.text).join('');const done=result.at(-1);
-  assert.equal(done.type,'done');assert.ok(!story.includes('SR_STATE'));assert.ok(!story.includes('presentCharacterIds'));assert.deepEqual(done.outcome.characters.filter(c=>c.present).map(c=>c.id),['pro-02']);assert.equal(done.outcome.characters.length,source.characters.length);assert.equal(done.outcome.characters[1].affinity,undefined);
+  assert.equal(done.type,'done');assert.ok(!story.includes('SR_STATE'));assert.ok(!story.includes('presentCharacterIds'));assert.deepEqual(done.outcome.characters.filter(c=>c.present).map(c=>c.id),['pro-02']);assert.equal(done.outcome.characters.length,source.characters.length);assert.equal(done.outcome.characters[1].affinity,99);
   assert.ok(calls.at(-1).payload.messages.some(m=>m.content.includes(source.characters[0].intro)));assert.equal(calls.at(-1).redirect,'error');assert.equal(calls.at(-1).headers.Authorization,'Bearer synthetic-key');
 });
 test('next model full scene clears departed actors, independent of mentioned name',async()=>{
   const r=await request('leave');r.state.characters[1].present=true;const result=events(await(await post('/api/generate',r)).text());assert.ok(result.at(-1).outcome.characters.every(c=>c.present===false));
 });
-test('invalid state emits error with no committed update',async()=>{const result=events(await(await post('/api/generate',await request('invalid'))).text());assert.equal(result.at(-1).type,'error');assert.equal(result.at(-1).code,'UNKNOWN_MODEL_CHARACTER');assert.ok(!result.some(e=>e.type==='done'));assert.ok(!JSON.stringify(result).includes('invented'));});
+test('invalid state emits a precise reason after bounded repairs and no committed update',async()=>{const count=calls.length;const result=events(await(await post('/api/generate',await request('invalid'))).text());assert.equal(calls.length-count,4);assert.equal(result.at(-1).type,'error');assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,'UNKNOWN_MODEL_CHARACTER');assert.ok(!result.some(e=>e.type==='done'));assert.ok(!JSON.stringify(result).includes('invented'));});
 test('upstream error bodies and credentials are not returned',async()=>{const response=await post('/api/generate',await request('auth-error'));assert.equal(response.status,502);assert.deepEqual(await response.json(),{code:'UPSTREAM_AUTH'});});
 test('client roster, changed endpoints, missing keys and unconfigured embeddings are rejected',async()=>{
   assert.equal((await post('/api/generate',{...await request(),presentCharacterIds:['pro-01']})).status,400);
@@ -143,9 +159,9 @@ test('player identity initializes from persona and updates independently, player
 });
 test('HTTP generation returns AI spirit OS for a configured player spirit and reports omission explicitly',async()=>{
   for(const action of ['spirit-ok','spirit-missing']){
-    const r=await request(action);r.persona.spiritAnimal='白猫';const count=calls.length;const result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,1);
+    const r=await request(action);r.persona.spiritAnimal='白猫';const count=calls.length;const result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,action==='spirit-ok'?1:4);
     if(action==='spirit-ok'){assert.equal(result.at(-1).type,'done');assert.equal(result.at(-1).outcome.player.spiritThought,'竖起耳朵观察来人。');}
-    else{assert.equal(result.at(-1).code,'PLAYER_SPIRIT_THOUGHT_MISSING');assert.ok(!result.some(e=>e.type==='done'));assert.ok(result.some(e=>e.type==='delta'));}
+    else{assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,'PLAYER_SPIRIT_THOUGHT_MISSING');assert.ok(!result.some(e=>e.type==='done'));assert.ok(result.some(e=>e.type==='delta'));}
     assert.ok(calls.at(-1).payload.messages[0].content.includes('每轮必须输出 player.spiritThought'));
   }
 });
@@ -166,3 +182,42 @@ test('HTTP manual continuation seeds existing prose and rejects malformed partia
   for(const continuation of [{partial:''},{partial:'  '},{partial:42},{partial:'正文',extra:true},[],null])assert.equal((await post('/api/generate',{...r,continuation})).status,400);
   assert.equal(calls.length-count,1);
 });
+test('HTTP automatically repairs JSON state and hides all repair output, committing exactly once',async()=>{
+  const count=calls.length,result=events(await(await post('/api/generate',await request('state-repair'))).text());assert.equal(calls.length-count,2);assert.equal(result.filter(e=>e.type==='delta').map(e=>e.text).join(''),'原正文完整。');assert.equal(result.filter(e=>e.type==='done').length,1);assert.equal(result.find(e=>e.type==='repair').code,'MODEL_STATE_JSON_INVALID');assert.equal(result.at(-1).outcome.event,'状态补修完成');
+});
+test('probe performs one small real text or embedding call before configuration, without private game context',async()=>{
+  for(const kind of ['text','embedding']){
+    const count=calls.length,p={...profile,id:'unregistered-probe',model:'probe-ok'},r=await post('/api/probe',{profile:p,key:'synthetic-key',kind});
+    assert.equal(r.status,200);const result=await r.json();assert.equal(result.kind,kind);assert.ok(result.durationMs>=0);assert.equal(calls.length-count,1);assert.ok(!JSON.stringify(calls.at(-1).payload).includes(source.world.greeting[0]));
+    if(kind==='text'){assert.equal(result.visibleChars,2);assert.equal(calls.at(-1).payload.max_tokens,512);assert.equal(calls.at(-1).payload.messages.length,1);}
+    else{assert.equal(result.dimensions,3);assert.deepEqual(calls.at(-1).payload.input,['连接测试']);}
+    assert.ok(!('vectors'in result));assert.ok(!('content'in result));
+  }
+});
+test('probe exposes safe specific failures and rejects unsafe URLs or missing credentials before fetching',async()=>{
+  for(const [model,code]of [['probe-auth','UPSTREAM_AUTH'],['probe-network','MODEL_UNREACHABLE'],['probe-reasoning','MODEL_REASONING_ONLY']]){
+    const r=await post('/api/probe',{profile:{...profile,model},key:'synthetic-key',kind:'text'});assert.equal(r.status,502);assert.deepEqual(await r.json(),{code});
+  }
+  const count=calls.length;
+  for(const body of [{profile:{...profile,apiBaseUrl:'https://secret@example.com/v1'},key:'synthetic-key',kind:'text'},{profile,key:'',kind:'text'},{profile,key:'synthetic-key',kind:'unsupported'}])assert.equal((await post('/api/probe',body)).status,400);
+  assert.equal(calls.length,count);
+});
+test('forum replies use the selected registered connection and return only server-chosen author plus one reply',async()=>{
+  const auxiliary={...profile,id:'forum-aux',apiBaseUrl:'https://forum.synthetic.example/v1'};await post('/api/connection',{profileId:auxiliary.id,apiBaseUrl:auxiliary.apiBaseUrl});
+  const count=calls.length,response=await post('/api/forum-reply',{profile:auxiliary,key:'synthetic-forum-key',userName:'测试玩家',post:{authorName:'路人',content:'食堂上新'},comments:[{authorName:'测试玩家',content:'推荐哪个？'}]});assert.equal(response.status,200);const reply=await response.json();assert.deepEqual(Object.keys(reply).sort(),['authorId','authorName','content']);assert.equal(reply.content,'我推荐食堂的新菜。');assert.equal(calls.length-count,1);assert.equal(calls.at(-1).url,'https://forum.synthetic.example/v1/chat/completions');assert.equal(calls.at(-1).headers.Authorization,'Bearer synthetic-forum-key');assert.ok(!JSON.stringify(reply).includes('synthetic-forum-key'));assert.ok(!('affinity'in reply));
+  const last=JSON.parse(calls.at(-1).payload.messages.at(-1).content);assert.equal(last.comments[0].content,'推荐哪个？');assert.ok(!('state'in last));
+});
+test('bad forum requests are rejected before a paid model call',async()=>{
+  const count=calls.length;const response=await post('/api/forum-reply',{profile,key:'synthetic-key',userName:'玩家',post:{authorName:'路人',content:'动态'},comments:[]});assert.equal(response.status,400);assert.equal((await response.json()).code,'INVALID_FORUM_REPLY');assert.equal(calls.length,count);
+});
+test('HTTP manual state-only repair returns no new prose and validates its mode before calling the provider',async()=>{
+  const r=await request('cut-manual');r.continuation={partial:'已保存的完整正文。',mode:'state'};const count=calls.length,result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,1);assert.equal(result.at(-1).type,'done');assert.ok(!result.some(e=>e.type==='delta'));assert.ok(calls.at(-1).payload.messages.at(-1).content.startsWith('[系统状态补修'));
+  for(const mode of ['unsafe',true,{}])assert.equal((await post('/api/generate',{...r,continuation:{partial:'正文',mode}})).status,400);assert.equal(calls.length-count,1);
+});
+
+test('random-event endpoint uses selected model and returns candidate only, without main story or private fields',async()=>{
+  const route={...profile,id:'random-events',model:'events-model'};await post('/api/connection',{profileId:route.id,apiBaseUrl:route.apiBaseUrl});const before=calls.length;
+  const response=await post('/api/random-event',{kind:'惊喜事件',persona:{name:'测试玩家'},input:'走进教室',history:[],presentCharacterIds:[],profile:route,key:'synthetic-key'});assert.equal(response.status,200);assert.deepEqual(await response.json(),{kind:'惊喜事件',title:'意外来信',description:'一封未署名来信等待你决定是否查看。'});assert.equal(calls.length,before+1);assert.equal(calls.at(-1).payload.model,'events-model');assert.ok(calls.at(-1).payload.max_tokens<=2000);
+  const invalid=await post('/api/random-event',{kind:'未知',persona:{name:'测试玩家'},input:'走进教室',history:[],presentCharacterIds:[],profile:route,key:'synthetic-key'});assert.equal(invalid.status,400);assert.equal((await invalid.json()).code,'INVALID_RANDOM_EVENT');assert.equal(calls.length,before+1);
+});
+
