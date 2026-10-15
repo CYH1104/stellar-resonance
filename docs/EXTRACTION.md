@@ -1,7 +1,7 @@
 # pro 插件资料提取记录
 
-来源：星际终端 - pro版本.js
-SHA-256：cd644b7ee7c4c1e090d18152e008d7b8b8922ded03ab40683acb0da4f3f81d75
+来源：original-pro.js
+SHA-256：ed6cf8683d81f226afba108fd474c2e020b9cf7a1904e58b7d27178a691360d3
 
 - 14 名角色，保留原文姓名、sex、头衔、精神力／精神体、标签、简介、语录。
 - 5 个院系，12 条地点／活动资料。
@@ -9,14 +9,14 @@ SHA-256：cd644b7ee7c4c1e090d18152e008d7b8b8922ded03ab40683acb0da4f3f81d75
 - 迎新文案、学生表单定义、地图坐标与页面原有世界观文字。
 
 ## 原文件位置
-- REV_DEFAULT_LIST：第 1217 行
-- SPLASH_CHARACTERS：第 1976 行
-- STU_HEAD：第 2057 行
-- STU_FIELDS：第 2062 行
-- MAP_COORD：第 2580 行
-- MAP_PLACES：第 2581 行
-- MAP_INTROS：第 2727 行
-- MAP_BODY_HTML：第 2742 行
+- REV_DEFAULT_LIST：第 1220 行
+- SPLASH_CHARACTERS：第 1979 行
+- STU_HEAD：第 2060 行
+- STU_FIELDS：第 2065 行
+- MAP_COORD：第 2583 行
+- MAP_PLACES：第 2584 行
+- MAP_INTROS：第 2730 行
+- MAP_BODY_HTML：第 2745 行
 
 ## 映射与缺失
 - 角色 sex 值为 Alpha/Beta/Omega，按同文件 STU_FIELDS 的 sex2 定义映射为第二性别；不将其作为第一性别。

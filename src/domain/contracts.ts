@@ -1,7 +1,7 @@
 import type {SpecialEvent,RandomEventGate} from './randomEvents';
 export type Mode = 'demo' | 'server';
-export type Panel = 'story' | 'memory' | 'relations' | 'map' | 'game-settings' | 'theaters' | 'status' | 'settings' | 'presets' | 'saves';
-export interface Persona { name: string; appearance: string; personality: string; background: string; identity?:string;primaryGender?: string; secondaryGender?: string; spiritAnimal?:string; other?:string; pairingPreference?:string }
+export type Panel = 'story' | 'memory' | 'relations' | 'map' | 'forum' | 'game-settings' | 'theaters' | 'status' | 'settings' | 'presets' | 'saves';
+export interface Persona { name: string; appearance: string; personality: string; background: string; identity?:string;primaryGender?: string; secondaryGender?: string; spiritAnimal?:string; other?:string; pairingPreference?:string; rawText?:string }
 export interface ActorState {
   id: string; name: string; present: boolean; affinity?: number;
   identity?:string;primaryGender?: string; secondaryGender?: string; innerThought?: string; spiritAnimal?:string; spiritThought?:string;

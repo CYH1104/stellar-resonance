@@ -7,10 +7,10 @@
     "dev": "vite --host 127.0.0.1",
     "check": "vue-tsc --noEmit",
     "test": "vitest run",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "node scripts/sync-terminal.mjs && vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "start": "node server/index.mjs",
-    "test:server": "node --test tests/server.test.mjs tests/ai.test.mjs tests/continuation.test.mjs tests/load-card.test.mjs tests/dynamic-state.test.mjs tests/forum-reply.test.mjs tests/random-events.test.mjs"
+    "start": "node server.mjs",
+    "test:server": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "vue": "3.5.44"

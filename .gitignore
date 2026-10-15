@@ -6,3 +6,6 @@ dist/
 .env.*
 !.env.example
 *.log
+
+.integration/
+server.config.json

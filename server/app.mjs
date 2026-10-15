@@ -12,7 +12,7 @@ import {loadCard} from './load-card.mjs';
 import {randomEventMessages,parseRandomEvent} from './random-events.mjs';
 import {forumReplyMessages,parseForumReply} from './forum.mjs';
 import {stripReasoning} from '../src/domain/reasoning.ts';
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.gif':'image/gif'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
 export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card}){
@@ -133,6 +133,13 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         throw modelError(404,'API_NOT_FOUND');
       }
       if(!['GET','HEAD'].includes(request.method))throw modelError(405,'GET_REQUIRED');
+      if(path==='/terminal'){
+        const terminal=await readFile(resolve(projectRoot,'星穹游戏终端 (1).html'),'utf8');
+        const index=await readFile(resolve(dist,'index.html'),'utf8');
+        const assets=[...index.matchAll(/<(?:script\b[^>]*src="\/assets\/[^"]+"[^>]*><\/script>|link\b[^>]*href="\/assets\/[^"]+"[^>]*>)/g)].map(match=>match[0]).join('\n');
+        const html=terminal.replace('</body>',assets+'\n</body>');
+        response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
+      }
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       const bytes=await readFile(file);response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
