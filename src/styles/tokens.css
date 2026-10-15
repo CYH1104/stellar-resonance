@@ -1,0 +1,10 @@
+/* 星穹终端(Interstellar Academy)风格 —— 克莱因蓝 + 纸白,直角边框,点状分隔。仅改呈现层。 */
+:root{
+  --color-background:#f7f9fd;--color-surface:#ffffff;--color-surface-soft:#eef3fb;
+  --color-text:#141d36;--color-muted:#67748f;--color-border:#d7dcee;
+  --color-accent:#002fa7;--color-accent-text:#ffffff;--color-error:#a83a3a;
+  --color-warning:#8a6a1f;--color-graph:#002fa7;
+  --font-ui:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+  --radius-control:0px;--radius-surface:0px;--reading-width:850px;
+}
