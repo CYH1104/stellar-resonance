@@ -11,6 +11,7 @@
   window.addEventListener('academy:ready',()=>{ready=true;if(pending)open(pending);});
   window.addEventListener('academy:home',()=>{mount.hidden=true;window.ACADEMY?.home();});
   window.addEventListener('academy:open',event=>open(event.detail));
+  window.addEventListener('academy:encounter-new',event=>{const detail=event.detail;if(!detail)return;const access={ok:false};window.dispatchEvent(new CustomEvent('academy:campus-access',{detail:access}));if(!access.ok&&access.reason&&!access.reason.includes('建立')){showHint(access.reason);return;}open(detail);if(detail.accepted!==false)window.ACADEMY?.home();});
   const ids={chatEntry:{entry:'conversation'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
   const modules={new:{entry:'new'},continue:{entry:'continue'},chat:{entry:'conversation'},personas:{entry:'personas'},memory:{panel:'memory'},stu:{entry:'new'},full:{panel:'saves'},export:{panel:'saves'},settings:{panel:'settings'},presets:{panel:'presets'},theaters:{panel:'forum'},relations:{panel:'relations'},saves:{panel:'saves'}};
   const hint=document.createElement('div');hint.className='academy-campus-hint';hint.setAttribute('role','status');hint.hidden=true;root.append(hint);let hintTimer;

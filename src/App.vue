@@ -116,9 +116,9 @@ const entry=ref<'opening'|'new'|'continue'>(embedded?'new':'opening');
 
 watch(()=>[w.panel,library.value,entry.value,w.active?.id],async()=>{await nextTick();window.dispatchEvent(new Event('academy:page-transition'));});
 
-function start(){library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
+function start(){pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
 
-function resume(){library.value=false;w.home();entry.value='continue';}
+function resume(){pendingText='';library.value=false;w.home();entry.value='continue';}
 
 function settings(){library.value=false;w.home();entry.value='new';w.panel='settings';}
 
@@ -135,6 +135,14 @@ function terminalNavigate(event:Event){
   detail.accepted=true;
 
   if(w.loading){pendingNavigation=detail;return;}
+
+  if(detail.entry==='new'){
+    pendingText=typeof detail.insert==='string'?detail.insert.trim().slice(0,16000):'';
+    pendingExistingSessions=pendingText?new Set(w.sessions.map(session=>session.id)):undefined;
+    if(w.active)w.home();w.resetNewGameDraft();library.value=false;entry.value='new';w.panel='story';
+    if(pendingText)w.notice='请先建立新会话，选中角色的邂逅提示会保留到剧情输入框，不会自动发送。';
+    return;
+  }
 
   if(typeof detail.insert==='string'&&detail.insert.trim())pendingText=[pendingText,detail.insert.trim()].filter(Boolean).join('\n\n').slice(0,16000);
 
@@ -158,7 +166,6 @@ function terminalNavigate(event:Event){
 
   if(detail.entry==='continue'){resume();return;}
 
-  if(detail.entry==='new'){if(w.active)w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';return;}
 
   const panels:Panel[]=['story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves'];
 
@@ -177,8 +184,9 @@ function terminalNavigate(event:Event){
 let pendingNavigation:unknown;
 
 let pendingText='';
+let pendingExistingSessions:Set<string>|undefined;
 
-function flushInsertedText(){if(w.active&&pendingText){w.input=[w.input,pendingText].filter(Boolean).join('\n\n').slice(0,16000);pendingText='';}}
+function flushInsertedText(){if(w.active&&pendingText&&!pendingExistingSessions?.has(w.active.id)){w.input=[w.input,pendingText].filter(Boolean).join('\n\n').slice(0,16000);pendingText='';pendingExistingSessions=undefined;}}
 
 watch(()=>w.active?.id,flushInsertedText);
 
@@ -270,6 +278,8 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
           <div v-if="w.loading" class="empty">正在打开本地数据库…</div>
 
           <template v-else>
+
+            <p v-if="!w.active&&entry==='new'&&pendingText" class="muted encounter-draft-notice" role="status">建立新存档后，所选角色的邂逅提示会填入剧情输入框，不会自动发送。</p>
 
             <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="usePersona" @master="setMasterPersona" />
 

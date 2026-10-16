@@ -3148,6 +3148,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
                         '<p class="spl-info-empty" id="__spl_infoempty__">点击任意一张卡片抽出。</p>' +
                         /* v4.27.0:邂逅入口 —— 纯文本 + 下划线 + 箭头;点了把偶遇提示词填进输入框 */
                         '<div class="spl-enc">' +
+                            '<button class="spl-enclnk" data-sact="encounter-new" type="button">建立新的会话与之相遇<i>→</i></button>' +
                             '<button class="spl-enclnk" data-sact="encounter" type="button">与之邂逅<i>→</i></button>' +
                             '<button class="spl-enclnk" data-sact="encounter-rand" type="button">随机邂逅<i>→</i></button>' +
                         '</div>' +
@@ -3836,16 +3837,27 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             if (act === 'chars-back') { root.classList.remove('spl-chars'); return; }
             /* v4.27.0:角色邂逅 —— 与之邂逅(选中的角色) / 随机邂逅(随机抽一位),
                把系统控制提示词填进聊天输入框(不发送);先收开屏再延迟写入(复用学生档案的链路) */
-            if (act === 'encounter' || act === 'encounter-rand') {
+            if (act === 'encounter-new' || act === 'encounter' || act === 'encounter-rand') {
                 let ei = charActive;
                 if (act === 'encounter-rand') ei = Math.floor(Math.random() * SPLASH_CHARACTERS.length);
                 const ec = SPLASH_CHARACTERS[ei];
                 if (!ec || !ec.name) { memToast('先抽一张卡,再与之邂逅'); return; }
+                const encounterText = '<此为系统脚本控制:请为根据用户人设,触发起一场' + ec.name + '的偶遇>';
+                if (act === 'encounter-new') {
+                    const detail = {entry:'new',insert:encounterText,accepted:false};
+                    window.dispatchEvent(new CustomEvent('academy:encounter-new',{detail}));
+                    return;
+                }
+                if (window.academyDraft) {
+                    if (!window.academyDraft(encounterText)) return;
+                    memToast('与「' + ec.name + '」的邂逅已填入剧情输入框，尚未发送');
+                    return;
+                }
                 closeSplash();
                 setTimeout(() => {
                     const r = fillToComposer('<此为系统脚本控制:请为根据用户人设,触发起一场' + ec.name + '的偶遇>');
                     if (!r.ok) {
-                        memToast(r.reason === 'NO_INPUT' ? '没找到 qqy 的输入框,先退回聊天页再试一次' : '写入失败(' + (r.reason || '未知') + ')');
+                        memToast('尚未建立会话，请先建立会话后使用');
                         return;
                     }
                     memToast(act === 'encounter-rand'
@@ -10198,6 +10210,7 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   window.addEventListener('academy:ready',()=>{ready=true;if(pending)open(pending);});
   window.addEventListener('academy:home',()=>{mount.hidden=true;window.ACADEMY?.home();});
   window.addEventListener('academy:open',event=>open(event.detail));
+  window.addEventListener('academy:encounter-new',event=>{const detail=event.detail;if(!detail)return;const access={ok:false};window.dispatchEvent(new CustomEvent('academy:campus-access',{detail:access}));if(!access.ok&&access.reason&&!access.reason.includes('建立')){showHint(access.reason);return;}open(detail);if(detail.accepted!==false)window.ACADEMY?.home();});
   const ids={chatEntry:{entry:'conversation'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
   const modules={new:{entry:'new'},continue:{entry:'continue'},chat:{entry:'conversation'},personas:{entry:'personas'},memory:{panel:'memory'},stu:{entry:'new'},full:{panel:'saves'},export:{panel:'saves'},settings:{panel:'settings'},presets:{panel:'presets'},theaters:{panel:'forum'},relations:{panel:'relations'},saves:{panel:'saves'}};
   const hint=document.createElement('div');hint.className='academy-campus-hint';hint.setAttribute('role','status');hint.hidden=true;root.append(hint);let hintTimer;
