@@ -10,3 +10,15 @@ test('role import updates by ID and preserves other roles, worldbook, map, accou
   await writeFile(archive,JSON.stringify({type:'academy-character-archive',version:1,characters:[{id:'bad',no:'03',name:''}]}));await assert.rejects(importCharacters(root,archive));assert.equal((await store.read()).revision,saved.revision);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+test('bundled 14-character catalog fills empty editor libraries and keeps later server edits',async()=>{
+ const root=await mkdtemp(resolve('.integration/bundled-characters-'));try{
+  await mkdir(root+'/server/example',{recursive:true});await mkdir(root+'/server/private',{recursive:true});
+  const content=await readFile(new URL('../server/example/academy-characters.json',import.meta.url),'utf8');const archive=JSON.parse(content);assert.equal(archive.characters.length,14);
+  await writeFile(root+'/server/example/academy-characters.json',content);
+  const base={source:{sha256:'empty'},world:{sourceText:'WORLD'},characters:[]};const store=createEditorStore(root,base),initial=await store.read();assert.equal(initial.data.characters.length,14);
+  const blank={...initial.data,characters:[],map:{main:'https://example.com/existing.png',places:{}}};await writeFile(root+'/server/private/editor-data.json',JSON.stringify(blank));
+  const restored=await store.read();assert.equal(restored.data.characters.length,14);assert.equal(restored.data.map.main,blank.map.main);
+  restored.data.characters[0].name='Server edited name';await store.save(restored.data,restored.revision);assert.equal((await store.read()).data.characters[0].name,'Server edited name');
+  await writeFile(root+'/server/example/academy-characters.json',JSON.stringify({...archive,characters:archive.characters.slice(0,1)}));assert.equal((await store.read()).data.characters.length,14);assert.equal((await store.read()).data.characters[0].name,'Server edited name');
+ }finally{await rm(root,{recursive:true,force:true});}
+});

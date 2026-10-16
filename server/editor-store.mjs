@@ -1,6 +1,7 @@
 import {WORLD_DEFAULTS,characterRows} from './editor-ui/worldbook.js';
 import {isPlaceholderCharacter} from './placeholders.mjs';
 import {validateMapAssets} from './map-assets.mjs';
+import {bundledCharacters} from './character-catalog.mjs';
 import {readFile,writeFile,mkdir,rename,stat,copyFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -38,7 +39,7 @@ export function publicCards(data){return data.characters.map(c=>Object.fromEntri
 export function cardWithEditor(base,data){return {...clone(base),characters:clone(data.characters),world:{...clone(base.world),sourceText:'',entries:clone(data.entries)}};}
 export function createEditorStore(root,base){
   const directory=resolve(root,'server/private'),file=resolve(directory,'editor-data.json');let queue=Promise.resolve();
-  async function read(){let raw;try{raw=await readFile(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;raw=JSON.stringify(defaultEditorData(base));}const parsed=JSON.parse(raw);if(Array.isArray(parsed.characters))parsed.characters=parsed.characters.filter(c=>!isPlaceholderCharacter(c));return {revision:createHash('sha256').update(raw).digest('hex'),data:validateEditorData(parsed)};}
+  async function read(){let raw;try{raw=await readFile(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;raw=JSON.stringify(defaultEditorData(base));}const parsed=JSON.parse(raw);if(Array.isArray(parsed.characters)){parsed.characters=parsed.characters.filter(c=>!isPlaceholderCharacter(c));if(!parsed.characters.length)parsed.characters=await bundledCharacters(root);}const data=validateEditorData(parsed);return {revision:createHash('sha256').update(raw).update('\n').update(JSON.stringify(data)).digest('hex'),data};}
   async function save(data,revision){const task=queue.then(async()=>{const current=await read();if(current.revision!==revision)throw error('EDITOR_CONFLICT',409);const clean=validateEditorData(data),oldIds=new Set(clean.characters.map(c=>c.id));if(current.data.characters.some(c=>!oldIds.has(c.id)))throw error('EXISTING_CHARACTER_ID_REQUIRED');await mkdir(directory,{recursive:true});try{await stat(file);await copyFile(file,resolve(directory,'editor-data.previous.json'));}catch(e){if(e.code!=='ENOENT')throw e;}const temporary=file+'.tmp';await writeFile(temporary,JSON.stringify(clean,null,2),'utf8');await rename(temporary,file);return read();});queue=task.catch(()=>{});return task;}
   return {read,save};
 }

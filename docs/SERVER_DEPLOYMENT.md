@@ -73,6 +73,8 @@ curl --fail http://127.0.0.1:8807/api/health
 
 ## 私有角色资料与编辑器
 
+经授权，原有 14 名角色资料已随代码放在 `server/example/academy-characters.json`。拉取并重启后，空角色库会自动载入这批资料，不再需要 SCP 上传。已有服务器角色修改不会自动覆盖；如果要明确用仓库版本更新同 ID 角色，执行 `node scripts/import-characters.mjs server/example/academy-characters.json`。该文件只包含角色卡与角色提示词，不含账号库、管理口令或 API 凭据。
+
 若要把已有角色信息迁到服务器管理页，可将私有角色迁移文件上传到服务器后执行：
 
 ```sh

@@ -1,0 +1,1196 @@
+{
+  "type": "academy-character-archive",
+  "version": 1,
+  "characters": [
+    {
+      "id": "pro-01",
+      "name": "秦 凛",
+      "en": "QIN LIN",
+      "no": "01",
+      "sex": "Alpha",
+      "primaryGender": "男",
+      "title": "领航者系 · 帝国第一亲王 · 四年级 · 指挥系首席",
+      "str": "精神力 S级 · 精神体 星辉圣龙",
+      "shos": "帝国冰山",
+      "intro": "精神体是通体覆盖午夜星辰般深邃鳞片的巨龙，金色龙瞳威严尊贵。古典雕塑般深刻华贵的面容，战略决策冷静近乎冷酷。背负皇室责任。",
+      "quote": "“见过秦首席在模拟战里1v5全程表情都没变过吗？我怀疑他血管里流的是液氮。”",
+      "img": "https://image.arityflow.top/uploads/2026/10/6ad21f6a28e562.57731900_6ccca2b3.jpg",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "QIN LIN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": "男"
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 S级 · 精神体 星辉圣龙"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "帝国冰山"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "领航者系 · 帝国第一亲王 · 四年级 · 指挥系首席"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是通体覆盖午夜星辰般深邃鳞片的巨龙，金色龙瞳威严尊贵。古典雕塑般深刻华贵的面容，战略决策冷静近乎冷酷。背负皇室责任。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“见过秦首席在模拟战里1v5全程表情都没变过吗？我怀疑他血管里流的是液氮。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-02",
+      "name": "白 昊然",
+      "en": "BAI HAORAN",
+      "no": "02",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "领航者系 · 联邦上将独子 · 三年级",
+      "str": "精神力 S级 · 精神体 凛冬巨白虎",
+      "shos": "笑面掠食者",
+      "intro": "精神体是纯白巨虎，黑色纹路如裂痕，冰蓝色虎瞳带着强烈捕猎气息。外表英俊爽朗，一身有欺骗性的阳光，实则藏着冰冷残酷与强烈野心。",
+      "quote": "“白学长帮我捡过书还对我笑……直到看到他把挑衅者按墙上。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "BAI HAORAN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 S级 · 精神体 凛冬巨白虎"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "笑面掠食者"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "领航者系 · 联邦上将独子 · 三年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是纯白巨虎，黑色纹路如裂痕，冰蓝色虎瞳带着强烈捕猎气息。外表英俊爽朗，一身有欺骗性的阳光，实则藏着冰冷残酷与强烈野心。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“白学长帮我捡过书还对我笑……直到看到他把挑衅者按墙上。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-03",
+      "name": "楚 昭南",
+      "en": "CHU ZHAONAN",
+      "no": "03",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "破军系 · 破格录取天才 · 二年级",
+      "str": "精神力 S级 · 精神体 裂风金雕",
+      "shos": "战狂玫瑰",
+      "intro": "精神体羽翼华丽如黄金锻造，目光锐利如炬，啸声撕裂长空。美艳而锋利，脾气火爆，对战斗超常热爱。崇尚绝对实力。",
+      "quote": "“她把挑战者的机甲肘击干碎了！维修班边哭边夸她动作漂亮…”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "CHU ZHAONAN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 S级 · 精神体 裂风金雕"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "战狂玫瑰"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "破军系 · 破格录取天才 · 二年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体羽翼华丽如黄金锻造，目光锐利如炬，啸声撕裂长空。美艳而锋利，脾气火爆，对战斗超常热爱。崇尚绝对实力。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“她把挑战者的机甲肘击干碎了！维修班边哭边夸她动作漂亮…”"
+        }
+      ]
+    },
+    {
+      "id": "pro-04",
+      "name": "雷 烈",
+      "en": "LEI LIE",
+      "no": "04",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "破军系 · 自由同盟佣兵团少主 · 三年级",
+      "str": "精神力 A+级 · 精神体 地狱三头犬",
+      "shos": "狂野忠犬",
+      "intro": "精神体是肌肉虬结的黑色巨犬，三头獠牙锋利，周身燃烧暗红火焰。红发如火，豪爽不羁，信奉力量至上，实战竞技几乎常胜。",
+      "quote": "“雷哥打完架喜欢开罐冰啤酒坐在机甲脚架上喝……”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "LEI LIE"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A+级 · 精神体 地狱三头犬"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "狂野忠犬"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "破军系 · 自由同盟佣兵团少主 · 三年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是肌肉虬结的黑色巨犬，三头獠牙锋利，周身燃烧暗红火焰。红发如火，豪爽不羁，信奉力量至上，实战竞技几乎常胜。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“雷哥打完架喜欢开罐冰啤酒坐在机甲脚架上喝……”"
+        }
+      ]
+    },
+    {
+      "id": "pro-05",
+      "name": "卫 锋",
+      "en": "WEI FENG",
+      "no": "05",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "破军系 · 实战战术总教官 · 前「白银之刃」指挥官",
+      "str": "精神力 S级 · 精神体 深渊魔狼",
+      "shos": "铁血监护人",
+      "intro": "精神体是通体漆黑的暗夜孤狼，绿色眼眸透着智慧与冷酷。面容冷峻带疤，训练方式严酷高效，信奉真实战场。",
+      "quote": "“卫教官骂人时能让你想当场自裁，但毕业那天他一个人站在舰桥看了我们很久。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "WEI FENG"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 S级 · 精神体 深渊魔狼"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "铁血监护人"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "破军系 · 实战战术总教官 · 前「白银之刃」指挥官"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是通体漆黑的暗夜孤狼，绿色眼眸透着智慧与冷酷。面容冷峻带疤，训练方式严酷高效，信奉真实战场。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“卫教官骂人时能让你想当场自裁，但毕业那天他一个人站在舰桥看了我们很久。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-06",
+      "name": "凌 九霄",
+      "en": "LING JIUXIAO",
+      "no": "06",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "破军系 · 机甲特种作战学教官 · 前王牌机师",
+      "str": "精神力 S级(空间操纵) · 精神体 苍暝苍鹰",
+      "shos": "最强乐子人",
+      "intro": "精神体体型巨大，翼展遮天蔽日，常年在最高处翱翔。性格跳脱，玩世不恭，实力深不可测，教学方式离谱但有效。",
+      "quote": "“凌教官说带我们玩捉迷藏，结果把全班空投进模拟热带雨林……”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "LING JIUXIAO"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 S级(空间操纵) · 精神体 苍暝苍鹰"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "最强乐子人"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "破军系 · 机甲特种作战学教官 · 前王牌机师"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体体型巨大，翼展遮天蔽日，常年在最高处翱翔。性格跳脱，玩世不恭，实力深不可测，教学方式离谱但有效。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“凌教官说带我们玩捉迷藏，结果把全班空投进模拟热带雨林……”"
+        }
+      ]
+    },
+    {
+      "id": "pro-07",
+      "name": "陆 离",
+      "en": "LU LI",
+      "no": "07",
+      "sex": "Beta",
+      "primaryGender": "",
+      "title": "织网者系首席 · 四年级",
+      "str": "精神力 A级(特殊侵入型) · 精神体 魅影猫又",
+      "shos": "情报妖孽",
+      "intro": "精神体是黑色双尾猫，身影虚幻，能穿梭信息网络、擅长隐藏踪迹。信息天才，掌握全学院的秘密，喜欢观察别人，思维敏锐、危险感极强。",
+      "quote": "“陆离知道学院所有人的秘密，包括校长昨天偷偷买了什么口味的营养液。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "LU LI"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Beta"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A级(特殊侵入型) · 精神体 魅影猫又"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "情报妖孽"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "织网者系首席 · 四年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是黑色双尾猫，身影虚幻，能穿梭信息网络、擅长隐藏踪迹。信息天才，掌握全学院的秘密，喜欢观察别人，思维敏锐、危险感极强。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“陆离知道学院所有人的秘密，包括校长昨天偷偷买了什么口味的营养液。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-08",
+      "name": "林 深",
+      "en": "LIN SHEN",
+      "no": "08",
+      "sex": "Beta",
+      "primaryGender": "",
+      "title": "织网者系 · 信息静默与防御专家 · 四年级",
+      "str": "精神力 A级(区域屏蔽/存在感抹除) · 精神体 雾隐豹",
+      "shos": "慵懒咸鱼",
+      "intro": "精神体身形融入迷雾，行动无声，极难被发现。极度低调，平时懒散爱摸鱼，关键时刻却比谁都可靠。",
+      "quote": "“林深学长平时找不到人，但考试系统被黑的时候，第一个出现的一定是他。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "LIN SHEN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Beta"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A级(区域屏蔽/存在感抹除) · 精神体 雾隐豹"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "慵懒咸鱼"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "织网者系 · 信息静默与防御专家 · 四年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体身形融入迷雾，行动无声，极难被发现。极度低调，平时懒散爱摸鱼，关键时刻却比谁都可靠。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“林深学长平时找不到人，但考试系统被黑的时候，第一个出现的一定是他。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-09",
+      "name": "叶 怀瑾",
+      "en": "YE HUAIJIN",
+      "no": "09",
+      "sex": "Omega",
+      "primaryGender": "",
+      "title": "基石系 · 联邦中央医院院长之子 · 三年级",
+      "str": "精神力 A级(治愈型) · 精神体 永春鹿",
+      "shos": "人间天使",
+      "intro": "精神体是温润白鹿，鹿角如春藤，能释放治愈力量。温和善良，医术顶尖，对伤员极有耐心，是学院公认的治愈系天使。",
+      "quote": "“叶学长治疗的时候很温柔，但他说‘别动’的时候，连Alpha都不敢反抗。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "YE HUAIJIN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Omega"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A级(治愈型) · 精神体 永春鹿"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "人间天使"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "基石系 · 联邦中央医院院长之子 · 三年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是温润白鹿，鹿角如春藤，能释放治愈力量。温和善良，医术顶尖，对伤员极有耐心，是学院公认的治愈系天使。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“叶学长治疗的时候很温柔，但他说‘别动’的时候，连Alpha都不敢反抗。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-10",
+      "name": "萧 驰",
+      "en": "XIAO CHI",
+      "no": "10",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "基石系 · 战略支援系首席 · 四年级",
+      "str": "精神力 A+级(超距感知/精密掌控) · 精神体 银翼苍鸾",
+      "shos": "绝对理性?",
+      "intro": "精神体是羽翎如寒冰雕琢的银色鸾鸟，翼展宽阔。思维高度逻辑化，追求效率，将一切视为可计算变量，情感表达极度克制。",
+      "quote": "“方案可行度97.3%，情感参数冗余建议删除。——但有人看到他偷偷给苍鸾梳羽毛时表情挺柔软的？”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "XIAO CHI"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A+级(超距感知/精密掌控) · 精神体 银翼苍鸾"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "绝对理性?"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "基石系 · 战略支援系首席 · 四年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体是羽翎如寒冰雕琢的银色鸾鸟，翼展宽阔。思维高度逻辑化，追求效率，将一切视为可计算变量，情感表达极度克制。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“方案可行度97.3%，情感参数冗余建议删除。——但有人看到他偷偷给苍鸾梳羽毛时表情挺柔软的？”"
+        }
+      ]
+    },
+    {
+      "id": "pro-11",
+      "name": "颜 希",
+      "en": "YAN XI",
+      "no": "11",
+      "sex": "Omega",
+      "primaryGender": "",
+      "title": "基石系 · 后勤物资管理与分配负责人 · 二年级",
+      "str": "精神力 B+级(精密感知/资源优化) · 精神体 绮罗孔雀",
+      "shos": "傲娇“大小姐”",
+      "intro": "精神体尾羽极度华丽，开屏时流光溢彩、虹彩流转。风风火火，自信骄傲，对自己人保护欲极强，大小姐气质藏不住。",
+      "quote": "“颜希骂人时能列出你十八代祖宗的物资申请记录！但只要你夸他新胸针好看，他马上脸红着给你批双倍配额……”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "YAN XI"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Omega"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 B+级(精密感知/资源优化) · 精神体 绮罗孔雀"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "傲娇“大小姐”"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "基石系 · 后勤物资管理与分配负责人 · 二年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体尾羽极度华丽，开屏时流光溢彩、虹彩流转。风风火火，自信骄傲，对自己人保护欲极强，大小姐气质藏不住。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“颜希骂人时能列出你十八代祖宗的物资申请记录！但只要你夸他新胸针好看，他马上脸红着给你批双倍配额……”"
+        }
+      ]
+    },
+    {
+      "id": "pro-12",
+      "name": "沈 言深",
+      "en": "SHEN YANSHEN",
+      "no": "12",
+      "sex": "Alpha",
+      "primaryGender": "",
+      "title": "银铃系 · 外交世家继承人 · 三年级",
+      "str": "精神力 A级(魅惑/说服型) · 精神体 惑心蝶",
+      "shos": "多情狐狸",
+      "intro": "精神体翅膀布满迷人眼纹，鳞粉散发令人放松警惕的幽香。风度翩翩，擅长洞察人心，笑容完美但真实想法深藏。",
+      "quote": "“沈公子今晚和27个人跳了舞，说了38句‘你是我今晚最美的惊喜’，但没人看到他礼服口袋里藏着解酒药。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "SHEN YANSHEN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Alpha"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A级(魅惑/说服型) · 精神体 惑心蝶"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "多情狐狸"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "银铃系 · 外交世家继承人 · 三年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体翅膀布满迷人眼纹，鳞粉散发令人放松警惕的幽香。风度翩翩，擅长洞察人心，笑容完美但真实想法深藏。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“沈公子今晚和27个人跳了舞，说了38句‘你是我今晚最美的惊喜’，但没人看到他礼服口袋里藏着解酒药。”"
+        }
+      ]
+    },
+    {
+      "id": "pro-13",
+      "name": "苏 沐辰",
+      "en": "SU MUCHEN",
+      "no": "13",
+      "sex": "Omega",
+      "primaryGender": "",
+      "title": "银铃系 · 著名星际历史学家之子 · 二年级",
+      "str": "精神力 B+级(共情与语言) · 精神体 妙音鸟",
+      "shos": "呆萌学者",
+      "intro": "精神体羽毛色彩柔和，歌声宛如天籁，能增强语言感染力。性格内向温和，对知识和文化充满纯粹好奇与热爱。",
+      "quote": "“苏同学上次为了查古籍在档案室睡了三天，醒来第一句话是‘公元前地球人求偶方式真有趣’…可爱到犯规！”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "SU MUCHEN"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Omega"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 B+级(共情与语言) · 精神体 妙音鸟"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "呆萌学者"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "银铃系 · 著名星际历史学家之子 · 二年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体羽毛色彩柔和，歌声宛如天籁，能增强语言感染力。性格内向温和，对知识和文化充满纯粹好奇与热爱。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“苏同学上次为了查古籍在档案室睡了三天，醒来第一句话是‘公元前地球人求偶方式真有趣’…可爱到犯规！”"
+        }
+      ]
+    },
+    {
+      "id": "pro-14",
+      "name": "墨 云舟",
+      "en": "MO YUNZHOU",
+      "no": "14",
+      "sex": "Omega",
+      "primaryGender": "",
+      "title": "银铃系 · 语言学天才 · 三年级",
+      "str": "精神力 A级(精神穿刺/蛊惑) · 精神体 黑曼巴蛇",
+      "shos": "蛇蝎美人",
+      "intro": "精神体通体漆黑如暗缎，姿态优雅从容，金黄蛇瞳冰冷洞察。艳丽美貌与毒舌并存，善于布置语言陷阱，享受他人迷恋与失控。",
+      "quote": "“选墨老师的古星际语要签免责协议！但他俯身教你写字时长发扫过手背的触感…值得死一遍神经系统。”",
+      "img": "",
+      "hiddenPrompt": "",
+      "spiritAnimal": "",
+      "mentalPowerLevel": "",
+      "labelName": "",
+      "labelStr": "STR",
+      "labelShos": "SHOS",
+      "labelTitle": "INFO",
+      "labelIntro": "DESC",
+      "labelQuote": "QUOTE",
+      "displayFields": [
+        {
+          "id": "field-en",
+          "key": "en",
+          "label": "ENGLISH NAME",
+          "value": "MO YUNZHOU"
+        },
+        {
+          "id": "field-sex",
+          "key": "sex",
+          "label": "第二性别",
+          "value": "Omega"
+        },
+        {
+          "id": "field-primaryGender",
+          "key": "primaryGender",
+          "label": "第一性别",
+          "value": ""
+        },
+        {
+          "id": "field-str",
+          "key": "str",
+          "label": "STR",
+          "value": "精神力 A级(精神穿刺/蛊惑) · 精神体 黑曼巴蛇"
+        },
+        {
+          "id": "field-shos",
+          "key": "shos",
+          "label": "SHOS",
+          "value": "蛇蝎美人"
+        },
+        {
+          "id": "field-title",
+          "key": "title",
+          "label": "INFO",
+          "value": "银铃系 · 语言学天才 · 三年级"
+        },
+        {
+          "id": "field-spiritAnimal",
+          "key": "spiritAnimal",
+          "label": "精神体",
+          "value": ""
+        },
+        {
+          "id": "field-mentalPowerLevel",
+          "key": "mentalPowerLevel",
+          "label": "精神力等级",
+          "value": ""
+        },
+        {
+          "id": "field-intro",
+          "key": "intro",
+          "label": "DESC",
+          "value": "精神体通体漆黑如暗缎，姿态优雅从容，金黄蛇瞳冰冷洞察。艳丽美貌与毒舌并存，善于布置语言陷阱，享受他人迷恋与失控。"
+        },
+        {
+          "id": "field-quote",
+          "key": "quote",
+          "label": "QUOTE",
+          "value": "“选墨老师的古星际语要签免责协议！但他俯身教你写字时长发扫过手背的触感…值得死一遍神经系统。”"
+        }
+      ]
+    }
+  ]
+}
