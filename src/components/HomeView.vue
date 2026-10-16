@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SpiritPersonaFields from './SpiritPersonaFields.vue';
 import type {ViewModel} from '../app/useWorkspace';
 import SaveList from './SaveList.vue';
 defineProps<{w:ViewModel;mode:'new'|'continue'}>();
@@ -20,10 +21,12 @@ defineProps<{w:ViewModel;mode:'new'|'continue'}>();
         <div class="field-grid"><label>姓名（必填）<input v-model="w.newGameDraft.persona.name" maxlength="80" required autocomplete="off" placeholder="请输入玩家姓名" /></label><label>外貌<input v-model="w.newGameDraft.persona.appearance" maxlength="500" /></label></div>
         <div class="field-grid"><label>第一性别<input v-model="w.newGameDraft.persona.primaryGender" maxlength="100" list="primary-genders" placeholder="可留空" /></label><label>精神力等级<input v-model="w.newGameDraft.persona.mentalPowerLevel" maxlength="100" /></label><label>第二性别<input v-model="w.newGameDraft.persona.secondaryGender" maxlength="100" list="secondary-genders" placeholder="可留空" /></label></div>
         <datalist id="primary-genders"><option>男</option><option>女</option></datalist><datalist id="secondary-genders"><option>Alpha</option><option>Beta</option><option>Omega</option><option>其他</option></datalist>
-        <label>身份（院系/职业）<input v-model="w.newGameDraft.persona.identity" maxlength="200" placeholder="填写所属院系或职业；可留空" /></label>
+        <label>身份（院系/职业）<textarea v-model="w.newGameDraft.persona.identity" maxlength="200" rows="2" placeholder="院系／组织与年级／职位，每个身份写一行" /></label>
         <label>性格<textarea v-model="w.newGameDraft.persona.personality" rows="2" maxlength="1500" /></label>
         <label>背景<textarea v-model="w.newGameDraft.persona.background" rows="3" maxlength="3000" /></label>
-        <label>精神体<textarea v-model="w.newGameDraft.persona.spiritAnimal" rows="2" maxlength="1500" placeholder="种类、外形、特征等，可留空" /></label>
+        <label>异能<textarea v-model="w.newGameDraft.persona.ability" rows="2" maxlength="2000" /></label>
+      <label>精神体<textarea v-model="w.newGameDraft.persona.spiritAnimal" rows="2" maxlength="1500" placeholder="种类、外形、特征等，可留空" /></label>
+      <SpiritPersonaFields :persona="w.newGameDraft.persona" />
         <label>同人文配对偏好<select v-model="w.newGameDraft.persona.pairingPreference"><option value="">按明确人设判断／暂未指定</option><option value="BL-攻">BL · user 为攻</option><option value="BL-受">BL · user 为受</option><option value="BG">BG</option><option value="GB">GB</option></select></label>
         <label v-if="w.newGameDraft.persona.rawText">user 人设原文<textarea v-model="w.newGameDraft.persona.rawText" rows="8" maxlength="60000" /></label>
       <label>其他<textarea v-model="w.newGameDraft.persona.other" rows="3" maxlength="3000" placeholder="其他想补充的设定、关系或偏好，可留空" /></label>

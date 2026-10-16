@@ -16,3 +16,9 @@
 字段定义：src/domain/contracts.ts。校验、合并、读档和回退：src/domain/story.ts。服务器变更指令及协议整理：server/ai.mjs；补修指令：server/story-stream.mjs。状态展示：src/components/ActorCard.vue。
 
 精神力等级为最多100字的字符串，支持用户世界观自己的等级写法；没有擅自规定 S/A/B 等级顺序、升级经验或阈值。提供正式好感度、等级升降规则后，应将规则加入服务器指令，并将能确定的阈值／边界加入服务端校验。无需把整张角色卡或私有规则放在前端，也无需让玩家每轮手动填写变量。
+
+
+v0.20.1：identity 继续为最多 200 字符的 MVU 文本，user 与 char 均可更新。使用“院系／组织 年级／职位”，多重身份以换行分开；状态卡逐行加方括号显示。精神力等级 mentalPowerLevel 与 secondaryGender 仅在界面合并，仍独立保存与更新。新 char 的身份取已有服务器资料；同源旧存档仅补缺失初始值，已有回合身份补丁仍优先；不将亲属职位或原任职务推断为本人现职。
+
+
+v0.20.2：ability 为 user／char 独立异能 MVU 文本（最多 2000 字符），不再放入 identity；两者均随状态、记忆事实、备份和回退处理。玩家精神体姓名 spiritName、外貌 spiritAppearance、性格 spiritPersonality、能力 spiritAbility 保存在 Persona，属于角色设定，不能由每轮状态补丁擅自改写；spiritThought 仅保存精神体当前内心独白，不是动作描写或模型思考过程。

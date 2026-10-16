@@ -4,6 +4,11 @@ import {newSession,initialState,finishVariant,backup,parseBackup,defaults,visibl
 import {rankMemories} from '../src/memory/scoring';
 const input=():MemoryRequest=>{const before=initialState('祁言'),after=structuredClone(before);after.characters[0].affinity=42;after.player.mentalPowerLevel='S级';return {turnId:'t',variantId:'v',input:'归还书本',story:'你归还借来的书，与引导员约定明天一起报到。',before,after,priorCommitments:[]};};
 const raw=()=>({participants:['祁言','样例引导员'],time:'578.09.01 09:30',location:'报到台',userActions:['归还借来的书'],charActions:[{name:'样例引导员',actions:['接受书本并约定明天一起报到']}],gains:['获得报到信息'],losses:['归还借来的书'],commitments:[{id:'new',participants:['祁言','样例引导员'],content:'明天一起报到',deadline:'明天',status:'open'}],affinityChanges:[{id:'guide',before:999,after:1000,delta:1,reason:'按约归还书本增加信任'}]});
+it('异能变化可完整进入事实记忆，清空能力以无表示而不导致记忆格式失败',()=>{
+ const r=input();r.before.player.ability='旧能力'.repeat(150);r.after.player.ability='新能力'.repeat(150);
+ expect(normalizeMemoryResult(raw(),r).stateChanges.find(c=>c.field==='异能')?.after).toBe(r.after.player.ability);
+ r.after.player.ability='';expect(normalizeMemoryResult(raw(),r).stateChanges.find(c=>c.field==='异能')?.after).toBe('无');
+});
 it('逐轮记忆覆盖完整字段，数值从前后状态计算，禁止模型伪造差值',()=>{
  const r=normalizeMemoryResult(raw(),input());expect(r.affinityChanges[0]).toEqual({id:'guide',name:'样例引导员',before:30,after:42,delta:12,reason:'按约归还书本增加信任'});expect(r.stateChanges[0]).toMatchObject({id:'player',field:'精神力等级',after:'S级'});
  const text=formatMemory(r);for(const label of ['人物：','时间：','地点：','user行动：','char行动：','获得：','失去／消耗：','重要约定：','好感度变化：'])expect(text).toContain(label);expect(text).toContain('30 → 42');expect(text).not.toContain('999');

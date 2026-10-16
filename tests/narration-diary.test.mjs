@@ -21,7 +21,7 @@ test('manual/automatic continuation and state-only repair reaffirm player identi
   const messages=buildMessages(card,request()).messages;assert.ok(continuedMessages(messages,'你上前看向祁言。','祁言').at(-1).content.includes('你”永远指'));assert.ok(continuedMessages(messages,'截断','祁言').at(-1).content.includes('祁言'));
   const control=repairedMessages(messages,'固定正文',card,state,{theaterSettings:settings()}).at(-1).content;assert.ok(control.includes('第一人称完整日记'));assert.ok(control.includes('祁言'));
 });
-const raw=()=>({presentCharacterIds:[],player:{spiritThought:'耳朵竖起来听消息。'},characters:[],event:'正常推进',forum:[{id:'p',authorName:'路人',content:'公开日常'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'今天食堂上新'}]},{slot:4,kind:'custom',title:'精神体日记',content:'',diary:{ownerId:'player',title:'偷偷留给我的鱼干',date:'0578.09.01',mood:'满足',content:'今天我在窗台发现了一块鱼干，闻起来很香。\n\n我决定先留半块给主人，也许明天还能一起晒太阳。'}}]});
+const raw=()=>({presentCharacterIds:[],player:{spiritThought:'耳朵竖起来听消息。'},characters:[],event:'正常推进',forum:[{id:'p',authorName:'路人',content:'公开日常'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'今天食堂上新'}]},{slot:4,kind:'custom',title:'精神体日记',content:'',diary:{ownerId:'player',title:'偷偷留给我的鱼干',date:'0578.09.01',mood:'满足',content:'今天我在窗台发现了一块鱼干，闻起来很香。\n\n我决定先留半块给主人，也许明天还能一起晒太阳。'.repeat(6)}}]});
 const options={theaterSettings:settings(),persona:{name:'祁言'},requireDynamicState:true};
 test('live diary returns canonical spirit author and structured entry, preserving the separate momentary OS',()=>{
   const value=raw();value.theaters[1].diary.ownerName='不采用的名字';value.theaters[1].diary.spiritAnimal='不采用的种类';const result=normalizeModelState(card,state,value,options),diary=result.theaters.find(t=>t.slot===4).diary;assert.equal(diary.ownerName,'祁言');assert.equal(diary.spiritAnimal,'白猫');assert.equal(diary.date,'0578.09.01');assert.equal(result.player.spiritThought,'耳朵竖起来听消息。');assert.notEqual(diary.content,result.player.spiritThought);
@@ -34,4 +34,8 @@ test('missing diary receives bounded state-only repair without rewriting the fix
 });
 test('no known spirit allows an explicit missing-information note instead of inventing a diary author',()=>{
   const unknown={player:{id:'player',name:'祁言',present:true},characters:[{id:'char-one',name:'楚昭南',present:false}]},value=raw(),noSpiritCard={...card,characters:[{id:'char-one',name:'楚昭南'}]};delete value.theaters[1].diary;value.theaters[1].content='尚未设定精神体，无法写日记。';delete value.player;assert.equal(normalizeModelState(noSpiritCard,unknown,value,options).theaters[1].content,'尚未设定精神体，无法写日记。');
+});
+test('日记可以由不在场char的已知精神体写，200字以下拒绝',()=>{
+ const options={theaterSettings:settings(),persona:{name:'祁言'},requireDynamicState:true},value=raw();value.theaters[1].diary.ownerId='char-one';value.theaters[1].diary.content='我'.repeat(199);
+ assert.throws(()=>normalizeModelState(card,state,value,options),{code:'MODEL_DIARY_TOO_SHORT'});value.theaters[1].diary.content+='我';const result=normalizeModelState(card,state,value,options);assert.equal(result.theaters[1].diary.spiritAnimal,'金雕');assert.equal(result.theaters[1].diary.ownerName,'楚昭南');
 });

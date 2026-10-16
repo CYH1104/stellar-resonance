@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import type { ActorState } from '../domain/contracts';
+import {mentalGenderLabel,identityLines} from '../domain/statusPresentation';
+import {separateIdentityAbility} from '../domain/identityAbility';
 const props=defineProps<{actor:ActorState; player?:boolean;characters?:ActorState[]}>();
+const identityFields=computed(()=>separateIdentityAbility(props.actor));
 const spiritOs=computed(()=>{
   const value=props.actor.spiritThought?.trim();
   if(value&&!/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(value))return value;
@@ -15,9 +18,9 @@ const spiritOs=computed(()=>{
     <dl class="actor-fields">
       <div><dt>姓名</dt><dd>{{ actor.name }}</dd></div>
       <div><dt>第一性别</dt><dd>{{ actor.primaryGender || '未提供' }}</dd></div>
-      <div><dt>精神力等级</dt><dd>{{actor.mentalPowerLevel||'—'}}</dd></div>
-      <div><dt>第二性别</dt><dd>{{ actor.secondaryGender || '未提供' }}</dd></div>
-      <div v-if="player"><dt>身份（院系/职业）</dt><dd>{{actor.identity||'未提供'}}</dd></div>
+      <div><dt>精神力／第二性别</dt><dd>{{mentalGenderLabel(actor)?'【'+mentalGenderLabel(actor)+'】':'未提供'}}</dd></div>
+      <div class="actor-identities"><dt>身份</dt><dd><template v-if="identityLines(identityFields.identity).length"><span v-for="line in identityLines(identityFields.identity)" :key="line" class="actor-identity-line">【{{line}}】</span></template><template v-else>未提供</template></dd></div>
+      <div v-if="identityFields.ability?.trim()"><dt>异能</dt><dd class="actor-ability">{{identityFields.ability}}</dd></div>
       <div v-if="!player"><dt>对 user 的好感度</dt><dd>{{actor.affinity??'等待 AI 补全'}}</dd></div>
       <div><dt>精神体</dt><dd>{{actor.spiritAnimal||'未提供'}}</dd></div>
     </dl>
@@ -27,3 +30,4 @@ const spiritOs=computed(()=>{
     <details v-if="player" class="affinity-summary" open><summary>已遇到 char 对 user 的好感度（{{characters?.length||0}}）</summary><dl class="actor-fields"><div v-for="char in characters" :key="char.id"><dt>{{char.name}}</dt><dd>{{char.affinity??'等待 AI 补全'}}</dd></div></dl><p v-if="!characters?.length" class="muted">尚未遇到角色</p></details>
   </article>
 </template>
+<style scoped>.actor-identity-line{display:block;overflow-wrap:anywhere}.actor-identity-line+.actor-identity-line{margin-top:.35rem}.actor-identities dd{min-width:0}.actor-ability{white-space:pre-wrap;overflow-wrap:anywhere}</style>

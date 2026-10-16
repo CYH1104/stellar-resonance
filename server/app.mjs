@@ -1,3 +1,4 @@
+import {loadPrivateWorldbooks} from './worldbooks.mjs';
 import {memoryMessages,parseMemoryResult} from './memory.mjs';
 import { createServer } from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolve, extname, sep } from 'node:path';
 import { buildMessages, buildPersonaMessages, parsePersonaResult, completionChunks, endpoint, modelError, openCompletion } from './ai.mjs';
 import { normalizePersona } from '../src/domain/persona.ts';
-import {publicActor,mentalPowerLevelOf} from './card.mjs';
+import {publicActor,mentalPowerLevelOf,identityOf,abilityOf} from './card.mjs';
 import {fetchModelList} from './models.mjs';
 import {requestEmbeddings} from './embeddings.mjs';
 import {continuedMessages,repairedMessages,streamStory} from './story-stream.mjs';
@@ -18,6 +19,7 @@ const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
 export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card}){
   const source=card||await loadCard(projectRoot);
+  const privateBooks=await loadPrivateWorldbooks(projectRoot);
   const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
   const projectId=createHash('sha256').update(projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
   const capabilities={continue:true,keyRequired:true,embeddings:true};
@@ -37,6 +39,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     const player={id:'player',name:data.persona.name.trim(),present:true};
     if(data.persona.spiritAnimal)player.spiritAnimal=data.persona.spiritAnimal;
     if(data.persona.identity)player.identity=data.persona.identity;
+    if(data.persona.ability)player.ability=data.persona.ability;
     if(data.persona.mentalPowerLevel)player.mentalPowerLevel=data.persona.mentalPowerLevel;
     for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
     return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
@@ -48,8 +51,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
     try{
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
-      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(c=>({id:c.id,primaryGender:c.primaryGender,...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,narratorName:source.world.name||'群星共振世界卡',capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
@@ -94,7 +97,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           let partial='',stateOnly=false;
           if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>!['partial','mode'].includes(k))||data.continuation.mode!==undefined&&data.continuation.mode!=='state'||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;stateOnly=data.continuation.mode==='state';}
-          const selected=connection(current,data),{messages,state,theaterSettings,dice}=buildMessages(source,data);
+          const selected=connection(current,data),{messages,state,theaterSettings,dice}=buildMessages(source,data,privateBooks);
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);

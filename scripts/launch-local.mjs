@@ -16,7 +16,7 @@ try {
   await readFile(resolve(root,'dist/index.html'));await loadCard(root);await mkdir(local,{recursive:true});
   let previous;try{previous=JSON.parse(await readFile(resolve(local,'runtime.json'),'utf8'));}catch{}
   let info=previous?await health(previous.port):undefined;
-  if(!(info?.app==='stellar-resonance-local'&&info.projectId===projectId&&info.instance===previous.instance&&info.version==='0.19.0')){
+  if(!(info?.app==='stellar-resonance-local'&&info.projectId===projectId&&info.instance===previous.instance&&info.version==='0.20.5')){
     let port;for(let candidate=5173;candidate<=5180;candidate++){if(await available(candidate)){port=candidate;break;}}
     if(!port)throw new Error('No local port available (5173-5180). Close an old preview.');
     const log=await open(resolve(local,'server.log'),'a');

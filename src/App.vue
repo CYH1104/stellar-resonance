@@ -17,6 +17,7 @@ import PersonaLibrary from './components/PersonaLibrary.vue';
 import type {Persona} from './domain/contracts';
 import OpeningView from './components/OpeningView.vue';
 import PresetManager from './components/PresetManager.vue';
+import WorldbookManager from './components/WorldbookManager.vue';
 
 const w = reactive(useWorkspace());
 const workspaceEl=ref<HTMLElement>();
@@ -39,7 +40,8 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
   { id: 'game-settings', label: '设置', no: '05' },
   { id: 'settings', label: 'API 设置', no: '06' },
   { id: 'presets', label: '预设', no: '07' },
-  { id: 'saves', label: '存档与导出', no: '08' }
+  { id: 'worldbooks', label: '世界书', no: '08' },
+  { id: 'saves', label: '存档与导出', no: '09' }
 ];
 </script>
 
@@ -83,6 +85,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
             <StatusBar v-else-if="w.panel==='status'" :w="w" />
             <SettingsView v-else-if="w.panel==='settings'" :w="w" />
             <PresetManager v-else-if="w.panel==='presets'" :w="w" />
+            <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="w" />
             <SavesView v-else-if="w.panel==='saves'" :w="w" />
           </template>
         </div>
@@ -91,6 +94,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <aside v-if="w.active&&!fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
     </div>
 
-    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.19.0</small></footer>
+    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.20.5</small></footer>
   </div>
 </template>
