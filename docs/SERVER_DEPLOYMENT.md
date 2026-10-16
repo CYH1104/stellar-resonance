@@ -73,6 +73,15 @@ curl --fail http://127.0.0.1:8807/api/health
 
 ## 私有角色资料与编辑器
 
+若要把已有角色信息迁到服务器管理页，可将私有角色迁移文件上传到服务器后执行：
+
+```sh
+node scripts/import-characters.mjs /tmp/academy-characters.json --dry-run
+node scripts/import-characters.mjs /tmp/academy-characters.json
+```
+
+迁移文件格式为 `{type:"academy-character-archive",version:1,characters:[...]}`，包含完整角色字段与隐藏提示词，不包含管理口令和账号库。同 ID 的角色更新，其他已有角色保留；世界书、地图和账号不变。导入后刷新管理页即可查看，不需要重启。文件含私有提示词，应私下传输，不要提交 Git。
+
 推荐的远程管理入口现在是 **同一游戏地址的 `/editor/`**，例如 `http://YOUR_SERVER_IP:8807/editor/`。游戏里的“编辑角色”直接打开此地址，不再错误指向访问者电脑的 `127.0.0.1:8808`。注册游戏账号不能进入管理页，管理口令独立生成；在服务器项目目录执行：
 
 ```sh
