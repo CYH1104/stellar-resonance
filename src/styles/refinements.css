@@ -90,3 +90,7 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .settings-view :is(input:not([type=checkbox]),select,textarea){padding:6px 10px;min-height:34px}
 #academy-workspace .simple-api-settings{display:grid;gap:22px}
 @media(max-width:700px){#academy-workspace .settings-view{padding:18px 14px}#academy-workspace .compact-api-card .api-identity-fields{gap:14px}}
+#academy-workspace .settings-view .compact-api-card{border:1px solid var(--color-border)!important;border-radius:8px;padding:18px 20px;margin-bottom:12px}
+#academy-workspace .backup-import{border:0;padding:0;margin:20px 0}
+#academy-workspace .backup-import>button{border:0!important;background:transparent;padding:5px 10px}
+#academy-workspace .backup-import>input[hidden]{display:none!important}

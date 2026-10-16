@@ -19,7 +19,7 @@ if not exist "%STELLAR_NODE%" (
   exit /b 1
 )
 :launch
-echo Open http://127.0.0.1:5173/ in your browser.
+echo Open http://127.0.0.1:8807/terminal in your browser.
 echo Keep this window open. Press Ctrl+C to stop.
-"%STELLAR_NODE%" preview.mjs
+"%STELLAR_NODE%" server.mjs
 pause

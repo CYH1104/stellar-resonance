@@ -13,13 +13,14 @@ import {requestEmbeddings} from './embeddings.mjs';
 import {continuedMessages,repairedMessages,streamStory} from './story-stream.mjs';
 import {loadCard} from './load-card.mjs';
 import {createAccounts} from './accounts.mjs';
+import {createEditorGateway} from './editor-gateway.mjs';
 import {randomEventMessages,parseRandomEvent} from './random-events.mjs';
 import {forumReplyMessages,parseForumReply} from './forum.mjs';
 import {stripReasoning} from '../src/domain/reasoning.ts';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
-export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts')}){
+export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts'),editorPort=8808}){
   let external;
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
@@ -29,6 +30,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
   const projectId=createHash('sha256').update(projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
   const accounts=authRequired?await createAccounts({directory:accountDirectory}):null;
+  const editorGateway=await createEditorGateway({projectRoot,editorPort,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true};
   const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
@@ -66,11 +68,12 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
-      const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript']};
+      const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript']};
       if(authFiles[path]&&['GET','HEAD'].includes(request.method)){
         if(path==='/login'&&(!accounts||account)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
         const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(path==='/login'?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(projectRoot,'server/auth-ui',file)));return;
       }
+      if(path==='/editor'||path.startsWith('/editor/')){await editorGateway(request,response,path);return;}
       if(path.startsWith('/api/auth/')){
         if(!accounts)throw modelError(404,'API_NOT_FOUND');
         if(path==='/api/auth/me'&&request.method==='GET'){json(response,200,{user:account});return;}
@@ -89,10 +92,12 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(['GET','HEAD'].includes(request.method)&&['/','/index.html','/terminal'].includes(path)){response.writeHead(302,{Location:'/login'});response.end();return;}
         throw modelError(404,'NOT_FOUND');
       }
+      if(['GET','HEAD'].includes(request.method)&&['/','/index.html'].includes(path)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
       function accountHtml(html){const info=JSON.stringify(account).replace(/</g,'\\u003c');return html.replace(/\blocalStorage\b/g,'academyStorage').replace(/<head\b[^>]*>/i,match=>match+`<script>window.__ACADEMY_ACCOUNT__=${info};</script><script src="/auth/account.js"></script>`).replace('</body>','<style>.account-tools{position:fixed;z-index:2147480000;right:12px;bottom:8px;display:flex;gap:10px;align-items:center;padding:4px 9px;background:#fffaf2e8;border-radius:4px;font-size:11px;color:#73869a}.account-tools button{border:0;background:transparent;color:inherit;font:inherit;padding:3px 5px;cursor:pointer}.account-tools button:hover{color:#294a68}</style></body>');}
       const editorial=editorStore?await editorStore.read():null;
       const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}
+      if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:editorial?.data.map||{main:'',places:{}}});return;}
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
       if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(c=>({id:c.id,primaryGender:c.primaryGender,...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
@@ -188,10 +193,12 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/terminal'){
         let terminal=await readFile(resolve(projectRoot,'星穹游戏终端 (1).html'),'utf8');
         const catalog=JSON.stringify(publicCards({characters:source.characters})).replace(/</g,'\\u003c');
+        terminal=terminal.replace('<script>','<script>window.__ACADEMY_MAP_ASSETS__='+JSON.stringify(editorial?.data.map||{main:'',places:{}}).replace(/</g,'\\u003c')+';');
         terminal=terminal.replace(/const SPLASH_CHARACTERS = \[[\s\S]*?\n    \];/,()=> 'const SPLASH_CHARACTERS = '+catalog+';window.__ACADEMY_CARD_REVISION__='+JSON.stringify(editorial?.revision||dataset)+';');
         const index=await readFile(resolve(dist,'index.html'),'utf8');
         const assets=[...index.matchAll(/<(?:script\b[^>]*src="\/assets\/[^"]+"[^>]*><\/script>|link\b[^>]*href="\/assets\/[^"]+"[^>]*>)/g)].map(match=>match[0]).join('\n');
-        const composed=terminal.replace('</body>',assets+'\n</body>');
+        const boot='<style>html[data-academy-boot]{min-height:100%;background:#f7f1e8}html[data-academy-boot] body{visibility:hidden}html[data-academy-boot]:after{content:"正在进入学院…";position:fixed;inset:0;display:grid;place-items:center;color:#6d87a1;font:16px Georgia,serif;letter-spacing:2px}html[data-academy-boot][data-academy-error]:after{content:"页面加载失败，请刷新重试。"}.localhost{display:none!important}</style><script src="/auth/boot.js"></script>';
+        const composed=terminal.replace('<html ','<html data-academy-boot ').replace('</head>',boot+'</head>').replace('</body>',assets+'\n</body>');
         const html=account?accountHtml(composed):composed;
         response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
       }

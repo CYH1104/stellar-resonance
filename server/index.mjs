@@ -7,10 +7,12 @@ import { mkdir,writeFile } from 'node:fs/promises';
 const projectRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 try {
   const host=process.env.HOST||'127.0.0.1';
-  const app=await createLocalServer({projectRoot,port:Number(process.env.PORT||5173),host,publicOrigin:process.env.PUBLIC_ORIGIN||'',authRequired:process.env.AUTH_REQUIRED==='1'||host!=='127.0.0.1'});
-  const port=await app.start();
-  const editor=createEditorServer({projectRoot,card:await loadCard(projectRoot),port:Number(process.env.EDITOR_PORT||8808)});
+  let port=Number(process.env.PORT||5173);
+  const editorPortSetting=Number(process.env.EDITOR_PORT||8808);
+  const app=await createLocalServer({projectRoot,port,host,publicOrigin:process.env.PUBLIC_ORIGIN||'',authRequired:process.env.AUTH_REQUIRED==='1'||host!=='127.0.0.1',editorPort:editorPortSetting});
+  const editor=createEditorServer({projectRoot,card:await loadCard(projectRoot),port:editorPortSetting,gameUrl:()=> (process.env.PUBLIC_ORIGIN?new URL(process.env.PUBLIC_ORIGIN).origin:`http://127.0.0.1:${port}`)+'/terminal'});
   const editorPort=await editor.start();
+  port=await app.start();
   console.log('Private editor ready: http://127.0.0.1:'+editorPort+'/');
   const response=await fetch(`http://127.0.0.1:${port}/api/health`);const health=await response.json();
   await mkdir(resolve(projectRoot,'server/.local'),{recursive:true});

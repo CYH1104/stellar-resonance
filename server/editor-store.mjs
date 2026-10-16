@@ -1,5 +1,6 @@
 import {WORLD_DEFAULTS,characterRows} from './editor-ui/worldbook.js';
 import {isPlaceholderCharacter} from './placeholders.mjs';
+import {validateMapAssets} from './map-assets.mjs';
 import {readFile,writeFile,mkdir,rename,stat,copyFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -31,7 +32,7 @@ export function validateEditorData(raw){
   let worldbooks;
   if(raw.worldbooks!==undefined){if(!Array.isArray(raw.worldbooks)||raw.worldbooks.length>50)throw error('INVALID_WORLDBOOKS');const bookIds=new Set();worldbooks=raw.worldbooks.map(book=>{if(!book||typeof book.id!=='string'||book.id.length>100||bookIds.has(book.id)||typeof book.name!=='string'||book.name.length>200)throw error('INVALID_WORLDBOOK');bookIds.add(book.id);return {id:book.id,name:book.name,enabled:book.enabled!==false,metadata:safeJson(book.metadata||{}),entries:validateEditorData({version:1,characters:raw.characters,entries:book.entries}).entries};});entries=worldbooks.filter(b=>b.enabled).flatMap(book=>book.entries.map(entry=>({...entry,uid:book.id+':'+entry.uid})));}
   if(entries.length>1000)throw error('TOO_MANY_ENTRIES');
-  return {version:1,characters,entries,worldbook:safeJson(raw.worldbook||{}),...(worldbooks?{worldbooks}:{})};
+  return {version:1,characters,entries,map:validateMapAssets(raw.map),worldbook:safeJson(raw.worldbook||{}),...(worldbooks?{worldbooks}:{})};
 }
 export function publicCards(data){return data.characters.map(c=>Object.fromEntries(Object.entries(c).filter(([key])=>(Object.hasOwn(fields,key)&&key!=='hiddenPrompt')||['id','displayFields'].includes(key))));}
 export function cardWithEditor(base,data){return {...clone(base),characters:clone(data.characters),world:{...clone(base.world),sourceText:'',entries:clone(data.entries)}};}

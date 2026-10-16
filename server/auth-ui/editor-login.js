@@ -1,0 +1,3 @@
+document.querySelector('#editor-login').onsubmit=async event=>{event.preventDefault();const button=event.currentTarget.querySelector('button'),message=document.querySelector('#message');button.disabled=true;message.textContent='';try{const response=await fetch('/editor/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:document.querySelector('#editor-key').value})});if(!response.ok)throw Error(response.status===429?'操作频繁，请稍后重试。':'管理口令不正确。');location.replace('/editor/');}catch(e){message.textContent=e.message||'连接失败，请稍后重试。';}finally{button.disabled=false;}};
+
+document.querySelector("#editor-login button").disabled=false;

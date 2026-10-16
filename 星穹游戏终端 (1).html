@@ -2766,6 +2766,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             try { const o = JSON.parse(GM_getValue('mapImg:v1', '{}')) || {}; return { main: o.main || '', places: o.places || {} }; }
             catch (e) { return { main: '', places: {} }; }
         })();
+        if(window.__ACADEMY_MAP_ASSETS__)Object.assign(MI,window.__ACADEMY_MAP_ASSETS__);
         const miSave = () => GM_setValue('mapImg:v1', JSON.stringify(MI));
         P.forEach(p => { p.image = MI.places[p.name] || MAP_DEFAULT_URL; });
         const $ = id => root.querySelector('#mp-' + id);
@@ -3020,6 +3021,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             if (idx >= 0) { svg.classList.add('st'); lines(); placeTag(); }
         });
         return {
+            setAssets(assets){if(!assets)return;MI.main=assets.main||'';MI.places=assets.places||{};P.forEach(p=>{p.image=MI.places[p.name]||MAP_DEFAULT_URL;});if(idx>=0)select(idx);else setImg(main,MI.main||MAP_DEFAULT_URL);},
             onShow() {
                 setVh();
                 if (!inited) { inited = true; scr($('h1'), 'WELCOME'); }
@@ -10222,6 +10224,21 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
 #__exp_splash__ .mp .map-zoom{position:absolute;right:0;top:-38px;z-index:8;background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0;padding:2px 8px;color:var(--or);font:28px/1.1 Georgia,serif;cursor:pointer}
 #__exp_splash__ .mp .map-zoom:hover{color:var(--fg)}
 @media(max-width:760px){#enterRegistration{font-size:14px!important}.gate-entry-links button{font-size:12px}#__exp_splash__ .ah-tool span{font-size:13px}#__exp_splash__ .mp .item{font-size:18px}#__exp_splash__ .mp .stage{width:89%;margin:40px auto 90px}#__exp_splash__ .mp .stage.map-expanded{width:98%}}
+#enterRegistration,.gate-entry-links button{font:16px/1.8 var(--s-font-zh,SimSun),serif!important;letter-spacing:2px!important}
+#enterRegistration small,.gate-entry-links button small{font:12px/1.8 var(--s-font-en,Georgia),serif;letter-spacing:3px}
+#__exp_splash__ .academy-clock{padding:10px 0 18px;margin-bottom:28px}
+#__exp_splash__ .academy-clock time{font-size:clamp(32px,3.3vw,44px)}
+#__exp_splash__ .academy-date{font-size:16px;margin-top:12px}
+#__exp_splash__ .ah-tools{margin-top:clamp(65px,12vh,120px)}
+#__exp_splash__ .mp .pt{min-width:12px;min-height:12px}
+#__exp_splash__ .mp .pt span{font-size:16px!important;line-height:1.6;padding:3px 7px}
+#__exp_splash__ .mp .ptl{font-size:16px!important;line-height:1.6;padding:3px 7px}
+#__exp_splash__ .mp .pt{width:10px!important;height:10px!important;min-width:10px;min-height:10px;margin:-5px!important}
+#__exp_splash__ .mp .tag{font-size:16px}
+#__exp_splash__ .mp .gurl{display:none!important}
+#__exp_splash__ .portrait-scale-control{display:flex;align-items:center;gap:10px;font-size:12px}
+#__exp_splash__ .portrait-scale-control input{width:160px;accent-color:var(--s-acc)}
+@media(max-width:700px){#enterRegistration,.gate-entry-links button{font-size:14px!important}#enterRegistration small,.gate-entry-links button small{font-size:10px}#__exp_splash__ .academy-clock time{font-size:30px}#__exp_splash__ .academy-date{font-size:13px}#__exp_splash__ .ah-tools{margin-top:65px}}
 </style>
 <!-- terminal-editorial-end -->
 <!-- terminal-workspace-start -->
@@ -10283,6 +10300,9 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
   const nav=q('.ah-tools');nav.replaceChildren();
+  window.addEventListener('focus',()=>void refreshMapAssets());
+  async function refreshMapAssets(){try{const r=await fetch('/api/map-assets',{cache:'no-store'});if(r.ok){const data=await r.json();root.__mapApi?.setAssets(data.map);}}catch{}}
+  document.addEventListener('click',event=>{if(event.target.closest('[data-sact=map],[data-module=map]'))void refreshMapAssets();},true);
   const mapStage=q('.mp .stage');
   if(mapStage){const zoom=document.createElement('button');zoom.type='button';zoom.className='map-zoom';zoom.textContent='+';zoom.title='放大地图';zoom.setAttribute('aria-label','放大地图');zoom.setAttribute('aria-pressed','false');zoom.onclick=event=>{event.stopPropagation();const expanded=mapStage.classList.toggle('map-expanded');zoom.textContent=expanded?'−':'+';zoom.title=expanded?'缩小地图':'放大地图';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-pressed',String(expanded));requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));};mapStage.append(zoom);}
   const items=[['chars','人物公开介绍'],['personas','user 人设档案'],['chat','进入对话'],['rev','编辑随机事件'],['memory','剧情记忆'],['saves','存档与导出'],['portrait','调整立绘大小'],['hub','全部功能']];
@@ -10297,9 +10317,9 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   q('.ah-office').innerHTML='全部功能<small>ALL MODULES ↗</small>';
   const entryLabels=[['学院星图','STAR MAP'],['新建存档','NEW JOURNEY'],['进入剧情','STORY LINK'],['学院编年史','CHRONICLE']];
   q('.ah-entries').querySelectorAll('button').forEach((button,index)=>{if(entryLabels[index]){button.querySelector('span').textContent=entryLabels[index][0];button.querySelector('small').textContent=entryLabels[index][1]+' →';}});
-  const explore=document.getElementById('enterRegistration');explore.textContent='探索学院 / EXPLORE';
+  const explore=document.getElementById('enterRegistration');explore.innerHTML='<span>探索学院</span> / <small>EXPLORE</small>';
   const gateEntries=document.createElement('div');gateEntries.className='gate-entry-links';
-  for(const [entry,label] of [['new','直接开始对话 / START A CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
+  for(const [entry,label] of [['new','直接开始对话 / START A CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.innerHTML='<span>'+label.split(' / ')[0]+'</span> / <small>'+label.split(' / ')[1]+'</small>';button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
   document.querySelectorAll('.gate-tools .palette,#gateTheme').forEach(el=>el.hidden=true);
   q('.spl-theme')?.setAttribute('hidden','');
   const hub=q('.academy-hub'),grid=hub.querySelector('.hub-grid');grid.replaceChildren();
@@ -10314,7 +10334,7 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   q('.chr-timeline').querySelectorAll('.chr-img').forEach(box=>{box.replaceChildren();box.classList.add('chronicle-placeholder');});
 
 
-  const editCards=document.createElement('button');editCards.textContent='\u7f16\u8f91\u89d2\u8272';editCards.onclick=()=>window.open('http://127.0.0.1:8808/','_blank','noopener');q('.academy-card-tools').append(editCards);
+  const editCards=document.createElement('button');editCards.textContent='\u7f16\u8f91\u89d2\u8272';editCards.onclick=()=>window.open('/editor/','_blank','noopener');q('.academy-card-tools').append(editCards);
   let cardRevision=window.__ACADEMY_CARD_REVISION__,refreshingCards=false;
   async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
   document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
@@ -10333,7 +10353,7 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   image.draggable=false;frame.append(image);layer.append(frame);home.append(layer);
   for(const corner of ['nw','ne','sw','se']){const handle=document.createElement('button');handle.type='button';handle.className='portrait-corner '+corner;handle.dataset.corner=corner;handle.setAttribute('aria-label','缩放底图 '+corner);frame.append(handle);}
   const bar=document.createElement('div');bar.className='portrait-editor-bar';bar.hidden=true;
-  bar.innerHTML='<span>拖动图片移动 · 拖动四角等比缩放</span><button type="button" data-edit="import">更换底图</button><button type="button" data-edit="reset">重置</button><button type="button" data-edit="cancel">取消</button><button type="button" data-edit="save">保存位置</button><small role="status"></small>';
+  bar.innerHTML='<span>拖动图片移动 · 滚轮或滑条缩放</span><label class="portrait-scale-control">图片大小 <input type="range" min="8" max="300" step="1" value="65" aria-label="立绘大小"><output>65%</output></label><button type="button" data-edit="import">更换底图</button><button type="button" data-edit="reset">重置</button><button type="button" data-edit="cancel">取消</button><button type="button" data-edit="save">保存位置</button><small role="status"></small>';
   home.append(bar);const status=bar.querySelector('small');
   const cardControls=document.createElement('div');cardControls.className='card-appearance-controls';
   cardControls.innerHTML='<label>卡片底色透明度 <input type="range" data-card-control="alpha" min="0" max="100" value="100" aria-label="卡片底色不透明度"><output data-card-value="alpha">100%</output></label><label>卡片倾斜度 <input type="range" data-card-control="tilt" min="-25" max="25" value="-14" aria-label="卡片倾斜度"><output data-card-value="tilt">-14°</output></label>';
@@ -10345,7 +10365,10 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   cardControls.addEventListener('input',event=>{const key=event.target.dataset.cardControl;if(key==='alpha'||key==='tilt'){cards[key]=Number(event.target.value);renderCards();}});
   const defaults={version:1,x:.1,y:0,width:.65};let layout={...defaults},original,editing=false,gesture;
   try{const saved=JSON.parse(localStorage.getItem('academy:portrait-layout'));if(saved?.version===1&&['x','y','width'].every(k=>Number.isFinite(saved[k]))&&saved.width>=.08&&saved.width<=3)layout=saved;}catch{}
-  function render(){frame.style.left=layout.x*100+'%';frame.style.top=layout.y*100+'%';frame.style.width=layout.width*100+'%';}
+  function render(){frame.style.left=layout.x*100+'%';frame.style.top=layout.y*100+'%';frame.style.width=layout.width*100+'%';bar.querySelector('.portrait-scale-control input').value=String(Math.round(layout.width*100));bar.querySelector('.portrait-scale-control output').textContent=Math.round(layout.width*100)+'%';}
+  function resizePortrait(width){const before=layout.width,next=Math.max(.08,Math.min(3,width));const box=frame.getBoundingClientRect(),area=home.getBoundingClientRect();layout.x+=(before-next)/2;layout.y+=(box.height/area.height)*(1-next/before)/2;layout.width=next;render();}
+  bar.querySelector('.portrait-scale-control input').oninput=event=>{if(editing)resizePortrait(Number(event.target.value)/100);};
+  frame.addEventListener('wheel',event=>{if(!editing||image.hidden)return;event.preventDefault();resizePortrait(layout.width*Math.exp(-Math.max(-100,Math.min(100,event.deltaY))*.002));},{passive:false});
   function stopEdit(){editing=false;gesture=null;home.classList.remove('portrait-editing');bar.hidden=true;}
   function beginEdit(){window.dispatchEvent(new Event('academy:home'));root.querySelector('.academy-hub').hidden=true;original={...layout};originalCards={...cards};hadCardSettings=home.hasAttribute('data-card-custom');editing=true;home.classList.add('portrait-editing');bar.hidden=false;status.textContent=image.hidden?'可调整右侧卡片；导入底图后也可拖动位置。':'';frame.focus();}
   bar.addEventListener('click',event=>{const action=event.target.closest('[data-edit]')?.dataset.edit;if(action==='import')root.querySelector('#portraitFile').click();if(action==='reset'){layout={...defaults};cards={alpha:100,tilt:-14};renderCards(false);render();}if(action==='cancel'){layout={...original};cards={...originalCards};renderCards(hadCardSettings);render();stopEdit();}if(action==='save'){try{localStorage.setItem('academy:portrait-layout',JSON.stringify(layout));localStorage.setItem('academy:card-appearance',JSON.stringify(cards));stopEdit();}catch{status.textContent='设置保存失败，请重试。';}}});

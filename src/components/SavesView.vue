@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue';import type { ViewModel } from '../app/useWorkspace';import { parseBackup } from '../domain/story';import DialogShell from './DialogShell.vue';
+import { ref } from 'vue';import type { ViewModel } from '../app/useWorkspace';import { parseBackup } from '../domain/story';
 import SaveList from './SaveList.vue';
-const props=defineProps<{w:ViewModel}>();const fileText=ref(''),fileName=ref(''),count=ref(0),replace=ref(false),confirm=ref(false);
-async function readFile(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(!file)return;fileText.value='';try{if(file.size>20*1024*1024)throw new Error('首版备份限制为 20MB');const text=await file.text();const value=parseBackup(text);fileText.value=text;fileName.value=file.name;count.value=value.sessions.length;props.w.problem='';}catch(e){props.w.problem=e instanceof Error?e.message:'文件读取失败';}(event.target as HTMLInputElement).value='';}
-async function restore(){await props.w.importBackup(fileText.value,replace.value);confirm.value=false;fileText.value='';}
+const props=defineProps<{w:ViewModel}>();const fileInput=ref<HTMLInputElement>();
+async function readFile(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(!file)return;try{if(file.size>20*1024*1024)throw new Error('备份不能超过 20MB');const text=await file.text();parseBackup(text);props.w.problem='';await props.w.importBackup(text,false);}catch(e){props.w.problem=e instanceof Error?e.message:'文件读取失败';}(event.target as HTMLInputElement).value='';}
 </script>
 <template><section class="surface"><p class="eyebrow">SAVES / 存档</p><h1>存档</h1><div class="actions"><button class="primary" @click="w.exportBackup()">导出全部备份</button><button :disabled="!w.active" @click="w.exportBook()">导出当前故事</button></div>
-  <section class="subsection"><h2>导入备份</h2><label>选择 JSON 备份文件<input type="file" accept=".json,application/json" :disabled="w.busy||w.workingMemory" @change="readFile" /></label><div v-if="fileText" class="detail"><p>{{fileName}} · {{count}} 份存档</p><label class="toggle"><input v-model="replace" type="checkbox" />覆盖当前全部存档与配置（默认追加）</label><button class="primary" @click="replace?confirm=true:restore()">{{replace?'确认覆盖前预览':'追加导入'}}</button></div></section>
+  <div class="backup-import"><button type="button" :disabled="w.busy||w.workingMemory" @click="fileInput?.click()">导入文件</button><input ref="fileInput" type="file" accept=".json,application/json" hidden @change="readFile" /></div>
   <section class="subsection"><h2>本机存档列表</h2><SaveList :w="w" open-label="进入存档" /><p v-if="!w.sessions.length" class="empty">还没有存档。</p></section>
-  <DialogShell v-if="confirm" title="覆盖本机全部存档？" @close="confirm=false"><p>将使用 {{fileName}} 中的 {{count}} 份存档替换当前记录。建议先导出当前备份。</p><div class="actions"><button @click="confirm=false">取消</button><button class="primary" @click="restore">确认覆盖</button></div></DialogShell>
 </section></template>

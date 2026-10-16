@@ -1,0 +1,1 @@
+(() => {let ready=false;window.addEventListener('academy:ready',()=>{ready=true;document.documentElement.removeAttribute('data-academy-boot');},{once:true});setTimeout(()=>{if(!ready)document.documentElement.setAttribute('data-academy-error','');},12000);})();

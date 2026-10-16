@@ -35,6 +35,7 @@ import SavesView from './components/SavesView.vue';
 import OpeningView from './components/OpeningView.vue';
 
 import PersonaLibrary from './components/PersonaLibrary.vue';
+import {PersonaLibrary as PersonaRepository} from './storage/personaLibrary';
 
 import type {Persona} from './domain/contracts';
 
@@ -124,7 +125,8 @@ function settings(){library.value=false;w.home();entry.value='new';w.panel='sett
 
 function opening(){if(w.busy||w.workingMemory||w.workingPersona||w.creatingGame)return;if(embedded){window.dispatchEvent(new Event('academy:home'));return;}w.home();entry.value='opening';}
 
-function terminalNavigate(event:Event){
+let navigationSequence=0;
+async function terminalNavigate(event:Event){
 
   const detail=(event as CustomEvent).detail;
 
@@ -133,6 +135,7 @@ function terminalNavigate(event:Event){
   if(!embedded||w.busy||w.workingMemory||w.workingPersona||w.creatingGame||!detail)return;
 
   detail.accepted=true;
+  const sequence=++navigationSequence;
 
   if(w.loading){pendingNavigation=detail;return;}
 
@@ -141,6 +144,7 @@ function terminalNavigate(event:Event){
     pendingExistingSessions=pendingText?new Set(w.sessions.map(session=>session.id)):undefined;
     if(w.active)w.home();w.resetNewGameDraft();library.value=false;entry.value='new';w.panel='story';
     if(pendingText)w.notice='请先建立新会话，选中角色的邂逅提示会保留到剧情输入框，不会自动发送。';
+    if(!w.sessions.length){try{const files=await new PersonaRepository().list();if(sequence===navigationSequence&&!files.length)library.value=true;}catch{w.problem='无法读取人设档案，请重试。';}}
     return;
   }
 
@@ -157,6 +161,8 @@ function terminalNavigate(event:Event){
     if(w.active){w.enterStory();flushInsertedText();return;}
 
     const recent=mainSession.value||[...w.sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))[0];
+
+    if(!recent){try{const files=await new PersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){w.home();library.value=true;entry.value='new';w.notice='先填写并保存 user 人设，再建立会话。';return;}}catch{w.problem='无法读取人设档案，请重试。';return;}}
 
     if(recent){w.open(recent.id);flushInsertedText();}else{w.home();w.notice='还没有对话，填写人物档案后开始新会话。插入的文字会保留到新会话。';}
 
