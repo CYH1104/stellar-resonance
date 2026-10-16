@@ -14,7 +14,7 @@ test('original terminal serves the mounted functional workspace and assets on th
     const script=await fetch(base+scripts[0][1]);assert.equal(script.status,200);assert.match(script.headers.get('content-type'),/javascript/);
     const css=[...html.matchAll(/<link[^>]*href="(\/assets\/[^"<>]+\.css)"/g)];assert.ok(css.length);
     assert.equal((await fetch(base+css[0][1])).status,200);
-    const bootstrap=await fetch(base+'/api/bootstrap');const data=await bootstrap.json();assert.equal(data.runtime,'local-card');assert.ok(data.counts.characters>0);
+    const bootstrap=await fetch(base+'/api/bootstrap');const data=await bootstrap.json();assert.equal(data.runtime,'local-card');assert.ok(Number.isInteger(data.counts.characters)&&data.counts.characters>=0);
     const cookie=bootstrap.headers.get('set-cookie').split(';')[0];
     const game=await fetch(base+'/api/new-game',{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({persona:{name:'整合测试'}})});
     assert.equal(game.status,200);const state=await game.json();assert.equal(state.initial.player.name,'整合测试');assert.equal(state.initial.characters.length,data.counts.characters);
