@@ -27,3 +27,19 @@
 #__exp_splash__ .spl-enclnk:before,#__exp_splash__ .spl-enclnk:after{border-bottom-style:solid!important}
 #__exp_splash__ .spl-chen{display:block;color:var(--s-acc);font:10px var(--s-font-en);letter-spacing:2px;margin-top:8px}
 #__exp_splash__ .spl-chcard:not(.spl-sel) .spl-chen{visibility:hidden}
+
+/* Readable Chinese copy, with quiet English labels and unchanged menu numbers. */
+#enterRegistration{font-size:16px!important}
+.gate-entry-links button{font-size:14px;line-height:1.8;letter-spacing:2px}
+#__exp_splash__ .ah-tool span{font-size:15px;line-height:1.8}
+#__exp_splash__ .ah-tool i{font-size:10px!important}
+#__exp_splash__ .mp h1{font-size:26px;letter-spacing:2px;font-weight:500}
+#__exp_splash__ .mp .item{font-size:20px;line-height:1.85;opacity:.85;padding:10px 0;margin-bottom:24px;border-left:0!important}
+#__exp_splash__ .mp .item b{font-size:12px;letter-spacing:1px;margin-right:6px}
+#__exp_splash__ .mp .sub1{font-size:15px;letter-spacing:1px}
+#__exp_splash__ .mp .side{overflow:auto}
+#__exp_splash__ .mp .stage{width:86%;max-width:1000px;aspect-ratio:1.18;min-height:0;height:auto;align-self:start;justify-self:center;margin:56px 0 80px}
+#__exp_splash__ .mp .stage.map-expanded{width:98%;max-width:none}
+#__exp_splash__ .mp .map-zoom{position:absolute;right:0;top:-38px;z-index:8;background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0;padding:2px 8px;color:var(--or);font:28px/1.1 Georgia,serif;cursor:pointer}
+#__exp_splash__ .mp .map-zoom:hover{color:var(--fg)}
+@media(max-width:760px){#enterRegistration{font-size:14px!important}.gate-entry-links button{font-size:12px}#__exp_splash__ .ah-tool span{font-size:13px}#__exp_splash__ .mp .item{font-size:18px}#__exp_splash__ .mp .stage{width:89%;margin:40px auto 90px}#__exp_splash__ .mp .stage.map-expanded{width:98%}}

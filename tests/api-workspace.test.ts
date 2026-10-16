@@ -26,6 +26,16 @@ beforeEach(()=>{
 });
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function workspace(){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));return w;}
+it('完整回复可以续写，原完整稿保留，失败也不会覆盖原稿',async()=>{
+  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('续写测试',{name:'玩家',appearance:'',personality:'',background:''},'');
+  const generate=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'原完整正文。'};yield {type:'done',outcome:{event:'原事件',characters:[]}};});
+  await w.generate('观察周围');const original=structuredClone(JSON.parse(JSON.stringify(w.active.value!.turns[0].variants[0])));
+  generate.mockImplementationOnce(async function*(request){expect(request.continuation?.partial).toBe('原完整正文。');expect(request.generationType).toBe('continue');yield {type:'delta',text:'接着发生的新情节。'};yield {type:'done',outcome:{event:'续写事件',characters:[]}};});
+  await w.generate(undefined,0,true);
+  const turn=w.active.value!.turns[0];expect(turn.variants).toHaveLength(2);expect(turn.variants[0]).toEqual(original);expect(turn.variants[1].text).toBe('原完整正文。接着发生的新情节。');expect(turn.variants[1].status).toBe('complete');expect(w.problem.value).toBe('');
+  generate.mockImplementationOnce(async function*(){yield {type:'delta',text:'未完成的延伸'};throw Error('合成连接中断');});
+  await w.generate(undefined,0,true);expect(turn.variants).toHaveLength(3);expect(turn.variants[0]).toEqual(original);expect(turn.variants[1].status).toBe('complete');expect(turn.variants[2].status).toBe('incomplete');expect(w.problem.value).toContain('中断');
+});
 function fill(w:ReturnType<typeof useWorkspace>,id='main'){
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }

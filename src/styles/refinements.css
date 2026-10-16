@@ -81,3 +81,12 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .diary-kicker,#academy-workspace .diary-meta,#academy-workspace .diary-signature{color:var(--color-muted)}
 @media(max-width:1099px){#academy-workspace .resizable-workspace.game-layout{grid-template-columns:var(--left-width,225px) 10px minmax(0,1fr)}}
 @media(max-width:759px){#academy-workspace .resizable-workspace.game-layout,#academy-workspace .resizable-workspace.game-layout.forum-focus{grid-template-columns:minmax(0,1fr)}}
+/* API sections use spacing instead of nested panel borders. */
+#academy-workspace .settings-view,#academy-workspace .simple-api-settings,#academy-workspace .compact-api-card{border:0!important;box-shadow:none!important;background:transparent!important;border-radius:0}
+#academy-workspace .settings-view{padding:24px 28px}
+#academy-workspace .compact-api-card{padding:12px 0 22px;margin:0 0 26px}
+#academy-workspace .compact-api-card form{display:grid;gap:16px}
+#academy-workspace .compact-api-card .api-identity-fields{gap:20px}
+#academy-workspace .settings-view :is(input:not([type=checkbox]),select,textarea){padding:6px 10px;min-height:34px}
+#academy-workspace .simple-api-settings{display:grid;gap:22px}
+@media(max-width:700px){#academy-workspace .settings-view{padding:18px 14px}#academy-workspace .compact-api-card .api-identity-fields{gap:14px}}

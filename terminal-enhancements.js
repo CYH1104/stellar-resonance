@@ -19,6 +19,8 @@
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
   const nav=q('.ah-tools');nav.replaceChildren();
+  const mapStage=q('.mp .stage');
+  if(mapStage){const zoom=document.createElement('button');zoom.type='button';zoom.className='map-zoom';zoom.textContent='+';zoom.title='放大地图';zoom.setAttribute('aria-label','放大地图');zoom.setAttribute('aria-pressed','false');zoom.onclick=event=>{event.stopPropagation();const expanded=mapStage.classList.toggle('map-expanded');zoom.textContent=expanded?'−':'+';zoom.title=expanded?'缩小地图':'放大地图';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-pressed',String(expanded));requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));};mapStage.append(zoom);}
   const items=[['chars','人物公开介绍'],['personas','user 人设档案'],['chat','进入对话'],['rev','编辑随机事件'],['memory','剧情记忆'],['saves','存档与导出'],['portrait','调整立绘大小'],['hub','全部功能']];
   items.forEach(([action,label],index)=>{const button=document.createElement('button');button.className='ah-tool';button.dataset.module=action;button.innerHTML=`<i>${String(index+1).padStart(2,'0')}</i><span>${label}</span>`;if(action==='hub')button.onclick=()=>window.ACADEMY.openHub();if(action==='chars'||action==='rev')button.onclick=()=>{root.querySelector('.spl-menu [data-sact="'+action+'"]').click();};nav.append(button);});
   root.querySelectorAll('button').forEach(button=>{if(button.textContent.includes('草稿'))button.textContent='插入剧情输入框';});
@@ -49,8 +51,12 @@
 
 
   const editCards=document.createElement('button');editCards.textContent='\u7f16\u8f91\u89d2\u8272';editCards.onclick=()=>window.open('http://127.0.0.1:8808/','_blank','noopener');q('.academy-card-tools').append(editCards);
-  const cardRevision=window.__ACADEMY_CARD_REVISION__;
-  document.addEventListener('click',async event=>{if(!event.target.closest('[data-sact="chars"],[data-module="chars"]'))return;try{const response=await fetch('/api/character-cards'),data=await response.json();if(cardRevision&&data.revision!==cardRevision){sessionStorage.setItem('academy:reopen-characters','1');location.reload();}}catch{}},true);
+  let cardRevision=window.__ACADEMY_CARD_REVISION__,refreshingCards=false;
+  async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
+  document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
+  window.addEventListener('focus',()=>void refreshCards());
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});
+  setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},5000);
   if(sessionStorage.getItem('academy:reopen-characters')){sessionStorage.removeItem('academy:reopen-characters');setTimeout(()=>{window.ACADEMY.directEnter();root.querySelector('.spl-menu [data-sact="chars"]').click();},0);}
 
 })();

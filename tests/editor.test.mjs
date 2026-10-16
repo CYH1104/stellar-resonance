@@ -7,6 +7,21 @@ import {WORLD_DEFAULTS,characterRows} from '../server/editor-ui/worldbook.js';
 import {createEditorServer} from '../server/editor.mjs';
 import {createLocalServer} from '../server/app.mjs';
 import {buildMessages} from '../server/ai.mjs';
+import {loadCard} from '../server/load-card.mjs';
+
+test('empty author catalog removes shipped placeholders and allows creating the first real card',async()=>{
+  const dir=await fixture();
+  try{
+    const demo=JSON.parse(await readFile(resolve(root,'server/example/feature-demo.json'),'utf8'));
+    await writeFile(resolve(dir,'server/private/extracted-pro.json'),JSON.stringify(demo));
+    const card=await loadCard(dir);assert.deepEqual(card.characters,[]);
+    const store=createEditorStore(dir,card);const initial=await store.read();assert.deepEqual(initial.data.characters,[]);
+    initial.data.characters.push({id:'real',name:'正式角色',no:'01',hiddenPrompt:'PRIVATE_REAL'});
+    const saved=await store.save(initial.data,initial.revision);assert.equal(saved.data.characters[0].name,'正式角色');
+    const legacy=defaultEditorData(demo);legacy.characters.push({id:'real',name:'正式角色',no:'01'});await writeFile(resolve(dir,'server/private/editor-data.json'),JSON.stringify(legacy));
+    assert.deepEqual((await store.read()).data.characters.map(c=>c.id),['real']);
+  }finally{await cleanup(dir);}
+});
 const root=process.cwd(),base={version:1,source:{sha256:'a'.repeat(64)},characters:[{id:'one',no:'01',name:'甲',en:'ONE',str:'精神力 A级',intro:'公开资料'}],world:{sourceText:'PRIVATE_WORLD_SENTINEL',greeting:['迎新'],departments:[]},places:[],missing:[]};
 test('SillyTavern entry fields, unknown extension metadata, UID and multiple books survive save/read',async()=>{const dir=await fixture();try{const store=createEditorStore(dir,base),first=await store.read();const entry={uid:20,...structuredClone(WORLD_DEFAULTS),comment:'原条目',content:'私有正文',vectorized:true,probability:75,sticky:2,cooldown:3,delay:4,scanDepth:6,caseSensitive:false,matchWholeWords:true,group:'school',groupOverride:true,groupWeight:80,excludeRecursion:true,preventRecursion:true,delayUntilRecursion:2,ignoreBudget:true,position:7,outletName:'notes',automationId:'example',characterFilterNames:['甲'],characterFilterTags:['学院'],characterFilterExclude:false,triggers:['normal','continue'],extensions:{vendor:{retained:true}}};first.data.worldbooks=[{id:'book-a',name:'世界书甲',enabled:true,metadata:{name:'Original',extensions:{custom:123}},entries:[entry]},{id:'book-b',name:'世界书乙',enabled:false,metadata:{},entries:[{...entry,content:'禁用书'}]}];const saved=await store.save(first.data,first.revision);assert.deepEqual(saved.data.worldbooks[0].entries[0],entry);assert.deepEqual(saved.data.worldbooks[0].metadata,first.data.worldbooks[0].metadata);assert.equal(saved.data.entries.length,1);assert.equal(saved.data.entries[0].uid,'book-a:20');saved.data.worldbooks[0].entries[0].content='修改后';const updated=await store.save(saved.data,saved.revision);assert.equal(updated.data.entries[0].content,'修改后');}finally{await cleanup(dir);}});
 test('card templates allow removing and adding fields while requiring name and number',()=>{const raw=defaultEditorData(base),c=raw.characters[0];c.displayFields=characterRows(c).filter(row=>!['str','intro'].includes(row.key));c.displayFields.push({id:'custom-field',key:'custom',label:'蓝色标签',value:'黑色内容'});let clean=validateEditorData(raw);assert.equal(clean.characters[0].str,'');assert.equal(clean.characters[0].intro,'');assert.deepEqual(publicCards(clean)[0].displayFields.at(-1),c.displayFields.at(-1));assert.ok(!JSON.stringify(publicCards(clean)).includes('hiddenPrompt'));c.displayFields=[];assert.deepEqual(validateEditorData(raw).characters[0].displayFields,[]);for(const key of ['name','no']){const invalid=structuredClone(raw);invalid.characters[0][key]='';assert.throws(()=>validateEditorData(invalid));}});

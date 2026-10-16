@@ -3047,6 +3047,27 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
         splashRoot.setAttribute('aria-hidden', 'true');
         if (splashRAF) { cancelAnimationFrame(splashRAF); splashRAF = 0; }
     }
+    function characterCardHtml(c) {return (
+                            '<div class="spl-chcard" data-no="' + (c.no || '') + '">' +
+                                '<div class="spl-chimg">' +
+                                    (c.img ? '<img src="' + c.img + '" alt="' + escHtml(c.name || '') + '" data-init="' +
+                                        String(c.en || c.name || '?').trim().charAt(0) + '">' :
+                                        '<b>' + String(c.en || c.name || '?').trim().charAt(0) + '</b>') +
+                                '</div>' +
+                                '<div class="spl-chinfo">' +
+                                    '<span class="spl-chnum">' + (c.no || '') + '</span>' +
+                                    '<span class="spl-chname">' + escHtml(c.name || '') + '</span>' + '<span class="spl-chen">'+escHtml(c.en||'')+'</span>' +
+                                    '<div class="spl-chright">' +
+                                        '<i class="spl-chvline"></i>' +
+                                        '<div class="spl-chrows">' +
+                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelName||'NAME')+' : </span><span class="val">' + escHtml(c.name || '') + (c.sex ? ' · ' + escHtml(c.sex) : '') + '</span></div>' +
+                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelStr||'STR')+' : </span><span class="val">' + escHtml(c.str || '') + '</span></div>' +
+                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelShos||'SHOS')+' : </span><span class="val">' + escHtml(c.shos || '') + '</span></div>' +
+                                        '</div>' +
+                                    '</div>' +
+                                '</div>' +
+                            '</div>');}
+
     function buildSplash() {
         const root = document.createElement('div');
         root.id = '__exp_splash__';
@@ -3119,26 +3140,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
                 '<div class="spl-stage">' +
                     '<div class="spl-deck">' +
                         '<div class="spl-ctrack">' +
-                        SPLASH_CHARACTERS.map(c =>
-                            '<div class="spl-chcard" data-no="' + (c.no || '') + '">' +
-                                '<div class="spl-chimg">' +
-                                    (c.img ? '<img src="' + c.img + '" alt="' + escHtml(c.name || '') + '" data-init="' +
-                                        String(c.en || c.name || '?').trim().charAt(0) + '">' :
-                                        '<b>' + String(c.en || c.name || '?').trim().charAt(0) + '</b>') +
-                                '</div>' +
-                                '<div class="spl-chinfo">' +
-                                    '<span class="spl-chnum">' + (c.no || '') + '</span>' +
-                                    '<span class="spl-chname">' + escHtml(c.name || '') + '</span>' + '<span class="spl-chen">'+escHtml(c.en||'')+'</span>' +
-                                    '<div class="spl-chright">' +
-                                        '<i class="spl-chvline"></i>' +
-                                        '<div class="spl-chrows">' +
-                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelName||'NAME')+' : </span><span class="val">' + escHtml(c.name || '') + (c.sex ? ' · ' + escHtml(c.sex) : '') + '</span></div>' +
-                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelStr||'STR')+' : </span><span class="val">' + escHtml(c.str || '') + '</span></div>' +
-                                            '<div class="spl-chrow"><span class="lbl">'+escHtml(c.labelShos||'SHOS')+' : </span><span class="val">' + escHtml(c.shos || '') + '</span></div>' +
-                                        '</div>' +
-                                    '</div>' +
-                                '</div>' +
-                            '</div>').join('') +
+                        SPLASH_CHARACTERS.map(characterCardHtml).join('') +
                         '</div>' +
                     '</div>' +
                     '<div class="spl-info">' +
@@ -3491,6 +3493,16 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             /* 兜底:某些环境(后台标签页/无渲染)rAF 不推进,类一直留着会把切换动画也一起禁掉 */
             setTimeout(() => root.classList.remove('spl-notrans'), 160);
         }
+        root.__updateCharacterCards = cards => {
+            if (!Array.isArray(cards)) return;
+            clearTimeout(charDealTimer);clearTimeout(charInfoTimer);clearTimeout(charDrawTimer);
+            SPLASH_CHARACTERS.splice(0,SPLASH_CHARACTERS.length,...cards);
+            charTrack.innerHTML=cards.map(characterCardHtml).join('');
+            charCards.splice(0,charCards.length,...charTrack.querySelectorAll('.spl-chcard'));
+            charActive=-1;charFoldX=null;
+            if(!cards.length){charTrack.style.transform='';charInfoEmptyFill('暂无角色，请在编辑器新增卡片。');return;}
+            charInit();
+        };
         function charInit() {
             /* v4.29.0:改回第一版横向滑动轮播 —— 进入即一横排展开、中间那张默认选中放平,
                无「牌堆 → 抽出」步骤;拖拽/点击/滚轮/方向键切换照旧。 */
@@ -10194,6 +10206,22 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
 #__exp_splash__ .spl-enclnk:before,#__exp_splash__ .spl-enclnk:after{border-bottom-style:solid!important}
 #__exp_splash__ .spl-chen{display:block;color:var(--s-acc);font:10px var(--s-font-en);letter-spacing:2px;margin-top:8px}
 #__exp_splash__ .spl-chcard:not(.spl-sel) .spl-chen{visibility:hidden}
+
+/* Readable Chinese copy, with quiet English labels and unchanged menu numbers. */
+#enterRegistration{font-size:16px!important}
+.gate-entry-links button{font-size:14px;line-height:1.8;letter-spacing:2px}
+#__exp_splash__ .ah-tool span{font-size:15px;line-height:1.8}
+#__exp_splash__ .ah-tool i{font-size:10px!important}
+#__exp_splash__ .mp h1{font-size:26px;letter-spacing:2px;font-weight:500}
+#__exp_splash__ .mp .item{font-size:20px;line-height:1.85;opacity:.85;padding:10px 0;margin-bottom:24px;border-left:0!important}
+#__exp_splash__ .mp .item b{font-size:12px;letter-spacing:1px;margin-right:6px}
+#__exp_splash__ .mp .sub1{font-size:15px;letter-spacing:1px}
+#__exp_splash__ .mp .side{overflow:auto}
+#__exp_splash__ .mp .stage{width:86%;max-width:1000px;aspect-ratio:1.18;min-height:0;height:auto;align-self:start;justify-self:center;margin:56px 0 80px}
+#__exp_splash__ .mp .stage.map-expanded{width:98%;max-width:none}
+#__exp_splash__ .mp .map-zoom{position:absolute;right:0;top:-38px;z-index:8;background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0;padding:2px 8px;color:var(--or);font:28px/1.1 Georgia,serif;cursor:pointer}
+#__exp_splash__ .mp .map-zoom:hover{color:var(--fg)}
+@media(max-width:760px){#enterRegistration{font-size:14px!important}.gate-entry-links button{font-size:12px}#__exp_splash__ .ah-tool span{font-size:13px}#__exp_splash__ .mp .item{font-size:18px}#__exp_splash__ .mp .stage{width:89%;margin:40px auto 90px}#__exp_splash__ .mp .stage.map-expanded{width:98%}}
 </style>
 <!-- terminal-editorial-end -->
 <!-- terminal-workspace-start -->
@@ -10255,6 +10283,8 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
   const nav=q('.ah-tools');nav.replaceChildren();
+  const mapStage=q('.mp .stage');
+  if(mapStage){const zoom=document.createElement('button');zoom.type='button';zoom.className='map-zoom';zoom.textContent='+';zoom.title='放大地图';zoom.setAttribute('aria-label','放大地图');zoom.setAttribute('aria-pressed','false');zoom.onclick=event=>{event.stopPropagation();const expanded=mapStage.classList.toggle('map-expanded');zoom.textContent=expanded?'−':'+';zoom.title=expanded?'缩小地图':'放大地图';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-pressed',String(expanded));requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));};mapStage.append(zoom);}
   const items=[['chars','人物公开介绍'],['personas','user 人设档案'],['chat','进入对话'],['rev','编辑随机事件'],['memory','剧情记忆'],['saves','存档与导出'],['portrait','调整立绘大小'],['hub','全部功能']];
   items.forEach(([action,label],index)=>{const button=document.createElement('button');button.className='ah-tool';button.dataset.module=action;button.innerHTML=`<i>${String(index+1).padStart(2,'0')}</i><span>${label}</span>`;if(action==='hub')button.onclick=()=>window.ACADEMY.openHub();if(action==='chars'||action==='rev')button.onclick=()=>{root.querySelector('.spl-menu [data-sact="'+action+'"]').click();};nav.append(button);});
   root.querySelectorAll('button').forEach(button=>{if(button.textContent.includes('草稿'))button.textContent='插入剧情输入框';});
@@ -10285,8 +10315,12 @@ body[data-academy-theme=dark],#__exp_splash__[data-theme=dark]{
 
 
   const editCards=document.createElement('button');editCards.textContent='\u7f16\u8f91\u89d2\u8272';editCards.onclick=()=>window.open('http://127.0.0.1:8808/','_blank','noopener');q('.academy-card-tools').append(editCards);
-  const cardRevision=window.__ACADEMY_CARD_REVISION__;
-  document.addEventListener('click',async event=>{if(!event.target.closest('[data-sact="chars"],[data-module="chars"]'))return;try{const response=await fetch('/api/character-cards'),data=await response.json();if(cardRevision&&data.revision!==cardRevision){sessionStorage.setItem('academy:reopen-characters','1');location.reload();}}catch{}},true);
+  let cardRevision=window.__ACADEMY_CARD_REVISION__,refreshingCards=false;
+  async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
+  document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
+  window.addEventListener('focus',()=>void refreshCards());
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});
+  setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},5000);
   if(sessionStorage.getItem('academy:reopen-characters')){sessionStorage.removeItem('academy:reopen-characters');setTimeout(()=>{window.ACADEMY.directEnter();root.querySelector('.spl-menu [data-sact="chars"]').click();},0);}
 
 })();
