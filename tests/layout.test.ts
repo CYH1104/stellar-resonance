@@ -14,6 +14,6 @@ it('卡片宽高独立，限制越界，缩小时内容通过卡片内滚动查�
 it('布局随本机备份恢复，旧存档默认布局，损坏尺寸安全回退',()=>{
   const preferences=defaults();preferences.layout={left:300,right:450,panels:{player:{height:250},'char-pro-02':{width:220,height:300},'theater-1':{height:430}}};const restored=parseBackup(backup({version:1,preferences,sessions:[]}));expect(restored.preferences.layout).toEqual(preferences.layout);delete preferences.layout;expect(parseBackup(backup({version:1,preferences,sessions:[]})).preferences.layout).toEqual(defaultLayout());expect(cleanLayout({left:NaN,right:9000,panels:{player:{height:-1},unknown:{width:500}}})).toEqual({right:800,panels:{player:{height:140}}});
 });
-it('卡片渲染已保存宽高及三种可键盘操作的拖动手柄',async()=>{
-  const preferences=defaults();preferences.layout={panels:{player:{width:260,height:280}}};const html=await renderToString(createSSRApp(ResizablePanel,{preferences,panelKey:'player',label:'玩家状态卡'}));expect(html).toContain('min(100%, 260px)');expect(html).toContain('height:280px');for(const name of ['宽度','高度','大小'])expect(html).toContain('aria-label="调整玩家状态卡'+name+'"');expect(html).toContain('resizable-panel-body');
+it('卡片忽略旧宽度并恢复高度，只提供纵向调整手柄',async()=>{
+  const preferences=defaults();preferences.layout={panels:{player:{width:260,height:280}}};const html=await renderToString(createSSRApp(ResizablePanel,{preferences,panelKey:'player',label:'玩家状态卡'}));expect(html).toContain('width:100%');expect(html).not.toContain('260px');expect(html).toContain('height:280px');expect(html).toContain('aria-label="调整玩家状态卡高度"');expect(html).not.toContain('resize-x');expect(html).not.toContain('resize-both');expect(html).toContain('resizable-panel-body');
 });

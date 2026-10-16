@@ -4,7 +4,6 @@ import {accountStorage} from './storage/accountScope';
 
 import { reactive, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 
-import ResizeHandle from './components/ResizeHandle.vue';
 import {useWorkspaceLayout} from './app/useWorkspaceLayout';
 import {installMvuBridge} from './app/mvuBridge';
 
@@ -46,6 +45,13 @@ import PresetManager from './components/PresetManager.vue';
 import {restorePersonaMedia} from './storage/personaMedia';
 
 const library=ref(false);
+const firstSetup=ref<'persona'|'api'|'name'|null>(null);
+const firstSetupKey='academy:first-journey:v1';
+function needsFirstSetup(){try{return !w.sessions.length&&!accountStorage.getItem(firstSetupKey);}catch{return !w.sessions.length;}}
+function savedFirstPersona(persona:Persona){if(firstSetup.value!=='persona')return;usePersona(persona);firstSetup.value='api';w.panel='settings';}
+function savedFirstApi(){if(firstSetup.value!=='api'||!w.apiReady)return;firstSetup.value='name';library.value=false;entry.value='new';w.panel='story';}
+async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;const files=await new PersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){firstSetup.value='persona';library.value=true;}else{usePersona(files[0]!.persona);firstSetup.value='api';w.panel='settings';}}
+
 
 
 
@@ -117,7 +123,7 @@ const entry=ref<'opening'|'new'|'continue'>(embedded?'new':'opening');
 
 watch(()=>[w.panel,library.value,entry.value,w.active?.id],async()=>{await nextTick();window.dispatchEvent(new Event('academy:page-transition'));});
 
-function start(){pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
+function start(){if(!w.loading&&needsFirstSetup()){w.home();w.resetNewGameDraft();entry.value='new';void beginFirstSetup(++navigationSequence);return;}pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
 
 function resume(){pendingText='';library.value=false;w.home();entry.value='continue';}
 
@@ -144,7 +150,7 @@ async function terminalNavigate(event:Event){
     pendingExistingSessions=pendingText?new Set(w.sessions.map(session=>session.id)):undefined;
     if(w.active)w.home();w.resetNewGameDraft();library.value=false;entry.value='new';w.panel='story';
     if(pendingText)w.notice='请先建立新会话，选中角色的邂逅提示会保留到剧情输入框，不会自动发送。';
-    if(!w.sessions.length){try{const files=await new PersonaRepository().list();if(sequence===navigationSequence&&!files.length)library.value=true;}catch{w.problem='无法读取人设档案，请重试。';}}
+    if(!w.sessions.length){try{await beginFirstSetup(sequence);}catch{w.problem='无法读取人设档案，请重试。';}}
     return;
   }
 
@@ -162,7 +168,7 @@ async function terminalNavigate(event:Event){
 
     const recent=mainSession.value||[...w.sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))[0];
 
-    if(!recent){try{const files=await new PersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){w.home();library.value=true;entry.value='new';w.notice='先填写并保存 user 人设，再建立会话。';return;}}catch{w.problem='无法读取人设档案，请重试。';return;}}
+    if(!recent){try{await beginFirstSetup(sequence);if(sequence!==navigationSequence||firstSetup.value)return;}catch{w.problem='无法读取人设档案，请重试。';return;}}
 
     if(recent){w.open(recent.id);flushInsertedText();}else{w.home();w.notice='还没有对话，填写人物档案后开始新会话。插入的文字会保留到新会话。';}
 
@@ -195,6 +201,7 @@ let pendingExistingSessions:Set<string>|undefined;
 function flushInsertedText(){if(w.active&&pendingText&&!pendingExistingSessions?.has(w.active.id)){w.input=[w.input,pendingText].filter(Boolean).join('\n\n').slice(0,16000);pendingText='';pendingExistingSessions=undefined;}}
 
 watch(()=>w.active?.id,flushInsertedText);
+watch(()=>[w.active?.id,w.creatingGame] as const,([id,creating])=>{if(!id||creating||!firstSetup.value)return;try{accountStorage.setItem(firstSetupKey,'complete');}catch{}firstSetup.value=null;library.value=false;w.panel='story';});
 
 watch(()=>w.loading,loading=>{if(!loading&&pendingNavigation){const detail=pendingNavigation;pendingNavigation=undefined;terminalNavigate(new CustomEvent('academy:navigate',{detail}));}});
 
@@ -273,8 +280,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
     <div ref="workspaceEl" class="workspace resizable-workspace" :style="layout.style.value" :class="{'game-layout':!!w.active&&!fullPage,'forum-focus':w.panel==='theaters','status-focus':w.panel==='status'}">
 
       <aside v-if="w.active&&!fullPage" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
-
-      <ResizeHandle v-if="w.active&&!fullPage" class="column-resizer left-resizer" axis="x" label="调整左栏宽度" @resize="dx=>layout.resize('left',dx)" />
       <main class="center-pane">
 
         <div v-if="w.problem" class="error-banner" role="alert"><span>{{ w.problem }}</span><button @click="w.problem=''">收起提示</button></div>
@@ -287,13 +292,13 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
             <p v-if="!w.active&&entry==='new'&&pendingText" class="muted encounter-draft-notice" role="status">建立新存档后，所选角色的邂逅提示会填入剧情输入框，不会自动发送。</p>
 
-            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="usePersona" @master="setMasterPersona" />
+            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @master="setMasterPersona" @saved="savedFirstPersona" />
 
-            <HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" />
+            <HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" :first-setup="firstSetup==='name'" />
 
             <StoryView v-else-if="w.panel==='story'&&w.apiReady" :w="w" />
 
-            <SettingsView v-else-if="w.panel==='story'" :w="w" />
+            <SettingsView v-else-if="w.panel==='story'" :w="w" @saved="savedFirstApi" />
 
             <section v-else-if="!w.active&&['memory','relations','theaters','status'].includes(w.panel)" class="surface session-required"><h1>请先建立或继续一个会话</h1><p class="muted">这个功能会显示当前会话的资料。</p><div class="actions"><button @click="start">新建存档</button><button @click="resume">过往存档</button></div></section>
 
@@ -309,7 +314,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
             <StatusBar v-else-if="w.panel==='status'" :w="w" />
 
-            <SettingsView v-else-if="w.panel==='settings'" :w="w" />
+            <SettingsView v-else-if="w.panel==='settings'" :w="w" @saved="savedFirstApi" />
 
             <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div><button @click="w.save()">保存配置</button></header><PresetManager :w="w" /></section>
 
@@ -320,8 +325,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
         </div>
 
       </main>
-
-      <ResizeHandle v-if="w.active&&!fullPage&&w.panel!=='theaters'" class="column-resizer right-resizer" axis="x" label="调整右栏宽度" @resize="dx=>layout.resize('right',dx)" />
       <aside v-if="w.active && !fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
 
     </div>

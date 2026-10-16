@@ -8,6 +8,7 @@ import ApiProfileEditor from './ApiProfileEditor.vue';
 import EmbeddingGuide from './EmbeddingGuide.vue';
 import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel}>();
+const emit=defineEmits<{saved:[]}>();
 const main=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.preferences.mainProfile));
 const embedding=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.preferences.embeddingProfile));
 const disabled=computed(()=>props.w.busy||props.w.workingMemory||props.w.configuringApis);
@@ -26,12 +27,12 @@ async function saveNew(p:Profile){
 function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);removeOpen.value=false;}
 </script>
 <template><section class="api-settings simple-api-settings">
-  <ApiProfileEditor v-if="main" :w="w" :p="main" title="主 API" />
+  <ApiProfileEditor v-if="main" :w="w" :p="main" title="主 API" @saved="emit('saved')" />
   <section class="auxiliary-picker"><div class="api-aux-row"><label>副 API<select v-model="selectedAux" :disabled="disabled||!w.auxiliaryProfiles.length"><option v-if="!w.auxiliaryProfiles.length" value="">暂无副 API</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id">{{p.name||'未命名副 API'}}</option></select></label><button type="button" :disabled="disabled||w.preferences.profiles.length>=30" @click="add">增加副 API</button></div>
-    <ApiProfileEditor v-if="auxiliary" :key="auxiliary.id" :w="w" :p="auxiliary" title="副 API" help="副 API 可选，可以添加多个；在下方功能接口选择中指定用途。只有主 API 也能使用全部文字功能。"><button type="button" :disabled="disabled" @click="removeOpen=true">删除</button></ApiProfileEditor>
+    <ApiProfileEditor v-if="auxiliary" @saved="emit('saved')" :key="auxiliary.id" :w="w" :p="auxiliary" title="副 API" help="副 API 可选，可以添加多个；在下方功能接口选择中指定用途。只有主 API 也能使用全部文字功能。"><button type="button" :disabled="disabled" @click="removeOpen=true">删除</button></ApiProfileEditor>
   </section>
   <label class="toggle"><input v-model="w.preferences.vectorEnabled" type="checkbox" :disabled="disabled" />开启向量检索</label>
-  <ApiProfileEditor v-if="embedding" :w="w" :p="embedding" title="向量模型" embedding />
+  <ApiProfileEditor v-if="embedding" :w="w" :p="embedding" title="向量模型" embedding @saved="emit('saved')" />
   <EmbeddingGuide />
   <section class="api-extra" aria-labelledby="api-task-heading">
     <h2 id="api-task-heading">功能接口选择（默认主 API）</h2>

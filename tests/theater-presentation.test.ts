@@ -1,4 +1,4 @@
-import {expect,it} from 'vitest';
+﻿import {expect,it} from 'vitest';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import GroupChatPhone from '../src/components/GroupChatPhone.vue';
@@ -25,7 +25,8 @@ it('旧精神体日记模板迁移且保留自定义内容要求，其他自定�
 it('结构化日记随存档恢复且保持与精神体OS独立，旧文字场景兼容',()=>{
   const session=newSession('测试',{name:'祁言',appearance:'',personality:'',background:'',spiritAnimal:'白猫'},''),variant={id:'v',text:'你站在窗边。',createdAt:'',status:'incomplete' as const};session.turns.push({id:'t',input:'看看窗外',variants:[variant],selected:0});finishVariant(session,0,variant,{event:'观察窗外',player:{spiritThought:'想晒太阳。'},theaters:[diary]});const restored=parseBackup(backup({version:1,preferences:defaults(),sessions:[session]}));expect(restored.sessions[0].turns[0].variants[0].outcome?.theaters?.[0].diary?.title).toBe(diary.diary?.title);expect(restored.sessions[0].turns[0].variants[0].outcome?.player?.spiritThought).toBe('想晒太阳。');expect(cleanTheaterScenes([{slot:4,kind:'custom',title:'旧日记',content:'旧记录'}])[0].content).toBe('旧记录');
 });
-it('四窗口实际入口路由到手机及日记组件，并保留每张卡片的拖动手柄',async()=>{
+it('四窗口以折叠栏展示手机及日记，只保留高度手柄',async()=>{
   const preferences=defaults();preferences.theaters![0].enabled=false;preferences.theaters![3]={slot:4,enabled:true,kind:'custom',title:'精神体日记',instruction:legacyDiaryInstruction};const w={preferences,theaters:[diary,{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'楚昭南',content:'报到了吗？'}]}],state:{player:{name:'祁言'}}} as unknown as ViewModel;
-  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('调整群聊大小');expect(html).toContain('调整精神体日记大小');
+  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('调整群聊高度');expect(html).toContain('<summary');expect(html).not.toContain('resize-both');expect(html).toContain('调整精神体日记高度');
 });
+
