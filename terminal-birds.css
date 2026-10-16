@@ -1,0 +1,8 @@
+.splashword{position:relative}
+.title-roost{position:absolute;left:14%;top:var(--dove-top,0);width:240px;height:185.27px;z-index:4;pointer-events:none;background:none;border:0;box-shadow:none}
+.opening-flock{display:block;width:100%;height:100%;overflow:visible;fill:#141814}
+.flock-flight{transform-box:fill-box;transform-origin:center;will-change:transform,opacity}
+.dove-departing .flock-flight{animation:flock-depart .85s var(--bird-delay) cubic-bezier(.3,.05,.6,1) both}
+@keyframes flock-depart{0%{transform:translate(0,0);opacity:1}20%{transform:translate(6px,-8px) rotate(-5deg)}100%{transform:translate(190px,-165px) rotate(-12deg) scale(.7);opacity:0}}
+@media(max-width:600px){.title-roost{left:12%;width:160px;height:123.52px}}
+@media(prefers-reduced-motion:reduce){.dove-departing .flock-flight{animation:none!important}}

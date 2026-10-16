@@ -1,6 +1,10 @@
-import { createApp } from 'vue';
-import App from './App.vue';
-import './styles/tokens.css';
-import './styles/layout.css';
-import './styles/persona-library.css';
-createApp(App).mount('#app');
+import { createApp } from 'vue';
+import App from './App.vue';
+import './styles/tokens.css';
+import './styles/layout.css';
+import './styles/palette.css';
+import './styles/terminal-workspace.css';
+import './styles/student-file.css';
+import './styles/persona-library.css';
+import './styles/refinements.css';
+createApp(App).mount(document.getElementById('academy-workspace') || '#app');

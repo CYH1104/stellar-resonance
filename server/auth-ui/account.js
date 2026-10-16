@@ -1,0 +1,9 @@
+(() => {
+  // UUID generation also works when the game is reached through an HTTP IP address.
+  if(!crypto.randomUUID)crypto.randomUUID=()=>{const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const s=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);};
+  const account=window.__ACADEMY_ACCOUNT__;if(!account)return;
+  const prefix='account:'+account.id+':';
+  window.academyStorage={getItem:k=>localStorage.getItem(prefix+k),setItem:(k,v)=>localStorage.setItem(prefix+k,v),removeItem:k=>localStorage.removeItem(prefix+k),key:i=>Object.keys(localStorage).filter(k=>k.startsWith(prefix))[i]?.slice(prefix.length)??null,get length(){return Object.keys(localStorage).filter(k=>k.startsWith(prefix)).length;}};
+  addEventListener('DOMContentLoaded',()=>{const bar=document.createElement('div');bar.className='account-tools';const label=document.createElement('span');label.textContent=account.email;const logout=document.createElement('button');logout.textContent='退出账号';logout.onclick=async()=>{if(!confirm('退出当前账号？请先停止正在生成的内容。'))return;logout.disabled=true;try{const r=await fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw Error();location.replace('/login');}catch{logout.disabled=false;logout.textContent='退出失败，重试';}};bar.append(label,logout);document.body.append(bar);});
+  const originalFetch=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await originalFetch(...args);const url=new URL(typeof args[0]==='string'?args[0]:args[0] instanceof Request?args[0].url:String(args[0]),location.href);if(url.origin===location.origin&&url.pathname.startsWith('/api/')&&!url.pathname.startsWith('/api/auth/')&&response.status===401){try{if((await response.clone().json()).code==='ACCOUNT_REQUIRED')location.replace('/login');}catch{}}return response;};
+})();

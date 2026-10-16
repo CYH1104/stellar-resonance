@@ -7,3 +7,6 @@ dist/
 !.env.example
 *.log
 .migration-manifest.json
+
+.integration/
+server.config.json

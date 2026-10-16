@@ -56,11 +56,4 @@ it('论坛回复默认关闭，开启时才校验所选接口，设置和旧备�
   const restored=parseBackup(backup({version:1,sessions:[],preferences:p}));expect(restored.preferences).toMatchObject({forumReplyEnabled:true,forumReplyProfile:'aux'});delete p.forumReplyEnabled;delete p.forumReplyProfile;expect(migrateApiSettings(p)).toMatchObject({forumReplyEnabled:false,forumReplyProfile:'main'});
 });
 
-it('旧建议接口选择不再要求填写副 API，建议始终跟随剧情接口',()=>{
-  const p=defaults();fill(p.profiles[0]);p.suggestionsProfile='aux';
-  expect(taskApi(p,'suggestions')?.id).toBe('main');
-  expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);
-  expect(apiConfigurationIssues(p,{main:'synthetic-key'},()=>true)).toEqual([]);
-  p.storyProfile='aux';expect(taskApi(p,'suggestions')?.id).toBe('aux');
-  p.suggestionsProfile='deleted-old-profile';expect(()=>migrateApiSettings(p)).not.toThrow();
-});
+it('disabling action suggestions removes its auxiliary API requirement and survives backup',()=>{const p=defaults();p.suggestionsProfile='aux';p.suggestionsEnabled=false;expect(requiredApis(p).map(x=>x.id)).not.toContain('aux');const restored=parseBackup(backup({version:1,sessions:[],preferences:p}));expect(restored.preferences.suggestionsEnabled).toBe(false);});

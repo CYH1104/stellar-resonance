@@ -1,6 +1,7 @@
 import {activeCommitments,buildRecallQuery,memoryContext,memoryReady,memorySignature,memoryState,memoryText,normalizeMemoryResult,vectorCurrent,visibleSourceStillMatches,type MemoryRequest} from '../domain/memories';
 import {isSpiritDiary} from '../domain/spiritDiary';
 import {syncCharacterFacts} from '../domain/characterFacts';
+import {defaultJourneyName} from '../domain/journeyName';
 import { computed, reactive, ref, watch, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant } from '../domain/contracts';
 import {addForumAIReply,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
@@ -30,10 +31,10 @@ export function useWorkspace() {
   watch(()=>[preferences.forumReplyEnabled,preferences.forumReplyProfile,sessionId.value],()=>forumController?.abort());
   const settingsTab=ref<'persona'|'theaters'|'shortcuts'>('persona');
   const localService=ref<LocalService>();
-  const newGameDraft=reactive({title:'新的旅程',opening:'',wish:'',persona:blankPersona()});
+  const newGameDraft=reactive({title:defaultJourneyName(sessions.value.map(s=>s.name)),opening:'',wish:'',persona:blankPersona()});
   const workingPersona=ref(false),creatingGame=ref(false),personaNotice=ref('');
   let personaController:AbortController|undefined;
-  function resetNewGameDraft(){if(workingPersona.value||creatingGame.value)return;Object.assign(newGameDraft,{title:'新的旅程',opening:'',wish:'',persona:blankPersona()});personaNotice.value='';}
+  function resetNewGameDraft(){if(workingPersona.value||creatingGame.value)return;Object.assign(newGameDraft,{title:defaultJourneyName(sessions.value.map(s=>s.name)),opening:'',wish:'',persona:blankPersona()});personaNotice.value='';}
   function stopPersona(){personaController?.abort();}
   async function assistPersona(){
     if(workingPersona.value||creatingGame.value||busy.value)return;
@@ -222,7 +223,7 @@ export function useWorkspace() {
     busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false, checkpoint=Date.now();await safePersist();
     try {
       const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index);
-      const request:GenerateRequest={specialEvent:turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:memoryContext(recalled,activeCommitments(memoryLedger(session,index))),state:stateAt(session,index),dice:copy(turn.dice),profile:copy(p),presets:[],promptEntries:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(preferences.theaters),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:visibleForum(session,index).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};
+      const request:GenerateRequest={suggestionsEnabled:preferences.suggestionsEnabled!==false,specialEvent:turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:memoryContext(recalled,activeCommitments(memoryLedger(session,index))),state:stateAt(session,index),dice:copy(turn.dice),profile:copy(p),presets:[],promptEntries:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(preferences.theaters),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:visibleForum(session,index).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};
       generationPhase.value='等待模型返回（单次请求最长180秒）…';
       for await(const event of gateway().generate(request,key(p),controller.signal)) {
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
@@ -233,7 +234,7 @@ export function useWorkspace() {
         else if(event.type==='done'){
           let outcome=event.outcome;
           if(previousOutcome){outcome={...outcome,event:previousOutcome.event,suggestions:outcome.suggestions?.length?outcome.suggestions:previousOutcome.suggestions,player:{...previousOutcome.player,...outcome.player},...(previousOutcome.diceEvent?{diceEvent:previousOutcome.diceEvent}:{}),forum:previousOutcome.forum?.length?previousOutcome.forum:outcome.forum,theaters:outcome.theaters?.map(scene=>previousOutcome.theaters?.find(old=>old.slot===scene.slot&&old.kind===scene.kind&&(!(preferences.theaters||[]).some(t=>t.slot===scene.slot&&isSpiritDiary(t))||!!old.diary)&&(old.content.trim()||old.messages?.some(m=>m.content.trim())))||scene)};}
-          finishVariant(session,index,variant,outcome);done=true;
+          finishVariant(session,index,variant,outcome);variant.suggestions=[...(outcome.suggestions||[])];done=true;
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
@@ -245,7 +246,7 @@ export function useWorkspace() {
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){if(!active.value||busy.value)return;try{truncate(active.value,count);await safePersist();notice.value='已恢复对应剧情状态与记忆';}catch(e){problem.value=message(e);}}
-  async function edit(index:number,role:'user'|'assistant',text:string){if(!active.value||busy.value)return;try{editMessage(active.value,index,role,text);await safePersist();notice.value='修改已保存，请重演以重新计算这一幕状态';}catch(e){problem.value=message(e);}}
+  async function edit(index:number,role:'user'|'assistant',text:string){if(!active.value||busy.value)return;try{editMessage(active.value,index,role,text);await safePersist();notice.value='修改已保存，已保留后续对话和已有状态';}catch(e){problem.value=message(e);}}
   async function savePersona(persona:Persona){if(!active.value||busy.value)return;try{const value=normalizePersona(persona);active.value.persona=value;Object.assign(active.value.initial.player,{mentalPowerLevel:value.mentalPowerLevel||undefined,name:value.name,primaryGender:value.primaryGender,secondaryGender:value.secondaryGender,identity:value.identity,spiritAnimal:value.spiritAnimal});await safePersist();}catch(e){problem.value=message(e);}}
   async function loadPlace(id:string){try{return await http.place(id);}catch(e){problem.value=message(e);return undefined;}}
   async function toggleForumLike(key:string){if(!active.value||busy.value||workingMemory.value)return;try{likeForum(active.value,key);await safePersist();}catch(e){problem.value=message(e);}}

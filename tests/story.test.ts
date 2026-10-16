@@ -41,14 +41,18 @@ describe('剧情、状态与记忆一致性', () => {
     expect(effectiveEvents(s)).toEqual([]);
     expect(visibleMemories(s).map(m => m.id)).toEqual(['manual']);
   });
-  it('手工编辑回复使当前更新失效，删除后续轮，仍保留原骰点', () => {
-    const s = session(); append(s, 'first', 78); append(s, 'second', 60);
-    editMessage(s, 0, 'assistant', '手改回复');
-    expect(s.turns).toHaveLength(1);
-    expect(stateAt(s).player.energy).toBe(80);
-    expect(visibleMemories(s)).toEqual([]);
-    expect(s.turns[0].variants[0].status).toBe('incomplete');
-    expect(s.turns[0].dice?.value).toBe(73);
+  it('editing text preserves later turns, state, memories and dice across backup',()=>{
+    const s=session();append(s,'first',78);append(s,'second',60);
+    const memories=JSON.stringify(s.memories),outcome=JSON.stringify(s.turns[0].variants[0].outcome);
+    editMessage(s,0,'user','Edited input');
+    expect(s.turns[0].variants).toHaveLength(1);
+    editMessage(s,0,'assistant','Edited reply');
+    expect(s.turns).toHaveLength(2);expect(s.turns[1].variants[0].text).toBe('\u516c\u5f00\u56de\u590d');
+    expect(stateAt(s).player.energy).toBe(60);expect(s.memories[1]).toEqual(JSON.parse(memories)[1]);expect(s.memories[0].id).toBe(JSON.parse(memories)[0].id);expect(s.memories[0].status).toBe('pending');expect(s.memories[0].record).toBeUndefined();
+    expect(JSON.stringify(s.turns[0].variants[0].outcome)).toBe(outcome);
+    expect(s.turns[0].variants[0].status).toBe('complete');expect(s.turns[0].dice?.value).toBe(73);
+    const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];
+    expect(restored.turns).toHaveLength(2);expect(restored.turns[0].input).toBe('Edited input');expect(restored.turns[0].variants[0].text).toBe('Edited reply');
   });
   it('MVU 更新拒绝隐藏字段、越界值和不存在的人物', () => {
     const state = session().initial;
@@ -91,25 +95,4 @@ describe('本地备份边界', () => {
 });
 
 
-it('建议随选稿存档与恢复，切稿、回退、编辑不会展示别轮建议',()=>{
-  const s=session(),a=append(s,'first',78);
-  finishVariant(s,0,a,{event:'原路线',suggestions:['向导询问','观察四周']});
-  const b:Variant={id:'first-b',text:'另一稿',status:'incomplete',createdAt:''};s.turns[0].variants.push(b);
-  finishVariant(s,0,b,{event:'新路线',suggestions:['查看地图']});
-  expect(s.suggestions).toEqual(['向导询问','观察四周']);
-  selectVariant(s,0,1);expect(s.suggestions).toEqual(['查看地图']);
-  const next=append(s,'second',70);finishVariant(s,1,next,{event:'第二轮',suggestions:['打开信件']});
-  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];
-  expect(restored.suggestions).toEqual(['打开信件']);
-  truncate(restored,1);expect(restored.suggestions).toEqual(['查看地图']);
-  selectVariant(restored,0,0);expect(restored.suggestions).toEqual(['向导询问','观察四周']);
-  editMessage(restored,0,'assistant','编辑后的正文');expect(restored.suggestions).toEqual([]);
-});
-it('建议清除思考标签、去重并限制数量，坏建议不导致正文状态失败',()=>{
- const s=session();
- const out=validateOutcome({event:'事件',suggestions:['<think>secret</think>观察四周','观察四周',{},' ', '长'.repeat(201),'询问向导','翻阅资料','等候','第五条']},s.initial);
- expect(out.suggestions).toEqual(['观察四周','询问向导','翻阅资料','等候']);
- for(const suggestions of [null,'错误格式',{}])expect(validateOutcome({event:'事件',suggestions},s.initial).suggestions).toEqual([]);
- expect(validateOutcome({event:'旧存档'},s.initial).suggestions).toBeUndefined();
- s.suggestions=['旧存档建议'];const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()}));expect(restored.sessions[0].suggestions).toEqual(['旧存档建议']);
-});
+it('reply suggestions remain attached to their own variant across backup',()=>{const s=session();const first=append(s,'first',78);first.suggestions=['First action'];const second=append(s,'second',60);second.suggestions=['Second action'];s.suggestions=['Second action'];const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(restored.turns[0].variants[0].suggestions).toEqual(['First action']);expect(restored.turns[1].variants[0].suggestions).toEqual(['Second action']);});

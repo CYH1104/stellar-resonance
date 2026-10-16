@@ -1,9 +1,10 @@
 import type { Repository, Snapshot } from '../domain/contracts';
 import { backup, parseBackup } from '../domain/story';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from './apiCredentials';
+import {accountDatabase} from './accountScope';
 export class IndexedDbRepository implements Repository {
   private connection?: Promise<IDBDatabase>;
-  constructor(private name = 'stellar-resonance-v1') {}
+  constructor(private name = accountDatabase('stellar-resonance-v1')) {}
   private open(): Promise<IDBDatabase> {
     return this.connection ||= new Promise((resolve, reject) => {
       const request = indexedDB.open(this.name, 1);

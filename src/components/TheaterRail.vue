@@ -1,17 +1,20 @@
 <script setup lang="ts">
+import {computed,ref} from 'vue';
+import TheaterScroll from './TheaterScroll.vue';
 import type {ViewModel} from '../app/useWorkspace';
 import ResizablePanel from './ResizablePanel.vue';
-import ForumFeed from './ForumFeed.vue';
 import GroupChatPhone from './GroupChatPhone.vue';
 import SpiritDiaryView from './SpiritDiaryView.vue';
 import {isSpiritDiary} from '../domain/spiritDiary';
-defineProps<{w:ViewModel}>();
+import ForumFeed from './ForumFeed.vue';
+const props=defineProps<{w:ViewModel}>();
+const opened=ref<number|null>(props.w.preferences.theaters?.find(t=>t.enabled)?.slot??null);
+const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,props.w.theaters,props.w.active?.forumActivity]));
 </script>
 <template><section class="theater-rail-content" aria-label="右侧小剧场">
-  <header class="rail-heading"><h2>小剧场</h2><button @click="w.settingsTab='theaters';w.panel='game-settings'">设置</button></header>
-  
-  <div class="theater-windows" :style="{'--theater-count':Math.max(1,w.preferences.theaters?.filter(t=>t.enabled).length||1)}">
-    <ResizablePanel v-for="s in w.preferences.theaters?.filter(t=>t.enabled)" :key="s.slot" :preferences="w.preferences" :panel-key="'theater-'+s.slot" :label="s.title" :default-height="s.kind==='group'?420:isSpiritDiary(s)?380:undefined" class="theater-window" :class="{'group-window':s.kind==='group','diary-window':isSpiritDiary(s)}">
+
+  <div class="theater-windows">
+    <article v-for="s in w.preferences.theaters?.filter(t=>t.enabled)" :key="s.slot" class="theater-window" :class="{expanded:opened===s.slot}"><button type="button" class="theater-collapse-toggle" :aria-expanded="opened===s.slot" @click="opened=opened===s.slot?null:s.slot"><span>{{s.title}}</span><span aria-hidden="true">{{opened===s.slot?'−':'+'}}</span></button><div v-show="opened===s.slot" class="theater-pane"><TheaterScroll :revision="revision+String(opened)"><ResizablePanel :preferences="w.preferences" :panel-key="'theater-'+s.slot" :label="s.title" :default-height="s.kind==='group'?420:isSpiritDiary(s)?380:undefined">
       <ForumFeed v-if="s.kind==='forum'" :w="w" :title="s.title" />
       <GroupChatPhone v-else-if="s.kind==='group'" :scene="w.theaters.find(t=>t.slot===s.slot&&t.kind==='group')" :title="s.title" :player-name="w.state?.player.name||w.active?.persona.name||''" />
       <SpiritDiaryView v-else-if="isSpiritDiary(s)" :scene="w.theaters.find(t=>t.slot===s.slot&&t.kind===s.kind)" :title="s.title" />
@@ -23,8 +26,8 @@ defineProps<{w:ViewModel}>();
           </template>
         </template><p v-else class="empty">等待下一轮剧情完成后生成。</p>
       </template>
-    </ResizablePanel>
+    </ResizablePanel></TheaterScroll></div></article>
   </div>
   <p v-if="!w.preferences.theaters?.some(t=>t.enabled)" class="empty">小剧场已全部关闭，可以到设置中开启。</p>
-  
+
 </section></template>
