@@ -4,6 +4,7 @@ import {accountStorage} from './storage/accountScope';
 
 import { reactive, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 
+import ResizeHandle from './components/ResizeHandle.vue';
 import {useWorkspaceLayout} from './app/useWorkspaceLayout';
 import {installMvuBridge} from './app/mvuBridge';
 
@@ -280,6 +281,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
     <div ref="workspaceEl" class="workspace resizable-workspace" :style="layout.style.value" :class="{'game-layout':!!w.active&&!fullPage,'forum-focus':w.panel==='theaters','status-focus':w.panel==='status'}">
 
       <aside v-if="w.active&&!fullPage" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
+      <ResizeHandle v-if="w.active&&!fullPage" class="column-resizer left-resizer" axis="x" label="调整左栏宽度" @resize="dx=>layout.resize('left',dx)" />
       <main class="center-pane">
 
         <div v-if="w.problem" class="error-banner" role="alert"><span>{{ w.problem }}</span><button @click="w.problem=''">收起提示</button></div>
@@ -325,6 +327,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
         </div>
 
       </main>
+      <ResizeHandle v-if="w.active&&!fullPage&&w.panel!=='theaters'" class="column-resizer right-resizer" axis="x" label="调整右栏宽度" @resize="dx=>layout.resize('right',dx)" />
       <aside v-if="w.active && !fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
 
     </div>

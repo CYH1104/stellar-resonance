@@ -111,3 +111,10 @@ test('suggestions cut mid-state resume through the existing continuation budget,
  const cut=raw.indexOf('询问')+1;const result=await run([raw.slice(0,cut),raw.slice(cut)]);
  assert.equal(result.error,undefined);assert.equal(result.text,'正常正文。');assert.equal(result.calls.length,1);assert.deepEqual(result.events.at(-1).outcome.suggestions,['查看公告','询问向导']);
 });
+
+test('comment-only preset output retries once without exposing hidden text',async()=>{
+ const result=await run(['<!-- hidden-only-preset -->','恢复的正常正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.calls.length,1);assert.equal(result.text,'恢复的正常正文。');assert.ok(!JSON.stringify(result.events).includes('hidden-only-preset'));assert.ok(result.calls[0].payload.messages.at(-1).content.includes('不得把正文包在 HTML 注释'));
+});
+test('repeated comment-only output stops after one retry',async()=>{
+ const result=await run(['<!-- hidden-first -->','<!-- hidden-second -->']);assert.equal(result.error.code,'MODEL_NO_VISIBLE_CONTENT');assert.equal(result.calls.length,1);assert.equal(result.text,'');
+});

@@ -22,7 +22,7 @@ export class ContinuationJoiner {
 
 export function continuedMessages(messages,partial,playerName){
   if(typeof partial!=='string'||partial.length>400000)throw modelError(400,'INVALID_CONTINUATION');
-  return [...messages,{role:'assistant',content:partial||'（尚未收到正文）'},{role:'user',content:`[系统续写控制，不是新的玩家行动] 上一条助手回复被截断。只从其末尾接着输出，不重述、重演或改变玩家原行动，不重新掷骰，不开新一轮。正文未结束就继续正文；若已开始 ${STATE_OPEN}，从断点补齐 JSON（无法直接接续时可重发一个完整 ${STATE_OPEN} 状态块，但不要重发正文）；若状态块已完整，仅补 ${RESPONSE_END}。直到正文和状态全部完整后，才在 ${STATE_CLOSE} 后输出唯一 ${RESPONSE_END}。不要解释“我将继续”，不要复述已有文字。${narrationRule(playerName)}`}];
+  return [...messages,{role:'assistant',content:partial||'（尚未收到正文）'},{role:'user',content:`[系统续写控制，不是新的玩家行动] 上一条助手回复被截断。只从其末尾接着输出，不重述、重演或改变玩家原行动，不重新掷骰，不开新一轮。必须输出可直接展示的叙事正文，不得把正文包在 HTML 注释或隐藏标签中。正文未结束就继续正文；若已开始 ${STATE_OPEN}，从断点补齐 JSON（无法直接接续时可重发一个完整 ${STATE_OPEN} 状态块，但不要重发正文）；若状态块已完整，仅补 ${RESPONSE_END}。直到正文和状态全部完整后，才在 ${STATE_CLOSE} 后输出唯一 ${RESPONSE_END}。不要解释“我将继续”，不要复述已有文字。${narrationRule(playerName)}`}];
 }
 
 export function repairedMessages(messages,story,card,state,options={},code='INVALID_MODEL_STATE'){
@@ -59,6 +59,8 @@ export async function* streamStory({card,state,options,messages,partial='',state
       finally{const tail=joiner?.finish();if(tail&&!signal.aborted){const visible=decoder.push(tail);if(visible)yield {type:'delta',text:visible};}}
     }
     signal.throwIfAborted();
+    // A preset may return only comments. Retry once with an explicit visible-story request.
+    if(readError?.code==='MODEL_NO_VISIBLE_CONTENT'&&attempt===0&&!decoder.raw.trim()){reasoningFilter=new ReasoningFilter();continue;}
     if(['MODEL_RESPONSE_TOO_LARGE','MODEL_STATE_TOO_LARGE','INVALID_MODEL_PROFILE','MODEL_KEY_REQUIRED','MODEL_REASONING_UNCLOSED','MODEL_REASONING_ONLY','MODEL_NO_VISIBLE_CONTENT','MODEL_EMPTY_RESPONSE'].includes(readError?.code))throw readError;
     if(readError&&!decoder.raw.trim())throw readError;
     try{const outcome=decoder.finish(card,state,options);yield {type:'done',outcome};return;}
