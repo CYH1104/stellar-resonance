@@ -23,7 +23,7 @@ HOST=0.0.0.0 PORT=8807 PUBLIC_ORIGIN=http://YOUR_SERVER_IP:8807 AUTH_REQUIRED=1 
 
 在云控制台安全组放行 TCP 8807；如果系统启用了 UFW，再执行 `sudo ufw allow 8807/tcp`。不要开放 8808。
 
-浏览器打开 `http://YOUR_SERVER_IP:8807/terminal`。首次进入显示注册页，邮箱和密码注册后直接进入，不发验证码；已有账号切换登录。邮箱不区分大小写，密码至少 8 位。右下角可退出账号。登录有效期 7 天，重启服务器后仍有效。
+浏览器打开 `http://YOUR_SERVER_IP:8807/terminal`。首次进入显示注册页，仅支持 `@qq.com` 邮箱（QQ 号码或邮箱别名），不支持 foxmail 等其他域名，不发验证码；已有账号切换登录。邮箱不区分大小写，密码至少 8 位。右下角可退出账号。登录有效期 7 天，重启服务器后仍有效。原有非 QQ 邮箱账号仍能登录，不会删除。
 
 按当前要求使用 HTTP 端口，传输中的密码和 API Key 没有 HTTPS 加密，请使用独立密码；长期使用时再接入 HTTPS。`PUBLIC_ORIGIN` 必须与浏览器地址一致，含协议、IP 和端口，更换后需重启。
 
@@ -85,11 +85,37 @@ ssh -N -o ExitOnForwardFailure=yes -L 8808:127.0.0.1:8808 user@YOUR_SERVER_IP
 
 ## 数据与更新
 
+在服务器命令行查看注册用户（不必安装 sqlite3 命令）：
+
+```sh
+cd "$HOME/stellar-resonance"
+pnpm users
+pnpm users --email 123456789@qq.com
+pnpm users --limit 1000
+node scripts/users.mjs --json
+```
+
+默认显示最近 100 名用户，包含邮箱、北京时间的注册时间和用户 ID，也显示总人数；`--email` 精确查找指定邮箱，`--limit` 最多 1000 条。JSON 中注册时间使用 UTC。命令以只读方式读取当前项目的账号库，可在服务运行时执行，不显示密码哈希或登录令牌，也不提供公开的用户列表接口。
+
 账号数据库：`server/private/accounts/accounts.sqlite`，密码用独立随机盐和 scrypt 哈希保存，登录令牌仅存哈希；目录已被 Git 忽略。不包含邮箱验证、邮件发送或找回密码。
 
 存档、人设和 API 设置仍在各账号对应的浏览器存储中，不会自动云同步。同一浏览器切换账号会分开读取。换电脑或从本地改为服务器 IP 前，先导出旧存档，在新地址登录后导入；API Key 需重新填写。原本地数据不会删除。
 
 以后更新（确认没有正在生成的剧情，逐条执行；任一步失败即停止）：
+
+如果按前面的 nohup 方式运行，使用以下完整命令，把 IP 换为实际地址：
+
+```sh
+cd "$HOME/stellar-resonance" &&
+git pull --ff-only origin preview/local-v0.11.2-20261016 &&
+pnpm install --frozen-lockfile &&
+pnpm build &&
+bash scripts/restart-server.sh http://YOUR_SERVER_IP:8807
+```
+
+重启脚本会核验健康信息、项目路径和运行命令后才停止旧进程，并重新启用公网账号入口；失败时不会强制杀进程。nohup 启动能在断开 SSH 后继续运行，但服务器重启后仍需手动启动，或配置前述 systemd 常驻。
+
+已配置 systemd 用户服务时，也可以用下面的命令：
 
 ```sh
 cd "$HOME/stellar-resonance"

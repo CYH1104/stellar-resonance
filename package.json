@@ -10,7 +10,8 @@
     "build": "node scripts/sync-terminal.mjs && vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node server.mjs",
-    "test:server": "node --test tests/*.test.mjs"
+    "test:server": "node --test tests/*.test.mjs",
+    "users": "node scripts/users.mjs"
   },
   "dependencies": {
     "vue": "3.5.44"

@@ -20,6 +20,7 @@ export async function createAccounts({directory,now=Date.now}){
     try{
       let account;
       if(kind==='register'){
+        if(!/^[a-z0-9][a-z0-9._-]*@qq\.com$/.test(email))throw fail('QQ_EMAIL_REQUIRED');
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email))throw fail('EMAIL_REGISTERED',409);
         const salt=randomBytes(24).toString('hex'),digest=await passwordHash(password,salt);account={id:randomUUID(),email};
         try{db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(account.id,email,salt,digest.toString('hex'),now());}catch(e){if(e.code==='ERR_SQLITE_ERROR'&&db.prepare('SELECT id FROM users WHERE email=?').get(email))throw fail('EMAIL_REGISTERED',409);throw e;}

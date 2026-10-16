@@ -6,24 +6,45 @@ import {resolve} from 'node:path';
 import {get} from 'node:http';
 import {createAccounts} from '../server/accounts.mjs';
 import {createLocalServer} from '../server/app.mjs';
+import {readAccountRecords} from '../server/account-records.mjs';
 const root=resolve(import.meta.dirname,'..');
 test('accounts normalize email, hash passwords, persist sessions, reject bad credentials and revoke logout',async()=>{
   const directory=await mkdtemp(resolve(tmpdir(),'academy-accounts-'));let clock=Date.now();let store;
   try{
     store=await createAccounts({directory,now:()=>clock});
-    const first=await store.enter('register',{email:'  Tester@Example.com ',password:'synthetic-pass-123'},'one');
-    assert.equal(first.user.email,'tester@example.com');assert.deepEqual(store.user(first.token),first.user);
-    await assert.rejects(store.enter('register',{email:'tester@example.com',password:'different-pass'},'two'),{code:'EMAIL_REGISTERED'});
-    await assert.rejects(store.enter('login',{email:'tester@example.com',password:'wrong-password'},'three'),{code:'INVALID_CREDENTIALS'});
+    const first=await store.enter('register',{email:'  Tester@QQ.com ',password:'synthetic-pass-123'},'one');
+    assert.equal(first.user.email,'tester@qq.com');assert.deepEqual(store.user(first.token),first.user);
+    const records=await readAccountRecords(resolve(directory,'accounts.sqlite'));
+    assert.equal(records.total,1);assert.equal(records.users[0].email,'tester@qq.com');
+    assert.deepEqual(Object.keys(records.users[0]).sort(),['email','id','registeredAt']);
+    assert.ok(!JSON.stringify(records).includes('synthetic-pass-123'));assert.ok(!JSON.stringify(records).includes(first.token));
+    assert.equal((await readAccountRecords(resolve(directory,'accounts.sqlite'),{email:'TESTER@QQ.COM'})).total,1);
+    assert.equal((await readAccountRecords(resolve(directory,'accounts.sqlite'),{email:'missing@qq.com'})).total,0);
+    await assert.rejects(store.enter('register',{email:'tester@qq.com',password:'different-pass'},'two'),{code:'EMAIL_REGISTERED'});
+    await assert.rejects(store.enter('login',{email:'tester@qq.com',password:'wrong-password'},'three'),{code:'INVALID_CREDENTIALS'});
     await assert.rejects(store.enter('login',{email:'missing@example.com',password:'wrong-password'},'four'),{code:'INVALID_CREDENTIALS'});
     await assert.rejects(store.enter('register',{email:'invalid',password:'synthetic-pass'},'five'),{code:'INVALID_EMAIL'});
     await assert.rejects(store.enter('register',{email:'a@b.com',password:'short'},'six'),{code:'INVALID_PASSWORD'});
     store.close();store=await createAccounts({directory,now:()=>clock});assert.deepEqual(store.user(first.token),first.user);
-    const again=await store.enter('login',{email:'TESTER@example.com',password:'synthetic-pass-123'},'seven');assert.equal(again.user.id,first.user.id);
+    const again=await store.enter('login',{email:'TESTER@qq.com',password:'synthetic-pass-123'},'seven');assert.equal(again.user.id,first.user.id);
     store.logout(again.token);assert.equal(store.user(again.token),null);
     clock+=8*86400000;assert.equal(store.user(first.token),null);
     store.close();store=null;const bytes=await readFile(resolve(directory,'accounts.sqlite'));assert.ok(!bytes.includes(Buffer.from('synthetic-pass-123')));assert.ok(!bytes.includes(Buffer.from(first.token)));
   }finally{store?.close();await rm(directory,{recursive:true,force:true});}
+});
+test('only QQ domains can register, including QQ aliases, without affecting existing non-QQ logins',async()=>{
+  const directory=await mkdtemp(resolve(tmpdir(),'academy-qq-'));const store=await createAccounts({directory});
+  try{
+    for(const email of ['a@example.com','a@foxmail.com','a@qq.com.example.com','a@qq.com@evil.com','a+tag@qq.com'])await assert.rejects(store.enter('register',{email,password:'synthetic-pass'},email));
+    const numeric=await store.enter('register',{email:'123456789@qq.com',password:'synthetic-pass'},'numeric');assert.equal(numeric.user.email,'123456789@qq.com');
+    const alias=await store.enter('register',{email:'  Example.Alias@QQ.COM ',password:'synthetic-pass'},'alias');assert.equal(alias.user.email,'example.alias@qq.com');
+    // Simulate an account registered before the QQ-only policy.
+    const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(resolve(directory,'accounts.sqlite'));
+    db.prepare('UPDATE users SET email=? WHERE id=?').run('old@example.com',alias.user.id);db.close();
+    assert.equal((await store.enter('login',{email:'old@example.com',password:'synthetic-pass'},'legacy')).user.id,alias.user.id);
+    assert.equal((await readAccountRecords(resolve(directory,'absent.sqlite'))).total,0);
+    await assert.rejects(readAccountRecords(resolve(directory,'accounts.sqlite'),{limit:0}));
+  }finally{store.close();await rm(directory,{recursive:true,force:true});}
 });
 test('account operations are rate limited',async()=>{
   const directory=await mkdtemp(resolve(tmpdir(),'academy-rate-'));const store=await createAccounts({directory});
@@ -42,16 +63,17 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     const login=await fetch(base+'/login');assert.equal(login.status,200);assert.match(await login.text(),/account-form/);
     for(const path of ['/api/bootstrap','/api/character-cards'])assert.equal((await fetch(base+path)).status,401);
     assert.equal((await post('/api/access',{})).status,401);
-    assert.equal((await post('/api/auth/register',{email:'one@example.com',password:'synthetic-pass' },'',{Origin:'https://other.example'})).status,403);
-    assert.equal((await post('/api/auth/register',{email:'one@example.com',password:'synthetic-pass' },'',{'Sec-Fetch-Site':'cross-site'})).status,403);
+    const rejected=await post('/api/auth/register',{email:'new@example.com',password:'synthetic-pass'});assert.equal(rejected.status,400);assert.equal((await rejected.json()).code,'QQ_EMAIL_REQUIRED');
+    assert.equal((await post('/api/auth/register',{email:'one@qq.com',password:'synthetic-pass' },'',{Origin:'https://other.example'})).status,403);
+    assert.equal((await post('/api/auth/register',{email:'one@qq.com',password:'synthetic-pass' },'',{'Sec-Fetch-Site':'cross-site'})).status,403);
     assert.equal((await post('/api/auth/register',{extra:'x'.repeat(9000)})).status,413);
-    const registration=await post('/api/auth/register',{email:'one@example.com',password:'synthetic-pass'});assert.equal(registration.status,200);
+    const registration=await post('/api/auth/register',{email:'one@qq.com',password:'synthetic-pass'});assert.equal(registration.status,200);
     const cookie=registration.headers.get('set-cookie').split(';')[0];assert.match(registration.headers.get('set-cookie'),/HttpOnly; SameSite=Strict; Path=\//);
     const user=(await registration.json()).user;
     const terminal=await fetch(base+'/terminal',{headers:{Cookie:cookie}});assert.equal(terminal.status,200);const html=await terminal.text();assert.ok(html.includes(user.id));assert.match(html,/\/auth\/account.js/);assert.ok(!html.includes('synthetic-pass'));
     const bootstrap=await fetch(base+'/api/bootstrap',{headers:{Cookie:cookie}});assert.equal(bootstrap.status,200);const apiCookie=bootstrap.headers.get('set-cookie').split(';')[0];
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},cookie+'; '+apiCookie)).status,200);
-    const second=await post('/api/auth/register',{email:'two@example.com',password:'synthetic-pass'});const secondCookie=second.headers.get('set-cookie').split(';')[0];
+    const second=await post('/api/auth/register',{email:'two@qq.com',password:'synthetic-pass'});const secondCookie=second.headers.get('set-cookie').split(';')[0];
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},secondCookie+'; '+apiCookie)).status,401);
     assert.equal((await fetch(base+'/server/private/accounts/accounts.sqlite',{headers:{Cookie:cookie}})).status,404);
     const hostStatus=host=>new Promise((resolve,reject)=>get(base+'/api/health',{headers:{Host:host}},r=>{r.resume();resolve(r.statusCode);}).on('error',reject));
