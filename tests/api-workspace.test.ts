@@ -27,6 +27,17 @@ async function workspace(){const w=scope.run(()=>useWorkspace())!;await vi.waitF
 function fill(w:ReturnType<typeof useWorkspace>,id='main'){
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }
+it('从学院重新打开当前存档和切换存档各自恢复输入草稿，不串到新的会话',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('甲',{name:'甲',appearance:'',personality:'',background:''},'');const a=w.sessionId.value;w.input.value='甲的草稿';
+ w.open(a);expect(w.input.value).toBe('甲的草稿');await w.create('乙',{name:'乙',appearance:'',personality:'',background:''},'');const b=w.sessionId.value;expect(w.input.value).toBe('');w.input.value='乙的草稿';
+ w.open(a);expect(w.input.value).toBe('甲的草稿');w.home();expect(w.input.value).toBe('');w.open(b);expect(w.input.value).toBe('乙的草稿');w.open(a);expect(w.input.value).toBe('甲的草稿');
+});
+it('后台补充的固定char性别同步到旧存档，玩家自定义性别保持原值',async()=>{
+ const session=newSession('旧存档',{name:'我的user',primaryGender:'自定义',appearance:'',personality:'',background:''},'');session.sourceDataset=service.dataset;session.initial.characters=[{id:'one',name:'角色一',present:false}];
+ vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue({version:1,preferences:defaults(),sessions:[session]});
+ vi.mocked(HttpGateway.prototype.bootstrap).mockResolvedValueOnce({...service,characterFacts:[{id:'one',primaryGender:'女'}]});
+ const w=await workspace();expect(w.sessions.value[0].initial.characters[0].primaryGender).toBe('女');expect(w.sessions.value[0].persona.primaryGender).toBe('自定义');
+});
 it('测活无需确认配置，使用选定主副或向量接口，不改变功能路由和已确认状态',async()=>{
   const w=await workspace();fill(w);fill(w,'aux');fill(w,'embed');const signal=new AbortController().signal;
   const probe=vi.spyOn(HttpGateway.prototype,'probe').mockResolvedValue({kind:'text',durationMs:10,visibleChars:2});
@@ -232,6 +243,21 @@ it('论坛AI失败仍保留用户评论，不重复发送；关闭开关会取�
   w.preferences.forumReplyEnabled=true;await nextTick();const reply=vi.spyOn(HttpGateway.prototype,'forumReply').mockRejectedValue(new Error('接口失败'));expect(await w.replyToForum(key,'保留评论')).toBe(true);expect(session.forumActivity?.[key].replies).toHaveLength(1);expect(w.forumReplyError.value).toContain('已保留');
   reply.mockImplementation(async(_input,_profile,_key,signal)=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('stop','AbortError')),{once:true})));
   const pending=w.replyToForum(key,'第二条');await vi.waitFor(()=>expect(w.workingForumReply.value).toBe(key));w.preferences.forumReplyEnabled=false;await nextTick();await pending;expect(w.workingForumReply.value).toBe('');expect(session.forumActivity?.[key].replies).toHaveLength(2);
+});
+it('原评论可手动重试AI，重复提示仅一次，不重发评论或生成重复回复',async()=>{
+  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('重试论坛',{name:'玩家',appearance:'',personality:'',background:''},'');
+  const session=w.active.value!,v={id:'v',text:'正文',status:'incomplete' as const,createdAt:''};session.turns.push({id:'t',input:'行动',variants:[v],selected:0});finishVariant(session,0,v,{event:'推进',forum:[{id:'p',authorName:'路人',content:'动态'}]});const key=w.forum.value[0].key;w.preferences.forumReplyEnabled=true;await nextTick();
+  const reply=vi.spyOn(HttpGateway.prototype,'forumReply').mockRejectedValue(new Error('格式不正确，你的评论已保留。'));await w.replyToForum(key,'我的评论');expect(w.forumReplyError.value.match(/你的评论已保留/g)).toHaveLength(1);const parent=session.forumActivity![key].replies[0];
+  reply.mockResolvedValue({authorId:'guide',authorName:'角色甲',content:'收到你的评论。'});await w.retryForumReply(key,parent.id);expect(session.forumActivity![key].replies).toHaveLength(2);expect(reply.mock.calls[1][0].comments.at(-1)?.content).toBe('我的评论');expect(w.forumReplyError.value).toBe('');await w.retryForumReply(key,parent.id);expect(reply).toHaveBeenCalledTimes(2);expect(session.forumActivity![key].replies).toHaveLength(2);
+  w.preferences.forumReplyEnabled=false;await nextTick();await w.retryForumReply(key,'unknown');expect(reply).toHaveBeenCalledTimes(2);
+});
+it('布局修改通过现有自动保存恢复，重设不修改剧情和API',async()=>{
+  const w=await workspace();fill(w);await w.confirmAllApis();w.preferences.layout={left:320,right:400,panels:{player:{height:240},'theater-1':{width:310,height:420}}};await vi.advanceTimersByTimeAsync(650);expect(saved?.preferences.layout).toEqual(w.preferences.layout);vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(saved);const reopened=await workspace();expect(reopened.preferences.layout).toEqual(w.preferences.layout);expect(reopened.sessions.value).toEqual([]);expect(reopened.preferences.profiles[0].model).toBe('model-main');
+});
+it('补全旧精神体日记时替换旧动作片段，保留主线正文和已有论坛',async()=>{
+  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('旧日记',{name:'玩家',appearance:'',personality:'',background:'',spiritAnimal:'白猫'},'');w.preferences.theaters![3]={slot:4,enabled:true,kind:'custom',title:'精神体日记',templateId:'spirit',instruction:'写第一人称日记'};
+  const session=w.active.value!,v={id:'v',text:'固定正文。',status:'incomplete' as const,createdAt:''};session.turns.push({id:'t',input:'行动',variants:[v],selected:0});finishVariant(session,0,v,{event:'原事件',forum:[{id:'post',authorName:'路人',content:'原帖'}],theaters:[{slot:4,kind:'custom',title:'精神体日记',content:'白猫甩了甩尾巴。'}]});
+  vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'done',outcome:{event:'新摘要不替换',characters:[],theaters:[{slot:4,kind:'custom',title:'精神体日记',content:'今天我偷偷留了半块鱼干。',diary:{ownerId:'player',ownerName:'玩家',spiritAnimal:'白猫',title:'半块鱼干',content:'今天我偷偷留了半块鱼干。'}}]}};});await w.repairState(0);expect(w.problem.value).toBe('');expect(v.text).toBe('固定正文。');expect(w.forum.value[0].content).toBe('原帖');expect(w.theaters.value.find(s=>s.slot===4)?.diary?.title).toBe('半块鱼干');expect(w.memories.value).toHaveLength(1);
 });
 it('已完成旧回合可补全状态和小剧场，保留正文论坛及失败时的有效状态，不重复记忆或调用建议',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('旧回合补全',{name:'玩家',appearance:'',personality:'',background:''},'');const session=w.active.value!,v={id:'v',text:'固定正文。',status:'incomplete' as const,createdAt:''};session.turns.push({id:'t',input:'行动',variants:[v],selected:0});

@@ -11,12 +11,13 @@ Object.assign(apiMessages,{
   INVALID_MODEL_RESPONSE:'中转站返回格式不兼容，未取得正文。请检查 API 地址是否以 /v1 结尾，以及是否支持 OpenAI chat/completions。',
   UPSTREAM_FAILED:'模型服务在回复流内报告失败，请检查中转站请求记录或稍后重试。',
   CHARACTER_AFFINITY_MISSING:'AI 未返回在场角色的有效好感度。',CHARACTER_SPIRIT_THOUGHT_MISSING:'AI 未生成在场角色的精神体 OS。',MODEL_THEATERS_MISSING:'AI 漏写了已开启的小剧场或内容为空。',
-  INVALID_FORUM_REPLY:'论坛帖子或评论内容不正确。',INVALID_FORUM_REPLY_RESULT:'AI 的论坛回复格式不正确，你的评论已保留。',
+  INVALID_FORUM_REPLY:'论坛帖子或评论内容不正确。',INVALID_FORUM_REPLY_RESULT:'AI 的论坛回复为空、被截断或格式无法识别，可以重试回复。',
   INVALID_RANDOM_EVENT:'随机事件请求格式不正确。',INVALID_RANDOM_EVENT_RESULT:'事件模型未返回有效候选，可重试或跳过本轮事件。',SPECIAL_EVENT_ROLL_REQUIRED:'接受随机事件后必须先掷骰，才能生成正文。',
   STATE_REPAIR_LIMIT:'自动补修后状态仍未通过。正文已保留，状态未更新；正文已完整时可点击“补修状态”再次尝试。',
   MODEL_STATE_JSON_INVALID:'隐藏状态的 JSON 格式错误。',MODEL_STATE_FIELDS_INVALID:'隐藏状态包含当前不支持的字段。',
   MODEL_STATE_ROSTER_INVALID:'在场角色名单缺失、重复或格式错误。',MODEL_STATE_EVENT_INVALID:'本轮事件摘要缺失、为空或超过500字。',
   MODEL_STATE_CHARACTERS_INVALID:'角色状态中的 ID、字段类型或长度不符合要求。',MODEL_STATE_PLAYER_INVALID:'玩家状态的字段类型或长度不符合要求。',
+  MODEL_STATE_DIARY_INVALID:'精神体日记缺少完整日记、第一人称叙述或已知精神体作者。',
   MODEL_STATE_FORUM_INVALID:'论坛帖子或评论缺少字段、重复编号或格式错误。',MODEL_STATE_THEATERS_INVALID:'小剧场、群聊消息或同人文配对数据格式错误。'
 });
 export class HttpGateway implements Gateway {

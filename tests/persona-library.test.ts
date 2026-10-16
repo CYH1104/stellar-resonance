@@ -26,3 +26,4 @@ await library.save({id:'media-test',name:'User',persona:normalizePersona({...bla
 const stored=(await library.list()).find(p=>p.id==='media-test')!;
 expect(await stored.portrait!.text()).toBe('full original');expect(await stored.avatar!.text()).toBe('cropped');expect(stored.useAsHomeImage).toBe(true);await library.remove('media-test');
 });
+

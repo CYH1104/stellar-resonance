@@ -18,3 +18,4 @@ export function writePersonaNotes(text:string|undefined,notes:string):string {
   const extras=(text||'').split('\n').filter(line=>labels.some(label=>line.startsWith(label+'：')));
   return [notes,...extras].filter(Boolean).join('\n');
 }
+

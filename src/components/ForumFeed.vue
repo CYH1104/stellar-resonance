@@ -26,7 +26,7 @@ async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,draft
         </div>
         <section v-if="expanded[post.key]" class="forum-comments" :aria-label="`${post.authorName}动态的评论`">
           <p v-for="comment in post.comments" :key="comment.id"><strong>{{ comment.authorName }}</strong>：{{ comment.content }}</p>
-          <p v-for="comment in w.active?.forumActivity?.[post.key]?.replies" :key="comment.id"><strong>{{comment.kind==='ai'?comment.authorName:(w.state?.player.name||'我')}}</strong><small v-if="comment.kind==='ai'"> 回复你</small>：{{comment.text}}</p>
+          <p v-for="comment in w.active?.forumActivity?.[post.key]?.replies" :key="comment.id"><strong>{{comment.kind==='ai'?comment.authorName:(w.state?.player.name||'我')}}</strong><small v-if="comment.kind==='ai'"> 回复你</small>：{{comment.text}} <button v-if="comment.kind!=='ai'&&w.preferences.forumReplyEnabled&&!w.active?.forumActivity?.[post.key]?.replies.some(r=>r.kind==='ai'&&r.replyTo===comment.id)" type="button" :disabled="w.busy||w.workingMemory||!!w.workingForumReply" @click="w.retryForumReply(post.key,comment.id)">获取 AI 回复</button></p>
           <p v-if="w.workingForumReply===post.key" role="status">角色／NPC 正在回复… <button type="button" @click="w.stopForumReply()">停止回复</button></p><p v-if="w.forumReplyPost===post.key&&w.forumReplyError" class="model-list-error" role="alert">{{w.forumReplyError}}</p>
           <form @submit.prevent="reply(w,post.key)"><label>我的评论<textarea v-model="drafts[post.key]" rows="2" maxlength="1000" placeholder="作为角色回应这条动态…" :disabled="w.busy||w.workingMemory" /></label><button type="submit" :disabled="w.busy||w.workingMemory||!drafts[post.key]?.trim()">发表评论</button></form>
         </section>

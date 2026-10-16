@@ -12,7 +12,7 @@ import {loadCard} from './load-card.mjs';
 import {randomEventMessages,parseRandomEvent} from './random-events.mjs';
 import {forumReplyMessages,parseForumReply} from './forum.mjs';
 import {stripReasoning} from '../src/domain/reasoning.ts';
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.gif':'image/gif'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
 export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card}){
@@ -46,8 +46,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
     try{
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.15.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
-      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.18.1',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(({id,primaryGender})=>({id,primaryGender})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
@@ -96,7 +96,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);
-          const initialMessages=stateOnly?repairedMessages(messages,partial,source,state,{theaterSettings,persona:data.persona,dice}):partial?continuedMessages(messages,partial):messages;
+          const initialMessages=stateOnly?repairedMessages(messages,partial,source,state,{theaterSettings,persona:data.persona,dice}):partial?continuedMessages(messages,partial,state.player.name):messages;
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
           response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
@@ -133,13 +133,6 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         throw modelError(404,'API_NOT_FOUND');
       }
       if(!['GET','HEAD'].includes(request.method))throw modelError(405,'GET_REQUIRED');
-      if(path==='/terminal'){
-        const terminal=await readFile(resolve(projectRoot,'星穹游戏终端 (1).html'),'utf8');
-        const index=await readFile(resolve(dist,'index.html'),'utf8');
-        const assets=[...index.matchAll(/<(?:script\b[^>]*src="\/assets\/[^"]+"[^>]*><\/script>|link\b[^>]*href="\/assets\/[^"]+"[^>]*>)/g)].map(match=>match[0]).join('\n');
-        const html=terminal.replace('</body>',assets+'\n</body>');
-        response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
-      }
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       const bytes=await readFile(file);response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);

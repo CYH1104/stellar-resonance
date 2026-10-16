@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type {ViewModel} from '../app/useWorkspace';
 defineProps<{w:ViewModel}>();
-defineEmits<{start:[];continue:[];settings:[]}>();
+defineEmits<{start:[];continue:[];settings:[];personas:[]}>();
 </script>
 <template>
   <main class="opening-screen" aria-label="游戏开场">
@@ -13,6 +13,7 @@ defineEmits<{start:[];continue:[];settings:[]}>();
       <nav class="opening-menu" aria-label="开始菜单">
         <button :disabled="w.loading" @click="$emit('start')">新的开始</button>
         <button :disabled="w.loading||!w.sessions.length" @click="$emit('continue')">继续游戏</button>
+        <button :disabled="w.loading" @click="$emit('personas')">user 人设库</button>
         <button :disabled="w.loading" @click="$emit('settings')">设置</button>
       </nav>
       <p v-if="!w.loading&&!w.sessions.length" class="opening-note">暂无本机存档，先开启一段新的旅程。</p>

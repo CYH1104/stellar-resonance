@@ -21,6 +21,7 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
       <label>背景<textarea v-model="persona.background" rows="3" maxlength="3000" /></label>
       <label>精神体<textarea v-model="persona.spiritAnimal" rows="2" maxlength="1500" /></label>
       <label>同人文配对偏好<select v-model="persona.pairingPreference"><option value="">按明确人设判断／暂未指定</option><option value="BL-攻">BL · user 为攻</option><option value="BL-受">BL · user 为受</option><option value="BG">BG</option><option value="GB">GB</option></select></label>
+      <label v-if="persona.rawText">原文人设<textarea v-model="persona.rawText" rows="8" maxlength="60000" /></label>
       <label>其他<textarea v-model="persona.other" rows="3" maxlength="3000" /></label>
       <button type="submit" :disabled="w.busy||!persona.name.trim()">保存玩家人设</button>
     </form>

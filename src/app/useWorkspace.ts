@@ -1,3 +1,5 @@
+import {isSpiritDiary} from '../domain/spiritDiary';
+import {syncCharacterFacts} from '../domain/characterFacts';
 import { computed, reactive, ref, watch, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant } from '../domain/contracts';
 import {addForumAIReply,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
@@ -20,6 +22,8 @@ export function useWorkspace() {
   const presetParameters=computed(()=>{const map=preferences.presetParameters||=( {});return map[currentPreset.value]||=(cleanSampling(taskApi(preferences,'story')||preferences.profiles[0]));});
   const presetEntries=computed(()=>preferences.presets.filter(p=>setId(p)===currentPreset.value));
   const sessions=ref<Session[]>([]), sessionId=ref(''), panel=ref<Panel>('story');
+  const inputDrafts=new Map<string,string>();
+  function rememberInput(){if(sessionId.value)inputDrafts.set(sessionId.value,input.value);}
   const workingForumReply=ref(''),forumReplyPost=ref(''),forumReplyError=ref('');let forumController:AbortController|undefined;
   function stopForumReply(){forumController?.abort();}
   watch(()=>[preferences.forumReplyEnabled,preferences.forumReplyProfile,sessionId.value],()=>forumController?.abort());
@@ -100,7 +104,7 @@ export function useWorkspace() {
     try {const value=await repository.read();if(value){sessions.value=value.sessions;Object.assign(preferences,value.preferences);}storageReady=true;notice.value=sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
     catch(e){problem.value=message(e);notice.value='本地存储暂不可用，请勿覆盖旧数据';}
     finally {
-      try{const service=await http.bootstrap();if(service){localService.value=service;preferences.mode='server';await Promise.resolve();authorized.value=true;notice.value='服务器角色卡已载入 · 请在模型设置连接 AI';}}catch{problem.value='本机资料后台不可用；请使用新版 bat 启动。';}
+      try{const service=await http.bootstrap();if(service){localService.value=service;for(const session of sessions.value)syncCharacterFacts(session,service.dataset,service.characterFacts);preferences.mode='server';await Promise.resolve();authorized.value=true;notice.value='服务器角色卡已载入 · 请在模型设置连接 AI';}}catch{problem.value='本机资料后台不可用；请使用新版 bat 启动。';}
       try{const saved=await repository.readApiCredentials();apiStorageReady=true;if(saved){rememberApiKeys.value=saved.remember;if(saved.remember){for(const p of preferences.profiles)if(saved.keys[p.id])credentials[p.id]=saved.keys[p.id];await Promise.resolve();if(localService.value)for(const p of preferences.profiles){const previous=saved.confirmed[p.id];if(previous&&previous.apiBaseUrl===apiAddress(p.apiBaseUrl)&&previous.model===p.model&&!apiFieldIssues(p,key(p)).length)await connectProfile(p);}}}}catch(e){rememberApiKeys.value=false;problem.value=message(e);}
       loading.value=false;if(apiReady.value)notice.value='已恢复本机 API 配置，可以继续游戏。';
     }
@@ -119,10 +123,10 @@ export function useWorkspace() {
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     if(!ensureApiConfiguration())return;
     creatingGame.value=true;
-    try{const session=newSession(name,persona,opening);if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
+    try{const session=newSession(name,persona,opening);if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}rememberInput();sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
   }
-  function open(id:string) {if(busy.value)return;if(!ensureApiConfiguration()){pendingSessionId.value=id;return;}pendingSessionId.value='';sessionId.value=id;panel.value='story';input.value='';problem.value='';}
-  function home() {if(busy.value)return;pendingSessionId.value='';sessionId.value='';panel.value='story';input.value='';}
+  function open(id:string) {if(busy.value)return;if(!ensureApiConfiguration()){pendingSessionId.value=id;return;}rememberInput();pendingSessionId.value='';sessionId.value=id;panel.value='story';input.value=inputDrafts.get(id)||'';problem.value='';}
+  function home() {if(busy.value)return;rememberInput();pendingSessionId.value='';sessionId.value='';panel.value='story';input.value='';}
   function deleteSession(id:string):Promise<boolean>{
     if(loading.value||busy.value||workingMemory.value||workingPersona.value||creatingGame.value||deletionTask)return Promise.resolve(false);
     const target=sessions.value.find(s=>s.id===id);if(!target)return Promise.resolve(false);
@@ -132,7 +136,7 @@ export function useWorkspace() {
     // Share the write queue; later autosaves wait until the in-memory removal is committed.
     const write=writes.catch(()=>{}).then(()=>repository.write(value));writes=write;
     deletionTask=(async()=>{
-      try{await write;sessions.value=sessions.value.filter(s=>s.id!==id);if(pendingSessionId.value===id)pendingSessionId.value='';if(sessionId.value===id){sessionId.value='';input.value='';panel.value='saves';}lastSaved.value=now();notice.value=`已删除存档《${target.name}》`;return true;}
+      try{await write;inputDrafts.delete(id);sessions.value=sessions.value.filter(s=>s.id!==id);if(pendingSessionId.value===id)pendingSessionId.value='';if(sessionId.value===id){sessionId.value='';input.value='';panel.value='saves';}lastSaved.value=now();notice.value=`已删除存档《${target.name}》`;return true;}
       catch(e){problem.value=`删除失败，存档仍保留：${message(e)}`;notice.value='存档未删除，请重试';return false;}
       finally{busy.value=false;deletingSessionId.value='';deletionTask=undefined;}
     })();return deletionTask;
@@ -186,7 +190,7 @@ export function useWorkspace() {
         else if(event.type==='continuation'){generationPhase.value='回复截断，正在自动续写…';repairingState.value=false;continuationAttempt.value=event.attempt;notice.value=`检测到截断，正在自动续写 ${event.attempt}/${event.maxAttempts}…`;}
         else if(event.type==='done'){
           let outcome=event.outcome;
-          if(previousOutcome){outcome={...outcome,event:previousOutcome.event,player:{...previousOutcome.player,...outcome.player},...(previousOutcome.diceEvent?{diceEvent:previousOutcome.diceEvent}:{}),forum:previousOutcome.forum?.length?previousOutcome.forum:outcome.forum,theaters:outcome.theaters?.map(scene=>previousOutcome.theaters?.find(old=>old.slot===scene.slot&&old.kind===scene.kind&&(old.content.trim()||old.messages?.some(m=>m.content.trim())))||scene)};}
+          if(previousOutcome){outcome={...outcome,event:previousOutcome.event,player:{...previousOutcome.player,...outcome.player},...(previousOutcome.diceEvent?{diceEvent:previousOutcome.diceEvent}:{}),forum:previousOutcome.forum?.length?previousOutcome.forum:outcome.forum,theaters:outcome.theaters?.map(scene=>previousOutcome.theaters?.find(old=>old.slot===scene.slot&&old.kind===scene.kind&&(!(preferences.theaters||[]).some(t=>t.slot===scene.slot&&isSpiritDiary(t))||!!old.diary)&&(old.content.trim()||old.messages?.some(m=>m.content.trim())))||scene)};}
           finishVariant(session,index,variant,outcome);done=true;
         }
       }
@@ -214,16 +218,24 @@ export function useWorkspace() {
     const session=active.value;if(!session||busy.value||workingMemory.value||workingForumReply.value)return false;
     let replyId:string;try{replyId=replyForum(session,keyValue,text);await persist();}catch(e){problem.value=message(e);return false;}
     notice.value='评论已保存到本机';if(!preferences.forumReplyEnabled)return true;
+    await requestForumReply(session,keyValue,replyId);return true;
+  }
+  async function retryForumReply(keyValue:string,replyId:string){
+    const session=active.value;if(!session||busy.value||workingMemory.value||workingForumReply.value||!preferences.forumReplyEnabled)return;
+    await requestForumReply(session,keyValue,replyId);
+  }
+  async function requestForumReply(session:Session,keyValue:string,replyId:string){
+    const selectedPost=visibleForum(session).find(post=>post.key===keyValue),activity=session.forumActivity?.[keyValue];const parent=activity?.replies.findIndex(r=>r.id===replyId&&r.kind!=='ai')??-1;
+    if(!selectedPost||!activity||parent<0||activity.replies.some(r=>r.kind==='ai'&&r.replyTo===replyId))return;
     forumReplyPost.value=keyValue;forumReplyError.value='';const p=copy(profile(preferences.forumReplyProfile||preferences.mainProfile));
     if(!localService.value||apiFieldIssues(p,key(p)).length||!connectionReady(p)){forumReplyError.value='你的评论已保存。请先保存所选论坛回复 API 的配置。';return true;}
-    const selectedPost=visibleForum(session).find(post=>post.key===keyValue)!;const activity=session.forumActivity![keyValue];
-    const comments=[...(selectedPost.comments||[]).map(c=>({authorName:c.authorName,content:c.content})),...activity.replies.map(r=>({authorName:r.kind==='ai'?r.authorName!:session.persona.name,content:r.text}))].slice(-12);
+    const comments=[...(selectedPost.comments||[]).map(c=>({authorName:c.authorName,content:c.content})),...activity.replies.slice(0,parent+1).map(r=>({authorName:r.kind==='ai'?r.authorName!:session.persona.name,content:r.text}))].slice(-12);
     const signature=connectionSignature(p),current=new AbortController();forumController=current;workingForumReply.value=keyValue;
     try{
       const reply=await http.forumReply({userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments},p,key(p),current.signal);
       current.signal.throwIfAborted();if(!sessions.value.some(s=>s.id===session.id)||signature!==connectionSignature(profile(p.id)))throw new Error('存档或接口已改变，本次回复未应用。');
       addForumAIReply(session,keyValue,replyId,reply);await persist();notice.value='角色／NPC 已回复你的评论';
-    }catch(e){forumReplyError.value=(current.signal.aborted?'AI 回复已停止。':message(e))+' 你的评论已保留。';}
+    }catch(e){const detail=current.signal.aborted?'AI 回复已停止。':message(e);forumReplyError.value=detail+(/评论已(?:保留|保存)/.test(detail)?'':' 你的评论已保留。');}
     finally{if(forumController===current){forumController=undefined;workingForumReply.value='';}}return true;
   }
   async function saveMemory(text:string,id?:string){const s=active.value;if(!s||busy.value||workingMemory.value||!text.trim())return;const m=s.memories.find(x=>x.id===id);if(m){m.text=text.trim();delete m.vector;}else s.memories.push({id:uid(),text:text.trim(),kind:'note',createdAt:now()});await safePersist();}
@@ -232,7 +244,7 @@ export function useWorkspace() {
   async function searchMemory(query:string):Promise<Memory[]>{if(!active.value)return[];if(!query.trim())return memories.value;try{return await recall(active.value,query);}catch(e){problem.value=message(e);return[];}}
   function download(filename:string,content:string,type='application/json'){const url=URL.createObjectURL(new Blob([content],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportBackup(){download(`群星共振-备份-${new Date().toISOString().slice(0,10)}.json`,backup(snapshot()));notice.value='备份已导出，不包含 Key';}
-  async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(replace){sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
+  async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(localService.value)for(const session of value.sessions)syncCharacterFacts(session,localService.value.dataset,localService.value.characterFacts);if(replace){inputDrafts.clear();sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
   function exportBook(){const s=active.value;if(!s)return;const escape=(x:string)=>x.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');const body=s.turns.map(t=>{const v=selected(t);return v?.status==='complete'?`<section><p class="action">${escape(t.input)}</p><p>${escape(v.text)}</p></section>`:'';}).join('');download(`${s.name}-故事.html`,`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(s.name)}</title><style>body{max-width:44rem;margin:3rem auto;padding:0 1.5rem;font:18px/1.8 system-ui;color:#222}p{white-space:pre-wrap}.action{color:#666}section{margin-bottom:2rem}</style><h1>${escape(s.name)}</h1><p>${escape(s.opening)}</p>${body}</html>`,'text/html');}
   function addProfile(){if(preferences.profiles.length>=30){problem.value='接口总数最多30个，请先移除不需要的副 API。';return '';}const id=uid();preferences.profiles.push({id,name:`副 API ${(preferences.auxiliaryProfiles?.length||0)+1}`,providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600});(preferences.auxiliaryProfiles||=[]).push(id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;return id;}
   function removeProfile(id:string){if(id===preferences.mainProfile||id===preferences.embeddingProfile)return;preferences.profiles=preferences.profiles.filter(p=>p.id!==id);delete credentials[id];delete approved[id];preferences.auxiliaryProfiles=(preferences.auxiliaryProfiles||[]).filter(value=>value!==id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;for(const task of textApiTasks)if(preferences[task.field]===id)preferences[task.field]=preferences.mainProfile;if(preferences.randomEventProfile===id)preferences.randomEventProfile=preferences.mainProfile;if(preferences.forumReplyProfile===id){preferences.forumReplyProfile=preferences.mainProfile;forumController?.abort();}}
@@ -247,7 +259,7 @@ export function useWorkspace() {
   function duplicatePresetSet(){if(busy.value)return;const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,suggestionsProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,suggestionsProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

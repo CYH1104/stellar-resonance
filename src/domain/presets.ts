@@ -68,7 +68,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
   const parameters:Partial<Profile>={};
   for(const [source,target,min,max] of [['temperature','temperature',0,2],['openai_max_tokens','maxTokens',1,32000],['top_p','topP',0,1],['frequency_penalty','frequencyPenalty',-2,2],['presence_penalty','presencePenalty',-2,2]] as const){if(raw[source]!==undefined){if(typeof raw[source]==='number'&&Number.isFinite(raw[source])&&raw[source]>=min&&raw[source]<=max&&(target!=='maxTokens'||Number.isInteger(raw[source])))parameters[target]=raw[source];else warnings.push(`${source} 超出支持范围，未应用。`);}}
   if(entries.some(p=>p.marker))warnings.push('角色、世界资料和聊天历史占位条目由服务器统一提供；不能借此移除服务器必需设定。');
-  if(entries.some(p=>/\{\{(?!user\}\}|char\}\})/.test(p.content)))warnings.push('仅替换 {{user}}、{{char}}；复杂宏和脚本不会执行，使用前请检查对应条目。');
+  if(entries.some(p=>/\{\{(?!(?:user|char|persona|charIfNotGroup)\}\})/i.test(p.content)))warnings.push('支持 {{user}}、{{char}}、{{persona}}、{{charIfNotGroup}} 和旧版姓名占位符；其他复杂宏和脚本不会执行。');
   if(raw.extensions)warnings.push('预设扩展、脚本和正则未导入或执行。');
   const special=['top_k','top_a','min_p','repetition_penalty','seed','reasoning_effort','openai_max_context','continue_prefill','assistant_prefill','squash_system_messages'].filter(key=>raw[key]!==undefined);if(special.length)warnings.push(`供应商专属或尚未接入的设置未执行：${special.join('、')}。`);
   const accepted=['name','prompts','prompt_order','content','enabled','system_prompt','jailbreak_prompt','temperature','openai_max_tokens','top_p','frequency_penalty','presence_penalty'];

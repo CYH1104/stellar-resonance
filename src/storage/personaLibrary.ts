@@ -9,3 +9,4 @@ export class PersonaLibrary {
   async save(file:PersonaFile){const safe={...file,persona:normalizePersona(file.persona)};const db=await this.open();await new Promise<void>((resolve,reject)=>{const t=db.transaction('files','readwrite');t.objectStore('files').put(safe);t.oncomplete=()=>resolve();t.onerror=t.onabort=()=>reject(Error('档案保存失败，当前文字仍保留'));});}
   async remove(id:string){const db=await this.open();await new Promise<void>((resolve,reject)=>{const t=db.transaction('files','readwrite');t.objectStore('files').delete(id);t.oncomplete=()=>resolve();t.onerror=()=>reject(Error('删除失败，请重试'));});}
 }
+

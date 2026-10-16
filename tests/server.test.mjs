@@ -33,7 +33,7 @@ function fakeFetch(url,options){
   if(Array.isArray(payload.input))return new Response(JSON.stringify({data:payload.input.map((text,index)=>({index,embedding:[index+1,0.5]})).reverse()}),{headers:{'Content-Type':'application/json'}});
   const action=payload.messages.at(-1).content;
   if(payload.messages[0].content.startsWith('你只设计一个尚未发生'))return new Response(JSON.stringify({choices:[{message:{content:'<think>不能展示</think>{"title":"意外来信","description":"一封未署名来信等待你决定是否查看。"}'}}]}),{headers:{'Content-Type':'application/json'}});
-  if(payload.messages[0].content.startsWith('你为剧情内的虚构校园论坛'))return new Response(JSON.stringify({choices:[{message:{content:'{"content":"我推荐食堂的新菜。"}'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages[0].content.startsWith('你为剧情内的虚构校园论坛'))return new Response(JSON.stringify({choices:[{message:{content:payload.model==='forum-plain'?'我推荐食堂的新菜。':payload.model==='forum-cut'?'{"content":"未完':payload.model==='forum-alias'?'{"reply":"我推荐食堂的新菜。"}':'{"content":"我推荐食堂的新菜。"}'}}]}),{headers:{'Content-Type':'application/json'}});
   if(payload.messages.some(m=>m.role==='user'&&m.content==='state-repair')){
     const repairing=action.startsWith('[系统状态补修');const content=repairing?'<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'状态补修完成'})+'</SR_STATE>'+RESPONSE_END:'原正文完整。<SR_STATE>{bad}</SR_STATE>'+RESPONSE_END;
     return new Response(JSON.stringify({choices:[{message:{content}}]}),{headers:{'Content-Type':'application/json'}});
@@ -209,6 +209,11 @@ test('forum replies use the selected registered connection and return only serve
 });
 test('bad forum requests are rejected before a paid model call',async()=>{
   const count=calls.length;const response=await post('/api/forum-reply',{profile,key:'synthetic-key',userName:'玩家',post:{authorName:'路人',content:'动态'},comments:[]});assert.equal(response.status,400);assert.equal((await response.json()).code,'INVALID_FORUM_REPLY');assert.equal(calls.length,count);
+});
+test('forum HTTP accepts plain and alias responses with one request, while truncated JSON stays an explicit failure',async()=>{
+  for(const model of ['forum-plain','forum-alias','forum-cut']){
+    const count=calls.length,response=await post('/api/forum-reply',{profile:{...profile,model},key:'synthetic-key',userName:'玩家',post:{authorName:'路人',content:'动态'},comments:[{authorName:'玩家',content:'你好'}]});assert.equal(response.status,model==='forum-cut'?502:200);const value=await response.json();if(model==='forum-cut')assert.equal(value.code,'INVALID_FORUM_REPLY_RESULT');else assert.equal(value.content,'我推荐食堂的新菜。');assert.equal(calls.length-count,1);
+  }
 });
 test('HTTP manual state-only repair returns no new prose and validates its mode before calling the provider',async()=>{
   const r=await request('cut-manual');r.continuation={partial:'已保存的完整正文。',mode:'state'};const count=calls.length,result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,1);assert.equal(result.at(-1).type,'done');assert.ok(!result.some(e=>e.type==='delta'));assert.ok(calls.at(-1).payload.messages.at(-1).content.startsWith('[系统状态补修'));

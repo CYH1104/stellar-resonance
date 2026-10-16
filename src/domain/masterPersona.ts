@@ -6,3 +6,4 @@ export function masterPersonaSummary(persona:Persona){
   return {name:persona.name.trim(),department:persona.identity!==undefined?persona.identity.trim():field(['学院','院系','所属院系','学院派系']),spiritLevel:persona.other!==undefined?readPersonaExtra(persona.other,'精神力等级'):field(['精神力等级','精神力'])};
 }
 export function setMasterPersona(persona:Persona){const detail=masterPersonaSummary(persona);try{localStorage.setItem(masterPersonaKey,JSON.stringify(detail));}catch{}window.dispatchEvent(new CustomEvent('academy:master-persona',{detail}));}
+

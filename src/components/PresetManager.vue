@@ -27,6 +27,7 @@ function removeSet(){props.w.removePresetSet();deleting.value=false;}
 <template>
   <section class="surface preset-manager">
     <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1><p class="muted">按酒馆 Chat Completion 的方式管理提示词与采样参数。</p></div><button class="primary" :disabled="w.busy" @click="w.save()">保存预设</button></header>
+    <p v-pre class="hint">身份宏：{{user}} = 玩家姓名，{{char}} = 世界卡名称（不随在场 NPC 变化），{{persona}} = 玩家人设。NPC 仍使用各自姓名；主线“你”固定指玩家。</p>
     <p class="preset-lock" role="note">🔒 强制隐藏模型思维链：不显示思考面板，不保存或回传已识别的推理内容。导入预设不能关闭此规则。人物内心想法和精神体 OS 仍按剧情展示。</p>
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
     <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><label class="file-button">导入 JSON<input type="file" accept=".json,application/json" :disabled="w.busy" @change="importFile" /></label><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>

@@ -10,3 +10,4 @@ it('uses explicit labels in imported text without inventing an affiliation or ra
   expect(masterPersonaSummary({...blankPersona(),name:'林星',rawText:'院系：银铃\n精神力：A'})).toEqual({name:'林星',department:'',spiritLevel:''});
   expect(masterPersonaSummary({...blankPersona(),name:'林星',rawText:'喜欢去学院图书馆学习。'}).department).toBe('');
 });
+

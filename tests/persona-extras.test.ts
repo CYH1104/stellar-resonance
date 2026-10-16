@@ -20,3 +20,4 @@ describe('original form extra fields',()=>{
     expect(writePersonaExtra(text,'精神力等级','')).toBe('备注');
   });
 });
+
