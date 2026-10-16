@@ -1,9 +1,8 @@
 import type {Preferences,Profile} from './contracts';
 import {samplingFields} from './presets.ts';
 export const textApiTasks=[
-  {key:'story',field:'storyProfile',label:'剧情',hint:'包含人物状态、论坛和小剧场，它们在同一次剧情回复中生成。'},
-  {key:'summary',field:'summaryProfile',label:'记忆摘要',hint:'每五轮完整剧情生成一次摘要。'},
-  {key:'suggestions',field:'suggestionsProfile',label:'行动建议',hint:'每轮剧情结束后的可选行动。'},
+  {key:'story',field:'storyProfile',label:'剧情',hint:'包含正文、人物状态、全部已开启小剧场和下一步建议，同一次回复生成。'},
+  {key:'summary',field:'summaryProfile',label:'每轮记忆整理',hint:'每轮正文完成后整理人物、时间、地点、行动、得失、约定与状态变化。'},
   {key:'persona',field:'personaProfile',label:'AI 帮我写人设',hint:'新游戏的人设辅助填写。'},
 ] as const;
 export type TextApiTask=typeof textApiTasks[number]['key'];
@@ -23,10 +22,10 @@ export function migrateApiSettings(p:Preferences):Preferences{
   const routes=Object.fromEntries(textApiTasks.map(task=>{const id=p[task.field]??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(id))throw new Error(`${task.label} API 引用不正确`);return[task.field,id];}));
   const forumReplyProfile=p.forumReplyProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(forumReplyProfile))throw new Error('论坛回复 API 引用不正确');
   const randomEventProfile=p.randomEventProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(randomEventProfile))throw new Error('随机事件 API 引用不正确');
-  return {...p,...routes,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
+  return {...p,...routes,suggestionsProfile:p.suggestionsProfile??p.mainProfile,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
 }
 export function auxiliaryApis(p:Preferences){return(p.auxiliaryProfiles||[]).map(id=>p.profiles.find(profile=>profile.id===id)).filter((profile):profile is Profile=>!!profile);}
-export function taskApi(p:Preferences,task:TextApiTask){const field=textApiTasks.find(t=>t.key===task)!.field;return p.profiles.find(profile=>profile.id===(p[field]||p.mainProfile));}
+export function taskApi(p:Preferences,task:TextApiTask|'suggestions'){const field=textApiTasks.find(t=>t.key===(task==='suggestions'?'story':task))!.field;return p.profiles.find(profile=>profile.id===(p[field]||p.mainProfile));}
 export function storyApi(p:Preferences){const base=taskApi(p,'story'),params=p.presetParameters?.[p.activePreset||'legacy'];return base&&params?{...base,...Object.fromEntries(samplingFields.filter(([key])=>params[key]!==undefined).map(([key])=>[key,params[key]]))}:base;}
 export function requiredApis(p:Preferences){const ids=new Set([p.mainProfile,...textApiTasks.map(task=>p[task.field]||p.mainProfile),...(p.vectorEnabled?[p.embeddingProfile]:[]),...(p.diceEnabled?[p.randomEventProfile||p.mainProfile]:[]),...(p.forumReplyEnabled?[p.forumReplyProfile||p.mainProfile]:[])]);return p.profiles.filter(profile=>ids.has(profile.id));}
 export function apiFieldIssues(profile:Profile,key=''){

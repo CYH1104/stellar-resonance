@@ -1,23 +1,66 @@
 <script setup lang="ts">
 import {computed,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import type {Preset} from '../domain/contracts';
-import {cleanPreset,pinnedPromptIds,promptTriggers} from '../domain/presets';
+import type {Preset,PresetPromptGroup} from '../domain/contracts';
+import {promptFolders} from '../domain/promptGroups';
+import {cleanPreset,pinnedPromptIds} from '../domain/presets';
 import DialogShell from './DialogShell.vue';
+import PresetPromptEditor from './PresetPromptEditor.vue';
 const props=defineProps<{w:ViewModel}>();
-const query=ref(''),library=ref(''),dragged=ref(''),draft=ref<Preset>(),deleting=ref(false);
+const query=ref(''),library=ref(''),dragged=ref(''),drafts=ref<Record<string,Preset>>({}),originals=ref<Record<string,Preset>>({}),expanded=ref<string[]>([]),deleting=ref(false);
 const rows=computed(()=>props.w.presetEntries.filter(p=>p.included!==false));
 const unused=computed(()=>props.w.presetEntries.filter(p=>p.included===false));
 const shown=computed(()=>rows.value.filter(p=>!query.value.trim()||(p.name+' '+p.content+' '+p.identifier).toLowerCase().includes(query.value.trim().toLowerCase())));
+const folders=computed(()=>promptFolders(rows.value));
+const folderOptions=computed(()=>promptFolders(props.w.presetEntries).filter(g=>g.id!=='__ungrouped').map(({entries,...g})=>g));
+const shownFolders=computed(()=>folders.value.map(folder=>({...folder,shown:folder.entries.filter(p=>!query.value.trim()||(folder.name+' '+p.name+' '+p.content+' '+p.identifier).toLowerCase().includes(query.value.trim().toLowerCase()))})).filter(folder=>folder.shown.length));
+const ungroupedCollapsed=ref(false),groupForm=ref<{id:string;name:string;members:string[]}>(),deletingGroup=ref<{id:string;name:string}>();
+function patchGroup(id:string,patch:Partial<PresetPromptGroup>){for(const p of props.w.presetEntries)if(p.group?.id===id)p.group={...p.group,...patch};}
+function groupIsOpen(folder:{id:string;collapsed:boolean}){return !!query.value.trim()||(folder.id==='__ungrouped'?!ungroupedCollapsed.value:!folder.collapsed);}
+function toggleGroup(folder:{id:string;collapsed:boolean}){if(folder.id==='__ungrouped')ungroupedCollapsed.value=!ungroupedCollapsed.value;else patchGroup(folder.id,{collapsed:!folder.collapsed});}
+function foldGroups(){ungroupedCollapsed.value=true;for(const folder of folders.value)if(folder.id!=='__ungrouped')patchGroup(folder.id,{collapsed:true});}
+function editGroup(id?:string){const folder=folderOptions.value.find(g=>g.id===id);groupForm.value={id:folder?.id||crypto.randomUUID(),name:folder?.name||'',members:props.w.presetEntries.filter(p=>p.group?.id===id&&id!==undefined).map(p=>p.id)};}
+async function saveGroup(){if(props.w.busy||!groupForm.value?.name.trim()||!groupForm.value.members.length)return;const form=groupForm.value;
+ const old=folderOptions.value.find(g=>g.id===form.id);const group:PresetPromptGroup={id:form.id,name:form.name.trim(),order:old?.order??Math.min(10000,Math.max(-1,...folderOptions.value.map(g=>g.order))+1),enabled:old?.enabled??true,collapsed:old?.collapsed??false};
+ for(const p of props.w.presetEntries){if(form.members.includes(p.id))p.group={...group};else if(p.group?.id===form.id)p.group=null;}
+ await props.w.save();if(!props.w.problem)groupForm.value=undefined;
+}
+async function removeGroup(){if(props.w.busy||!deletingGroup.value)return;for(const p of props.w.presetEntries)if(p.group?.id===deletingGroup.value.id)p.group=null;await props.w.save();if(!props.w.problem)deletingGroup.value=undefined;}
 const pinned=(p:Preset)=>pinnedPromptIds.includes(p.identifier||'');
-watch(()=>props.w.currentPreset,()=>{draft.value=undefined;query.value='';library.value='';});
-function edit(p:Preset){draft.value={role:'system',position:'before',depth:4,order:100,...JSON.parse(JSON.stringify(p))};props.w.problem='';}
-async function saveDraft(){if(!draft.value||props.w.busy)return;try{const value=cleanPreset(draft.value),target=props.w.presetEntries.find(p=>p.id===value.id);if(!target)return;Object.assign(target,value);props.w.problem='';await props.w.save();if(!props.w.problem)draft.value=undefined;}catch(e){props.w.problem=e instanceof Error?e.message:'条目未保存';}}
+watch(()=>props.w.currentPreset,()=>{drafts.value={};originals.value={};expanded.value=[];query.value='';library.value='';groupForm.value=undefined;deletingGroup.value=undefined;ungroupedCollapsed.value=false;});
+function edit(p:Preset){
+  if(!drafts.value[p.id]){drafts.value[p.id]={role:'system',position:'before',depth:4,order:100,...JSON.parse(JSON.stringify(p))};originals.value[p.id]=JSON.parse(JSON.stringify(drafts.value[p.id]));}
+  if(!expanded.value.includes(p.id))expanded.value.push(p.id);
+  if(p.group)patchGroup(p.group.id,{collapsed:false});else ungroupedCollapsed.value=false;
+}
+function fold(id:string){expanded.value=expanded.value.filter(value=>value!==id);}
+function toggle(p:Preset){if(expanded.value.includes(p.id))fold(p.id);else edit(p);}
+function cancel(id:string){fold(id);delete drafts.value[id];delete originals.value[id];}
+function expandAll(){ungroupedCollapsed.value=false;for(const folder of folders.value)if(folder.id!=='__ungrouped')patchGroup(folder.id,{collapsed:false});}
+function cleanedDraft(id:string){
+  const target=props.w.presetEntries.find(p=>p.id===id),draft=drafts.value[id];
+  if(!target||!draft)return;
+  const original=originals.value[id];
+  const edits=Object.fromEntries(Object.entries(draft).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(original?.[key as keyof Preset])));
+  const value=cleanPreset({...target,...edits,enabled:target.enabled,included:target.included,setId:target.setId,setName:target.setName});
+  if(value.group){const latest=props.w.presetEntries.find(p=>p.group?.id===value.group?.id)?.group;if(latest)value.group={...latest};}
+  return {target,value};
+}
+async function saveDraft(id:string){if(props.w.busy)return;try{
+  const change=cleanedDraft(id);if(!change)return;
+  Object.assign(change.target,change.value);props.w.problem='';await props.w.save();if(!props.w.problem)cancel(id);
+}catch(e){props.w.problem=e instanceof Error?e.message:'条目未保存';}}
+async function saveAll(){if(props.w.busy)return;try{
+  const changes=Object.keys(drafts.value).map(cleanedDraft).filter(change=>!!change);
+  for(const change of changes)Object.assign(change.target,change.value);
+  props.w.problem='';await props.w.save();
+  if(!props.w.problem)for(const change of changes){drafts.value[change.target.id]=JSON.parse(JSON.stringify(change.target));originals.value[change.target.id]=JSON.parse(JSON.stringify(change.target));}
+}catch(e){props.w.problem=e instanceof Error?e.message:'预设未保存';}}
+function removePrompt(id:string){props.w.removePresetEntry(id);cancel(id);}
 function rename(name:string){if(props.w.busy)return;for(const p of props.w.presetEntries){p.setId=props.w.currentPreset;p.setName=name;}}
 async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;try{if(file.size>5*1024*1024)throw Error('预设文件最多5MB');props.w.importPreset(await file.text(),file.name);}catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{input.value='';}}
-function trigger(value:string,checked:boolean){if(!draft.value)return;const current=draft.value.triggers||[];draft.value.triggers=checked?[...new Set([...current,value])]:current.filter(x=>x!==value);}
 function drop(id:string){if(props.w.busy||!dragged.value)return;const entries=props.w.presetEntries;props.w.movePresetTo(entries.findIndex(p=>p.id===dragged.value),entries.findIndex(p=>p.id===id));dragged.value='';}
-function moveVisible(p:Preset,offset:number){const to=rows.value[rows.value.indexOf(p)+offset];if(to)props.w.movePresetTo(props.w.presetEntries.indexOf(p),props.w.presetEntries.indexOf(to));}
+function moveVisible(p:Preset,offset:number){const siblings=rows.value.filter(row=>row.group?.id===p.group?.id);const to=siblings[siblings.indexOf(p)+offset];if(to)props.w.movePresetTo(props.w.presetEntries.indexOf(p),props.w.presetEntries.indexOf(to));}
 function insert(){const p=props.w.presetEntries.find(p=>p.id===library.value);if(!p||props.w.busy)return;p.included=true;p.enabled=true;props.w.movePresetTo(props.w.presetEntries.indexOf(p),props.w.presetEntries.length-1);library.value='';}
 function newPrompt(){props.w.addPresetEntry();const p=props.w.presetEntries.at(-1);if(p){const i=props.w.presetEntries.length-1;props.w.movePresetTo(i,i);edit(p);}}
 function copyPrompt(p:Preset){if(props.w.busy||p.marker)return;const id=crypto.randomUUID(),q={...JSON.parse(JSON.stringify(p)),id,identifier:id,name:p.name+'（副本）',included:true};props.w.preferences.presets.push(q);edit(q);}
@@ -26,25 +69,33 @@ function removeSet(){props.w.removePresetSet();deleting.value=false;}
 </script>
 <template>
   <section class="surface preset-manager">
-    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1><p class="muted">按酒馆 Chat Completion 的方式管理提示词与采样参数。</p></div><button class="primary" :disabled="w.busy" @click="w.save()">保存预设</button></header>
-    <p v-pre class="hint">身份宏：{{user}} = 玩家姓名，{{char}} = 世界卡名称（不随在场 NPC 变化），{{persona}} = 玩家人设。NPC 仍使用各自姓名；主线“你”固定指玩家。</p>
-    <p class="preset-lock" role="note">🔒 强制隐藏模型思维链：不显示思考面板，不保存或回传已识别的推理内容。导入预设不能关闭此规则。人物内心想法和精神体 OS 仍按剧情展示。</p>
+    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><button class="primary" :disabled="w.busy" @click="saveAll">保存预设</button></header>
+    
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
     <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><label class="file-button">导入 JSON<input type="file" accept=".json,application/json" :disabled="w.busy" @change="importFile" /></label><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>
-    <details class="import-report" open><summary>采样参数 · 随当前预设保存</summary><div class="field-grid"><label>Temperature<input v-model.number="w.presetParameters.temperature" type="number" min="0" max="2" step="0.05" :disabled="w.busy" /></label><label>最大输出 Token<input v-model.number="w.presetParameters.maxTokens" type="number" min="1" max="32000" :disabled="w.busy" /></label><label>Top P<input v-model.number="w.presetParameters.topP" type="number" min="0" max="1" step="0.05" placeholder="默认1" :disabled="w.busy" /></label><label>Frequency penalty<input v-model.number="w.presetParameters.frequencyPenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label><label>Presence penalty<input v-model.number="w.presetParameters.presencePenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label></div><p class="muted">切换预设会切换这些参数，只用于剧情接口；API 地址、模型、Key 继续在“模型设置”管理。</p></details>
-    <details v-if="w.presetWarnings.length" class="import-report" open><summary>导入结果与兼容说明</summary><ul><li v-for="(note,i) in w.presetWarnings" :key="i">{{note}}</li></ul></details>
-    <section class="subsection"><h2>提示词管理器</h2><p class="muted">{{rows.length}} 个列表条目 · {{rows.filter(p=>p.enabled).length}} 个开启 · {{unused.length}} 个在提示词库。拖动条目调整相对顺序，或使用上移／下移按钮。</p>
-      <div class="actions"><button :disabled="w.busy" @click="newPrompt">新建提示词</button><button :disabled="w.busy" @click="toggleAll(true)">全部开启</button><button :disabled="w.busy" @click="toggleAll(false)">全部关闭</button></div>
+    <details class="import-report" open><summary>采样参数 · 随当前预设保存</summary><div class="field-grid"><label>Temperature<input v-model.number="w.presetParameters.temperature" type="number" min="0" max="2" step="0.05" :disabled="w.busy" /></label><label>最大输出 Token<input v-model.number="w.presetParameters.maxTokens" type="number" min="1" max="32000" :disabled="w.busy" /></label><label>Top P<input v-model.number="w.presetParameters.topP" type="number" min="0" max="1" step="0.05" placeholder="默认1" :disabled="w.busy" /></label><label>Frequency penalty<input v-model.number="w.presetParameters.frequencyPenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label><label>Presence penalty<input v-model.number="w.presetParameters.presencePenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label></div></details>
+    <details v-if="w.presetWarnings.length" class="import-report"><summary>导入结果与兼容说明</summary><ul><li v-for="(note,i) in w.presetWarnings" :key="i">{{note}}</li></ul></details>
+    <details class="subsection prompt-group" open><summary>提示词管理器</summary>
+      <div class="actions"><button :disabled="w.busy" @click="editGroup()">新建分组</button><button :disabled="w.busy" @click="newPrompt">新建提示词</button><button :disabled="w.busy" @click="toggleAll(true)">全部开启</button><button :disabled="w.busy" @click="toggleAll(false)">全部关闭</button><button type="button" @click="expandAll">全部展开</button><button type="button" @click="foldGroups">全部收起</button></div>
       <div class="field-grid"><label>搜索条目<input v-model="query" placeholder="名称、内容或标识" /></label><label>提示词库<select v-model="library" :disabled="w.busy"><option value="">选择未插入的提示词</option><option v-for="p in unused" :key="p.id" :value="p.id">{{p.name}}</option></select></label></div><button :disabled="!library||w.busy" @click="insert">插入提示词</button>
-      <div class="prompt-list"><article v-for="p in shown" :key="p.id" class="prompt-item" :class="{'prompt-dragged':dragged===p.id}" :draggable="!w.busy&&!query.trim()" @dragstart="dragged=p.id" @dragend="dragged=''" @dragover.prevent @drop.prevent="drop(p.id)">
-        <header class="prompt-row"><span aria-hidden="true">⠿</span><label class="toggle"><input v-model="p.enabled" type="checkbox" :aria-label="`开启 ${p.name}`" :disabled="w.busy" /></label><button class="prompt-title" :disabled="w.busy" @click="edit(p)">{{p.name||'未命名条目'}}</button><span class="tag">{{p.marker?'服务器占位':p.position==='in-chat'?`深度 ${p.depth??4}`:p.role||'system'}}</span><span v-if="pinned(p)" class="tag" title="酒馆默认条目可关闭，不能删除">固定</span><button :disabled="w.busy||rows.indexOf(p)===0" @click="moveVisible(p,-1)" aria-label="上移条目">↑</button><button :disabled="w.busy||rows.indexOf(p)===rows.length-1" @click="moveVisible(p,1)" aria-label="下移条目">↓</button><button :disabled="w.busy" @click="edit(p)">编辑</button><button v-if="!pinned(p)" :disabled="w.busy" @click="p.included=false;p.enabled=false">移出列表</button></header>
-      </article></div>
-      <p v-if="!shown.length" class="empty">没有匹配条目。</p><p class="hint">相对位置的提示词随列表排序；深度注入忽略列表位置。服务器必需的私有设定、状态协议与思维链过滤始终保留，预设不能关闭。未提供的变量、脚本和复杂宏不执行。</p>
-    </section>
-    <DialogShell v-if="draft" :title="`编辑提示词 · ${draft.name}`" @close="draft=undefined"><p v-if="draft.marker" class="hint">这是服务器内容占位。可以查看位置；不展示或编辑作者私有资料。</p><div class="field-grid"><label>名称<input v-model="draft.name" maxlength="200" :disabled="w.busy||draft.marker" /></label><label>角色<select v-model="draft.role" :disabled="w.busy||draft.marker"><option value="system">System</option><option value="assistant">AI Assistant</option><option value="user">User</option></select></label></div>
-      <template v-if="!draft.marker"><label>内容<textarea v-model="draft.content" rows="10" maxlength="50000" :disabled="w.busy" /></label><fieldset :disabled="w.busy"><legend>触发时机（不选＝全部）</legend><div class="actions"><label v-for="t in promptTriggers" :key="t.value" class="toggle"><input type="checkbox" :checked="draft.triggers?.includes(t.value)" @change="trigger(t.value,($event.target as HTMLInputElement).checked)" />{{t.label}}</label></div></fieldset><p class="muted">当前剧情入口使用正常回复、续写和重演；其余酒馆触发类型保留用于文件兼容，不会虚构对应功能。</p><div class="field-grid"><label>位置<select v-model="draft.position" :disabled="w.busy"><option value="before">相对 · 聊天历史前</option><option value="after">相对 · 聊天历史后</option><option value="in-chat">聊天历史内 · 深度注入</option></select></label><template v-if="draft.position==='in-chat'"><label>Depth<input v-model.number="draft.depth" type="number" min="0" max="10000" :disabled="w.busy" /></label><label>Order<input v-model.number="draft.order" type="number" min="0" max="10000" :disabled="w.busy" /></label></template></div><p class="muted">Depth 0 在最后一条消息后，1 在最后一条消息前；同深度按 Order 排序。</p></template>
-      <p v-if="w.problem" role="alert">{{w.problem}}</p><div class="actions"><button :disabled="w.busy" @click="saveDraft">保存条目</button><button @click="draft=undefined">取消</button><button v-if="!draft.marker" :disabled="w.busy" @click="copyPrompt(draft)">复制为新条目</button><button v-if="!pinned(draft)" class="danger" :disabled="w.busy" @click="w.removePresetEntry(draft.id);draft=undefined">删除条目</button></div>
-    </DialogShell>
+      <div class="prompt-folders">
+        <section v-for="folder in shownFolders" :key="folder.id" class="prompt-folder" :class="{'prompt-folder-muted':!folder.enabled}">
+          <header class="prompt-folder-heading">
+            <button type="button" class="prompt-folder-title" :aria-expanded="groupIsOpen(folder)" :aria-controls="'folder-'+folder.id" @click="toggleGroup(folder)"><span aria-hidden="true">{{groupIsOpen(folder)?'▾':'▸'}}</span> {{folder.name}} <small>({{folder.entries.filter(p=>p.enabled).length}}/{{folder.entries.length}})</small></button>
+            <template v-if="folder.id!=='__ungrouped'"><label class="toggle"><input type="checkbox" :checked="folder.enabled" :aria-label="'启用分组 '+folder.name" :disabled="w.busy" @change="patchGroup(folder.id,{enabled:($event.target as HTMLInputElement).checked})" /></label><button type="button" :disabled="w.busy" :aria-label="'编辑分组 '+folder.name" @click="editGroup(folder.id)">编辑分组</button><button type="button" :disabled="w.busy" :aria-label="'删除分组 '+folder.name" @click="deletingGroup={id:folder.id,name:folder.name}">删除分组</button></template>
+          </header>
+          <div v-if="groupIsOpen(folder)" :id="'folder-'+folder.id" class="prompt-list prompt-folder-children">
+            <article v-for="p in folder.shown" :key="p.id" class="prompt-item" :class="{'prompt-dragged':dragged===p.id,'prompt-child-disabled':!p.enabled}" @dragover.prevent @drop.prevent="drop(p.id)">
+              <header class="prompt-row"><button type="button" class="prompt-grip" :draggable="!w.busy&&!query.trim()" :disabled="w.busy||!!query.trim()" @dragstart="dragged=p.id" @dragend="dragged=''" :aria-label="'拖动排序 '+p.name" title="拖动调整条目顺序">⠿</button><label class="toggle"><input v-model="p.enabled" type="checkbox" :aria-label="'开启 '+p.name" :disabled="w.busy" /></label><span class="prompt-title">{{p.name||'未命名条目'}}</span><span class="tag">{{p.marker?'服务器占位':p.position==='in-chat'?'深度 '+(p.depth??4):p.role||'system'}}</span><span v-if="pinned(p)" class="tag">固定</span><button :disabled="w.busy||folder.entries.indexOf(p)===0" @click="moveVisible(p,-1)" aria-label="上移条目">↑</button><button :disabled="w.busy||folder.entries.indexOf(p)===folder.entries.length-1" @click="moveVisible(p,1)" aria-label="下移条目">↓</button><button type="button" :aria-expanded="expanded.includes(p.id)" :aria-controls="'prompt-editor-'+p.id" @click="toggle(p)">{{expanded.includes(p.id)?'收起编辑':'编辑条目'}}</button><button v-if="!pinned(p)" :disabled="w.busy" @click="p.included=false;p.enabled=false">移出列表</button></header>
+              <PresetPromptEditor v-if="expanded.includes(p.id)&&drafts[p.id]" :id="'prompt-editor-'+p.id" :w="w" :draft="drafts[p.id]" :groups="folderOptions" :pinned="pinned(p)" @save="saveDraft(p.id)" @cancel="cancel(p.id)" @copy="copyPrompt(drafts[p.id])" @remove="removePrompt(p.id)" />
+            </article>
+          </div>
+        </section>
+      </div>
+      <p v-if="!shown.length" class="empty">没有匹配条目。</p>
+    </details>
+    <DialogShell v-if="groupForm" :title="'管理分组 · '+(groupForm.name||'新分组')" @close="groupForm=undefined"><label>分组名称<input v-model="groupForm.name" maxlength="200" :disabled="w.busy" /></label><div class="prompt-group-members"><label v-for="p in w.presetEntries" :key="p.id" class="toggle"><input v-model="groupForm.members" type="checkbox" :value="p.id" :disabled="w.busy" />{{p.name||'未命名条目'}}</label></div><div class="actions"><button :disabled="w.busy||!groupForm.name.trim()||!groupForm.members.length" @click="saveGroup">保存分组</button><button @click="groupForm=undefined">取消</button></div></DialogShell>
+    <DialogShell v-if="deletingGroup" title="删除这个分组？" @close="deletingGroup=undefined"><p>删除“{{deletingGroup.name}}”后，其中的小条目会放回“未分组”，提示词内容和各自开关保留。</p><div class="actions"><button @click="deletingGroup=undefined">取消</button><button class="danger" :disabled="w.busy" @click="removeGroup">确认删除分组</button></div></DialogShell>
     <DialogShell v-if="deleting" title="删除当前预设？" @close="deleting=false"><p>将删除《{{w.presetSets.find(s=>s.id===w.currentPreset)?.name}}》的条目及采样参数。已导出的文件会保留。</p><div class="actions"><button @click="deleting=false">取消</button><button class="danger" :disabled="w.busy" @click="removeSet">确认删除</button></div></DialogShell>
   </section>
 </template>

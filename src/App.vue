@@ -37,7 +37,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
   { id: 'relations', label: '人物关系', no: '03', needsGame: true },
   { id: 'map', label: '地图', no: '04', needsGame: true },
   { id: 'game-settings', label: '设置', no: '05' },
-  { id: 'settings', label: '模型设置', no: '06' },
+  { id: 'settings', label: 'API 设置', no: '06' },
   { id: 'presets', label: '预设', no: '07' },
   { id: 'saves', label: '存档与导出', no: '08' }
 ];
@@ -68,7 +68,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <aside v-if="w.active&&!fullPage" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
       <ResizeHandle v-if="w.active&&!fullPage" class="column-resizer left-resizer" axis="x" label="调整左侧状态栏宽度" @resize="dx=>layout.resize('left',dx)" />
       <main class="center-pane">
-        <div v-if="w.problem" class="error-banner" role="alert"><span>{{ w.problem }}</span><button @click="w.problem=''">收起提示</button></div>
+        <div v-if="w.problem&&w.panel!=='settings'" class="error-banner" role="alert"><span>{{ w.problem }}</span><button @click="w.problem=''">收起提示</button></div>
         <div class="center-content">
           <div v-if="w.loading" class="empty">正在打开本地数据库…</div>
           <template v-else>
@@ -91,6 +91,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <aside v-if="w.active&&!fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
     </div>
 
-    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.18.1</small></footer>
+    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.19.0</small></footer>
   </div>
 </template>

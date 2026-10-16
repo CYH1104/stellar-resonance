@@ -15,7 +15,7 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
   <section v-if="w.active" class="subsection"><h2>玩家人设</h2>
     <form @submit.prevent="w.savePersona(persona)">
       <div class="field-grid"><label>姓名<input v-model="persona.name" required maxlength="80" /></label><label>外貌<input v-model="persona.appearance" maxlength="500" /></label></div>
-      <div class="field-grid"><label>第一性别<input v-model="persona.primaryGender" maxlength="100" /></label><label>第二性别<input v-model="persona.secondaryGender" maxlength="100" /></label></div>
+      <div class="field-grid"><label>第一性别<input v-model="persona.primaryGender" maxlength="100" /></label><label>精神力等级<input v-model="persona.mentalPowerLevel" maxlength="100" /></label><label>第二性别<input v-model="persona.secondaryGender" maxlength="100" /></label></div>
       <label>身份（院系/职业）<input v-model="persona.identity" maxlength="200" /></label>
       <label>性格<textarea v-model="persona.personality" rows="2" maxlength="1500" /></label>
       <label>背景<textarea v-model="persona.background" rows="3" maxlength="3000" /></label>

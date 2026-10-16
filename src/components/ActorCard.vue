@@ -15,6 +15,7 @@ const spiritOs=computed(()=>{
     <dl class="actor-fields">
       <div><dt>姓名</dt><dd>{{ actor.name }}</dd></div>
       <div><dt>第一性别</dt><dd>{{ actor.primaryGender || '未提供' }}</dd></div>
+      <div><dt>精神力等级</dt><dd>{{actor.mentalPowerLevel||'—'}}</dd></div>
       <div><dt>第二性别</dt><dd>{{ actor.secondaryGender || '未提供' }}</dd></div>
       <div v-if="player"><dt>身份（院系/职业）</dt><dd>{{actor.identity||'未提供'}}</dd></div>
       <div v-if="!player"><dt>对 user 的好感度</dt><dd>{{actor.affinity??'等待 AI 补全'}}</dd></div>

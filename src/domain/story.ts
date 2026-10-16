@@ -1,3 +1,6 @@
+import {memorySignature,validateMemoryRecord,memoryText} from './memories.ts';
+import {cleanSuggestions} from './suggestions.ts';
+import {restoreKnownPromptGroups} from './promptGroups.ts';
 import {cleanLayout,defaultLayout} from './layout.ts';
 import type { ActorPatch, ActorState, Dice, ForumEntry, ForumPost, Memory, Outcome, Persona, Preferences, Session, Snapshot, Turn, Variant, WorldState } from './contracts';
 import {cleanRandomEventGate} from './randomEvents.ts';
@@ -36,13 +39,13 @@ function record(value: unknown): value is Record<string, unknown> { return !!val
 function shortText(value: unknown, max: number, required = false): value is string { return typeof value === 'string' && value.length <= max && (!required || !!value.trim()); }
 function actorPatch(value: unknown, character = false): ActorPatch {
   if (!record(value)) throw new Error('MVU 人物更新格式不正确');
-  const allowed = ['identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
+  const allowed = ['mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
   if (Object.keys(value).some(k => !allowed.includes(k))) throw new Error('MVU 人物更新包含未允许的字段');
   const patch: ActorPatch = {};
-  for (const field of ['identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
+  for (const field of ['mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
     if (value[field] === undefined) continue;
     const limit = ['innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field === 'name' ? 80 : 100;
-    if (!shortText(value[field], limit, field === 'name')) throw new Error(`MVU ${field} 字段不正确`);
+    if (!shortText(value[field], limit, field === 'name'||field==='mentalPowerLevel')) throw new Error(`MVU ${field} 字段不正确`);
     patch[field] = value[field];
   }
   if (value.affinity !== undefined) { if (!affinityValue(value.affinity)) throw new Error('好感度必须为有限数值'); patch.affinity = value.affinity; }
@@ -72,9 +75,10 @@ function forumPosts(value: unknown): ForumPost[] {
 export function validateOutcome(value: unknown, state: WorldState): Outcome {
   if (!record(value)) throw new Error('状态更新格式不正确');
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(k => !['player', 'characters', 'event', 'diceEvent', 'forum','theaters'].includes(k))) throw new Error('状态更新包含未允许的字段');
+  if (Object.keys(v).some(k => !['player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
+  if(v.suggestions!==undefined)out.suggestions=cleanSuggestions(v.suggestions);
   if(v.diceEvent!==undefined)out.diceEvent=cleanDiceEvent(v.diceEvent);
   if (v.player !== undefined) {
     out.player = actorPatch(v.player);
@@ -94,6 +98,7 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
 export function selected(turn: Turn): Variant | undefined { return turn.variants[turn.selected]; }
 export function stateAt(session: Session, before = session.turns.length): WorldState {
   const state = copy(session.initial);
+  if(state.player.mentalPowerLevel===undefined&&session.persona.mentalPowerLevel)state.player.mentalPowerLevel=session.persona.mentalPowerLevel;
   if(state.player.identity===undefined&&session.persona.identity)state.player.identity=session.persona.identity;
   if(state.player.spiritAnimal===undefined&&session.persona.spiritAnimal)state.player.spiritAnimal=session.persona.spiritAnimal;
   for (const turn of session.turns.slice(0, before)) {
@@ -154,16 +159,20 @@ export function addForumAIReply(session:Session,key:string,replyTo:string,reply:
   const text=stripReasoning(reply.content).trim();if(!shortText(text,1000,true)||!shortText(reply.authorName,80,true)||!shortText(reply.authorId,128,true)||activity.replies.length>=100)throw new Error('论坛回复格式或数量不正确');
   activity.replies.push({id:uid(),text,createdAt:now(),kind:'ai',authorName:reply.authorName,authorId:reply.authorId,replyTo});session.updatedAt=now();
 }
+function restoreSuggestions(session:Session):void{
+  const v=session.turns.length?selected(session.turns.at(-1)!):undefined;
+  session.suggestions=v?.status==='complete'?cleanSuggestions(v.outcome?.suggestions):[];
+}
 export function truncate(session: Session, count: number): void {
   if (!Number.isInteger(count) || count < 0 || count > session.turns.length) throw new Error('回退位置不正确');
   session.turns = session.turns.slice(0, count);
   const ids = new Set(session.turns.map(t => t.id));
   session.memories = session.memories.filter(m => !m.sourceTurn || ids.has(m.sourceTurn));
-  pruneForum(session); session.suggestions = []; session.updatedAt = now();
+  pruneForum(session); restoreSuggestions(session); session.updatedAt = now();
 }
 export function selectVariant(session: Session, index: number, variant: number): void {
   const turn = session.turns[index]; if (!turn?.variants[variant]) throw new Error('稿件不存在');
-  truncate(session, index + 1); turn.selected = variant;
+  truncate(session, index + 1); turn.selected = variant; restoreSuggestions(session);
 }
 export function editMessage(session: Session, index: number, role: 'user' | 'assistant', text: string): void {
   const turn = session.turns[index]; if (!turn || !text.trim()) throw new Error('消息不能为空');
@@ -173,13 +182,18 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   }
   else { const v = selected(turn); if (!v) throw new Error('稿件不存在'); v.text = stripReasoning(text.trim()); v.status = 'incomplete'; delete v.outcome; }
   session.memories = session.memories.filter(m => m.sourceTurn !== turn.id);
-  pruneForum(session);
+  pruneForum(session); restoreSuggestions(session);
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
   variant.text=stripReasoning(variant.text);const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
-  variant.outcome=validated;variant.status='complete';
-  session.memories=session.memories.filter(m=>!(m.kind==='event'&&m.sourceTurn===session.turns[turnIndex].id&&m.sourceVariant===variant.id));
-  session.memories.push({ id: uid(), text: `${variant.outcome.event}。${variant.outcome.diceEvent?`骰子事件：${variant.outcome.diceEvent.description}。`:''}${variant.text.slice(0,220)}`, kind: 'event', createdAt: now(), sourceTurn: session.turns[turnIndex].id, sourceVariant: variant.id });
+  variant.outcome=validated;variant.status='complete';restoreSuggestions(session);
+  const turn=session.turns[turnIndex],before=stateAt(session,turnIndex),after=stateAt(session,turnIndex+1);
+  const sourceFingerprint=memorySignature({input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent});
+  const existing=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);
+  if(!existing||existing.sourceFingerprint!==sourceFingerprint){
+    const memory:Memory={id:existing?.id||uid(),text:'待整理：'+validated.event+(validated.diceEvent?'；'+validated.diceEvent.description:''),kind:'event',createdAt:existing?.createdAt||now(),sourceTurn:turn.id,sourceVariant:variant.id,status:'pending',sourceFingerprint};
+    if(existing)session.memories.splice(session.memories.indexOf(existing),1,memory);else session.memories.push(memory);
+  }
   session.updatedAt = now();
 }
 export function cosine(a: number[], b: number[]): number {
@@ -201,11 +215,11 @@ function sanitizeSessions(sessions:Session[]):Session[]{
     for(const turn of Array.isArray(s.turns)?s.turns:[])for(const v of Array.isArray(turn?.variants)?turn.variants:[]){if(!v||typeof v!=='object')continue;const clean=scrubModelData(v);for(const key of Object.keys(v))delete (v as any)[key];Object.assign(v,clean);}
     for(const m of Array.isArray(s.memories)?s.memories:[])if(m){if(typeof m.vector?.text==='string'&&stripReasoning(m.vector.text)!==m.vector.text)delete m.vector;if(m.kind!=='note'&&typeof m.text==='string'){const text=stripReasoning(m.text);if(text!==m.text)delete m.vector;m.text=text;}}
     for(const activity of Object.values(s.forumActivity||{}))for(const r of activity.replies||[])if(r.kind==='ai')r.text=stripReasoning(r.text);
-    if(Array.isArray(s.suggestions))s.suggestions=s.suggestions.map(x=>typeof x==='string'?stripReasoning(x):x);
+    if(Array.isArray(s.suggestions)){s.suggestions=cleanSuggestions(s.suggestions);const latest=s.turns?.at(-1);const v=latest&&selected(latest);if(v?.outcome?.suggestions!==undefined)restoreSuggestions(s);}
   }return sessions;
 }
 export function cleanPreferences(p: Preferences): Preferences {
-  return migrateApiSettings({ layout:cleanLayout(p.layout),randomEventProfile:p.randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile:p.forumReplyProfile,mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presetParameters:cleanPresetParameters(p.presetParameters),presets: p.presets.map(cleanPreset), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
+  return migrateApiSettings({ layout:cleanLayout(p.layout),randomEventProfile:p.randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile:p.forumReplyProfile,mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presetParameters:cleanPresetParameters(p.presetParameters),presets: restoreKnownPromptGroups(p.presets.map(cleanPreset)), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
 }
 function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
@@ -224,10 +238,10 @@ export function parseBackup(text: string): Snapshot {
   for (const s of value.sessions) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
     ids.add(s.id);
-    normalizePersona(s.persona,false);
+    s.persona=normalizePersona(s.persona,false);
     for (const a of [s.initial.player, ...s.initial.characters]) {
       if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || (a.energy!==undefined&&!bounded(a.energy)) || (a.focus!==undefined&&!bounded(a.focus)) || (a.affinity!==undefined&&!affinityValue(a.affinity)) || typeof a.present !== 'boolean') throw new Error('初始状态不合法');
-      actorPatch({ name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
+      actorPatch({ mentalPowerLevel:a.mentalPowerLevel,name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
     }
     const turnIds = new Set<string>();
     for (const t of s.turns) {
@@ -239,6 +253,9 @@ export function parseBackup(text: string): Snapshot {
       for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if (v.outcome) {const out=validateOutcome(v.outcome,s.initial);assertDiceEventBinding(out.diceEvent,t.dice);} }
     }
     for (const m of s.memories) {
+      if(!m||typeof m!=='object')throw new Error('记忆格式不正确');
+      if(m.record!==undefined){m.record=validateMemoryRecord(m.record);if(m.status!=='ready')throw new Error('结构化记忆状态不正确');m.text=memoryText(m);}
+      if(m.status!==undefined&&!['pending','ready','failed'].includes(m.status)||m.sourceFingerprint!==undefined&&typeof m.sourceFingerprint!=='string'||m.annotation!==undefined&&(typeof m.annotation!=='string'||m.annotation.length>3000)||m.error!==undefined&&typeof m.error!=='string'||m.indexError!==undefined&&typeof m.indexError!=='string')throw new Error('记忆任务状态不正确');
       if (!m || typeof m.id !== 'string' || typeof m.text !== 'string' || !['note','event','chapter'].includes(m.kind)) throw new Error('记忆格式不正确');
       if (m.sourceTurn && (!turnIds.has(m.sourceTurn) || !s.turns.find(t=>t.id===m.sourceTurn)?.variants.some(v=>v.id===m.sourceVariant))) throw new Error('记忆来源不存在');
       if (m.vector && (typeof m.vector.model !== 'string' || !Array.isArray(m.vector.values) || m.vector.values.length > 8192 || m.vector.values.some(n=>typeof n!=='number'||!Number.isFinite(n)))) throw new Error('记忆向量不正确');

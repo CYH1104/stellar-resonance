@@ -1,4 +1,5 @@
 import type {Preset,Profile} from './contracts';
+import {cleanPromptGroup,importPromptGroups,exportPromptGroups,restoreKnownPromptGroups} from './promptGroups.ts';
 export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
 export const promptTriggers=[{value:'normal',label:'正常回复'},{value:'continue',label:'续写'},{value:'regenerate',label:'重演／重试'},{value:'swipe',label:'切换生成'},{value:'impersonate',label:'代写玩家'},{value:'quiet',label:'后台生成'}];
 export function newPresetEntries(id:string,name:string):Preset[]{
@@ -21,11 +22,12 @@ export function reorderPresetEntries(entries:Preset[],from:number,to:number){
 }
 export const setId=(p:Preset)=>p.setId||'legacy';
 export function presetGroups(list:Preset[]){return [...new Map(list.map(p=>[setId(p),{id:setId(p),name:p.setName||'原有预设'}])).values()];}
-export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.included!==false&&p.enabled&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
+export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
 export function cleanPreset(p:Preset):Preset{
   if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||p.content.length>50000||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
   if(p.role!==undefined&&!['system','user','assistant'].includes(p.role)||p.position!==undefined&&!['before','after','in-chat'].includes(p.position))throw new Error('预设角色或位置不正确');
   const out:Preset={id:p.id,name:p.name,content:p.content,enabled:p.enabled};
+  if(p.group!==undefined)out.group=cleanPromptGroup(p.group);
   for(const key of ['setId','setName','identifier'] as const)if(p[key]!==undefined){if(typeof p[key]!=='string'||p[key]!.length>200)throw new Error('预设标识不正确');out[key]=p[key];}
   if(p.role)out.role=p.role;if(p.position)out.position=p.position;
   for(const key of ['depth','order'] as const)if(p[key]!==undefined){if(!Number.isInteger(p[key])||p[key]!<0||p[key]!>10000)throw new Error('预设注入深度或顺序不正确');out[key]=p[key];}
@@ -50,6 +52,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
     prompts=[{name:'系统提示词',content:raw.system_prompt||'',identifier:'main'},{name:'后置提示词',content:raw.jailbreak_prompt||'',identifier:'jailbreak'}];warnings.push('已提取文本补全预设中的提示词；专属上下文模板未执行。');
   }else throw new Error('文件中没有酒馆 prompts 条目或可导入的文字预设');
   if(!prompts.length)throw new Error('预设的 prompts 列表为空，没有可导入的提示词');
+  const importedGroups=importPromptGroups(raw.extensions?.baibaiToolkit?.presetPromptGroups);
   const identifiers=new Set<string>();let modelRoleCount=0;
   const entries=prompts.map((p:any,i:number)=>{
     if(!p||typeof p!=='object')throw new Error('酒馆提示词条目格式不正确');
@@ -61,15 +64,17 @@ export function importTavernPreset(text:string,filename='导入预设'){
     const role=p.role==='model'?'assistant':p.role||'system';
     if(p.role==='model')modelRoleCount++;
     const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:p.injection_depth??4,order:p.injection_order??100,...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
+    if(importedGroups.has(identifier))item.group=importedGroups.get(identifier);
     if(hasOrder&&!record)item.included=false;return item;
   });
   if(modelRoleCount)warnings.push(`已将 ${modelRoleCount} 条 model 消息角色转换为 assistant；提示词、启停和位置保留。`);
   entries.sort((a,b)=>{const ai=order.findIndex(o=>o.identifier===a.identifier),bi=order.findIndex(o=>o.identifier===b.identifier);return(ai<0?9999:ai)-(bi<0?9999:bi);});
+  restoreKnownPromptGroups(entries);
   const parameters:Partial<Profile>={};
   for(const [source,target,min,max] of [['temperature','temperature',0,2],['openai_max_tokens','maxTokens',1,32000],['top_p','topP',0,1],['frequency_penalty','frequencyPenalty',-2,2],['presence_penalty','presencePenalty',-2,2]] as const){if(raw[source]!==undefined){if(typeof raw[source]==='number'&&Number.isFinite(raw[source])&&raw[source]>=min&&raw[source]<=max&&(target!=='maxTokens'||Number.isInteger(raw[source])))parameters[target]=raw[source];else warnings.push(`${source} 超出支持范围，未应用。`);}}
   if(entries.some(p=>p.marker))warnings.push('角色、世界资料和聊天历史占位条目由服务器统一提供；不能借此移除服务器必需设定。');
   if(entries.some(p=>/\{\{(?!(?:user|char|persona|charIfNotGroup)\}\})/i.test(p.content)))warnings.push('支持 {{user}}、{{char}}、{{persona}}、{{charIfNotGroup}} 和旧版姓名占位符；其他复杂宏和脚本不会执行。');
-  if(raw.extensions)warnings.push('预设扩展、脚本和正则未导入或执行。');
+  if(raw.extensions)warnings.push('支持导入提示词分组的名称、归属、开关与折叠状态；其余扩展、脚本和正则不导入、不执行。');
   const special=['top_k','top_a','min_p','repetition_penalty','seed','reasoning_effort','openai_max_context','continue_prefill','assistant_prefill','squash_system_messages'].filter(key=>raw[key]!==undefined);if(special.length)warnings.push(`供应商专属或尚未接入的设置未执行：${special.join('、')}。`);
   const accepted=['name','prompts','prompt_order','content','enabled','system_prompt','jailbreak_prompt','temperature','openai_max_tokens','top_p','frequency_penalty','presence_penalty'];
   const other=Object.keys(raw).filter(key=>!accepted.includes(key)&&!special.includes(key)&&/^[a-z][a-z0-9_]{0,64}$/i.test(key)&&!/(?:key|token|url|proxy|password|secret|header)/i.test(key));if(other.length)warnings.push(`其他未执行的酒馆选项：${other.slice(0,12).join('、')}${other.length>12?` 等${other.length}项`:''}。`);
@@ -81,5 +86,6 @@ export function exportTavernPreset(entries:Preset[],profile:Profile){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
   const ordered=[...entries.filter(p=>p!==anchor&&p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p!==anchor&&p.included!==false&&p.position==='after')];
-  return JSON.stringify({name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
+  const grouping=exportPromptGroups(entries);
+  return JSON.stringify({...(grouping?{extensions:{baibaiToolkit:{presetPromptGroups:grouping}}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }

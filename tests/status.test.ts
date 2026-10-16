@@ -34,3 +34,13 @@ it('精神体 OS 开局等待 AI，每轮展示 AI 更新，回退不保留后�
   turn(s,'second',{event:'来人离开',player:{spiritThought:'放松下来，想找个地方趴着。'}});const latest=await render(s);expect(latest).toContain('放松下来，想找个地方趴着。');expect(latest).not.toContain('耳朵竖起来了');truncate(s,1);expect(await render(s)).toContain('耳朵竖起来了');
   truncate(s,0);expect(await render(s)).toContain('等待 AI 随剧情生成');delete s.persona.spiritAnimal;expect(await render(s)).toContain('请先在人设中填写精神体');
 });
+
+it('精神力等级使用回合状态变量，保存、切稿和回退一致，等级排在第二性别之前',async()=>{
+ const s=game();s.persona.mentalPowerLevel='A级';s.initial.characters[0].mentalPowerLevel='S级';
+ expect(stateAt(s).player.mentalPowerLevel).toBe('A级');
+ turn(s,'first',{event:'正式评定',player:{mentalPowerLevel:'S级'},characters:[{id:'one',present:true,mentalPowerLevel:'SS级',affinity:12}]});
+ const html=await render(s);expect(html).toContain('SS级');expect(html.indexOf('精神力等级')).toBeLessThan(html.indexOf('第二性别'));expect(html).not.toContain('拖动卡片');expect(html).not.toMatch(/第\s*1\s*轮/);
+ const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.mentalPowerLevel).toBe('S级');
+ const alternate:Variant={id:'alt',text:'没有重新评定',status:'incomplete',createdAt:''};restored.turns[0].variants.push(alternate);finishVariant(restored,0,alternate,{event:'普通交流'});selectVariant(restored,0,1);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
+ selectVariant(restored,0,0);expect(stateAt(restored).characters[0].mentalPowerLevel).toBe('SS级');truncate(restored,0);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
+});

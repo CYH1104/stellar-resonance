@@ -1,12 +1,10 @@
-import type { Memory } from '../domain/contracts';
-export function retrieve(items: Memory[], query: string, model?: string, vector?: number[]): Promise<Memory[]> {
-  return new Promise((resolve,reject)=>{
-    const worker=new Worker(new URL('./scoring.worker.ts',import.meta.url),{type:'module'});
-    const timer=setTimeout(()=>{worker.terminate();reject(new Error('本地检索超时'));},5000);
-    worker.onmessage=e=>{clearTimeout(timer);worker.terminate();const ids=e.data as string[];resolve(ids.map(id=>items.find(x=>x.id===id)!).filter(Boolean));};
-    worker.onerror=()=>{clearTimeout(timer);worker.terminate();reject(new Error('本地检索暂不可用'));};
-    try {
-      worker.postMessage({query,vector:vector?[...vector]:undefined,items:items.map(m=>({id:m.id,text:m.text,vector:m.vector&&m.vector.model===model&&m.vector.text===m.text?[...m.vector.values]:undefined}))});
-    } catch {clearTimeout(timer);worker.terminate();reject(new Error('记忆数据无法提交本地检索'));}
-  });
+import type {Memory} from '../domain/contracts';
+import {memoryReady,vectorCurrent} from '../domain/memories';
+import {rankMemories} from './scoring';
+export function retrieve(items:Memory[],query:string,model?:string,vector?:number[]):Promise<Memory[]>{
+ const eligible=items.filter(memoryReady),data={query,vector:vector?[...vector]:undefined,items:eligible.map(m=>({id:m.id,text:m.text,vector:model&&vectorCurrent(m,model)?[...m.vector!.values]:undefined}))};
+ const resolveIds=(ids:string[])=>ids.map(id=>eligible.find(m=>m.id===id)).filter((m):m is Memory=>!!m);
+ return new Promise(resolve=>{let worker:Worker|undefined,timer:ReturnType<typeof setTimeout>|undefined;let settled=false;const done=(ids?:string[])=>{if(settled)return;settled=true;clearTimeout(timer);worker?.terminate();resolve(resolveIds(ids||rankMemories(data.items,query,vector)));};
+ try{worker=new Worker(new URL('./scoring.worker.ts',import.meta.url),{type:'module'});timer=setTimeout(()=>done(),5000);worker.onmessage=e=>done(Array.isArray(e.data)?e.data:undefined);worker.onerror=()=>done();worker.postMessage(data);}catch{done();}
+ });
 }

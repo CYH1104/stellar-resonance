@@ -98,3 +98,16 @@ test('overlap joiner preserves new words and only removes exact repeats of at le
   const joiner=new ContinuationJoiner('先前的一句完整正文。');let out='';for(const c of '先前的一句完整正文。然后继续。')out+=joiner.push(c);out+=joiner.finish();assert.equal(out,'然后继续。');
   const short=new ContinuationJoiner('哈哈');assert.equal(short.push('哈哈，继续。')+short.finish(),'哈哈，继续。');assert.ok(continuedMessages([], '原正文').at(-1).content.includes('不重新掷骰'));
 });
+
+test('bundled suggestions complete in the initial response, with no extra API for missing or malformed choices',async()=>{
+ for(const suggestions of [['观察四周','询问向导'],undefined,'错误格式']){
+  const raw=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'推进',suggestions})+STATE_CLOSE+RESPONSE_END;
+  const result=await run(['完整正文。'+raw]);assert.equal(result.error,undefined);assert.equal(result.calls.length,0);assert.equal(result.text,'完整正文。');
+  assert.deepEqual(result.events.at(-1).outcome.suggestions,Array.isArray(suggestions)?suggestions:[]);
+ }
+});
+test('suggestions cut mid-state resume through the existing continuation budget, then commit with the body',async()=>{
+ const raw='正常正文。'+STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'推进',suggestions:['查看公告','询问向导']})+STATE_CLOSE+RESPONSE_END;
+ const cut=raw.indexOf('询问')+1;const result=await run([raw.slice(0,cut),raw.slice(cut)]);
+ assert.equal(result.error,undefined);assert.equal(result.text,'正常正文。');assert.equal(result.calls.length,1);assert.deepEqual(result.events.at(-1).outcome.suggestions,['查看公告','询问向导']);
+});

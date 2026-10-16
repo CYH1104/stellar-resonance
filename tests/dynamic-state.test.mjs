@@ -26,3 +26,11 @@ test('missing dynamic fields trigger state-only repair, preserve prose and commi
   for await(const event of streamStory({card,state,options,messages:[],connection:{url:'https://synthetic.example/v1/chat/completions'},profile:{model:'test',temperature:0.7,maxTokens:2000},key:'synthetic-key',firstResponse:json('固定正文<SR_STATE>'+JSON.stringify(first)+'</SR_STATE>'+RESPONSE_END),signal:new AbortController().signal,fetchImpl:async()=>{calls++;return json('<SR_STATE>'+JSON.stringify(valid())+'</SR_STATE>'+RESPONSE_END);}}))events.push(event);
   assert.equal(calls,1);assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),'固定正文');assert.equal(events.filter(e=>e.type==='done').length,1);assert.equal(events.at(-1).outcome.theaters.length,3);
 });
+
+test('one successful completion contains story, actor updates, four theaters and next actions together',async()=>{
+ const outcome={...valid(),suggestions:['向甲询问报到流程','查看门口的告示']},events=[];let extraCalls=0;
+ const firstResponse=new Response(JSON.stringify({choices:[{message:{content:'你在门口遇见甲。<SR_STATE>'+JSON.stringify(outcome)+'</SR_STATE>'+RESPONSE_END}}]}),{headers:{'Content-Type':'application/json'}});
+ for await(const e of streamStory({card,state,options,messages:[],connection:{url:'https://synthetic.example/v1/chat/completions'},profile:{model:'test',temperature:0.7,maxTokens:4000},key:'synthetic-key',firstResponse,signal:new AbortController().signal,fetchImpl:async()=>{extraCalls++;throw Error('unexpected extra request');}}))events.push(e);
+ assert.equal(extraCalls,0);assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),'你在门口遇见甲。');
+ const done=events.at(-1);assert.equal(done.type,'done');assert.equal(done.outcome.characters[0].affinity,42);assert.equal(done.outcome.forum.length,1);assert.equal(done.outcome.theaters.length,3);assert.deepEqual(done.outcome.suggestions,outcome.suggestions);
+});

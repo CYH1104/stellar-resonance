@@ -1,10 +1,11 @@
+import {memoryMessages,parseMemoryResult} from './memory.mjs';
 import { createServer } from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { resolve, extname, sep } from 'node:path';
 import { buildMessages, buildPersonaMessages, parsePersonaResult, completionChunks, endpoint, modelError, openCompletion } from './ai.mjs';
 import { normalizePersona } from '../src/domain/persona.ts';
-import {publicActor} from './card.mjs';
+import {publicActor,mentalPowerLevelOf} from './card.mjs';
 import {fetchModelList} from './models.mjs';
 import {requestEmbeddings} from './embeddings.mjs';
 import {continuedMessages,repairedMessages,streamStory} from './story-stream.mjs';
@@ -32,10 +33,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   function createGame(data){
     if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
     if(!data.persona||!safeString(data.persona.name,80)||!data.persona.name.trim())throw modelError(400,'PLAYER_NAME_REQUIRED');
-    try{normalizePersona(data.persona);}catch{throw modelError(400,'INVALID_PERSONA');}
+    try{data={...data,persona:normalizePersona(data.persona)};}catch{throw modelError(400,'INVALID_PERSONA');}
     const player={id:'player',name:data.persona.name.trim(),present:true};
     if(data.persona.spiritAnimal)player.spiritAnimal=data.persona.spiritAnimal;
     if(data.persona.identity)player.identity=data.persona.identity;
+    if(data.persona.mentalPowerLevel)player.mentalPowerLevel=data.persona.mentalPowerLevel;
     for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
     return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
   }
@@ -46,8 +48,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
     try{
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.18.1',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
-      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(({id,primaryGender})=>({id,primaryGender})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(c=>({id:c.id,primaryGender:c.primaryGender,...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
@@ -116,6 +118,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';
           for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_FORUM_REPLY_RESULT');}
           signal.throwIfAborted();json(response,200,parseForumReply(content,speaker));return;
+        }
+        if(path==='/api/memory'){
+          const selected=connection(current,data),{input,messages}=memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>20000)throw modelError(502,'INVALID_MEMORY_RESULT');}
+          signal.throwIfAborted();json(response,200,{record:parseMemoryResult(content,input)});return;
         }
         if(path==='/api/utility'){
           if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');

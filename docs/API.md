@@ -1,8 +1,10 @@
-# 接口说明 v0.11.0
+v0.19.0：新增 POST /api/memory，由现有 summaryProfile 每轮整理完整结构化记忆，取消自动五轮汇总。开启向量后自动建立新记忆索引，每轮按人物与场景检索；固定携带未履行约定。任务失败可独立补记／重建索引，详见 MEMORY.md。
+
+# 接口说明 v0.18.2
 
 正文与状态末尾强制隐藏结束标记，缺少完整标记自动续写最多3次，SSE 增加 continuation 进度事件；手动继续沿用 generationType:'continue' 和 continuation.partial。具体协议、超时与提交条件见 LOCAL_SERVER.md。
 
-主 API 必填，四种文字任务独立选择主或副 API，默认全部主 API；向量独立配置。路由保存在 Preferences 的 storyProfile、summaryProfile、suggestionsProfile、personaProfile，由网页把相应档案和 Key 交给后台。不存在按副 API 顺序自动抢选的逻辑。
+主 API 必填。剧情（正文、人物状态、四个已开启小剧场、下一步建议）、记忆摘要、AI 人设辅助各自选择主或副 API，默认主 API；向量独立配置。路由为 storyProfile、summaryProfile、personaProfile。建议在剧情回复的隐藏状态中一起返回，不再单独请求；旧 suggestionsProfile 仅保留用于旧备份兼容，不参与接口校验或路由。
 
 当前实际接口和返回行为以 [LOCAL_SERVER.md](LOCAL_SERVER.md)、`src/domain/contracts.ts`、`src/gateway/http.ts` 为准，世界卡流程见 [CARD_LOGIC.md](CARD_LOGIC.md)。
 

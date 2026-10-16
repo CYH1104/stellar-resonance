@@ -22,3 +22,10 @@ it('精神体和其他内容进入玩家人设并随备份恢复',()=>{
   const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];
   expect(restored.persona.spiritAnimal).toBe('白色小猫');expect(restored.persona.other).toBe('不擅长早起');
 });
+
+it('精神力等级可填写、AI补空、保存，并迁移其他栏旧字段而不猜测等级',()=>{
+ const p=normalizePersona({...blankPersona(),name:'玩家',mentalPowerLevel:'S+'});expect(p.mentalPowerLevel).toBe('S+');expect(mergePersonaDraft(p,{...blankPersona(),name:'AI',mentalPowerLevel:'B'}).mentalPowerLevel).toBe('S+');
+ const old={name:'玩家',appearance:'',personality:'',background:'',other:'精神力等级：A级'};expect(normalizePersona(old).mentalPowerLevel).toBe('A级');
+ const s=newSession('存档',old,'');delete s.persona.mentalPowerLevel;const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(restored.persona.mentalPowerLevel).toBe('A级');
+ expect(()=>normalizePersona({...p,mentalPowerLevel:5})).toThrow();expect(()=>normalizePersona({...p,mentalPowerLevel:'x'.repeat(101)})).toThrow();
+});

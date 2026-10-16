@@ -1,3 +1,4 @@
+import {normalizeMemoryResult,type MemoryRequest} from '../domain/memories';
 import {dicePlan} from '../domain/dice';
 import type { Gateway, GenerateEvent, GenerateRequest, Profile } from '../domain/contracts';
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -24,6 +25,7 @@ export class MockGateway implements Gateway {
       ...(consequence?{diceEvent:consequence}:{}),
       player:{innerThought:`【演示】我刚才提出了「${request.input.slice(0,40)}」，想听听大家的看法。`},
       characters:request.state.characters.map(actor=>({id:actor.id,innerThought:actor.id==='guide'?`【演示】${name}愿意交流，先把公开资料说明白。`:'【演示】接待区多了一位新朋友，等会儿可以打个招呼。',present:actor.present,affinity:actor.affinity})),
+      suggestions:['询问站点里有哪些公开设施。','请引导员介绍眼前的情况。','观察接待站的环境。'],
       event:`${name}与样例引导员交流：${request.input.slice(0,45)}${consequence?'；'+consequence.description:''}`,
       forum:[
         {id:`${request.turnId}-guide`,authorName:'样例引导员',topic:'接待站日常',content:`今天和${name}聊了聊。听到的问题是「${request.input.slice(0,65)}」。先把公开说明准备好，慢慢认识彼此。`,comments:[{id:'engineer',authorName:'样例巡检员',content:'接待区的灯刚检查过，有需要可以叫我。'}]},
@@ -31,6 +33,7 @@ export class MockGateway implements Gateway {
       ]
     }};
   }
+  async memory(input:MemoryRequest,_profile:Profile,_key:string,signal:AbortSignal){await delay(100,signal);return normalizeMemoryResult({participants:[input.after.player.name,...input.after.characters.filter(c=>c.present).map(c=>c.name)],time:'未明确',location:'样例接待站',userActions:[input.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]},input);}
   async utility(task: 'summary'|'suggestions', texts: string[], _profile: Profile, _key: string, signal: AbortSignal): Promise<string[]> {
     await delay(100,signal);
     return task==='summary' ? [`章节摘要（演示）：${texts.join('；').slice(0,400)}`] : ['询问站点里有哪些公开设施。','请引导员介绍眼前的情况。','回顾刚才的约定。','观察接待站的环境。'];

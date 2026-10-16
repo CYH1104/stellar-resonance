@@ -90,3 +90,26 @@ describe('本地备份边界', () => {
   });
 });
 
+
+it('建议随选稿存档与恢复，切稿、回退、编辑不会展示别轮建议',()=>{
+  const s=session(),a=append(s,'first',78);
+  finishVariant(s,0,a,{event:'原路线',suggestions:['向导询问','观察四周']});
+  const b:Variant={id:'first-b',text:'另一稿',status:'incomplete',createdAt:''};s.turns[0].variants.push(b);
+  finishVariant(s,0,b,{event:'新路线',suggestions:['查看地图']});
+  expect(s.suggestions).toEqual(['向导询问','观察四周']);
+  selectVariant(s,0,1);expect(s.suggestions).toEqual(['查看地图']);
+  const next=append(s,'second',70);finishVariant(s,1,next,{event:'第二轮',suggestions:['打开信件']});
+  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];
+  expect(restored.suggestions).toEqual(['打开信件']);
+  truncate(restored,1);expect(restored.suggestions).toEqual(['查看地图']);
+  selectVariant(restored,0,0);expect(restored.suggestions).toEqual(['向导询问','观察四周']);
+  editMessage(restored,0,'assistant','编辑后的正文');expect(restored.suggestions).toEqual([]);
+});
+it('建议清除思考标签、去重并限制数量，坏建议不导致正文状态失败',()=>{
+ const s=session();
+ const out=validateOutcome({event:'事件',suggestions:['<think>secret</think>观察四周','观察四周',{},' ', '长'.repeat(201),'询问向导','翻阅资料','等候','第五条']},s.initial);
+ expect(out.suggestions).toEqual(['观察四周','询问向导','翻阅资料','等候']);
+ for(const suggestions of [null,'错误格式',{}])expect(validateOutcome({event:'事件',suggestions},s.initial).suggestions).toEqual([]);
+ expect(validateOutcome({event:'旧存档'},s.initial).suggestions).toBeUndefined();
+ s.suggestions=['旧存档建议'];const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()}));expect(restored.sessions[0].suggestions).toEqual(['旧存档建议']);
+});

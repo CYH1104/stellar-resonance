@@ -1,4 +1,8 @@
-# 本机世界卡接口 v0.12.0
+v0.19.0：新增 POST /api/memory，由现有 summaryProfile 每轮整理完整结构化记忆，取消自动五轮汇总。开启向量后自动建立新记忆索引，每轮按人物与场景检索；固定携带未履行约定。任务失败可独立补记／重建索引，详见 MEMORY.md。
+
+# 本机世界卡接口 v0.18.2
+
+下一步建议写入同一次剧情回复的 SR_STATE.suggestions 数组，最多展示4条短行动。只有合法完整回复才一起提交，随选稿保存并在切稿或回退时恢复；模型遗漏或格式不正确时清空建议，不因此发起额外模型调用。正常每轮1次剧情请求；随机事件候选命中时另1次、每5轮摘要另1次、用户评论触发论坛AI回复另1次，向量编码及既有截断续写／状态补修另计。
 
 状态格式错误现在触发只重建隐藏状态的补修，正文及骰点保持固定；与截断续写共用最多3次额外请求。SSE新增 `{type:'repair',attempt,maxAttempts:3,code}`，code 仅为安全静态类别，不回传原 JSON、字段值或供应商错误。耗尽返回 STATE_REPAIR_LIMIT 和 reasonCode；网页将其映射为可读原因。补修时即使模型复述正文也不会产生公开delta，最终仍须合法状态与结束标记才提交。
 
@@ -8,7 +12,7 @@ player.spiritThought 是 AI 动态生成的精神体 OS。已设置玩家 spirit
 
 浏览器可独立保存 API 凭据，默认开启；使用与存档相同的 IndexedDB 数据库和独立 api-credentials 记录，既有数据库版本与存档格式不变。重新打开时读取凭据，仅对地址、模型匹配的旧确认重新 POST /api/connection，不发起服务商请求。Key 不在该登记 body 中，仍只在模型请求中临时传递，后台不落盘。关闭保存擦除持久凭据但保留页面内存，清除全部则也清除页面 Key。备份与预设导出始终排除本机凭据。
 
-前端维护主 API、有序副 API、向量 API 的任务分工；后台按请求中已登记的 profile 验证地址。剧情、摘要、建议、AI 人设辅助分别选择主或副 API，默认全部主 API；仅检查主 API、被选用的副 API 和开启检索时的向量 API，未选用副 API 草稿不阻拦。向量使用独立 embedding profile。前端入口检查必需配置，未启用向量不要求它。这个检查是游戏使用流程，不是公网鉴权。
+前端维护主 API、有序副 API、向量 API 的任务分工；后台按请求中已登记的 profile 验证地址。剧情（含下一步建议）、摘要、AI 人设辅助分别选择主或副 API，默认全部主 API；仅检查主 API、被选用的副 API 和开启检索时的向量 API，未选用副 API 草稿不阻拦。向量使用独立 embedding profile。前端入口检查必需配置，未启用向量不要求它。这个检查是游戏使用流程，不是公网鉴权。
 
 新增 POST `/api/models`：`{apiBaseUrl,key}`，要求本机会话，地址使用同样的 HTTPS／本机 HTTP 校验。由服务器 GET 基础地址的 `/models`，不要求先选择或登记模型，不自动确认用于剧情的接口。只发送临时 Bearer Key，不发送私有卡片或聊天。20秒超时，禁止重定向，响应最多1MB／5000条，返回去重排序后的 `{models:[id...]}`；支持常见 data／models 列表。上游错误正文不回传，失败时可手填。
 
@@ -26,7 +30,7 @@ v0.6 生成请求增加 `promptEntries`、`generationType`、`theaterSettings`�
 | POST `/api/persona` | `{wish,draft,profile,key}`，结合服务器世界观生成玩家人设；只返回校验后的 persona 字段，不创建存档 |
 | POST `/api/place` | `{id}`，读取所点击地点原介绍 |
 | POST `/api/generate` | 世界卡 + persona + 历史 + 本地记忆 → 真实模型 → SSE 正文与校验后的 outcome |
-| POST `/api/utility` | 真实模型生成公开剧情摘要／建议；不需要再次带私有卡片 |
+| POST `/api/utility` | 正常流程仅用于每5轮的公开剧情摘要；旧建议任务保留接口兼容，前端已停止单独请求 |
 | POST `/api/embeddings` | `{texts,profile,key}` → 已登记地址的 `/embeddings` → `{vectors}`，不发送世界卡或聊天历史 |
 
 生成 body 见 `src/domain/contracts.ts` 的 GenerateRequest，额外含本次临时 `key`。profile 的 `apiBaseUrl` 必须与登记地址一致，模型服务使用 `${基础地址}/chat/completions`。支持 SSE delta 和返回 JSON 的兼容接口。首次调用及每次续写各自超时180秒，最多首次+3次自动续写；辅助任务60秒。生成中每15秒发送 SSE 注释心跳。续写可能计费，页面说明且可随时停止。首次调用尚未建立响应时的认证／连接错误直接按 HTTP 错误返回。

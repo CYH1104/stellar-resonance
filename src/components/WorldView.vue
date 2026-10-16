@@ -18,7 +18,7 @@ async function selectPlace(id:string){place.value=id;description.value='';const 
 </script>
 <template>
   <section v-if="kind==='relations'&&w.state" class="surface">
-    <p class="eyebrow">RELATIONS / 人物关系</p><h1>当前在场的人物</h1><p class="muted">可拖动图中节点。只在已有好感度数据时画出关系线；原资料没有的关系不补写。</p>
+    <p class="eyebrow">RELATIONS / 人物关系</p><h1>人物关系</h1>
     <svg class="relation-graph" viewBox="0 0 520 320" role="img" aria-label="玩家与在场人物的关系图" @pointermove="move" @pointerup="up" @pointercancel="up">
       <line v-for="a in actors.filter(a=>a.id!=='player'&&a.affinity!==undefined)" :key="`line-${a.id}`" :x1="positions.player?.x||260" :y1="positions.player?.y||160" :x2="positions[a.id]?.x||260" :y2="positions[a.id]?.y||160" />
       <g v-for="a in actors" :key="a.id" :transform="`translate(${positions[a.id]?.x||260},${positions[a.id]?.y||160})`" @pointerdown="down(a.id,$event)"><circle r="27" /><text y="45" text-anchor="middle">{{a.name}}</text><text v-if="a.id!=='player'" y="5" text-anchor="middle">{{a.affinity??'—'}}</text></g>
@@ -27,7 +27,7 @@ async function selectPlace(id:string){place.value=id;description.value='';const 
     <div v-if="actor" class="detail"><h2>{{actor.name}}</h2><p>对 user 的好感度：{{actor.affinity??'原资料未提供'}}</p></div><p v-else class="empty">当前没有选定在场角色。</p>
   </section>
   <section v-else-if="kind==='map'" class="surface">
-    <p class="eyebrow">MAP / 点击地图</p><h1>地点资料</h1><p class="muted">{{w.localService?'原插件地点与活动的资料标记；点击后从本机后台读取对应介绍。':'当前使用演示资料。'}}只查看介绍，不移动、不探索、不触发事件。</p>
+    <p class="eyebrow">MAP / 点击地图</p><h1>地点资料</h1>
     <svg class="static-map" viewBox="0 0 600 380" role="img" aria-label="可点击的地点资料示意图"><rect x="5" y="5" width="590" height="370" rx="4" class="map-outline" /><g v-for="p in places" :key="p.id" :transform="`translate(${p.px*6},${p.py*3.8})`" @click="selectPlace(p.id)"><rect x="-48" y="-20" width="96" height="40" rx="4" /><text y="5" text-anchor="middle">{{p.name}}</text></g></svg>
     <div class="actions"><button v-for="p in places" :key="p.id" :class="{selected:place===p.id}" @click="selectPlace(p.id)">{{p.name}}</button></div>
     <article v-if="place" class="detail"><h2>{{places.find(p=>p.id===place)?.name}}</h2><p>{{loading?'读取中…':description||'未提供'}}</p></article><p v-else class="empty">点击一个标记查看介绍。</p>

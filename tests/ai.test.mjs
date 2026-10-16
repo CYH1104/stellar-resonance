@@ -157,3 +157,27 @@ test('abort interrupts a stalled body reader and cancels upstream',async()=>{
   const result=(async()=>{for await(const part of completionChunks(response,{signal:controller.signal}))assert.fail(part);})();
   controller.abort(new DOMException('timeout','TimeoutError'));await assert.rejects(result,{name:'TimeoutError'});assert.equal(cancelled,true);
 });
+
+test('story prompt and hidden state bundle next actions without making them mandatory for valid state',()=>{
+ const request={input:'行动',persona:{name:'玩家'},state,opening:'',history:[],memories:[],presets:[]};
+ assert.ok(buildMessages(card,request).messages[0].content.includes('suggestions'));
+ const d=new StoryDecoder();let visible='';
+ for(const c of '正常正文。<SR_STATE>'+JSON.stringify({presentCharacterIds:[],event:'推进',suggestions:['<think>secret</think>观察四周','询问向导']})+'</SR_STATE>'+RESPONSE_END)visible+=d.push(c);
+ assert.equal(visible,'正常正文。');assert.deepEqual(d.finish(card,state).suggestions,['观察四周','询问向导']);
+ for(const suggestions of [undefined,[],null,'错误格式'])assert.deepEqual(normalizeModelState(card,state,{presentCharacterIds:[],event:'推进',suggestions}).suggestions,[]);
+});
+
+test('group folders do not enter model messages and a paused folder does not activate its children',()=>{
+ const group={id:'head',name:'UI group only',order:0,collapsed:true,enabled:false};
+ const rows=[{id:'a',name:'A',enabled:true,content:'Paused prompt must not enter model context',group},{id:'b',name:'B',enabled:true,content:'Active prompt',group:{...group,id:'other',enabled:true}}];
+ const messages=applyPromptEntries([{role:'system',content:'rule'},{role:'system',content:'card'},{role:'system',content:'state'},{role:'user',content:'action'}],rows,{name:'玩家'},'角色');
+ assert.ok(messages.some(m=>m.content==='Active prompt'));assert.ok(!JSON.stringify(messages).includes('Paused prompt'));assert.ok(!JSON.stringify(messages).includes('UI group only'));
+});
+
+test('mental power level reaches story context and can update via validated player and character state patches',()=>{
+ const request={input:'评定精神力',persona:{name:'玩家',mentalPowerLevel:'A级'},state:{...state,player:{...state.player,mentalPowerLevel:'S级'}},history:[],presets:[],memories:[]};
+ const built=buildMessages(card,request);assert.equal(built.state.player.mentalPowerLevel,'S级');assert.ok(built.messages[0].content.includes('没有升降规则时保持原值'));
+ const out=normalizeModelState(card,built.state,{presentCharacterIds:[],event:'重新评定',player:{mentalPowerLevel:'SS级'},characters:[{id:'one',mentalPowerLevel:'A级'}]});assert.equal(out.player.mentalPowerLevel,'SS级');assert.equal(out.characters[0].mentalPowerLevel,'A级');
+ for(const value of ['',null,42,'x'.repeat(101)])assert.throws(()=>normalizeModelState(card,built.state,{presentCharacterIds:[],event:'错误更新',player:{mentalPowerLevel:value}}),{code:'MODEL_STATE_PLAYER_INVALID'});
+ assert.equal(normalizeModelState(card,built.state,{presentCharacterIds:[],event:'普通交流'}).player,undefined);
+});
