@@ -39,7 +39,9 @@
 #__exp_splash__ .mp .sub1{font-size:15px;letter-spacing:1px}
 #__exp_splash__ .mp .side{overflow:auto}
 #__exp_splash__ .mp .stage{width:86%;max-width:1000px;aspect-ratio:1.18;min-height:0;height:auto;align-self:start;justify-self:center;margin:56px 0 80px}
-#__exp_splash__ .mp .stage.map-expanded{width:98%;max-width:none}
+#__exp_splash__ .mp .stage.map-expanded{width:98%;max-width:1600px}
+#__exp_splash__ .mp .stage{transition:width 420ms cubic-bezier(.22,1,.36,1),max-width 420ms cubic-bezier(.22,1,.36,1)}
+@media(prefers-reduced-motion:reduce){#__exp_splash__ .mp .stage{transition:none}}
 #__exp_splash__ .mp .map-zoom{position:absolute;right:0;top:-38px;z-index:8;background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0;padding:2px 8px;color:var(--or);font:28px/1.1 Georgia,serif;cursor:pointer}
 #__exp_splash__ .mp .map-zoom:hover{color:var(--fg)}
 @media(max-width:760px){#enterRegistration{font-size:14px!important}.gate-entry-links button{font-size:12px}#__exp_splash__ .ah-tool span{font-size:13px}#__exp_splash__ .mp .item{font-size:18px}#__exp_splash__ .mp .stage{width:89%;margin:40px auto 90px}#__exp_splash__ .mp .stage.map-expanded{width:98%}}
