@@ -1,3 +1,4 @@
+import {applyStateProtocol} from './state-protocol.mjs';
 import {parseStateJson} from './state-json.mjs';
 import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {separateIdentityAbility} from '../src/domain/identityAbility.ts';
@@ -71,8 +72,8 @@ export function buildMessages(card, request, privateBooks=[]) {
   try{request={...request,persona:normalizePersona(request.persona)};}catch{throw modelError(400,'INVALID_PERSONA');}
   if(!text(request.input,16000,true)||!Array.isArray(request.history)||request.history.length>24||request.history.some(m=>!['user','assistant'].includes(m.role)||!text(m.content,100000))||!Array.isArray(request.memories)||request.memories.length>8||request.memories.some(m=>!text(m,6000))||!Array.isArray(request.presets)||request.presets.some(p=>!text(p,8000)))throw modelError(400,'INVALID_GENERATION_REQUEST');
   const state=safeState(card,request),participants=conversationParticipants(card,request.persona);
-  let dice;try{dice=cleanDice(request.dice);}catch{throw modelError(400,'INVALID_DICE');}
-  const plan=dice?dicePlan(dice):undefined;let specialEvent;try{if(request.specialEvent!==undefined)specialEvent=cleanSpecialEvent(request.specialEvent);}catch{throw modelError(400,'INVALID_RANDOM_EVENT');}if(specialEvent&&!dice)throw modelError(400,'SPECIAL_EVENT_ROLL_REQUIRED');
+  let dice;try{dice=cleanDice(request.continuation||request.generationType==='continue'?undefined:request.dice);}catch{throw modelError(400,'INVALID_DICE');}
+  const plan=dice?dicePlan(dice):undefined;let specialEvent;try{if(!request.continuation&&request.generationType!=='continue'&&request.specialEvent!==undefined)specialEvent=cleanSpecialEvent(request.specialEvent);}catch{throw modelError(400,'INVALID_RANDOM_EVENT');}if(specialEvent&&!dice)throw modelError(400,'SPECIAL_EVENT_ROLL_REQUIRED');
   let theaterSettings;try{theaterSettings=cleanTheaters(request.theaterSettings);}catch{throw modelError(400,'INVALID_THEATER_SETTINGS');}
   const diaryOwners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim()).map(c=>({ownerId:c.id,ownerName:c.name,spiritAnimal:c.spiritAnimal}));
   const theaterPlans=theaterSettings.filter(t=>t.enabled).map(t=>{if(isSpiritDiary(t))return {...t,diaryOwners};if(t.kind!=='fanfic')return t;const char=t.charId?state.characters.find(c=>c.id===t.charId):state.characters.find(c=>c.present);return {...t,...(char?{participantIds:['player',char.id],pairing:determinePairing(request.persona,char)}:{})};});
@@ -86,7 +87,7 @@ presentCharacterIds 必须是当前场景实际在场人物的完整名单，允
 右侧小剧场独立于主线，不能复述主线正文或重复对白，也不能在正文再次输出小剧场内容。只生成 theaterPlans 中已开启的位置；所有已开启位置每轮必须各有非空内容，不能只返回论坛而省略群聊／同人文／自定义。群聊必须给出至少一条非空messages，文字小剧场必须给出非空content。精神体日记不是状态栏精神体OS，也不是第三人称动作描写。templateId为spirit的位置必须另有diary:{ownerId,title,date?,mood?,content}，ownerId可从该计划diaryOwners任选一位，不限玩家或在场人物的精神体，不固定只写玩家；title是这篇日记的小标题，date仅使用已知的故事日期，不知道就省略；mood为心情；diary.content用精神体第一人称“我”回顾独立日常，包含感受、小发现和结尾感想，不少于200字（不计空白和标点）、分段写，文风偏幽默，可写见闻、糗事、搞笑互动和贴合性格的吐槽。主人用姓名或“我的主人”称呼，不能让主人作为日记的“我”，不能把精神体的动作清单或即时OS充当日记；同一项的content可以为空字符串。确实没有已知精神体时写说明缺少哪项资料的简短文字，不发明种类、不留空。位置1仍写入 forum；其余写入状态块的 theaters 数组，每项 {slot,kind,title,content,messages?:[{speaker,content}],participantIds?:["player","某个charID"]}。群聊speaker使用发言人的公开称呼，玩家发言使用persona.name，不用“你”或“我”代替发言人姓名。群聊建议最多6条简短消息；普通自定义每篇建议300字内；同人文与精神体日记不受这个上限限制。同人文正文不少于800字（不计空白和标点），必须完整写出开端、发展与合理结尾，不能待续、突然停笔或只写梗概；确实写完后在该项加入 complete:true，未写完不能标 true。每个同人文只能以 user 与一名 char 为配对主角，计划有指定participantIds时遵守；未指定时从本轮实际在场的char中选择，无人在场才从已知角色中选择，不能 char 与 char 配对；有指定时不得修改 participantIds；未指定时必须返回实际选择的 ["player","charID"]。配对类别及 BL 攻受按服务器 pairing 计划安排，不可依据 ABO 或性格猜测。配对偏好待补充时不强行确定攻受或性关系；可以写双方成年且自愿的恋爱、拥抱、亲吻等亲密互动，性情节以含蓄转场处理，不作露骨描写；年龄或意愿不明时仅非性化互动。小剧场不能改变主线状态、被写进 event 或当作主线已经发生的事实。论坛发言不表示作者在场。不要为未开启位置输出内容。状态块之后不要再写正文。只有本轮正文、骰子事件（如开启）和整个状态块都已完整输出，才在最后追加唯一结束标记 ${RESPONSE_END}。它必须在 ${STATE_CLOSE} 之后，后面只能有空白，不能有句号或解释。不要在正文、JSON 字符串、示例或中途输出这些协议标记；不要用普通“结束”、finish_reason 或流结束替代标记。`;
   const dynamicRules='\n状态完整性：不要用空数组或省略字段应付已开启功能。theaters格式示例：[{"slot":2,"kind":"group","title":"群聊","content":"","messages":[{"speaker":"角色公开称呼","content":"群聊新消息"}]},{"slot":3,"kind":"fanfic","title":"同人文","content":"独立番外正文","participantIds":["player","已知charID"]},{"slot":4,"kind":"custom","title":"自定义","content":"按该位置instruction生成的独立内容"}]；仅返回已开启位置并采用实际配置kind。不展示模型推理。';
   const diceRules=dice?`
-骰子事件规则：本轮已确定 D100=${dice.value}，判定“${dice.grade}”，方向 ${plan.direction}。${plan.requirement}，必须在本轮主线实际发生，不能只播报骰点、空泛暗示、移到小剧场或留待下一轮。事件须贴合当前处境与玩家行动，保留玩家选择；大凶／大吉影响更明显，但不以无缘由死亡、强迫行为或改写固定世界规则来体现。将实际已发生的后果写进正文与 event 摘要，并在状态块添加 diceEvent:{"direction":"${plan.direction}","description":"已发生的具体后果及其对user的影响"}。description 最多1000字，不写尚未发生的计划；不能更改骰点、吉凶或把方向反转。`:'本轮关闭骰子，不添加 diceEvent，不额外投掷。';
+骰子事件规则：本轮已确定 D100=${dice.value}，判定“${dice.grade}”，方向 ${plan.direction}。${plan.requirement}，必须在本轮主线实际发生，不要在开头播报骰点或输出独立骰子事件段落，要自然融入正文；不能只播报骰点、空泛暗示、移到小剧场或留待下一轮。事件须贴合当前处境与玩家行动，保留玩家选择；大凶／大吉影响更明显，但不以无缘由死亡、强迫行为或改写固定世界规则来体现。将实际已发生的后果写进正文与 event 摘要，并在状态块添加 diceEvent:{"direction":"${plan.direction}","description":"已发生的具体后果及其对user的影响"}。description 最多1000字，不写尚未发生的计划；不能更改骰点、吉凶或把方向反转。`:'本轮关闭骰子，不添加 diceEvent，不额外投掷。';
   const selectedEventRules=specialEvent?'\n本轮唯一随机事件已由玩家接受并掷骰：'+JSON.stringify(specialEvent)+'。只围绕这个候选情境落实骰点对应的具体后果，不换成无关事件，不重新抽类别、不重新掷骰。候选本身尚未发生，依据原行动自然融入正文；成败和影响由本轮骰点决定。':'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
   const diaryExample=diaryPlan&&diaryOwners.length?'\n精神体日记结构示例（只参考字段，不照抄文字）：'+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'这篇日记的小标题',mood:'心情',content:'今天我……\n\n我发现……'}})+'。未知故事日期直接省略date，不使用现实日期。':'';
@@ -97,7 +98,7 @@ presentCharacterIds 必须是当前场景实际在场人物的完整名单，允
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(state))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
-  return {messages:anchorNarration(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),state.player,request.input),state,theaterSettings,dice,card};
+  return {messages:anchorNarration(applyStateProtocol(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
@@ -108,7 +109,8 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(!text(raw.event,500,true))throw modelError(502,'MODEL_STATE_EVENT_INVALID');
   let diceEvent;
   if(options.dice){if(raw.diceEvent===undefined)throw modelError(502,'DICE_EVENT_MISSING');try{diceEvent=cleanDiceEvent(raw.diceEvent);}catch{throw modelError(502,'DICE_EVENT_MISMATCH');}if(diceEvent.direction!==dicePlan(options.dice).direction)throw modelError(502,'DICE_EVENT_MISMATCH');}
-  else if(raw.diceEvent!==undefined)throw modelError(502,'DICE_EVENT_UNEXPECTED');
+  // Ordinary prose and continuations do not consume a new dice event; ignore stale model metadata.
+
   let mvuState=state;if(raw.mvu!==undefined){try{mvuState=applyMvu(state,raw.mvu);}catch{throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');}}
   const known=new Map(card.characters.map(c=>[c.id,c]));
   if(raw.presentCharacterIds.some(id=>!known.has(id)))throw modelError(502,'UNKNOWN_MODEL_CHARACTER');

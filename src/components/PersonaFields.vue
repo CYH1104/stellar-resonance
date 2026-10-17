@@ -16,7 +16,7 @@ const departments=['领航者 · 星舰指挥与战略系','破军 · 机甲驾�
         <legend class="sr-only">玩家人设</legend>
         <label>姓名（必填）<input v-model="model.name" maxlength="80" required autocomplete="off" placeholder="请输入玩家姓名" /></label>
         <div class="file-field"><label>第一性别<input v-model="model.primaryGender" maxlength="100" list="primary-genders" placeholder="可留空，也可自行填写" /></label><ChoiceChips v-model="model.primaryGender" :options="['男','女']" label="第一性别快捷选项" /></div>
-        <div class="file-field"><label>第二性别<input v-model="model.secondaryGender" maxlength="100" list="secondary-genders" placeholder="可留空，也可自行填写" /></label><ChoiceChips v-model="model.secondaryGender" :options="['aboe','Alpha','Beta','Omega','其他']" label="第二性别快捷选项" /></div>
+        <div class="file-field"><label>第二性别<input v-model="model.secondaryGender" maxlength="100" list="secondary-genders" placeholder="可留空，也可自行填写" /></label><ChoiceChips v-model="model.secondaryGender" :options="['Alpha','Beta','Omega']" label="第二性别快捷选项" /></div>
         <label>信息素<input v-model="pheromone" maxlength="100" placeholder="例如：冷杉混雪松" /></label>
         <div class="file-field"><label>精神力等级<input v-model="spiritLevel" maxlength="100" placeholder="S / A / B / C / D" /></label><ChoiceChips v-model="spiritLevel" :options="['S','A','B','C','D']" label="精神力等级快捷选项" /></div>
         <label class="file-wide">异能<textarea v-model="model.ability" rows="2" maxlength="2000" /></label>

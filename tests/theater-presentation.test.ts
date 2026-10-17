@@ -3,6 +3,7 @@ import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import GroupChatPhone from '../src/components/GroupChatPhone.vue';
 import SpiritDiaryView from '../src/components/SpiritDiaryView.vue';
+import FloatingGroupChat from '../src/components/FloatingGroupChat.vue';
 import TheaterRail from '../src/components/TheaterRail.vue';
 import type {ViewModel} from '../src/app/useWorkspace';
 import type {TheaterScene} from '../src/domain/contracts';
@@ -27,6 +28,8 @@ it('结构化日记随存档恢复且保持与精神体OS独立，旧文字场�
 });
 it('四窗口以折叠栏展示手机及日记，只保留高度手柄',async()=>{
   const preferences=defaults();preferences.theaters![0].enabled=false;preferences.theaters![3]={slot:4,enabled:true,kind:'custom',title:'精神体日记',instruction:legacyDiaryInstruction};const w={preferences,theaters:[diary,{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'楚昭南',content:'报到了吗？'}]}],state:{player:{name:'祁言'}}} as unknown as ViewModel;
-  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('调整群聊高度');expect(html).toContain('<summary');expect(html).not.toContain('resize-both');expect(html).toContain('调整精神体日记高度');
+  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).not.toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('<summary');expect(html).not.toContain('resize-both');expect(html).toContain('调整精神体日记高度');
 });
 
+
+it('群聊默认收起为悬浮手机SVG，不占右栏卡片',async()=>{const w={preferences:{theaters:[{slot:2,kind:'group',enabled:true,title:'群聊'}]},theaters:[],state:{player:{name:'玩家'}}} as unknown as ViewModel;const html=await renderToString(createSSRApp(FloatingGroupChat,{w}));expect(html).toContain('打开群聊手机');expect(html).toContain('<svg');expect(html).not.toContain('手机群聊');});

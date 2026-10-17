@@ -14,7 +14,7 @@
   const feature=q('.ah-feature');
   feature.dataset.action='conversation';
   feature.querySelector('small').textContent='STORY LINK / 进入对话';
-  feature.querySelector('p').textContent='新建存档，开始新的故事。';
+  feature.querySelector('p').textContent='进入当前正在进行的对话，没有会话时先建立会话。';
   const account=q('#accountButton');account.hidden=true;
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
@@ -38,7 +38,7 @@
   q('.ah-entries').querySelectorAll('button').forEach((button,index)=>{if(entryLabels[index]){button.querySelector('span').textContent=entryLabels[index][0];button.querySelector('small').textContent=entryLabels[index][1]+' →';}});
   const explore=document.getElementById('enterRegistration');explore.innerHTML='<span>探索学院</span> / <small>EXPLORE</small>';
   const gateEntries=document.createElement('div');gateEntries.className='gate-entry-links';
-  for(const [entry,label] of [['new','直接开始对话 / START A CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.innerHTML='<span>'+label.split(' / ')[0]+'</span> / <small>'+label.split(' / ')[1]+'</small>';button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
+  for(const [entry,label] of [['conversation','进入当前对话 / CONTINUE CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.innerHTML='<span>'+label.split(' / ')[0]+'</span> / <small>'+label.split(' / ')[1]+'</small>';button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
   document.querySelectorAll('.gate-tools .palette,#gateTheme').forEach(el=>el.hidden=true);
   q('.spl-theme')?.setAttribute('hidden','');
   const hub=q('.academy-hub'),grid=hub.querySelector('.hub-grid');grid.replaceChildren();
@@ -60,6 +60,6 @@
   window.addEventListener('focus',()=>void refreshCards());
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});
   setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},1500);
-  if(sessionStorage.getItem('academy:reopen-characters')){sessionStorage.removeItem('academy:reopen-characters');setTimeout(()=>{window.ACADEMY.directEnter();root.querySelector('.spl-menu [data-sact="chars"]').click();},0);}
+  sessionStorage.removeItem('academy:reopen-characters');
 
 })();

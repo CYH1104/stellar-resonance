@@ -192,7 +192,7 @@ it('手动续写复用原稿与原骰点，传递断点并且只在完成后记�
   const random=vi.spyOn(crypto,'getRandomValues').mockImplementation(array=>{(array as Uint32Array)[0]=0;return array;});
   const generate=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'已有正文。'};throw new Error('截断');});
   const utility=vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);await w.generate('原行动');await w.decideRandomEvent(0,true);const turn=w.active.value!.turns[0],id=turn.variants[0].id;
-  generate.mockImplementation(async function*(r){expect(r.continuation?.partial).toBe('已有正文。');expect(r.generationType).toBe('continue');expect(r.input).toBe('原行动');expect(r.dice?.value).toBe(1);yield{type:'delta',text:'接上后半句。'};yield{type:'done',outcome:{event:'补写结束',characters:[],diceEvent:{direction:'negative',description:'资料缺页，需要补办。'}}};});
+  generate.mockImplementation(async function*(r){expect(r.continuation?.partial).toBe('已有正文。');expect(r.generationType).toBe('continue');expect(r.input).toBe('原行动');expect(r.dice).toBeUndefined();yield{type:'delta',text:'接上后半句。'};yield{type:'done',outcome:{event:'补写结束',characters:[]}};});
   await w.generate(undefined,0,true);expect(w.problem.value).toBe('');expect(turn.variants).toHaveLength(1);expect(turn.variants[0].id).toBe(id);expect(turn.variants[0].text).toBe('已有正文。接上后半句。');expect(turn.variants[0].status).toBe('complete');expect(w.active.value?.turns).toHaveLength(1);expect(random).toHaveBeenCalledTimes(3);expect(w.memories.value).toHaveLength(1);expect(utility).not.toHaveBeenCalled();
 });
 it('自动续写中主动停止，不接收随后到达的状态或启动辅助任务',async()=>{
@@ -229,7 +229,7 @@ it('删除期间触发的保存等待删除完成，不能把旧存档写回来�
 it('旧失败稿只补状态时保持原稿、骰点和正文，完成后仅提交一次记忆',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修测试',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;const random=vi.spyOn(crypto,'getRandomValues').mockImplementation(array=>{(array as Uint32Array)[0]=0;return array;});
   const generate=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'完整正文，资料缺页需要补办。'};throw Error('旧版状态校验失败');});const utility=vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);await w.generate('原行动');await w.decideRandomEvent(0,true);const v=w.active.value!.turns[0].variants[0],id=v.id,text=v.text;
-  generate.mockImplementation(async function*(r){expect(r.continuation).toEqual({partial:text,mode:'state'});expect(r.dice?.value).toBe(1);expect(w.repairingState.value).toBe(true);yield{type:'delta',text:'不能追加的新剧情'};yield{type:'done',outcome:{event:'补齐状态',characters:[],diceEvent:{direction:'negative',description:'资料缺页，需要补办'}}};});
+  generate.mockImplementation(async function*(r){expect(r.continuation).toEqual({partial:text,mode:'state'});expect(r.dice).toBeUndefined();expect(w.repairingState.value).toBe(true);yield{type:'delta',text:'不能追加的新剧情'};yield{type:'done',outcome:{event:'补齐状态',characters:[]}};});
   await w.repairState(0);expect(w.problem.value).toBe('');expect(v.text).toBe(text);expect(v.id).toBe(id);expect(v.status).toBe('complete');expect(w.active.value!.turns[0].variants).toHaveLength(1);expect(random).toHaveBeenCalledTimes(3);expect(w.memories.value).toHaveLength(1);expect(utility).toHaveBeenCalledTimes(0);expect(w.repairingState.value).toBe(false);
 });
 it('自动补修进度不提交状态，失败后保留正文、旧状态和可重试的稿件',async()=>{

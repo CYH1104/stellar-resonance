@@ -10261,7 +10261,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   window.addEventListener('academy:home',()=>{mount.hidden=true;window.ACADEMY?.home();});
   window.addEventListener('academy:open',event=>open(event.detail));
   window.addEventListener('academy:encounter-new',event=>{const detail=event.detail;if(!detail)return;const access={ok:false};window.dispatchEvent(new CustomEvent('academy:campus-access',{detail:access}));if(!access.ok&&access.reason&&!access.reason.includes('建立')){showHint(access.reason);return;}open(detail);if(detail.accepted!==false)window.ACADEMY?.home();});
-  const ids={chatEntry:{entry:'new'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
+  const ids={chatEntry:{entry:'conversation'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
   const modules={new:{entry:'new'},continue:{entry:'continue'},chat:{entry:'conversation'},personas:{entry:'personas'},memory:{panel:'memory'},stu:{entry:'new'},full:{panel:'saves'},export:{panel:'saves'},settings:{panel:'settings'},presets:{panel:'presets'},worldbooks:{panel:'worldbooks'},theaters:{panel:'forum'},relations:{panel:'relations'},saves:{panel:'saves'}};
   const hint=document.createElement('div');hint.className='academy-campus-hint';hint.setAttribute('role','status');hint.hidden=true;root.append(hint);let hintTimer;
   function showHint(text){hint.textContent=text;hint.hidden=false;clearTimeout(hintTimer);hintTimer=setTimeout(()=>hint.hidden=true,4000);}
@@ -10277,7 +10277,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
     if(!openingMap&&(target.dataset.sact==='map'||target.dataset.module==='map')){
       event.preventDefault();event.stopImmediatePropagation();openMap();return;
     }
-    const detail=(target.matches('.ah-feature,.spl-x')?{entry:'new'}:null)||ids[target.id]||modules[target.dataset.module]||modules[target.dataset.sact];
+    const detail=(target.matches('.ah-feature,.spl-x')?{entry:'conversation'}:null)||ids[target.id]||modules[target.dataset.module]||modules[target.dataset.sact];
     if(!detail)return;
     event.preventDefault();event.stopImmediatePropagation();
     open(detail);
@@ -10300,7 +10300,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   const feature=q('.ah-feature');
   feature.dataset.action='conversation';
   feature.querySelector('small').textContent='STORY LINK / 进入对话';
-  feature.querySelector('p').textContent='新建存档，开始新的故事。';
+  feature.querySelector('p').textContent='进入当前正在进行的对话，没有会话时先建立会话。';
   const account=q('#accountButton');account.hidden=true;
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
@@ -10324,7 +10324,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   q('.ah-entries').querySelectorAll('button').forEach((button,index)=>{if(entryLabels[index]){button.querySelector('span').textContent=entryLabels[index][0];button.querySelector('small').textContent=entryLabels[index][1]+' →';}});
   const explore=document.getElementById('enterRegistration');explore.innerHTML='<span>探索学院</span> / <small>EXPLORE</small>';
   const gateEntries=document.createElement('div');gateEntries.className='gate-entry-links';
-  for(const [entry,label] of [['new','直接开始对话 / START A CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.innerHTML='<span>'+label.split(' / ')[0]+'</span> / <small>'+label.split(' / ')[1]+'</small>';button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
+  for(const [entry,label] of [['conversation','进入当前对话 / CONTINUE CONVERSATION'],['continue','过往存档 / ARCHIVES']]){const button=document.createElement('button');button.type='button';button.innerHTML='<span>'+label.split(' / ')[0]+'</span> / <small>'+label.split(' / ')[1]+'</small>';button.onclick=()=>{window.ACADEMY.directEnter();window.dispatchEvent(new CustomEvent('academy:open',{detail:{entry}}));};gateEntries.append(button);}explore.after(gateEntries);
   document.querySelectorAll('.gate-tools .palette,#gateTheme').forEach(el=>el.hidden=true);
   q('.spl-theme')?.setAttribute('hidden','');
   const hub=q('.academy-hub'),grid=hub.querySelector('.hub-grid');grid.replaceChildren();
@@ -10346,7 +10346,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   window.addEventListener('focus',()=>void refreshCards());
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});
   setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},1500);
-  if(sessionStorage.getItem('academy:reopen-characters')){sessionStorage.removeItem('academy:reopen-characters');setTimeout(()=>{window.ACADEMY.directEnter();root.querySelector('.spl-menu [data-sact="chars"]').click();},0);}
+  sessionStorage.removeItem('academy:reopen-characters');
 
 })();
 

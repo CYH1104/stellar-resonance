@@ -18,6 +18,7 @@ import StoryView from './components/StoryView.vue';
 
 import StatusBar from './components/StatusBar.vue';
 
+import FloatingGroupChat from './components/FloatingGroupChat.vue';
 import TheaterRail from './components/TheaterRail.vue';
 
 import TheaterSettings from './components/TheaterSettings.vue';
@@ -245,7 +246,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
-  <div v-else class="app-shell">
+  <div v-else class="app-shell"><FloatingGroupChat v-if="w.active" :w="w" />
 
     <header class="top-shell">
 

@@ -7,9 +7,9 @@ const profile={id:'story',model:'synthetic-model',temperature:0.7,maxTokens:1600
 const metadata=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'收到回复'})+STATE_CLOSE;
 const json=text=>new Response(JSON.stringify({choices:[{message:{content:text}}]}),{headers:{'Content-Type':'application/json'}});
 function sse(text){const bytes=new TextEncoder().encode([...text].map(c=>'data: '+JSON.stringify({choices:[{delta:{content:c}}]})+'\n\n').join('')+'data: [DONE]\n\n');return new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=7)c.enqueue(bytes.slice(i,i+7));c.close();}}),{headers:{'Content-Type':'text/event-stream'}});}
-async function run(parts,{partial='',stateOnly=false,controller=new AbortController(),firstSignal,onEvent,fetchFailure=false}={}){
+async function run(parts,{partial='',stateOnly=false,options={},controller=new AbortController(),firstSignal,onEvent,fetchFailure=false}={}){
   const events=[],calls=[];let error;
-  try{for await(const event of streamStory({card,state,options:{},messages:[{role:'system',content:'固定规则'},{role:'system',content:'私有卡片'},{role:'user',content:'原行动'}],partial,stateOnly,connection:{url:'https://synthetic.example/v1/chat/completions'},profile,key:'synthetic-key',firstResponse:parts[0] instanceof Response?parts[0]:sse(parts[0]),firstSignal,signal:controller.signal,fetchImpl:async(url,options)=>{assert.equal(options.signal.aborted,false);calls.push({url,payload:JSON.parse(options.body),authorization:options.headers.Authorization});if(fetchFailure)throw new Error('synthetic-network-down');return sse(parts[calls.length]||'');}})){events.push(event);onEvent?.(event);}}
+  try{for await(const event of streamStory({card,state,options,messages:[{role:'system',content:'固定规则'},{role:'system',content:'私有卡片'},{role:'user',content:'原行动'}],partial,stateOnly,connection:{url:'https://synthetic.example/v1/chat/completions'},profile,key:'synthetic-key',firstResponse:parts[0] instanceof Response?parts[0]:sse(parts[0]),firstSignal,signal:controller.signal,fetchImpl:async(url,options)=>{assert.equal(options.signal.aborted,false);calls.push({url,payload:JSON.parse(options.body),authorization:options.headers.Authorization});if(fetchFailure)throw new Error('synthetic-network-down');return sse(parts[calls.length]||'');}})){events.push(event);onEvent?.(event);}}
   catch(e){error=e;}
   return {events,calls,error,text:events.filter(e=>e.type==='delta').map(e=>e.text).join('')};
 }
@@ -117,4 +117,17 @@ test('comment-only preset output retries once without exposing hidden text',asyn
 });
 test('repeated comment-only output stops after one retry',async()=>{
  const result=await run(['<!-- hidden-first -->','<!-- hidden-second -->']);assert.equal(result.error.code,'MODEL_NO_VISIBLE_CONTENT');assert.equal(result.calls.length,1);assert.equal(result.text,'');
+});
+
+test('ordinary prose ignores stale dice metadata instead of reporting a dice-event failure',async()=>{
+ const stale=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'正常行动',diceEvent:{direction:'positive',description:'过时骰子'}})+STATE_CLOSE;
+ const r=await run(['正常正文。'+stale+RESPONSE_END]);assert.equal(r.error,undefined);assert.equal(r.events.at(-1).outcome.diceEvent,undefined);
+});
+test('manual and automatic continuations can complete without another dice event',async()=>{
+ const options={dice:{value:1,grade:'大凶',rulesVersion:'d100-v1'}};
+ for(const r of [await run(['续写内容。'+metadata+RESPONSE_END],{partial:'已有正文。',options}),await run(['已有正文。','续写内容。'+metadata+RESPONSE_END],{options})]){assert.equal(r.error,undefined);assert.equal(r.events.at(-1).type,'done');assert.equal(r.events.at(-1).outcome.diceEvent,undefined);assert.ok(r.text.endsWith('续写内容。'));}
+});
+test('an actual triggered event missing dice metadata repairs state without rewriting prose',async()=>{
+ const dice={value:1,grade:'大凶',rulesVersion:'d100-v1'},fixed=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'受到阻碍',diceEvent:{direction:'negative',description:'资料缺页'}})+STATE_CLOSE;
+ const r=await run(['已有事件正文。'+metadata+RESPONSE_END,fixed+RESPONSE_END],{options:{dice}});assert.equal(r.error,undefined);assert.equal(r.text,'已有事件正文。');assert.equal(r.calls.length,1);assert.equal(r.events.find(e=>e.type==='repair').code,'DICE_EVENT_MISSING');assert.equal(r.events.at(-1).outcome.diceEvent.direction,'negative');
 });

@@ -150,7 +150,7 @@ test('HTTP dice plan yields visible actual effects; missing or reversed event re
     const r=await request('dice-ok');r.dice={value,grade,rulesVersion:'d100-v1'};const result=events(await(await post('/api/generate',r)).text());assert.equal(result.at(-1).type,'done');assert.equal(result.at(-1).outcome.diceEvent.direction,direction);
     assert.ok(result.filter(e=>e.type==='delta').map(e=>e.text).join('').includes(result.at(-1).outcome.diceEvent.description));
   }
-  for(const [action,code]of [['dice-missing','DICE_EVENT_MISSING'],['dice-opposite','DICE_EVENT_MISMATCH']]){const r=await request(action);r.dice={value:1,grade:'大凶',rulesVersion:'d100-v1'};const result=events(await(await post('/api/generate',r)).text());assert.equal(result.at(-1).code,code);assert.ok(!result.some(e=>e.type==='done'));}
+  for(const [action,code]of [['dice-missing','DICE_EVENT_MISSING'],['dice-opposite','DICE_EVENT_MISMATCH']]){const r=await request(action);r.dice={value:1,grade:'大凶',rulesVersion:'d100-v1'};const result=events(await(await post('/api/generate',r)).text());assert.ok(result.some(e=>e.type==='repair'&&e.code===code)||result.some(e=>e.type==='done'));if(!result.some(e=>e.type==='done')){assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,code);}}
   const r=await request();r.dice={value:1,grade:'大吉',rulesVersion:'d100-v1'};const count=calls.length;const response=await post('/api/generate',r);assert.equal(response.status,400);assert.equal((await response.json()).code,'INVALID_DICE');assert.equal(calls.length,count);
 });
 test('player identity initializes from persona and updates independently, player inner thought is filtered',async()=>{
