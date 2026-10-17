@@ -51,8 +51,10 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
       <label>论坛 AI 回复<select v-model="w.preferences.forumReplyProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
     </div>
     <p v-if="w.storyProfile" class="rail-note">剧情：{{w.storyProfile.model||'未选模型'}} · 最大输出 {{w.storyProfile.maxTokens}} Token（在“预设”中修改）。</p>
+    <label class="toggle"><input v-model="w.preferences.stateEnabled" type="checkbox" :disabled="disabled" />生成人物状态栏更新</label>
+    <label>随机事件触发概率 %<input v-model.number="w.preferences.randomEventProbability" type="number" min="0" max="100" :disabled="disabled" /></label>
     <label class="toggle"><input v-model="w.preferences.diceEnabled" type="checkbox" :disabled="disabled" />开启随机事件</label>
-    <p class="rail-note">开启后，每个新回合有50%概率调用随机事件接口生成一个候选。你决定是否触发后，正文仍由剧情接口生成；投骰在本地完成。</p>
+    <p class="rail-note">开启后，每个新回合按上方概率在本地判定，命中后才调用随机事件接口生成一个候选。你决定是否触发后，正文仍由剧情接口生成；投骰在本地完成。</p>
     <label class="toggle"><input v-model="w.preferences.forumReplyEnabled" type="checkbox" :disabled="disabled" />发表论坛评论后，允许角色／NPC 回复我（默认关闭）</label>
     <p class="rail-note">开启后，每条玩家评论额外调用论坛 AI 回复接口一次，随机由一名 char 或 NPC 回复，可随时停止；关闭时只保存你的评论，不调用 AI。论坛回复不改变主线状态。</p>
   </section>

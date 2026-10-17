@@ -15,6 +15,8 @@ const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?
  * Strict schema validation still applies to each accepted field/section. */
 export function compatibleState(raw,card,state,options){
   if(!object(raw))return raw;
+  if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
+  if(options.suggestionsEnabled===false)raw={...raw,suggestions:undefined};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
   const known=new Map(state.characters.filter(c=>card.characters.some(k=>k.id===c.id)).map(c=>[c.id,c]));
   const resolve=value=>{const key=typeof value==='string'?value:object(value)?value.id??value.name:undefined;if(known.has(key))return key;const matches=[...known.values()].filter(c=>c.name===key);return matches.length===1?matches[0].id:undefined;};
@@ -116,8 +118,8 @@ export function compatibleState(raw,card,state,options){
     }
   }
   if(options.requireDynamicState){
-    for(const id of out.presentCharacterIds){const patch=patches.get(id),before=known.get(id);if(patch?.affinity===undefined)warn('STATE_AFFINITY_RETAINED');if(before?.spiritAnimal&&!patch?.spiritThought)warn('STATE_SPIRIT_THOUGHT_RETAINED');}
-    if(state.player.spiritAnimal&&!out.player?.spiritThought)warn('STATE_PLAYER_THOUGHT_RETAINED');
+    if(options.stateEnabled!==false){for(const id of out.presentCharacterIds){const patch=patches.get(id),before=known.get(id);if(patch?.affinity===undefined)warn('STATE_AFFINITY_RETAINED');if(before?.spiritAnimal&&!patch?.spiritThought)warn('STATE_SPIRIT_THOUGHT_RETAINED');}
+    if(state.player.spiritAnimal&&!out.player?.spiritThought)warn('STATE_PLAYER_THOUGHT_RETAINED');}
     if(enabled.some(s=>s.slot===1?!out.forum?.length:!out.theaters?.some(t=>t.slot===s.slot)))warn('STATE_SIDE_SCENE_RETAINED');
   }
   return out;

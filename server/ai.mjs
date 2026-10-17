@@ -2,6 +2,7 @@ import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
 import {parseStateJson} from './state-json.mjs';
 import {compatibleState} from './state-compat.mjs';
+import {featurePrompts,featureContext} from './feature-prompts.mjs';
 import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {separateIdentityAbility} from '../src/domain/identityAbility.ts';
 import {storyWorldInfo,applyWorldInfo} from './worldbooks.mjs';
@@ -80,18 +81,18 @@ export function buildMessages(card, request, privateBooks=[]) {
   let previousTheaters;try{previousTheaters=request.previousTheaters===undefined?undefined:cleanTheaterScenes(request.previousTheaters);}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const diaryOwners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim()).map(c=>({ownerId:c.id,ownerName:c.name,...(c.id==='player'?{spiritAnimal:c.spiritAnimal}:{})}));
   const theaterPlans=theaterSettings.filter(t=>t.enabled).map(t=>{if(isSpiritDiary(t))return {...t,diaryOwners};if(t.kind!=='fanfic')return t;const char=t.charId?state.characters.find(c=>c.id===t.charId):state.characters.find(c=>c.present);return {...t,...(char?{participantIds:['player',char.id],pairing:determinePairing(request.persona,char)}:{})};});
-  const rules=internalPrompt("ai.2", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(STATE_CLOSE)});
-  const dynamicRules=internalPrompt("ai.3");
-  const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):internalPrompt("ai.7");
+  const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(STATE_CLOSE)});
+  const dynamicRules=featurePrompts(theaterPlans,request.suggestionsEnabled!==false);
+  const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):'';
   const selectedEventRules=specialEvent?'\n本轮唯一随机事件已由玩家接受并掷骰：'+JSON.stringify(specialEvent)+internalPrompt("ai.8"):'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
   const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'这篇日记的小标题',mood:'心情',content:'今天我……\n\n我发现……'}})+internalPrompt("ai.10"):'';
   const privateCard={world:{},places:[],characters:[]};
   const promptState={...state,characters:state.characters.map(({id,name,present,affinity,innerThought,spiritThought})=>({id,name,present,affinity,innerThought,spiritThought}))};
-  const context={...(previousTheaters?{previousTheaters}:{}),participants,narrativeViewpoint:narrativeViewpoint(state.player),mvu:dataFromState(promptState),persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),presets:request.promptEntries?[]:request.presets,theaterPlans,forumContext:request.forumContext||[],dice:dice||null,dicePlan:plan||null,specialEvent:specialEvent||null};
-  const mvuRules=internalPrompt("ai.5", {p0:(STATE_OPEN),p1:(RESPONSE_END)});
-  const messages=[{role:'system',content:identityRule(participants)+'\n'+rules+diceRules+dynamicRules+diaryExample+selectedEventRules+mvuRules+(request.suggestionsEnabled===false?internalPrompt("ai.11"):'')+'\n'+narrationRule(state.player.name)},{role:'system',content:'服务器私有的角色与世界定义：\n'+JSON.stringify(privateCard)},{role:'system',content:internalPrompt("ai.12")+JSON.stringify(context)}];
-  if(request.stateSeparate){messages[0].content=identityRule(participants)+'\n'+narrationRule(state.player.name)+internalPrompt("ai.13");messages[2].content=internalPrompt("ai.14")+JSON.stringify({participants,persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),dice:dice||null,specialEvent:specialEvent||null});}
+  const context=featureContext({...(previousTheaters?{previousTheaters}:{}),participants,narrativeViewpoint:narrativeViewpoint(state.player),mvu:dataFromState(promptState),persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),presets:request.promptEntries?[]:request.presets,theaterPlans,forumContext:request.forumContext||[],dice,dicePlan:plan,specialEvent},theaterPlans,request);
+  const mvuRules=request.stateEnabled===false?'':internalPrompt("ai.5", {p0:(STATE_OPEN),p1:(RESPONSE_END)});
+  const messages=[{role:'system',content:identityRule(participants)+'\n'+rules+diceRules+dynamicRules+diaryExample+selectedEventRules+mvuRules+'\n'+narrationRule(state.player.name)},{role:'system',content:'服务器私有的角色与世界定义：\n'+JSON.stringify(privateCard)},{role:'system',content:internalPrompt("ai.12")+JSON.stringify(context)}];
+  if(request.stateSeparate){messages[0].content=identityRule(participants)+'\n'+narrationRule(state.player.name)+internalPrompt("ai.13")+diceRules+selectedEventRules;messages[2].content=internalPrompt("ai.14")+JSON.stringify({participants,persona:request.persona,memories:request.memories.map(stripReasoning),...(dice?{dice}:{}),...(specialEvent?{specialEvent}:{})});}
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.filter(entry=>!request.stateSeparate||!/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|状态输出|格式修复|正则/i.test(entry.content)).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
@@ -106,7 +107,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(!Array.isArray(raw.presentCharacterIds)||raw.presentCharacterIds.length>card.characters.length||new Set(raw.presentCharacterIds).size!==raw.presentCharacterIds.length)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');
   if(!text(raw.event,500,true))throw modelError(502,'MODEL_STATE_EVENT_INVALID');
   let diceEvent;
-  if(options.dice){if(raw.diceEvent===undefined)throw modelError(502,'DICE_EVENT_MISSING');try{diceEvent=cleanDiceEvent(raw.diceEvent);}catch{throw modelError(502,'DICE_EVENT_MISMATCH');}if(diceEvent.direction!==dicePlan(options.dice).direction)throw modelError(502,'DICE_EVENT_MISMATCH');}
+  if(options.dice){try{if(raw.diceEvent===undefined)throw modelError(502,'DICE_EVENT_MISSING');diceEvent=cleanDiceEvent(raw.diceEvent);if(diceEvent.direction!==dicePlan(options.dice).direction)throw modelError(502,'DICE_EVENT_MISMATCH');}catch(error){if(!options.compatibilityPrepared)throw error.code?error:modelError(502,'DICE_EVENT_MISMATCH');diceEvent=undefined;options.validationWarnings?.push('STATE_DICE_METADATA_SKIPPED');}}
   // Ordinary prose and continuations do not consume a new dice event; ignore stale model metadata.
 
   let mvuState=state;if(raw.mvu!==undefined){try{mvuState=applyMvu(state,raw.mvu);}catch{throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');}}
@@ -216,8 +217,8 @@ export class StoryDecoder {
     try{const markup=this.mvuControl+tailText;const ops=parseMvuMessage(markup);if(ops.length)raw={...raw,mvu:ops};if((markup.match(/<UpdateVariable>/g)||[]).length!==(markup.match(/<\/UpdateVariable>/g)||[]).length)throw Error();}catch{if(!options?.singleStateCall)throw modelError(502,'MODEL_STATE_JSON_INVALID');options.validationWarnings?.push('STATE_MVU_SKIPPED');}
     const outcome=normalizeModelState(card,state,scrubModelData(raw),options);
     const tail=tailText.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/g,'').trim();
-    if(tail!==RESPONSE_END){if(RESPONSE_END.startsWith(tail))throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');throw modelError(502,'INVALID_COMPLETION_MARKER');}
-    if(!this.story.trim())throw modelError(502,'MODEL_STORY_EMPTY');return outcome;
+    if(tail!==RESPONSE_END){if(options?.singleStateCall&&tail==='')options.validationWarnings?.push('STATE_END_MARKER_RECOVERED');else{if(RESPONSE_END.startsWith(tail))throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');throw modelError(502,'INVALID_COMPLETION_MARKER');}}
+    if(!this.story.trim()){if(options?.singleStateCall)options.validationWarnings?.push('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}return outcome;
   }
 }
 

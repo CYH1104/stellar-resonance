@@ -3,6 +3,12 @@ import {drawSpecialEvent,specialEventKinds,cleanRandomEventGate,cleanSpecialEven
 import {backup,defaults,newSession,parseBackup,editMessage} from '../src/domain/story';
 import {requiredApis,migrateApiSettings} from '../src/domain/apis';
 afterEach(()=>vi.restoreAllMocks());
+it('配置30%由本地脚本严格判断，0%不命中，100%全命中',()=>{
+ let value=0;vi.spyOn(crypto,'getRandomValues').mockImplementation(a=>{(a as Uint32Array)[0]=value;return a;});
+ let hits=0;for(value=0;value<100;value++)if(drawSpecialEvent(30))hits++;expect(hits).toBe(30);
+ value=0;expect(drawSpecialEvent(0)).toBeUndefined();value=99;expect(drawSpecialEvent(100)).toBeDefined();
+ expect(()=>drawSpecialEvent(NaN)).toThrow();expect(()=>drawSpecialEvent(101)).toThrow();
+});
 const proposal={kind:'奇遇事件' as const,title:'来信',description:'一封来信等待查看。'};
 const dice={value:100,grade:'大吉',rulesVersion:'d100-v1' as const};
 it('50%边界及五种类别独立均匀，未命中不抽类别',()=>{

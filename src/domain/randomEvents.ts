@@ -6,8 +6,8 @@ export type SpecialEventKind=typeof specialEventKinds[number];
 export interface SpecialEvent {kind:SpecialEventKind;title:string;description:string}
 export type RandomEventGate={status:'none'|'skipped'}|{status:'preparing'|'failed';kind:SpecialEventKind}|{status:'pending'|'accepted'|'declined';proposal:SpecialEvent};
 function randomIndex(size:number){const values=new Uint32Array(1),limit=Math.floor(0x100000000/size)*size;do{crypto.getRandomValues(values);}while(values[0]>=limit);return values[0]%size;}
-/** Exactly 50%; the category draw is independent and uniform. No model call is needed for a miss. */
-export function drawSpecialEvent():SpecialEventKind|undefined{return randomIndex(100)<50?specialEventKinds[randomIndex(specialEventKinds.length)]:undefined;}
+/** Configurable percentage; the category draw is independent and uniform. No model call is needed for a miss. */
+export function drawSpecialEvent(probability=50):SpecialEventKind|undefined{if(!Number.isFinite(probability)||probability<0||probability>100)throw new Error("随机事件概率须为0到100");return randomIndex(100)<probability?specialEventKinds[randomIndex(specialEventKinds.length)]:undefined;}
 export function cleanSpecialEvent(value:unknown):SpecialEvent{
   const p=value as SpecialEvent;if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['kind','title','description'].includes(k))||!specialEventKinds.includes(p.kind)||typeof p.title!=='string'||typeof p.description!=='string'||p.title.length>100||p.description.length>1200)throw new Error('随机事件候选格式不正确');
   const title=stripReasoning(p.title).trim(),description=stripReasoning(p.description).trim();if(!title||!description)throw new Error('随机事件候选为空');return {kind:p.kind,title,description};

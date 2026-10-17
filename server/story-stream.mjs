@@ -1,8 +1,10 @@
+import {featurePrompts} from './feature-prompts.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {stateProtocol} from './state-protocol.mjs';
 import {narrationRule} from './narration.mjs';
 import {completionChunks,modelError,openCompletion,RESPONSE_END,STATE_CLOSE,STATE_OPEN,StoryDecoder} from './ai.mjs';
 import {ReasoningFilter} from '../src/domain/reasoning.ts';
+import {cleanTheaters} from '../src/domain/theaters.ts';
 
 export const MAX_CONTINUATIONS=3;
 const recoverable=new Set(['MODEL_RESPONSE_INCOMPLETE','MODEL_STREAM_INTERRUPTED','MODEL_TIMEOUT','MODEL_UNREACHABLE','UPSTREAM_FAILED','INVALID_MODEL_RESPONSE']);
@@ -28,7 +30,8 @@ export function continuedMessages(messages,partial,playerName){
 }
 
 export function repairedMessages(messages,story,card,state,options={},code='INVALID_MODEL_STATE'){
-  const rules={suggestions:internalPrompt("story-stream.6"),presentCharacterIds:internalPrompt("story-stream.7"),characters:internalPrompt("story-stream.2") ,player:state.player.spiritAnimal?internalPrompt("story-stream.3"):'可省略；不生成未设定精神体的 OS',event:internalPrompt("story-stream.8"),forum:internalPrompt("story-stream.9") ,theaters:internalPrompt("story-stream.4") ,...(options.dice?{diceEvent:internalPrompt("story-stream.10")}:{})};
+  const enabled=cleanTheaters(options.theaterSettings).filter(t=>t.enabled);
+  const rules={...(options.suggestionsEnabled!==false?{suggestions:internalPrompt("story-stream.6")} :{}),...(options.stateEnabled!==false?{presentCharacterIds:internalPrompt("story-stream.7"),characters:internalPrompt("story-stream.2"),...(state.player.spiritAnimal?{player:internalPrompt("story-stream.3")}:{} )}:{}),event:internalPrompt("story-stream.8"),...(enabled.some(t=>t.slot===1)?{forum:internalPrompt("story-stream.9")}:{}),...(enabled.some(t=>t.slot>1)?{theaters:{plans:enabled.filter(t=>t.slot>1),format:featurePrompts(enabled.filter(t=>t.slot>1),false)}}:{}),...(options.dice?{diceEvent:internalPrompt("story-stream.10")}:{})};
   return [...messages,{role:'assistant',content:story},{role:'user',content:internalPrompt("story-stream.5", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(repairable.has(code)?code:'INVALID_MODEL_STATE'),p4:(JSON.stringify(rules)),p5:(JSON.stringify(card.characters.map(c=>({id:c.id,name:c.name,affinity:state.characters.find(a=>a.id===c.id)?.affinity})))),p6:(stateProtocol()),p7:(JSON.stringify(state.player.name))})}];
 }
 
