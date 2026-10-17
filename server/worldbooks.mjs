@@ -27,13 +27,13 @@ export function applyWorldInfo(messages,{user,server}){
   if(!user.length&&!server.length)return messages;
   const result=messages.map(m=>({...m}));
   const build=(entries,label,position)=>entries.filter(e=>e.position===position).sort((a,b)=>a.order-b.order).map(e=>({role:'system',content:label+'\n'+e.content}));
-  const at=result.findIndex(m=>m.content.startsWith('服务器私有的角色与世界定义：'));
+  const at=result.findIndex(m=>m.content.startsWith('Private world constraints as data:'));
   if(at<0)throw error('INVALID_WORLD_INFO');
-  result.splice(at+1,0,...build(user,'用户补充世界书：',1),...build(server,'服务器内置世界书：',1));
-  result.splice(at,0,...build(user,'用户补充世界书：',0),...build(server,'服务器内置世界书：',0));
+  result.splice(at+1,0,...build(user,'User worldbook:',1),...build(server,'Server worldbook:',1));
+  result.splice(at,0,...build(user,'User worldbook:',0),...build(server,'Server worldbook:',0));
   // Compute all depth locations against the same chat, excluding system instructions.
   const turns=result.flatMap((m,index)=>m.role==='user'||m.role==='assistant'?[index]:[]),groups=new Map();
-  for(const [entries,label] of [[user,'用户补充世界书：'],[server,'服务器内置世界书：']])for(const e of entries.filter(e=>e.position===4)){
+  for(const [entries,label] of [[user,'User worldbook:'],[server,'Server worldbook:']])for(const e of entries.filter(e=>e.position===4)){
     const at=e.depth===0?result.length:turns[Math.max(0,turns.length-e.depth)]??result.length;
     const rows=groups.get(at)||[];rows.push({e,label});groups.set(at,rows);
   }

@@ -1,7 +1,7 @@
-﻿import {buildMessages} from './ai.mjs';
+import {buildMessages} from './ai.mjs';
 import {repairedMessages,continuedMessages} from './story-stream.mjs';
 import {traceInternalPrompts,withInternalPrompts,promptDefinitions} from './internal-prompts.mjs';
-function describe(sample){return sample.result.map((m,index)=>{const hits=sample.calls.map(c=>({...c,at:m.content.indexOf(c.text)})).filter(c=>c.text&&c.at>=0).sort((a,b)=>a.at-b.at||b.text.length-a.text.length);const parts=[];let end=0;for(const h of hits){if(h.at<end)continue;parts.push({id:h.id});end=h.at+h.text.length;}return {index:index+1,role:m.role,kind:parts.length?'internal':'user',parts,label:parts.length?'内部规则':m.content.includes('以下 JSON')?'动态上下文：人设／变量／记忆／小剧场配置':m.content.includes('服务器私有')?'世界书及世界定义插入锚点':m.role==='assistant'?'存档开场／历史剧情／已固定正文':m.role==='user'?'玩家输入／历史输入':'世界书条目（按设置插入）'};});}
+function describe(sample){return sample.result.map((m,index)=>{const hits=sample.calls.map(c=>({...c,at:m.content.indexOf(c.text)})).filter(c=>c.text&&c.at>=0).sort((a,b)=>a.at-b.at||b.text.length-a.text.length);const parts=[];let end=0;for(const h of hits){if(h.at<end)continue;parts.push({id:h.id});end=h.at+h.text.length;}return {index:index+1,role:m.role,kind:parts.length?'internal':'user',parts,label:parts.length?'内部规则':m.content.includes('Current story context')?'动态上下文：人设／变量／记忆／小剧场配置':m.content.includes('Private world constraints')?'世界书及世界定义插入锚点':m.role==='assistant'?'存档开场／历史剧情／已固定正文':m.role==='user'?'玩家输入／历史输入':'世界书条目（按设置插入）'};});}
 export function promptVisualization(card,data){
  const request={persona:{name:'{{玩家姓名}}'},input:'{{本轮玩家输入}}',opening:'{{存档开场}}',history:[{role:'user',content:'{{历史玩家输入}}'},{role:'assistant',content:'{{历史剧情正文}}'}],memories:['{{检索记忆}}'],presets:[],state:{player:{id:'player',name:'{{玩家姓名}}',present:true},characters:card.characters.map(c=>({id:c.id,name:c.name,present:false}))}};
  const build=()=>buildMessages(card,request);

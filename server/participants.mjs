@@ -9,7 +9,7 @@ export function personaDescription(persona){
   return Object.entries(labels).filter(([key])=>typeof persona[key]==='string'&&persona[key].trim()).map(([key,label])=>label+'：'+persona[key]).join('\n');
 }
 export function identityRule(participants){
-  return '[会话身份] USER='+JSON.stringify(participants.user.name)+internalPrompt("participants.2")+JSON.stringify(participants.char.name)+internalPrompt("participants.1");
+  return '[Participants] USER='+JSON.stringify(participants.user.name)+internalPrompt("participants.2")+JSON.stringify(participants.char.name)+internalPrompt("participants.1");
 }
 export function historyMessage(message,participants,cleanAssistant){
   const user=message.role==='user',speaker=user?participants.user:participants.char;

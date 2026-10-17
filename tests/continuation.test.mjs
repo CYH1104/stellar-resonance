@@ -30,7 +30,7 @@ test('an actual continuation of a cut reasoning block stays hidden until its clo
 });
 test('malformed hidden JSON is repaired without appending or repeating any visible prose',async()=>{
   const result=await run(['原正文已结束。'+STATE_OPEN+'{bad json}'+STATE_CLOSE+RESPONSE_END,'不要显示这句重写正文。'+metadata+RESPONSE_END]);
-  assert.equal(result.error,undefined);assert.equal(result.text,'原正文已结束。');assert.equal(result.calls.length,1);assert.equal(result.events.filter(e=>e.type==='done').length,1);assert.equal(result.events.find(e=>e.type==='repair').code,'MODEL_STATE_JSON_INVALID');assert.ok(result.calls[0].payload.messages.at(-1).content.includes('不重新掷骰'));
+  assert.equal(result.error,undefined);assert.equal(result.text,'原正文已结束。');assert.equal(result.calls.length,1);assert.equal(result.events.filter(e=>e.type==='done').length,1);assert.equal(result.events.find(e=>e.type==='repair').code,'MODEL_STATE_JSON_INVALID');assert.ok(result.calls[0].payload.messages.at(-1).content.includes('reroll'));
 });
 test('body cutoff appends exactly once, retains original card/model/key and completes state only at end',async()=>{
   const result=await run(['你在报到处等待。','老师拿来了登记表。'+metadata+RESPONSE_END]);
@@ -96,7 +96,7 @@ test('completion marker alone is hidden and never proves a round is complete',()
 });
 test('overlap joiner preserves new words and only removes exact repeats of at least eight characters',()=>{
   const joiner=new ContinuationJoiner('先前的一句完整正文。');let out='';for(const c of '先前的一句完整正文。然后继续。')out+=joiner.push(c);out+=joiner.finish();assert.equal(out,'然后继续。');
-  const short=new ContinuationJoiner('哈哈');assert.equal(short.push('哈哈，继续。')+short.finish(),'哈哈，继续。');assert.ok(continuedMessages([], '原正文').at(-1).content.includes('不重新掷骰'));
+  const short=new ContinuationJoiner('哈哈');assert.equal(short.push('哈哈，继续。')+short.finish(),'哈哈，继续。');assert.ok(continuedMessages([], '原正文').at(-1).content.includes('reroll'));
 });
 
 test('bundled suggestions complete in the initial response, with no extra API for missing or malformed choices',async()=>{
@@ -113,7 +113,7 @@ test('suggestions cut mid-state resume through the existing continuation budget,
 });
 
 test('comment-only preset output retries once without exposing hidden text',async()=>{
- const result=await run(['<!-- hidden-only-preset -->','恢复的正常正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.calls.length,1);assert.equal(result.text,'恢复的正常正文。');assert.ok(!JSON.stringify(result.events).includes('hidden-only-preset'));assert.ok(result.calls[0].payload.messages.at(-1).content.includes('不得把正文包在 HTML 注释'));
+ const result=await run(['<!-- hidden-only-preset -->','恢复的正常正文。'+metadata+RESPONSE_END]);assert.equal(result.error,undefined);assert.equal(result.calls.length,1);assert.equal(result.text,'恢复的正常正文。');assert.ok(!JSON.stringify(result.events).includes('hidden-only-preset'));assert.ok(result.calls[0].payload.messages.at(-1).content.includes('without hidden wrappers'));
 });
 test('repeated comment-only output stops after one retry',async()=>{
  const result=await run(['<!-- hidden-first -->','<!-- hidden-second -->']);assert.equal(result.error.code,'MODEL_NO_VISIBLE_CONTENT');assert.equal(result.calls.length,1);assert.equal(result.text,'');

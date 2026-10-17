@@ -26,13 +26,13 @@ export class ContinuationJoiner {
 
 export function continuedMessages(messages,partial,playerName){
   if(typeof partial!=='string'||partial.length>400000)throw modelError(400,'INVALID_CONTINUATION');
-  return [...messages,{role:'assistant',content:partial||'（尚未收到正文）'},{role:'user',content:internalPrompt("story-stream.1", {p0:(STATE_OPEN),p1:(STATE_OPEN),p2:(RESPONSE_END),p3:(STATE_CLOSE),p4:(RESPONSE_END),p5:(narrationRule(playerName))})}];
+  return [...messages,{role:'assistant',content:partial||'(No prose received yet.)'},{role:'user',content:internalPrompt("story-stream.1", {p0:(STATE_OPEN),p1:(STATE_OPEN),p2:(RESPONSE_END),p3:(STATE_CLOSE),p4:(RESPONSE_END),p5:(narrationRule(playerName))})}];
 }
 
 export function repairedMessages(messages,story,card,state,options={},code='INVALID_MODEL_STATE'){
   const enabled=cleanTheaters(options.theaterSettings).filter(t=>t.enabled);
   const rules={...(options.suggestionsEnabled!==false?{suggestions:internalPrompt("story-stream.6")} :{}),...(options.stateEnabled!==false?{presentCharacterIds:internalPrompt("story-stream.7"),characters:internalPrompt("story-stream.2"),...(state.player.spiritAnimal?{player:internalPrompt("story-stream.3")}:{} )}:{}),event:internalPrompt("story-stream.8"),...(enabled.some(t=>t.slot===1)?{forum:internalPrompt("story-stream.9")}:{}),...(enabled.some(t=>t.slot>1)?{theaters:{plans:enabled.filter(t=>t.slot>1),format:featurePrompts(enabled.filter(t=>t.slot>1),false)}}:{}),...(options.dice?{diceEvent:internalPrompt("story-stream.10")}:{})};
-  return [...messages,{role:'assistant',content:story},{role:'user',content:internalPrompt("story-stream.5", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(repairable.has(code)?code:'INVALID_MODEL_STATE'),p4:(JSON.stringify(rules)),p5:(JSON.stringify(card.characters.map(c=>({id:c.id,name:c.name,affinity:state.characters.find(a=>a.id===c.id)?.affinity})))),p6:(stateProtocol()),p7:(JSON.stringify(state.player.name))})}];
+  return [...messages,{role:'assistant',content:story},{role:'user',content:internalPrompt("story-stream.5", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(repairable.has(code)?code:'INVALID_MODEL_STATE'),p4:(JSON.stringify(rules)),p5:(JSON.stringify(card.characters.map(c=>({id:c.id,name:c.name,affinity:state.characters.find(a=>a.id===c.id)?.affinity})))),p6:(stateProtocol({...options,state})),p7:(JSON.stringify(state.player.name))})}];
 }
 
 /** Initial response plus at most three continuation requests; state is committed once. */

@@ -9,7 +9,7 @@ test('user persona, narrator card and NPCs stay separate as the present cast cha
  const a=buildMessages(card,{...request(),promptEntries:[entry]}),r=request();r.state.characters.forEach(c=>c.present=!c.present);const b=buildMessages(card,{...r,promptEntries:[entry]});
  const prompt=messages=>messages.find(m=>m.content.startsWith('祁言 / ')).content;
  assert.equal(prompt(a.messages),prompt(b.messages));assert.ok(prompt(a.messages).includes('群星共振世界卡'));assert.ok(prompt(a.messages).includes('与角色甲是旧识'));
- const context=JSON.parse(a.messages[2].content.split('：\n')[1]);assert.equal(context.participants.user.id,'player');assert.equal(context.participants.char.id,'world-card');assert.equal(context.participants.npcs[0].id,'c1');assert.equal(context.persona.rawText,'与角色甲是旧识。');
+ const context=JSON.parse(a.messages[2].content.split(':\n')[1]);assert.equal(context.participants.user.id,'player');assert.equal(context.participants.char.id,'world-card');assert.equal(context.participants.npcs[0].id,'c1');assert.equal(context.persona.rawText,'与角色甲是旧识。');
 });
 test('history roles and explicit speaker labels remain distinct from NPCs and current user action',()=>{
  const {messages}=buildMessages(card,request());const user=messages.find(m=>m.content.includes('之前行动')),assistant=messages.find(m=>m.content.includes('之前剧情'));
@@ -25,6 +25,6 @@ test('expanded persona macros cannot exceed the preset context budget',()=>{
 });
 test('private author gender fields are sent independently of player gender and stale client state',()=>{
  const fixed={...card,characters:card.characters.map((c,i)=>({...c,primaryGender:i===0?'女':'男'}))},r=request();r.persona.primaryGender='玩家自定义';r.state.characters[0].primaryGender='过期';
- const built=buildMessages(fixed,r),privateData=JSON.parse(built.messages[1].content.split('：\n')[1]);assert.deepEqual(privateData.characters,[]);assert.deepEqual(built.state.characters.map(c=>c.primaryGender),['女','男']);assert.equal(built.state.player.primaryGender,'玩家自定义');
+ const built=buildMessages(fixed,r),privateData=JSON.parse(built.messages[1].content.split(':\n')[1]);assert.deepEqual(privateData.characters,[]);assert.deepEqual(built.state.characters.map(c=>c.primaryGender),['女','男']);assert.equal(built.state.player.primaryGender,'玩家自定义');
 });
 

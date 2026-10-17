@@ -21,7 +21,7 @@ test('短同人文走已有补修预算，补齐后正文不重写',async()=>{
 test('AI affinity is retained as an MVU update and previous affinity reaches the next model request',()=>{
   assert.equal(normalizeModelState(card,state,valid(),options).characters[0].affinity,42);
   const {messages}=buildMessages(card,{persona:{name:'玩家',other:'与甲从小认识'},state,input:'打招呼',history:[],presets:[],memories:[],theaterSettings:settings});
-  assert.equal(JSON.parse(messages[2].content.split('：\n')[1]).state.characters[0].affinity,36);
+  assert.equal(JSON.parse(messages[2].content.split(':\n')[1]).state.characters[0].affinity,36);
   assert.ok(!messages[0].content.includes('不输出或变更好感度'));
 });
 test('present characters must return affinity and known spirit OS; enabled scenes cannot silently disappear',()=>{

@@ -6,9 +6,9 @@ export function featurePrompts(plans,suggestions=true){
  return [...ids].map(id=>internalPrompt('feature.'+id)).join('\n');
 }
 export function featureContract(plans,suggestions=true){
- const required={};if(suggestions)required.suggestions=['围绕本轮正文末尾的下一步行动'];
- if(plans.some(p=>p.slot===1))required.forum=[{id:'本轮唯一ID',authorName:'公开作者称呼',content:'与本轮剧情相关的新帖子'}];
- const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':'本轮新内容',...(p.kind==='group'?{messages:[{speaker:'公开姓名',content:'与本轮剧情相关的新消息'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','已知charID'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'已有精神体的主人ID',title:'新篇名',content:'精神体第一人称完整日记'}}:{})}));
+ const required={};if(suggestions)required.suggestions=['A possible next action at the scene ending'];
+ if(plans.some(p=>p.slot===1))required.forum=[{id:'unique-this-turn',authorName:'Public author name',content:'A new in-world post grounded in this turn'}];
+ const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':'New content for this turn',...(p.kind==='group'?{messages:[{speaker:'Public speaker name',content:'A fresh in-world message'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','known-character-id'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'known-spirit-owner-id',title:'New entry title',content:'A complete first-person spirit diary'}}:{})}));
  if(scenes.length)required.theaters=scenes;
  if(!Object.keys(required).length)return '';
  return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)});

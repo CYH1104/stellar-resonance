@@ -24,9 +24,9 @@ test('malformed or unfinished blocks never produce outcome; oversized single chu
 test('card and player persona, opening, history and memories are assembled in order',()=>{
   const request={input:'我的行动',persona:{name:'玩家',background:'玩家背景',spiritAnimal:'白猫',other:'喜欢安静'},state,opening:'迎新原文',history:[{role:'user',content:'之前行动'},{role:'assistant',content:'之前剧情'}],memories:['长期记忆'],presets:['叙事预设']};
   const {messages}=buildMessages(card,request);assert.ok(!messages[1].content.includes('私有设定'));assert.ok(messages[2].content.includes('长期记忆'));assert.equal(messages[3].content,'迎新原文');assert.equal(messages.at(-1).content,'我的行动');
-  assert.ok(messages[0].content.includes('不等于其本人在场'));assert.ok(!buildMessages(card,{...request,historyStart:5}).messages.some(m=>m.content==='迎新原文'));
+  assert.ok(messages[0].content.includes('do not imply physical presence'));assert.ok(!buildMessages(card,{...request,historyStart:5}).messages.some(m=>m.content==='迎新原文'));
   assert.ok(messages[2].content.includes('白猫'));assert.ok(messages[2].content.includes('喜欢安静'));
-  assert.ok(messages[0].content.includes('每轮必须输出 player.spiritThought'));assert.ok(messages[0].content.includes('不需要玩家事先提供'));
+  assert.ok(messages[0].content.includes('including player.spiritThought'));assert.ok(messages[0].content.includes('fresh nonempty spiritThought'));
 });
 test('API URL normalization rejects embedded credentials, query strings and insecure remote URLs',()=>{
   assert.equal(endpoint('https://synthetic.example/v1/'),'https://synthetic.example/v1/chat/completions');assert.equal(endpoint('http://127.0.0.1:8888/v1/chat/completions'),'http://127.0.0.1:8888/v1/chat/completions');
@@ -105,7 +105,7 @@ test('imported model alias reaches message assembly as assistant, without enabli
 test('dice forces a bound main-story event plan by roll, not only a score in context',()=>{
   for(const [value,grade,direction]of [[1,'大凶','negative'],[20,'不利','negative'],[50,'平平','neutral'],[80,'顺遂','positive'],[100,'大吉','positive']]){
     const dice={value,grade,rulesVersion:'d100-v1'};const result=buildMessages(card,{persona:{name:'玩家'},input:'去报到',state,history:[],memories:[],presets:[],dice});
-    const context=JSON.parse(result.messages[2].content.split('：\n')[1]);assert.equal(context.dicePlan?.direction,direction);assert.ok(result.messages[0].content.includes('必须在本轮主线实际发生'));
+    const context=JSON.parse(result.messages[2].content.split(':\n')[1]);assert.equal(context.dicePlan?.direction,direction);assert.ok(result.messages[0].content.includes('Enact a concrete consequence naturally'));
   }
 });
 test('forged dice labels are rejected; missing or opposite dice event cannot commit state',()=>{
@@ -176,7 +176,7 @@ test('group folders do not enter model messages and a paused folder does not act
 
 test('mental power level reaches story context and can update via validated player and character state patches',()=>{
  const request={input:'评定精神力',persona:{name:'玩家',mentalPowerLevel:'A级'},state:{...state,player:{...state.player,mentalPowerLevel:'S级'}},history:[],presets:[],memories:[]};
- const built=buildMessages(card,request);assert.equal(built.state.player.mentalPowerLevel,'S级');assert.ok(built.messages[0].content.includes('没有升降规则时保持原值'));
+ const built=buildMessages(card,request);assert.equal(built.state.player.mentalPowerLevel,'S级');assert.ok(built.messages[0].content.includes('no invented ranks'));
  const out=normalizeModelState(card,built.state,{presentCharacterIds:[],event:'重新评定',player:{mentalPowerLevel:'SS级'},characters:[{id:'one',mentalPowerLevel:'A级'}]});assert.equal(out.player.mentalPowerLevel,'SS级');assert.equal(out.characters[0].mentalPowerLevel,'A级');
  for(const value of ['',null,42,'x'.repeat(101)])assert.throws(()=>normalizeModelState(card,built.state,{presentCharacterIds:[],event:'错误更新',player:{mentalPowerLevel:value}}),{code:'MODEL_STATE_PLAYER_INVALID'});
  assert.equal(normalizeModelState(card,built.state,{presentCharacterIds:[],event:'普通交流'}).player,undefined);

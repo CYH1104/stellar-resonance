@@ -15,7 +15,7 @@ test('现有身份资料提取院系、年级、现职和多个组织；不将�
 test('精神体设定进入 AI 填表及正文上下文，OS 明确只允许符合性格的内心独白',()=>{
  const card={world:{name:'世界'},places:[],characters:[]},persona={name:'玩家',appearance:'',background:'',personality:'',identity:'破军系 一年级',ability:'言出法随',spiritAnimal:'白猫',spiritName:'糯米',spiritAppearance:'蓝眼睛',spiritPersonality:'嘴硬心软',spiritAbility:'情绪感知'};
  const {messages}=buildMessages(card,{persona,state:{player:{id:'player',name:'玩家',present:true},characters:[]},input:'打招呼',history:[],memories:[],presets:[]});
- assert(messages[0].content.includes('内心独白'));assert(messages[0].content.includes('不写甩尾'));assert(messages[0].content.includes('不能混进 identity'));assert(messages[2].content.includes('嘴硬心软'));assert(messages[2].content.includes('情绪感知'));
+ assert(messages[0].content.includes('internal voice'));assert(messages[0].content.includes('not external actions'));assert(messages[0].content.includes('ability is separate'));assert(messages[2].content.includes('嘴硬心软'));assert(messages[2].content.includes('情绪感知'));
  const helper=buildPersonaMessages(card,'帮我补全',persona);assert(helper[0].content.includes('spiritPersonality'));assert.equal(parsePersonaResult(JSON.stringify(persona)).spiritName,'糯米');
  const result=normalizeModelState(card,{player:{id:'player',name:'玩家',present:true},characters:[]},{presentCharacterIds:[],event:'测试',player:{identity:'破军系新生，异能「言出法随」'}});assert.equal(result.player.identity,'破军系新生');assert.equal(result.player.ability,'言出法随');
 });

@@ -13,7 +13,7 @@ const profile={id:'test',apiBaseUrl:'https://synthetic.example/v1',model:'synthe
 const post=(path,body,headers={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,...headers},body:JSON.stringify(body)});
 const events=text=>text.split('\n\n').filter(t=>t.startsWith('data: ')).map(t=>JSON.parse(t.slice(6)));
 function sides(payload){
-  const context=JSON.parse(payload.messages[2].content.split('：\n')[1]);
+  const context=JSON.parse(payload.messages[2].content.split(':\n')[1]);
   return {forum:context.theaterPlans.some(t=>t.slot===1)?[{id:'test-post',authorName:'校园同学',content:'今天食堂上新了'}]:[],theaters:context.theaterPlans.filter(t=>t.slot>1).map(t=>({slot:t.slot,kind:t.kind,title:t.title,content:t.kind==='group'?'':t.kind==='fanfic'?'独立番外内容'.repeat(160):'独立番外内容',...(t.kind==='group'?{messages:[{speaker:'同学',content:'群聊独有的问候'}]}:{}),...(t.kind==='fanfic'?{complete:true,participantIds:t.participantIds||['player','pro-02']}:{} )}))};
 }
 function fakeFetch(url,options){
@@ -32,27 +32,27 @@ function fakeFetch(url,options){
   }
   if(Array.isArray(payload.input))return new Response(JSON.stringify({data:payload.input.map((text,index)=>({index,embedding:[index+1,0.5]})).reverse()}),{headers:{'Content-Type':'application/json'}});
   const action=payload.messages.at(-1).content;
-  if(payload.messages[0].content.startsWith('你只设计一个尚未发生'))return new Response(JSON.stringify({choices:[{message:{content:'<think>不能展示</think>{"title":"意外来信","description":"一封未署名来信等待你决定是否查看。"}'}}]}),{headers:{'Content-Type':'application/json'}});
-  if(payload.messages[0].content.startsWith('你为剧情内的虚构校园论坛'))return new Response(JSON.stringify({choices:[{message:{content:payload.model==='forum-plain'?'我推荐食堂的新菜。':payload.model==='forum-cut'?'{"content":"未完':payload.model==='forum-alias'?'{"reply":"我推荐食堂的新菜。"}':'{"content":"我推荐食堂的新菜。"}'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages[0].content.startsWith('Propose one not-yet-enacted'))return new Response(JSON.stringify({choices:[{message:{content:'<think>不能展示</think>{"title":"意外来信","description":"一封未署名来信等待你决定是否查看。"}'}}]}),{headers:{'Content-Type':'application/json'}});
+  if(payload.messages[0].content.startsWith('Roleplay only the assigned speaker'))return new Response(JSON.stringify({choices:[{message:{content:payload.model==='forum-plain'?'我推荐食堂的新菜。':payload.model==='forum-cut'?'{"content":"未完':payload.model==='forum-alias'?'{"reply":"我推荐食堂的新菜。"}':'{"content":"我推荐食堂的新菜。"}'}}]}),{headers:{'Content-Type':'application/json'}});
   if(payload.messages.some(m=>m.role==='user'&&m.content==='state-repair')){
-    const repairing=action.startsWith('[系统状态补修');const content=repairing?'<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'状态补修完成'})+'</SR_STATE>'+RESPONSE_END:'原正文完整。<SR_STATE>{bad}</SR_STATE>'+RESPONSE_END;
+    const repairing=action.startsWith('[State-only repair');const content=repairing?'<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'状态补修完成'})+'</SR_STATE>'+RESPONSE_END:'原正文完整。<SR_STATE>{bad}</SR_STATE>'+RESPONSE_END;
     return new Response(JSON.stringify({choices:[{message:{content}}]}),{headers:{'Content-Type':'application/json'}});
   }
   const scenario=payload.messages.find(m=>m.role==='user'&&['cut-success','cut-limit','cut-manual'].includes(m.content))?.content;
   if(scenario){
-    const continuing=action.startsWith('[系统续写控制');
+    const continuing=action.startsWith('[Continue a truncated response');
     const ending='<SR_STATE>'+JSON.stringify({...sides(payload),presentCharacterIds:[],event:'续写完成'})+'</SR_STATE>'+RESPONSE_END;
     const content=scenario==='cut-limit'?'一段未完正文。':scenario==='cut-manual'?'接上新正文。'+ending:continuing?'后半句。'+ending:'前半句。';
     return new Response(JSON.stringify({choices:[{message:{content}}]}),{headers:{'Content-Type':'application/json'}});
   }
-  if(payload.messages[0].content.startsWith('你帮助玩家填写')){
+  if(payload.messages[0].content.startsWith('Complete only the player')){
     const {wish}=JSON.parse(action);const persona=wish==='bad-persona'?{name:'新生',privateWorldbook:'不能返回'}:{name:'林星',appearance:'黑发',personality:'慢热',background:'入学新生',spiritAnimal:'白色小猫',other:'喜欢安静'};
     return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(persona)}}]}),{headers:{'Content-Type':'application/json'}});
   }
   if(action==='auth-error')return new Response('synthetic-key-and-private-internal',{status:401});
   if(payload.messages.some(m=>m.role==='user'&&m.content==='invalid'))return new Response(JSON.stringify({choices:[{message:{content:'正文仍可阅读，但状态不合法。<SR_STATE>{"presentCharacterIds":["invented"],"event":"错误"}</SR_STATE>'}}]}),{headers:{'Content-Type':'application/json'}});
   const ids=action==='leave'?[]:['pro-02'];
-  const context=JSON.parse(payload.messages[2].content.split('：\n')[1]),plan=context.dicePlan;
+  const context=JSON.parse(payload.messages[2].content.split(':\n')[1]),plan=context.dicePlan;
   const diceEvent=plan?{direction:action==='dice-opposite'?'positive':plan.direction,description:plan.direction==='negative'?'报到资料缺页，需要补办。':plan.direction==='positive'?'值班人员帮你找到空闲窗口，报到进度提前。':'窗口换班时了解了公开流程。'}:undefined;
   const text=(diceEvent?diceEvent.description:'')+'收到远程通讯；眼前人物由这一幕决定。<SR_STATE>'+JSON.stringify({presentCharacterIds:ids,characters:[{id:'pro-02',innerThought:'先听他说完。',affinity:99,spiritThought:'先观察门口。'}],event:diceEvent?.description||'本轮场景已推进',...(diceEvent&&action!=='dice-missing'?{diceEvent}:{}),...(action==='spirit-ok'?{player:{spiritThought:'竖起耳朵观察来人。'}}:{}),...(action==='identity'?{player:{identity:'项目助理',innerThought:'不应该返回玩家想法'}}:{}),...sides(payload),...(action==='theaters'?{player:{spiritThought:'想睡觉'},theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'群聊独有的问候'}]},{slot:3,kind:'fanfic',title:'番外',content:'user 与 char 的独立日常。'.repeat(100),complete:true,participantIds:['player','pro-02']},{slot:4,kind:'custom',title:'采访',content:'采访的独立内容。'}]}:{})})+'</SR_STATE>'+RESPONSE_END;
   const bytes=new TextEncoder().encode([...text].map(char=>'data: '+JSON.stringify({choices:[{delta:{content:char}}]})+'\r\n\r\n').join('')+'data: [DONE]\r\n\r\n');
@@ -162,7 +162,7 @@ test('HTTP generation returns AI spirit OS for a configured player spirit and re
     const r=await request(action);r.persona.spiritAnimal='白猫';const count=calls.length;const result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,action==='spirit-ok'?1:4);
     if(action==='spirit-ok'){assert.equal(result.at(-1).type,'done');assert.equal(result.at(-1).outcome.player.spiritThought,'竖起耳朵观察来人。');}
     else{assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,'PLAYER_SPIRIT_THOUGHT_MISSING');assert.ok(!result.some(e=>e.type==='done'));assert.ok(result.some(e=>e.type==='delta'));}
-    assert.ok(calls.at(-1).payload.messages[0].content.includes('每轮必须输出 player.spiritThought'));
+    assert.ok(calls.at(-1).payload.messages[0].content.includes('including player.spiritThought'));
   }
 });
 
@@ -216,7 +216,7 @@ test('forum HTTP accepts plain and alias responses with one request, while trunc
   }
 });
 test('HTTP manual state-only repair returns no new prose and validates its mode before calling the provider',async()=>{
-  const r=await request('cut-manual');r.continuation={partial:'已保存的完整正文。',mode:'state'};const count=calls.length,result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,1);assert.equal(result.at(-1).type,'done');assert.ok(!result.some(e=>e.type==='delta'));assert.ok(calls.at(-1).payload.messages.at(-1).content.startsWith('[系统状态补修'));
+  const r=await request('cut-manual');r.continuation={partial:'已保存的完整正文。',mode:'state'};const count=calls.length,result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,1);assert.equal(result.at(-1).type,'done');assert.ok(!result.some(e=>e.type==='delta'));assert.ok(calls.at(-1).payload.messages.at(-1).content.startsWith('[State-only repair'));
   for(const mode of ['unsafe',true,{}])assert.equal((await post('/api/generate',{...r,continuation:{partial:'正文',mode}})).status,400);assert.equal(calls.length-count,1);
 });
 

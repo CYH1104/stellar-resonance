@@ -1,6 +1,7 @@
 import {activePromptEntries,cleanPreset} from '../src/domain/presets.ts';
 import {personaDescription} from './participants.mjs';
 import {expandTavernMacros} from './tavern-macros.mjs';
+import {recordPresetDiagnostics} from './preset-diagnostics.mjs';
 const modelError=(status,code)=>Object.assign(new Error(code),{status,code});
 export function applyPromptEntries(messages,entries,persona,charName,generationType='normal'){
   if(entries===undefined)return messages;
@@ -10,6 +11,7 @@ export function applyPromptEntries(messages,entries,persona,charName,generationT
   // Single pass: text inside a persona or name is data, never a second macro program.
   let enabled;try{enabled=expandTavernMacros(activePromptEntries(list,generationType).map(p=>({...p,content:p.content.replace(/<(USER|BOT|CHAR)>/gi,(_,name)=>name.toLowerCase()==='user'?'{{user}}':'{{char}}')})),{input:messages.findLast(m=>m.role==='user')?.content||'',history:messages,user:persona.name,char:names.char,persona:names.persona,group:names.char});}catch{throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');}
   if(enabled.reduce((n,p)=>n+p.content.length,0)>300000)throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');
+  recordPresetDiagnostics(list,enabled,generationType);
   const message=p=>({role:p.role||'system',content:p.content});
   const before=enabled.filter(p=>!p.position||p.position==='before').map(message),after=enabled.filter(p=>p.position==='after').map(message);
   const chat=messages.slice(3),positions=new Map();

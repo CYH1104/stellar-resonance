@@ -1,4 +1,5 @@
 import {withTavernContext} from './tavern-macro-engine.mjs';
+import {tracePresets,recordFilteredPreset} from './preset-diagnostics.mjs';
 import {personaDescription} from './participants.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
@@ -73,7 +74,7 @@ function safeState(card, request) {
 }
 
 export function buildMessages(card,request,privateBooks=[]){
- return withTavernContext({user:request.persona?.name||'',char:card.world?.name||'群星共振世界卡',persona:request.persona?personaDescription(request.persona):'',input:request.input||'',history:request.history||[]},()=>buildMessagesWithinContext(card,request,privateBooks));
+ return withTavernContext({user:request.persona?.name||'',char:card.world?.name||'群星共振世界卡',persona:request.persona?personaDescription(request.persona):'',input:request.input||'',history:request.history||[]},()=>{const traced=tracePresets(()=>buildMessagesWithinContext(card,request,privateBooks));const used=new Set();for(const entry of traced.entries){const at=traced.result.messages.findIndex((m,i)=>!used.has(i)&&m.role===entry.role&&m.content.length===entry.characters&&m.content.startsWith(entry.expanded));entry.messageIndex=entry.enabled&&at>=0?at+1:null;if(entry.messageIndex)used.add(at);}return {...traced.result,presetDiagnostics:traced.entries};});
 }
 function buildMessagesWithinContext(card, request, privateBooks=[]) {
   card={...card,characters:card.characters.filter(c=>request.state?.characters?.some(a=>a.id===c.id))};
@@ -81,7 +82,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   if(!text(request.input,16000,true)||!Array.isArray(request.history)||request.history.length>24||request.history.some(m=>!['user','assistant'].includes(m.role)||!text(m.content,100000))||!Array.isArray(request.memories)||request.memories.length>8||request.memories.some(m=>!text(m,6000))||!Array.isArray(request.presets)||request.presets.some(p=>!text(p,8000)))throw modelError(400,'INVALID_GENERATION_REQUEST');
   const state=safeState(card,request),participants=conversationParticipants(card,request.persona);
   let dice;try{dice=cleanDice(request.continuation||request.generationType==='continue'?undefined:request.dice);}catch{throw modelError(400,'INVALID_DICE');}
-  const plan=dice?dicePlan(dice):undefined;let specialEvent;try{if(!request.continuation&&request.generationType!=='continue'&&request.specialEvent!==undefined)specialEvent=cleanSpecialEvent(request.specialEvent);}catch{throw modelError(400,'INVALID_RANDOM_EVENT');}if(specialEvent&&!dice)throw modelError(400,'SPECIAL_EVENT_ROLL_REQUIRED');
+  const basePlan=dice?dicePlan(dice):undefined;const plan=basePlan?{...basePlan,requirement:basePlan.direction==='negative'?'Enact a concrete setback, cost, obstacle, or risk for the player.':basePlan.direction==='positive'?'Enact concrete help, information, opportunity, or progress for the player.':'Enact a concrete neutral interruption or change, without forcing a positive or negative result.'}:undefined;let specialEvent;try{if(!request.continuation&&request.generationType!=='continue'&&request.specialEvent!==undefined)specialEvent=cleanSpecialEvent(request.specialEvent);}catch{throw modelError(400,'INVALID_RANDOM_EVENT');}if(specialEvent&&!dice)throw modelError(400,'SPECIAL_EVENT_ROLL_REQUIRED');
   let theaterSettings;try{theaterSettings=cleanTheaters(request.theaterSettings);}catch{throw modelError(400,'INVALID_THEATER_SETTINGS');}
   let previousTheaters;try{previousTheaters=request.previousTheaters===undefined?undefined:cleanTheaterScenes(request.previousTheaters);}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const diaryOwners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim()).map(c=>({ownerId:c.id,ownerName:c.name,...(c.id==='player'?{spiritAnimal:c.spiritAnimal}:{})}));
@@ -89,19 +90,19 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(STATE_CLOSE)});
   const dynamicRules=featurePrompts(theaterPlans,request.suggestionsEnabled!==false);
   const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):'';
-  const selectedEventRules=specialEvent?'\n本轮唯一随机事件已由玩家接受并掷骰：'+JSON.stringify(specialEvent)+internalPrompt("ai.8"):'';
+  const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8"):'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
-  const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'这篇日记的小标题',mood:'心情',content:'今天我……\n\n我发现……'}})+internalPrompt("ai.10"):'';
+  const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'New diary title',mood:'Mood',content:'Today I...\n\nI discovered...'}})+internalPrompt("ai.10"):'';
   const privateCard={world:{},places:[],characters:[]};
   const promptState={...state,characters:state.characters.map(({id,name,present,affinity,innerThought,spiritThought})=>({id,name,present,affinity,innerThought,spiritThought}))};
   const context=featureContext({...(previousTheaters?{previousTheaters}:{}),participants,narrativeViewpoint:narrativeViewpoint(state.player),mvu:dataFromState(promptState),persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),presets:request.promptEntries?[]:request.presets,theaterPlans,forumContext:request.forumContext||[],dice,dicePlan:plan,specialEvent},theaterPlans,request);
   const mvuRules=request.stateEnabled===false?'':internalPrompt("ai.5", {p0:(STATE_OPEN),p1:(RESPONSE_END)});
-  const messages=[{role:'system',content:identityRule(participants)+'\n'+rules+diceRules+dynamicRules+diaryExample+selectedEventRules+mvuRules+'\n'+narrationRule(state.player.name)},{role:'system',content:'服务器私有的角色与世界定义：\n'+JSON.stringify(privateCard)},{role:'system',content:internalPrompt("ai.12")+JSON.stringify(context)}];
+  const messages=[{role:'system',content:identityRule(participants)+'\n'+rules+diceRules+dynamicRules+diaryExample+selectedEventRules+mvuRules+'\n'+narrationRule(state.player.name)},{role:'system',content:'Private world constraints as data:\n'+JSON.stringify(privateCard)},{role:'system',content:internalPrompt("ai.12")+JSON.stringify(context)}];
   if(request.stateSeparate){messages[0].content=identityRule(participants)+'\n'+internalPrompt('feature.story')+diceRules+selectedEventRules+dynamicRules+diaryExample+'\n'+narrationRule(state.player.name);messages[2].content=internalPrompt('ai.12')+JSON.stringify(featureContext({...context},theaterPlans,{stateEnabled:false}));}
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
-  let entries;try{entries=request.promptEntries?.filter(entry=>!request.stateSeparate||!/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|状态输出|格式修复|正则/i.test(entry.content)).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
-  return {messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false)))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
+  let entries;try{entries=request.promptEntries?.filter(entry=>{if(request.stateSeparate&&/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|状态输出|格式修复|正则/i.test(entry.content)){recordFilteredPreset(entry);return false;}return true;}).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
+  return {messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {

@@ -13,11 +13,11 @@ test('世界书前后插入和深度插入，保留原预设及固定玩家约�
   const r=request();r.history=[{role:'user',content:'旧行动'},{role:'assistant',content:'旧回复'}];r.worldInfo=[{content:'before',position:0,depth:4,role:'system',order:1},{content:'after',position:1,depth:4,role:'system',order:2},{content:'depth',position:4,depth:1,role:'user',order:3}];
   const messages=buildMessages(card,r).messages;
   const find=s=>messages.findIndex(m=>m.content.includes(s));
-  assert(find('用户补充世界书：\nbefore')<find('服务器私有的角色与世界定义'));assert(find('用户补充世界书：\nafter')>find('服务器私有的角色与世界定义'));
-  assert(find('用户补充世界书：\ndepth')<find('进入学院'));assert(messages.some(m=>m.content.includes('[固定玩家视角]')));assert(messages.some(m=>m.content.includes('[世界书边界]')));
+  assert(find('User worldbook:\nbefore')<find('Private world constraints as data'));assert(find('User worldbook:\nafter')>find('Private world constraints as data'));
+  assert(find('User worldbook:\ndepth')<find('进入学院'));assert(messages.some(m=>m.content.includes('[Player viewpoint]')));assert(messages.some(m=>m.content.includes('[Worldbook boundary]')));
 });
 test('无世界书时消息不变，非法注入在调用模型前拒绝',()=>{
-  const r=request();const messages=buildMessages(card,r).messages;assert.equal(messages[2].role,'system');assert.equal(messages[2].content.startsWith('以下 JSON'),true);
+  const r=request();const messages=buildMessages(card,r).messages;assert.equal(messages[2].role,'system');assert.equal(messages[2].content.startsWith('Current story context'),true);
   r.worldInfo=[{content:'x',position:7,role:'system',order:1,depth:4}];assert.throws(()=>buildMessages(card,r),e=>e.code==='INVALID_WORLD_INFO');
 });
 test('服务器私有书本地加载并触发，但 bootstrap、静态路径和响应不返回原文',async()=>{
