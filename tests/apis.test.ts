@@ -4,9 +4,9 @@ import {apiConfigurationIssues,migrateApiSettings,requiredApis,taskApi,textApiTa
 import type {Preferences,Profile} from '../src/domain/contracts';
 const fill=(p:Profile)=>Object.assign(p,{apiBaseUrl:'https://synthetic.example/v1',model:'model-'+p.id});
 const keys=(p:Preferences)=>Object.fromEntries(p.profiles.map(p=>[p.id,'synthetic-key']));
-it('只有主 API 就能就绪：全部文字功能默认主 API，副 API 可完全留空',()=>{
-  const p=defaults();fill(p.profiles[0]);expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['main','main','main']);
-  expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);expect(apiConfigurationIssues(p,{main:'synthetic-key'},()=>true)).toEqual([]);
+it('文字功能默认主 API，副 API 可留空，向量 API 必填',()=>{
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['main','main','main']);
+  expect(requiredApis(p).map(p=>p.id)).toEqual(['main','embed']);expect(apiConfigurationIssues(p,{main:'synthetic-key',embed:'synthetic-key'},()=>true)).toEqual([]);
 });
 it('每项功能独立指定主或副 API，重排副 API 不改变任务选择',()=>{
   const p=defaults();p.profiles.push({...p.profiles[1],id:'aux2'});p.auxiliaryProfiles!.push('aux2');
@@ -15,7 +15,7 @@ it('每项功能独立指定主或副 API，重排副 API 不改变任务选择'
   p.auxiliaryProfiles!.reverse();expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['aux2','aux','aux2']);
 });
 it('未选用的副 API 草稿不阻拦，只检查主 API、被选用接口和开启的向量',()=>{
-  const p=defaults();fill(p.profiles[0]);p.profiles[1].apiBaseUrl='https://draft.example/v1';const credentials={main:'synthetic-key'};
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);p.profiles[1].apiBaseUrl='https://draft.example/v1';const credentials={main:'synthetic-key',embed:'synthetic-key'};
   expect(apiConfigurationIssues(p,credentials,()=>true)).toEqual([]);
   p.summaryProfile='aux';expect(apiConfigurationIssues(p,credentials,()=>true).join()).toContain('副 API');
   p.summaryProfile='main';p.personaProfile='aux';expect(apiConfigurationIssues(p,credentials,()=>true).join()).toContain('副 API');
@@ -25,9 +25,9 @@ it('即使所有功能都选副 API，主 API 仍然必填',()=>{
   const p=defaults();fill(p.profiles[1]);for(const task of textApiTasks)p[task.field]='aux';
   expect(apiConfigurationIssues(p,{aux:'synthetic-key'},()=>true).join()).toContain('主 API');
 });
-it('仅开启向量检索时要求向量 API',()=>{
-  const p=defaults();fill(p.profiles[0]);const credentials=keys(p);delete credentials.aux;delete credentials.embed;
-  expect(apiConfigurationIssues(p,credentials,()=>true)).toEqual([]);p.vectorEnabled=true;
+it('向量检索强制开启，旧关闭配置也必须填写向量 API',()=>{
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);const credentials=keys(p);delete credentials.aux;delete credentials.embed;
+  p.vectorEnabled=false;expect(migrateApiSettings(p).vectorEnabled).toBe(true);
   expect(apiConfigurationIssues(p,credentials,()=>true).join()).toContain('向量 API');fill(p.profiles[2]);credentials.embed='synthetic-vector-key';expect(apiConfigurationIssues(p,credentials,()=>true)).toEqual([]);
 });
 it('旧配置保留剧情选择和副 API，新增功能选择默认主 API，不再自动抢选副 API',()=>{
@@ -51,16 +51,16 @@ it('备份保留每个功能的选择并拒绝坏引用，不包含 Key',()=>{
   const invalid=JSON.parse(text);invalid.preferences.auxiliaryProfiles=['missing'];expect(()=>parseBackup(JSON.stringify(invalid))).toThrow('副 API');
 });
 it('论坛回复默认关闭，开启时才校验所选接口，设置和旧备份可以恢复',()=>{
-  const p=defaults();fill(p.profiles[0]);p.forumReplyProfile='aux';expect(p.forumReplyEnabled).toBe(false);expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);
-  p.forumReplyEnabled=true;expect(requiredApis(p).map(p=>p.id)).toEqual(['main','aux']);expect(apiConfigurationIssues(p,{main:'synthetic-key'},()=>true).join()).toContain('副 API');fill(p.profiles[1]);expect(apiConfigurationIssues(p,keys(p),()=>true)).toEqual([]);
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);p.forumReplyProfile='aux';expect(p.forumReplyEnabled).toBe(false);expect(requiredApis(p).map(p=>p.id)).toEqual(['main','embed']);
+  p.forumReplyEnabled=true;expect(requiredApis(p).map(p=>p.id)).toEqual(['main','aux','embed']);expect(apiConfigurationIssues(p,{main:'synthetic-key',embed:'synthetic-key'},()=>true).join()).toContain('副 API');fill(p.profiles[1]);expect(apiConfigurationIssues(p,keys(p),()=>true)).toEqual([]);
   const restored=parseBackup(backup({version:1,sessions:[],preferences:p}));expect(restored.preferences).toMatchObject({forumReplyEnabled:true,forumReplyProfile:'aux'});delete p.forumReplyEnabled;delete p.forumReplyProfile;expect(migrateApiSettings(p)).toMatchObject({forumReplyEnabled:false,forumReplyProfile:'main'});
 });
 
 it('旧建议接口选择不再要求填写副 API，建议始终跟随剧情接口',()=>{
-  const p=defaults();fill(p.profiles[0]);p.suggestionsProfile='aux';
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);p.suggestionsProfile='aux';
   expect(taskApi(p,'suggestions')?.id).toBe('main');
-  expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);
-  expect(apiConfigurationIssues(p,{main:'synthetic-key'},()=>true)).toEqual([]);
+  expect(requiredApis(p).map(p=>p.id)).toEqual(['main','embed']);
+  expect(apiConfigurationIssues(p,{main:'synthetic-key',embed:'synthetic-key'},()=>true)).toEqual([]);
   p.storyProfile='aux';expect(taskApi(p,'suggestions')?.id).toBe('aux');
   p.suggestionsProfile='deleted-old-profile';expect(()=>migrateApiSettings(p)).not.toThrow();
 });

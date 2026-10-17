@@ -94,6 +94,6 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <aside v-if="w.active&&!fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
     </div>
 
-    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.20.5</small></footer>
+    <footer class="app-footer"><span role="status">{{ w.notice }}</span><small v-if="w.lastSaved">最近保存 {{ new Date(w.lastSaved).toLocaleTimeString() }}</small><small>本机测试 v0.20.7</small></footer>
   </div>
 </template>

@@ -51,7 +51,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
     try{
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.7',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
       if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,narratorName:source.world.name||'群星共振世界卡',capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){

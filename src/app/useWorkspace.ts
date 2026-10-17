@@ -1,4 +1,5 @@
 import {recordDiagnostic} from './developerDiagnostics';
+import {exportApiSettings,parseApiSettings} from '../domain/apiTransfer';
 import {completeTheater} from '../domain/roundHealth';
 import {useWorldbooks,mergeWorldbookBackup,sessionLore} from './useWorldbooks';
 import {activeCommitments,buildRecallQuery,memoryContext,memoryReady,memorySignature,memoryState,memoryText,normalizeMemoryResult,vectorCurrent,visibleSourceStillMatches,type MemoryRequest} from '../domain/memories';
@@ -115,6 +116,7 @@ export function useWorkspace() {
   }
   let timer:ReturnType<typeof setTimeout>;
   const scheduleSave=()=>{if(loading.value)return;clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
+  watch(()=>preferences.vectorEnabled,()=>{preferences.vectorEnabled=true;},{flush:'sync'});
   watch(preferences,scheduleSave,{deep:true});
   watch([credentials,approved],scheduleSave,{deep:true});
   watch(()=>preferences.mode,()=>{authorized.value=preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
@@ -154,7 +156,15 @@ export function useWorkspace() {
     return {turnId:turn.id,variantId:v.id,input:turn.input,story:v.text,event:v.outcome.event,diceEvent:copy(v.outcome.diceEvent),before:memoryState(stateAt(session,index)),after:memoryState(stateAt(session,index+1)),priorCommitments:activeCommitments(memoryLedger(session,index))};
   }
   function memoryNeedsWork(session:Session,index:number){const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)return false;const m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===v.id);return !m||!memoryReady(m)||m.sourceFingerprint!==memorySignature(roundMemoryInput(session,index));}
-  const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome&&!active.value!.memories.some(m=>m.kind==='event'&&m.sourceTurn===t.id&&m.sourceVariant===v.id&&memoryReady(m));}).length:0);
+  const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter((_,i)=>memoryNeedsWork(active.value!,i)).length:0);
+  const chatRoundCount=computed(()=>active.value?.turns.filter(t=>t.input.trim()).length||0);
+  const effectiveMemoryCount=computed(()=>active.value?active.value.turns.filter((t,i)=>{const v=selected(t);return v?.status==='complete'&&v.outcome&&!memoryNeedsWork(active.value!,i);}).length:0);
+  const memoryEntries=computed<Memory[]>(()=>{
+    const session=active.value;if(!session)return[];
+    return [...session.turns.flatMap(t=>{const v=selected(t);if(v?.status!=='complete'||!v.outcome)return[];return[session.memories.find(m=>m.kind==='event'&&m.sourceTurn===t.id&&m.sourceVariant===v.id)||{id:`missing:${t.id}`,kind:'event' as const,text:'本轮记忆待补记。',createdAt:v.createdAt,sourceTurn:t.id,sourceVariant:v.id,status:'pending' as const}];}),...memories.value.filter(m=>m.kind!=='event')];
+  });
+  function memoryNeedsRepair(m:Memory){const session=active.value,index=session?.turns.findIndex(t=>t.id===m.sourceTurn)??-1;return !!session&&index>=0&&memoryNeedsWork(session,index);}
+  const missingVectorCount=computed(()=>memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
   function vectorStatus(m:Memory){if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'待补记';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
   async function encodeMemories(session:Session,items:Memory[],signal:AbortSignal){
     if(!preferences.vectorEnabled)return;const p=copy(profile(preferences.embeddingProfile)),model=fingerprint(p),signature=connectionSignature(p);
@@ -185,7 +195,7 @@ export function useWorkspace() {
   async function retryMemory(id?:string){
     const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!ensureApiConfiguration())return;
     workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;
-    try{for(let i=0;i<session.turns.length;i++){const t=session.turns[i],v=selected(t);if(!v||!memoryNeedsWork(session,i))continue;const m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===v.id&&m.kind==='event');if(id&&m?.id!==id)continue;current.signal.throwIfAborted();await writeRoundMemory(session,i,current.signal);}notice.value='记忆已保存。';}
+    try{for(let i=0;i<session.turns.length;i++){const t=session.turns[i],v=selected(t);if(!v||!memoryNeedsWork(session,i))continue;const m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===v.id&&m.kind==='event');if(id&&m?.id!==id&&id!==`missing:${t.id}`)continue;current.signal.throwIfAborted();await writeRoundMemory(session,i,current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
   async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
@@ -286,6 +296,25 @@ export function useWorkspace() {
   async function searchMemory(query:string):Promise<Memory[]>{if(!active.value)return[];if(!query.trim())return memories.value;try{return await recall(active.value,query,active.value.turns.length,false);}catch(e){problem.value=message(e);return[];}}
   function download(filename:string,content:string,type='application/json'){const url=URL.createObjectURL(new Blob([content],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportBackup(){download(`群星共振-备份-${new Date().toISOString().slice(0,10)}.json`,backup(snapshot()));notice.value='备份已导出，不包含 Key';}
+  function exportApiConfiguration(includeKeys=false){
+    if(loading.value||busy.value||configuringApis.value)return;
+    download(`群星共振-API设置${includeKeys?'-含Key':''}-${new Date().toISOString().slice(0,10)}.json`,exportApiSettings(preferences,credentials,includeKeys));
+    notice.value=includeKeys?'API 设置已导出，文件包含明文 Key，请妥善保管。':'API 设置已导出，不包含 Key。';
+  }
+  async function importApiConfiguration(text:string){
+    if(loading.value||busy.value||workingMemory.value||configuringApis.value||workingPersona.value||creatingGame.value||workingForumReply.value)return false;
+    try{
+      const imported=parseApiSettings(text);
+      const retained=Object.fromEntries(imported.configuration.profiles.filter(p=>{
+        const old=preferences.profiles.find(old=>old.id===p.id);return old&&apiAddress(old.apiBaseUrl)===apiAddress(p.apiBaseUrl)&&!!credentials[p.id];
+      }).map(p=>[p.id,credentials[p.id]]));
+      for(const id of Object.keys(approved))delete approved[id];
+      for(const id of Object.keys(credentials))delete credentials[id];
+      Object.assign(preferences,imported.configuration);
+      Object.assign(credentials,retained,imported.keys||{});apiStorageReady=true;
+      await persist();problem.value='';notice.value='API 设置已导入，请保存 API 确认配置后使用。';return true;
+    }catch(e){problem.value=message(e);return false;}
+  }
   async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(localService.value)for(const session of value.sessions)syncCharacterFacts(session,localService.value.dataset,localService.value.characterFacts);if(replace){inputDrafts.clear();sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{mergeWorldbookBackup(preferences,value.preferences,value.sessions);for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
   function exportBook(){const s=active.value;if(!s)return;const escape=(x:string)=>x.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');const body=s.turns.map(t=>{const v=selected(t);return v?.status==='complete'?`<section><p class="action">${escape(t.input)}</p><p>${escape(v.text)}</p></section>`:'';}).join('');download(`${s.name}-故事.html`,`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(s.name)}</title><style>body{max-width:44rem;margin:3rem auto;padding:0 1.5rem;font:18px/1.8 system-ui;color:#222}p{white-space:pre-wrap}.action{color:#666}section{margin-bottom:2rem}</style><h1>${escape(s.name)}</h1><p>${escape(s.opening)}</p>${body}</html>`,'text/html');}
   function addProfile(){if(preferences.profiles.length>=30){problem.value='接口总数最多30个，请先移除不需要的副 API。';return '';}const id=uid();preferences.profiles.push({id,name:`副 API ${(preferences.auxiliaryProfiles?.length||0)+1}`,providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600});(preferences.auxiliaryProfiles||=[]).push(id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;return id;}
@@ -301,7 +330,7 @@ export function useWorkspace() {
   function duplicatePresetSet(){if(busy.value)return;const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

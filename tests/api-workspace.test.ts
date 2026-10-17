@@ -1,4 +1,5 @@
 import {normalizeMemoryResult} from '../src/domain/memories';
+import {exportApiSettings} from '../src/domain/apiTransfer';
 import {newWorldEntry} from '../src/domain/worldbooks';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {effectScope,nextTick} from 'vue';
@@ -22,6 +23,7 @@ beforeEach(()=>{
   vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async value=>{saved=JSON.parse(backup(value));});
   vi.spyOn(HttpGateway.prototype,'bootstrap').mockImplementation(async function(this:HttpGateway){this.capabilities=service.capabilities;return service;});
   vi.spyOn(HttpGateway.prototype,'randomEvent').mockImplementation(async data=>({kind:data.kind,title:'意外来信',description:'一封来历不明的信件等待查看。'}));
+  vi.spyOn(HttpGateway.prototype,'embed').mockImplementation(async texts=>texts.map(()=>[1,0.5]));
   vi.spyOn(HttpGateway.prototype,'configure').mockResolvedValue({origin:'https://synthetic.example'});
   vi.spyOn(HttpGateway.prototype,'newGame').mockResolvedValue({dataset:service.dataset,opening:'迎新',initial:initialState('玩家')});
 });
@@ -42,8 +44,32 @@ it('条目验证失败不会清除错误或覆盖原书，删除书时解除所�
  w.removeWorldbook(b.id);expect(w.worldbooks.value).toEqual([]);expect(w.boundWorldbookIds.value).toEqual([]);
 });
 function fill(w:ReturnType<typeof useWorkspace>,id='main'){
+  if(id==='main')fill(w,'embed');
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }
+it('记忆页统计只计有效逐轮记录，删除后显示占位并可在该条补记，正常记忆不补写',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('统计',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'你观察接待站。'};yield{type:'done',outcome:{event:'观察接待站',characters:[]}};});
+ await w.generate('观察');await w.generate('等待');expect(w.chatRoundCount.value).toBe(2);expect(w.effectiveMemoryCount.value).toBe(2);expect(w.missingVectorCount.value).toBe(0);
+ const first=w.memoryEntries.value[0];expect(w.memoryNeedsRepair(first)).toBe(false);const calls=vi.mocked(HttpGateway.prototype.memory).mock.calls.length;await w.retryMemory(first.id);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(calls);
+ w.removeMemory(first.id);expect(w.effectiveMemoryCount.value).toBe(1);expect(w.pendingMemoryCount.value).toBe(1);const missing=w.memoryEntries.value[0];expect(missing.id).toBe('missing:'+first.sourceTurn);expect(w.memoryNeedsRepair(missing)).toBe(true);
+ await w.retryMemory(missing.id);expect(w.effectiveMemoryCount.value).toBe(2);expect(w.pendingMemoryCount.value).toBe(0);expect(w.memoryEntries.value.some(m=>m.id.startsWith('missing:'))).toBe(false);
+ w.preferences.vectorEnabled=false;expect(w.preferences.vectorEnabled).toBe(true);
+});
+it('API 设置导入仅替换接口，清除确认状态，保存 Key 而不请求模型',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();const before=JSON.stringify(w.preferences.presets);
+ const p=defaults();p.profiles[0].name='导入的主 API';p.profiles[0].apiBaseUrl='https://import.synthetic.example';p.profiles[0].model='imported';p.summaryProfile='aux';
+ const configure=vi.mocked(HttpGateway.prototype.configure);configure.mockClear();
+ expect(await w.importApiConfiguration(exportApiSettings(p,{main:'imported-synthetic-key'},true))).toBe(true);
+ expect(w.preferences.profiles[0].name).toBe('导入的主 API');expect(w.credentials.main).toBe('imported-synthetic-key');expect(w.connectionReady(w.preferences.profiles[0])).toBe(false);
+ expect(JSON.stringify(w.preferences.presets)).toBe(before);expect(privateSaved?.keys.main).toBe('imported-synthetic-key');expect(configure).not.toHaveBeenCalled();
+ const previous=JSON.stringify(w.preferences);expect(await w.importApiConfiguration('{broken')).toBe(false);expect(JSON.stringify(w.preferences)).toBe(previous);
+});
+it('不含 Key 的导入只保留相同 ID 和地址的凭据，新增地址不复用旧 Key',async()=>{
+ const w=await workspace();fill(w);const p=structuredClone(JSON.parse(JSON.stringify(w.preferences)));
+ expect(await w.importApiConfiguration(exportApiSettings(p,{}))).toBe(true);expect(w.credentials.main).toBe('synthetic-key-main');
+ p.profiles[0].apiBaseUrl='https://other.synthetic.example';expect(await w.importApiConfiguration(exportApiSettings(p,{}))).toBe(true);expect(w.credentials.main).toBeUndefined();
+});
 it('从学院重新打开当前存档和切换存档各自恢复输入草稿，不串到新的会话',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('甲',{name:'甲',appearance:'',personality:'',background:''},'');const a=w.sessionId.value;w.input.value='甲的草稿';
  w.open(a);expect(w.input.value).toBe('甲的草稿');await w.create('乙',{name:'乙',appearance:'',personality:'',background:''},'');const b=w.sessionId.value;expect(w.input.value).toBe('');w.input.value='乙的草稿';
@@ -91,7 +117,7 @@ it('建议随正文返回，每轮通过所选记忆接口整理一次，取消�
 });
 it('开启向量时先要求确认，随后记忆编码使用独立模型并存入本地快照',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');
-  w.preferences.vectorEnabled=true;expect(w.apiReady.value).toBe(false);fill(w,'embed');await w.confirmAllApis();expect(w.apiReady.value).toBe(true);
+  w.preferences.vectorEnabled=false;expect(w.preferences.vectorEnabled).toBe(true);delete w.credentials.embed;expect(w.apiReady.value).toBe(false);fill(w,'embed');await w.confirmAllApis();expect(w.apiReady.value).toBe(true);
   await w.saveMemory('需要记住的事件');const embed=vi.spyOn(HttpGateway.prototype,'embed').mockResolvedValue([[1,0.5]]);await w.indexMemories();
   expect(embed.mock.calls[0][0]).toEqual(['需要记住的事件']);expect(embed.mock.calls[0][1].id).toBe('embed');expect(embed.mock.calls[0][2]).toBe('synthetic-key-embed');
   expect(saved?.sessions[0].memories[0].vector?.values).toEqual([1,0.5]);
@@ -128,7 +154,7 @@ it('清除全部 Key 后，自动保存不会把旧凭据写回来',async()=>{
 it('已保存地址或模型与当前配置不同，不自动确认；保存失败不会报告成功',async()=>{
   const first=await workspace();fill(first);await first.confirmAllApis();const previous=structuredClone(privateSaved!);const changed=structuredClone(saved!);changed.preferences.profiles[0].apiBaseUrl='https://changed.example/v1';
   vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(changed);vi.mocked(IndexedDbRepository.prototype.readApiCredentials).mockResolvedValue(previous);vi.mocked(HttpGateway.prototype.configure).mockClear();
-  const reopened=await workspace();expect(reopened.apiReady.value).toBe(false);expect(HttpGateway.prototype.configure).not.toHaveBeenCalled();
+  const reopened=await workspace();expect(reopened.apiReady.value).toBe(false);expect(vi.mocked(HttpGateway.prototype.configure).mock.calls.map(([p])=>p.id)).toEqual(['embed']);
   vi.mocked(IndexedDbRepository.prototype.writeApiCredentials).mockRejectedValue(new Error('本机写入失败'));await reopened.setRememberApiKeys(false);
   expect(reopened.problem.value).toBe('本机写入失败');expect(reopened.notice.value).not.toContain('已删除');
 });

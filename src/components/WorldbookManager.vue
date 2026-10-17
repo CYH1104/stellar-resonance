@@ -40,7 +40,7 @@ function test(){try{const ctx={messages:[...(props.w.active?[props.w.active.open
         <div class="field-grid"><label>搜索条目<input v-model="query" placeholder="名称、关键词或内容" /></label><div class="actions"><button class="primary" :disabled="locked" @click="editEntry()">增加条目</button></div></div>
         <p v-if="!shown.length" class="empty">{{query?'没有匹配的条目':'还没有条目'}}</p>
         <details v-for="e in shown" :key="e.id" class="worldbook-entry" :class="{'worldbook-disabled':!e.enabled}">
-          <summary><span>{{e.constant?'🔵':'🟢'}} {{e.title||'未命名条目'}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length"> · 暂不兼容</span></span></summary>
+          <summary><span>{{e.constant?'🔵':'🟢'}} {{e.title||'未命名条目'}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length" :title="worldEntryWarnings(e).join('、')"> · 含未支持规则，未触发</span></span></summary>
           <div class="worldbook-entry-body"><p v-if="e.keys.length" class="worldbook-keywords">{{e.keys.join('、')}}</p><p class="worldbook-content">{{e.content||'（空条目）'}}</p><div class="actions"><button :disabled="locked" @click="toggle(e)">{{e.enabled?'关闭':'启用'}}</button><button :disabled="locked" @click="editEntry(e)">编辑</button><button :disabled="locked" @click="deletingEntry=e">删除</button></div></div>
         </details>
         <details class="subsection"><summary>测试触发</summary><label>测试输入<textarea v-model="testInput" rows="3" /></label><button @click="test">检查启用的世界书</button><div v-if="preview" role="status"><p v-if="!preview.length">未触发条目</p><ul v-else><li v-for="item in preview" :key="item">{{item}}</li></ul></div></details>
