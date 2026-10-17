@@ -1,10 +1,16 @@
 import {expect,it} from 'vitest';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
-import {storyBlocks} from '../src/domain/storyMarkup';
+import {storyBlocks,displayText} from '../src/domain/storyMarkup';
 import StoryContent from '../src/components/StoryContent.vue';
 import {finishVariant,newSession} from '../src/domain/story';
 const slate='<Slate>\n<Scene_NO>001</Scene_NO>\n<Scene_Title>金属与浮尘</Scene_Title>\n<EN_Title>Stardust Path</EN_Title>\n<Quote>新生踏入中立之地的第一步。</Quote>\n<Location>盖亚之眼 · 学院正门广场</Location>\n<Ti>0578.09.01 · 09:15</Ti>\n</Slate>';
+it('多层换行转义统一展示，代码、URL和Windows路径保持原样',()=>{
+  for(let depth=1;depth<=4;depth++)expect(displayText('一'+'\\'.repeat(depth)+'n二')).toBe('一\n二');
+  const protectedText='C:\\new\\notes https://example.com/\\name `a\\nb`';
+  expect(displayText(protectedText)).toBe(protectedText);
+  expect(storyBlocks('<dream_plot><dream_body>第一段\\\\n第二段</dream_body></dream_plot>')).toEqual([{kind:'text',text:'第一段\n第二段'}]);
+});
 it('预设Slate转换为场景卡数据，前后正文顺序及原字符串保留',()=>{
   const source='前文。\n'+slate+'\n后文。',blocks=storyBlocks(source);
   expect(blocks).toEqual([{kind:'text',text:'前文。\n'},{kind:'slate',scene:{sceneNo:'001',title:'金属与浮尘',englishTitle:'Stardust Path',quote:'新生踏入中立之地的第一步。',location:'盖亚之眼 · 学院正门广场',time:'0578.09.01 · 09:15'}},{kind:'text',text:'\n后文。'}]);expect(source).toContain('<Slate>');

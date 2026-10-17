@@ -21,12 +21,12 @@ const spiritOs=computed(()=>{
       <div><dt>第一性别</dt><dd>{{ actor.primaryGender || '未提供' }}</dd></div>
       <div><dt>精神力／第二性别</dt><dd>{{mentalGenderLabel(actor)?'【'+mentalGenderLabel(actor)+'】':'未提供'}}</dd></div>
       <div class="actor-identities"><dt>身份</dt><dd><template v-if="identityLines(identityFields.identity).length"><span v-for="line in identityLines(identityFields.identity)" :key="line" class="actor-identity-line">【{{line}}】</span></template><template v-else>未提供</template></dd></div>
-      <div v-if="identityFields.ability?.trim()"><dt>异能</dt><dd class="actor-ability">{{identityFields.ability}}</dd></div>
+      <div v-if="identityFields.ability?.trim()"><dt>异能</dt><dd class="actor-ability">{{displayText(identityFields.ability)}}</dd></div>
       <div v-if="!player"><dt>对 user 的好感度</dt><dd>{{actor.affinity??'等待 AI 补全'}}</dd></div>
       <div><dt>精神体</dt><dd>{{actor.spiritAnimal||'未提供'}}</dd></div>
     </dl>
 
-    <div v-if="!player" class="actor-thought"><span>内心想法</span><p>{{ actor.innerThought || '未提供' }}</p></div>
+    <div v-if="!player" class="actor-thought"><span>内心想法</span><p>{{ displayText(actor.innerThought || '未提供') }}</p></div>
     <div class="actor-thought"><span>精神体 OS</span><p>{{spiritOs}}</p></div>
     <details v-if="player" class="affinity-summary" open><summary>已遇到 char 对 user 的好感度（{{characters?.length||0}}）</summary><dl class="actor-fields"><div v-for="char in characters" :key="char.id"><dt>{{char.name}}</dt><dd>{{char.affinity??'等待 AI 补全'}}</dd></div></dl><p v-if="!characters?.length" class="muted">尚未遇到角色</p></details>
   </article>

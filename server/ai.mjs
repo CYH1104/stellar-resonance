@@ -1,6 +1,7 @@
 import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
 import {parseStateJson} from './state-json.mjs';
+import {compatibleState} from './state-compat.mjs';
 import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {separateIdentityAbility} from '../src/domain/identityAbility.ts';
 import {storyWorldInfo,applyWorldInfo} from './worldbooks.mjs';
@@ -98,6 +99,7 @@ export function buildMessages(card, request, privateBooks=[]) {
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
+  if(options.singleStateCall){raw=compatibleState(raw,card,state,options);options={...options,requireDynamicState:false,compatibilityPrepared:true};}
   const allowed=['mvu','presentCharacterIds','player','characters','event','diceEvent','forum','theaters','suggestions'];
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw modelError(502,'INVALID_MODEL_STATE');
   if(Object.keys(raw).some(k=>!allowed.includes(k)))throw modelError(502,'MODEL_STATE_FIELDS_INVALID');
@@ -130,7 +132,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   let player;
   if(raw.mvu!==undefined){const patch={...(raw.player||{})};for(const field of ['identity','spiritThought','mentalPowerLevel'])if(mvuState.player[field]!==state.player[field]){if(patch[field]!==undefined&&patch[field]!==mvuState.player[field])throw modelError(502,'MODEL_STATE_PLAYER_INVALID');patch[field]=mvuState.player[field];}raw={...raw,player:patch};}
   if(raw.player!==undefined){if(!raw.player||typeof raw.player!=='object'||Array.isArray(raw.player)||Object.keys(raw.player).some(k=>!['ability','mentalPowerLevel','name','identity','primaryGender','secondaryGender','innerThought','spiritAnimal','spiritThought','affinity'].includes(k)))throw modelError(502,'MODEL_STATE_PLAYER_INVALID');player={...(raw.player.ability!==undefined?{ability:raw.player.ability}:{}),...(raw.player.mentalPowerLevel!==undefined?{mentalPowerLevel:raw.player.mentalPowerLevel}:{}),...(raw.player.identity!==undefined?{identity:raw.player.identity}:{}),...(state.player.spiritAnimal&&raw.player.spiritThought!==undefined?{spiritThought:raw.player.spiritThought}:{})};}
-  if(text(state.player.spiritAnimal,1500,true)&&(!text(raw.player?.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(raw.player.spiritThought.trim())))throw modelError(502,'PLAYER_SPIRIT_THOUGHT_MISSING');
+  if(!options.compatibilityPrepared&&text(state.player.spiritAnimal,1500,true)&&(!text(raw.player?.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(raw.player.spiritThought.trim())))throw modelError(502,'PLAYER_SPIRIT_THOUGHT_MISSING');
   let theaters;
   try{
     const settings=cleanTheaters(options.theaterSettings),enabled=settings.filter(t=>t.enabled);
@@ -139,7 +141,7 @@ export function normalizeModelState(card, state, raw,options={}) {
       const result={...scene,title:setting.title};
       if(isSpiritDiary(setting)){
         const owners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim());
-        if(scene.diary){const owner=owners.find(c=>c.id===scene.diary.ownerId);if(!owner||!/我|咱/u.test(scene.diary.content))throw modelError(502,'MODEL_STATE_DIARY_INVALID');result.diary={...scene.diary,ownerName:owner.name,spiritAnimal:owner.spiritAnimal};result.content=scene.diary.content;}
+        if(scene.diary){const owner=owners.find(c=>c.id===scene.diary.ownerId);if(!owner||!options.compatibilityPrepared&&!/我|咱/u.test(scene.diary.content))throw modelError(502,'MODEL_STATE_DIARY_INVALID');result.diary={...scene.diary,ownerName:owner.name,spiritAnimal:owner.spiritAnimal};result.content=scene.diary.content;}
         else if(options.requireDynamicState&&owners.length)throw modelError(502,'MODEL_STATE_DIARY_INVALID');
       }else if(scene.diary)throw modelError(502,'MODEL_STATE_DIARY_INVALID');
       if(scene.kind==='fanfic'){
@@ -172,7 +174,10 @@ export class StoryDecoder {
   push(chunk){
     if(typeof chunk!=='string')throw modelError(502,'INVALID_MODEL_RESPONSE');
     this.raw+=chunk;if(this.raw.length>400000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');
-    if(this.inState){this.control+=chunk;this.cleanControl();return '';}
+    const visible=this.decode(chunk);this.story+=visible;this.emitted+=visible.length;if(this.emitted>200000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');return visible;
+  }
+  decode(chunk){
+    if(this.inState){this.control+=chunk;const rest=this.cleanControl();return rest?this.decode(rest):'';}
     if(this.pending&&[STATE_OPEN,RESPONSE_END,MVU_OPEN].some(token=>token.startsWith(this.pending))){
       const combined=this.pending+chunk;
       if(chunk.startsWith('<')||this.pending.length>=3&&![STATE_OPEN,RESPONSE_END,MVU_OPEN].some(token=>token.startsWith(combined)||combined.startsWith(token)))this.pending='';
@@ -186,15 +191,16 @@ export class StoryDecoder {
         // A continuation may restart a marker that the previous response cut in half.
         for(const token of [STATE_OPEN,RESPONSE_END,MVU_OPEN])for(let n=token.length-1;n>=3;n--)if(prose.endsWith(token.slice(0,n))){prose=prose.slice(0,-n);break;}
         visible+=prose;
-        if(marker===open){this.control=this.pending.slice(marker+(marker===mvu?0:STATE_OPEN.length));this.pending='';this.inState=true;this.cleanControl();break;}
+        if(marker===open){this.control=this.pending.slice(marker+(marker===mvu?0:STATE_OPEN.length));this.pending='';this.inState=true;const rest=this.cleanControl();if(rest)visible+=this.decode(rest);break;}
         this.pending=this.pending.slice(marker+RESPONSE_END.length);continue;
       }
       let keep=0;for(const token of [STATE_OPEN,RESPONSE_END,MVU_OPEN])for(let n=1;n<token.length;n++)if(this.pending.endsWith(token.slice(0,n)))keep=Math.max(keep,n);
       visible+=keep?this.pending.slice(0,-keep):this.pending;this.pending=keep?this.pending.slice(-keep):'';break;
     }
-    this.story+=visible;this.emitted+=visible.length;if(this.emitted>200000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');return visible;
+    return visible;
   }
   cleanControl(){
+    if(this.control.startsWith(MVU_OPEN)){const close=this.control.indexOf('</UpdateVariable>');if(close<0){if(this.control.length>100000)throw modelError(502,'MODEL_STATE_TOO_LARGE');return;}const end=close+'</UpdateVariable>'.length,rest=this.control.slice(end);this.mvuControl+=this.control.slice(0,end);this.control='';this.inState=false;return rest;}
     // If a model restarts a truncated JSON block, only its final complete block is used.
     const restart=this.control.lastIndexOf(STATE_OPEN);if(restart>=0){const prefix=this.control.slice(0,restart);if(prefix.includes(MVU_OPEN))this.mvuControl+=prefix;this.control=this.control.slice(restart+STATE_OPEN.length);}
     const close=this.control.indexOf(STATE_CLOSE);
@@ -207,7 +213,7 @@ export class StoryDecoder {
     const end=this.control.indexOf(STATE_CLOSE);if(end<0)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     let {value:raw,info}=parseStateJson(this.control.slice(0,end));this.jsonInfo=info;
     let tailText=this.control.slice(end+STATE_CLOSE.length);
-    try{const markup=this.mvuControl+tailText;const ops=parseMvuMessage(markup);if(ops.length)raw={...raw,mvu:ops};if((markup.match(/<UpdateVariable>/g)||[]).length!==(markup.match(/<\/UpdateVariable>/g)||[]).length)throw Error();}catch{throw modelError(502,'MODEL_STATE_JSON_INVALID');}
+    try{const markup=this.mvuControl+tailText;const ops=parseMvuMessage(markup);if(ops.length)raw={...raw,mvu:ops};if((markup.match(/<UpdateVariable>/g)||[]).length!==(markup.match(/<\/UpdateVariable>/g)||[]).length)throw Error();}catch{if(!options?.singleStateCall)throw modelError(502,'MODEL_STATE_JSON_INVALID');options.validationWarnings?.push('STATE_MVU_SKIPPED');}
     const outcome=normalizeModelState(card,state,scrubModelData(raw),options);
     const tail=tailText.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/g,'').trim();
     if(tail!==RESPONSE_END){if(RESPONSE_END.startsWith(tail))throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');throw modelError(502,'INVALID_COMPLETION_MARKER');}

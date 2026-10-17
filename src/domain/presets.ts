@@ -53,6 +53,10 @@ export function importTavernPreset(text:string,filename='导入预设'){
   }else throw new Error('文件中没有酒馆 prompts 条目或可导入的文字预设');
   if(!prompts.length)throw new Error('预设的 prompts 列表为空，没有可导入的提示词');
   const importedGroups=importPromptGroups(raw.extensions?.baibaiToolkit?.presetPromptGroups);
+  const injectionOrder=(p:any)=>typeof p?.injection_order==='number'&&Number.isFinite(p.injection_order)?p.injection_order:100;
+  const compactOrder=prompts.some((p:any)=>!Number.isInteger(injectionOrder(p))||injectionOrder(p)<0||injectionOrder(p)>10000);
+  const orderRanks=[...new Set<number>(prompts.map(injectionOrder))].sort((a,b)=>a-b);
+  if(compactOrder)warnings.push('超范围的酒馆注入顺序已按相对大小压缩，原先后关系保留。');
   const identifiers=new Set<string>();let modelRoleCount=0;
   const entries=prompts.map((p:any,i:number)=>{
     if(!p||typeof p!=='object')throw new Error('酒馆提示词条目格式不正确');
@@ -63,7 +67,9 @@ export function importTavernPreset(text:string,filename='导入预设'){
     // Gemini-style model turns have the same message role as assistant turns.
     const role=p.role==='model'?'assistant':p.role||'system';
     if(p.role==='model')modelRoleCount++;
-    const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:p.injection_depth??4,order:p.injection_order??100,...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
+    const depth=Number(p.injection_depth??4),safeDepth=Number.isFinite(depth)?Math.max(0,Math.min(10000,Math.trunc(depth))):4;
+    if(p.injection_depth!==undefined&&p.injection_depth!==safeDepth)warnings.push('条目“'+(p.name||identifier)+'”的注入深度已转换为支持的范围。');
+    const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:safeDepth,order:compactOrder?orderRanks.indexOf(injectionOrder(p)):injectionOrder(p),...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
     if(importedGroups.has(identifier))item.group=importedGroups.get(identifier);
     if(hasOrder&&!record)item.included=false;return item;
   });
@@ -73,7 +79,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
   const parameters:Partial<Profile>={};
   for(const [source,target,min,max] of [['temperature','temperature',0,2],['openai_max_tokens','maxTokens',1,32000],['top_p','topP',0,1],['frequency_penalty','frequencyPenalty',-2,2],['presence_penalty','presencePenalty',-2,2]] as const){if(raw[source]!==undefined){if(typeof raw[source]==='number'&&Number.isFinite(raw[source])&&raw[source]>=min&&raw[source]<=max&&(target!=='maxTokens'||Number.isInteger(raw[source])))parameters[target]=raw[source];else warnings.push(`${source} 超出支持范围，未应用。`);}}
   if(entries.some(p=>p.marker))warnings.push('角色、世界资料和聊天历史占位条目由服务器统一提供；不能借此移除服务器必需设定。');
-  if(entries.some(p=>/\{\{(?!(?:user|char|persona|charIfNotGroup)\}\})/i.test(p.content)))warnings.push('支持 {{user}}、{{char}}、{{persona}}、{{charIfNotGroup}} 和旧版姓名占位符；其他复杂宏和脚本不会执行。');
+  if(entries.some(p=>/\{\{(?!(?:user|char|persona|charIfNotGroup)\}\})/i.test(p.content)))warnings.push('支持姓名／人设、setvar/getvar/addvar 文本变量、random、lastUserMessage、换行与注释宏；其他扩展宏与脚本不执行。变量仅在本次请求内生效。');
   if(raw.extensions)warnings.push('支持导入提示词分组的名称、归属、开关与折叠状态；其余扩展、脚本和正则不导入、不执行。');
   const special=['top_k','top_a','min_p','repetition_penalty','seed','reasoning_effort','openai_max_context','continue_prefill','assistant_prefill','squash_system_messages'].filter(key=>raw[key]!==undefined);if(special.length)warnings.push(`供应商专属或尚未接入的设置未执行：${special.join('、')}。`);
   const accepted=['name','prompts','prompt_order','content','enabled','system_prompt','jailbreak_prompt','temperature','openai_max_tokens','top_p','frequency_penalty','presence_penalty'];

@@ -149,3 +149,9 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 
 .world-entry-drag{cursor:grab;touch-action:none;user-select:none}.worldbook-entry.drop-before{border-top:2px solid var(--color-accent)}.worldbook-entry.drop-after{border-bottom:2px solid var(--color-accent)}.history-page-link{display:block;width:100%;text-align:center;font-size:12px;margin:10px 0;color:var(--color-muted)}
+#academy-workspace .player-message{margin-left:0;margin-right:0;text-align:left}
+#academy-workspace .player-message>header{justify-content:flex-start;align-items:center}
+#academy-workspace .player-message>header .chat-user-avatar{order:1}
+#academy-workspace .player-message>header strong{order:2}
+#academy-workspace .player-message>header .tag{order:3}
+#academy-workspace .player-message>p{text-align:left;margin-left:0;margin-right:0}
