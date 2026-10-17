@@ -2,12 +2,20 @@ import {expect,it} from 'vitest';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import StatusBar from '../src/components/StatusBar.vue';
+import ActorCard from '../src/components/ActorCard.vue';
 import type {ViewModel} from '../src/app/useWorkspace';
 import type {Outcome,Session,Variant} from '../src/domain/contracts';
 import {backup,defaults,encounteredCharacters,finishVariant,newSession,parseBackup,selectVariant,stateAt,truncate} from '../src/domain/story';
 function game(){const s=newSession('状态测试',{name:'玩家',identity:'学院新生',primaryGender:'女',secondaryGender:'Beta',appearance:'',personality:'',background:'',spiritAnimal:'白猫'},'');s.initial={player:{id:'player',name:'玩家',present:true,primaryGender:'女',secondaryGender:'Beta',spiritAnimal:'白猫',spiritThought:'想晒太阳',innerThought:'玩家不该显示的想法'},characters:[{id:'one',name:'相遇甲',present:false},{id:'two',name:'未见乙',present:false,affinity:99}]};return s;}
 function turn(s:Session,id:string,outcome:Outcome){const v:Variant={id:id+'-a',text:'剧情',status:'incomplete',createdAt:''};s.turns.push({id,input:'行动',variants:[v],selected:0,...(outcome.diceEvent?{dice:{value:outcome.diceEvent.direction==='negative'?1:outcome.diceEvent.direction==='positive'?80:50,grade:outcome.diceEvent.direction==='negative'?'大凶':outcome.diceEvent.direction==='positive'?'顺遂':'平平',rulesVersion:'d100-v1' as const}}:{})});finishVariant(s,s.turns.length-1,v,outcome);return v;}
 function render(s:Session){const w={state:stateAt(s),active:s,preferences:{mode:'server'},localService:{runtime:'local-card'}} as unknown as ViewModel;return renderToString(createSSRApp(StatusBar,{w}));}
+it('等级和 ABO 合并为一项，user 与 char 多重身份分别换行并转义内容',async()=>{
+ for(const player of [true,false]){
+  const actor={id:player?'player':'one',name:'名字',present:true,mentalPowerLevel:'A+',secondaryGender:'Alpha',identity:'领航者系 四年级首席\n学生会 会长'};
+  const html=await renderToString(createSSRApp(ActorCard,{actor,player}));expect(html).toContain('【A+级 Alpha】');expect(html).toContain('【领航者系 四年级首席】');expect(html).toContain('【学生会 会长】');expect(html.match(/class="actor-identity-line"/g)).toHaveLength(2);
+ }
+ const html=await renderToString(createSSRApp(ActorCard,{actor:{id:'one',name:'名字',present:true,mentalPowerLevel:'A+级',secondaryGender:'Alpha',identity:'<img src=x onerror=alert(1)>'}}));expect(html).not.toContain('级级');expect(html).not.toContain('<img src=x');
+});
 it('user 显示身份和精神体 OS，不显示自己的内心想法或未遇到角色好感度',async()=>{
   const s=game();turn(s,'one',{event:'初见',characters:[{id:'one',present:true,innerThought:'角色自己的想法',affinity:12}]});turn(s,'two',{event:'暂别',characters:[{id:'one',present:false,affinity:15}]});
   const html=await render(s);expect(html).toContain('学院新生');expect(html).toContain('想晒太阳');expect(html).toContain('相遇甲');expect(html).toContain('15');expect(html).not.toContain('未见乙');expect(html).not.toContain('玩家不该显示的想法');expect(html).not.toContain('内心想法');
@@ -35,11 +43,11 @@ it('精神体 OS 开局等待 AI，每轮展示 AI 更新，回退不保留后�
   truncate(s,0);expect(await render(s)).toContain('等待 AI 随剧情生成');delete s.persona.spiritAnimal;expect(await render(s)).toContain('请先在人设中填写精神体');
 });
 
-it('精神力等级使用回合状态变量，保存、切稿和回退一致，等级排在第二性别之前',async()=>{
+it('精神力等级使用回合状态变量，保存、切稿和回退一致，与第二性别合并展示',async()=>{
  const s=game();s.persona.mentalPowerLevel='A级';s.initial.characters[0].mentalPowerLevel='S级';
  expect(stateAt(s).player.mentalPowerLevel).toBe('A级');
  turn(s,'first',{event:'正式评定',player:{mentalPowerLevel:'S级'},characters:[{id:'one',present:true,mentalPowerLevel:'SS级',affinity:12}]});
- const html=await render(s);expect(html).toContain('SS级');expect(html.indexOf('精神力等级')).toBeLessThan(html.indexOf('第二性别'));expect(html).not.toContain('拖动卡片');expect(html).not.toMatch(/第\s*1\s*轮/);
+ const html=await render(s);expect(html).toContain('SS级');expect(html).toContain('【S级 Beta】');expect(html).not.toContain('<dt>精神力等级</dt>');expect(html).not.toContain('<dt>第二性别</dt>');expect(html).not.toContain('拖动卡片');expect(html).not.toMatch(/第\s*1\s*轮/);
  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.mentalPowerLevel).toBe('S级');
  const alternate:Variant={id:'alt',text:'没有重新评定',status:'incomplete',createdAt:''};restored.turns[0].variants.push(alternate);finishVariant(restored,0,alternate,{event:'普通交流'});selectVariant(restored,0,1);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
  selectVariant(restored,0,0);expect(stateAt(restored).characters[0].mentalPowerLevel).toBe('SS级');truncate(restored,0);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');

@@ -123,3 +123,12 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 #academy-workspace .composer-more{white-space:nowrap;word-break:normal;overflow-wrap:normal;min-width:28px}#academy-workspace .message-operation-footer .composer-more{padding:0!important;width:32px}
 
+
+#academy-workspace .worldbook-page{padding:22px 26px;max-width:1300px;margin:auto}
+#academy-workspace .worldbook-page h1{font-size:23px}#academy-workspace .worldbook-page .page-heading{padding-bottom:16px;border-bottom:1px solid var(--color-border);margin-bottom:20px}
+#academy-workspace .worldbook-page .worldbook-toolbar{padding:12px 0;margin-bottom:14px;border-bottom:1px solid var(--color-border)}
+#academy-workspace .worldbook-page .worldbook-upload{border:0;padding:5px 0;color:var(--color-muted);font-size:13px}#academy-workspace .worldbook-page .worldbook-upload:hover{color:var(--color-accent)}
+#academy-workspace .worldbook-page .worldbook-entry>summary{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;align-items:center}
+#academy-workspace .worldbook-page .worldbook-entry-meta{float:none;margin:0;font-size:11px}
+#academy-workspace .worldbook-page .worldbook-entry-body{padding-top:12px}#academy-workspace .spirit-persona-fields{grid-column:1/-1;margin:14px 0;padding:12px 16px;background:var(--color-surface-soft)}
+@media(max-width:760px){#academy-workspace .worldbook-page{padding:16px}#academy-workspace .worldbook-page .worldbook-entry>summary{flex-wrap:wrap}}

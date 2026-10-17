@@ -1,3 +1,4 @@
+import {loadPrivateWorldbooks} from './worldbooks.mjs';
 import {memoryMessages,parseMemoryResult} from './memory.mjs';
 import {createEditorStore,cardWithEditor,publicCards} from './editor-store.mjs';
 import {readPersonaExtra} from '../src/domain/personaExtras.ts';
@@ -7,7 +8,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolve, extname, sep } from 'node:path';
 import { buildMessages, buildPersonaMessages, parsePersonaResult, completionChunks, endpoint, modelError, openCompletion } from './ai.mjs';
 import { normalizePersona } from '../src/domain/persona.ts';
-import {publicActor,mentalPowerLevelOf} from './card.mjs';
+import {publicActor,mentalPowerLevelOf,identityOf,abilityOf} from './card.mjs';
 import {fetchModelList} from './models.mjs';
 import {requestEmbeddings} from './embeddings.mjs';
 import {continuedMessages,repairedMessages,streamStory} from './story-stream.mjs';
@@ -25,6 +26,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
   const source=card||await loadCard(projectRoot);
+  const privateBooks=await loadPrivateWorldbooks(projectRoot);
   const baseSource=source;
   const editorStore=card?null:createEditorStore(projectRoot,source);
   const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
@@ -50,6 +52,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     const level=readPersonaExtra(data.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(level)player.mentalPowerLevel=level;
     if(data.persona.spiritAnimal)player.spiritAnimal=data.persona.spiritAnimal;
     if(data.persona.identity)player.identity=data.persona.identity;
+    if(data.persona.ability)player.ability=data.persona.ability;
     if(data.persona.mentalPowerLevel)player.mentalPowerLevel=data.persona.mentalPowerLevel;
     for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
     return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
@@ -67,7 +70,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const account=accounts?.user(accountToken);
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
       const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript']};
       if(authFiles[path]&&['GET','HEAD'].includes(request.method)){
         if(path==='/login'&&(!accounts||account)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
@@ -98,8 +101,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}
       if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:editorial?.data.map||{main:'',places:{}}});return;}
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.19.0',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
-      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender).map(c=>({id:c.id,primaryGender:c.primaryGender,...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
@@ -144,7 +147,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           let partial='',stateOnly=false;
           if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>!['partial','mode'].includes(k))||data.continuation.mode!==undefined&&data.continuation.mode!=='state'||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;stateOnly=data.continuation.mode==='state';}
-          const selected=connection(current,data),{messages,state,theaterSettings,dice,card:generationCard}=buildMessages(source,data);
+          const selected=connection(current,data),{messages,state,theaterSettings,dice,card:generationCard}=buildMessages(source,data,privateBooks);
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);

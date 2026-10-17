@@ -3,6 +3,7 @@ import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {storyBlocks} from '../src/domain/storyMarkup';
 import StoryContent from '../src/components/StoryContent.vue';
+import {finishVariant,newSession} from '../src/domain/story';
 const slate='<Slate>\n<Scene_NO>001</Scene_NO>\n<Scene_Title>金属与浮尘</Scene_Title>\n<EN_Title>Stardust Path</EN_Title>\n<Quote>新生踏入中立之地的第一步。</Quote>\n<Location>盖亚之眼 · 学院正门广场</Location>\n<Ti>0578.09.01 · 09:15</Ti>\n</Slate>';
 it('预设Slate转换为场景卡数据，前后正文顺序及原字符串保留',()=>{
   const source='前文。\n'+slate+'\n后文。',blocks=storyBlocks(source);
@@ -21,4 +22,20 @@ it('真实渲染显示排版，思维链不展示，模型HTML仅作为文字而
   const text='<think>synthetic-secret'+slate+'</think>'+slate+'正文<img src=x onerror="alert(1)">';
   const html=await renderToString(createSSRApp(StoryContent,{text}));expect(html).toContain('class="scene-slate"');expect(html).toContain('金属与浮尘');expect(html).toContain('学院正门广场');expect(html).not.toContain('synthetic-secret');expect(html).not.toContain('&lt;Scene_NO&gt;');expect(html).not.toContain('<img');expect(html).toContain('&lt;img');
   const injected=await renderToString(createSSRApp(StoryContent,{text:'<Slate><Scene_Title><script>alert(1)</script></Scene_Title></Slate>'}));expect(injected).not.toContain('<script>');expect(injected).toContain('&lt;script&gt;');
+});
+it('顶栏、DRAFTING 与 content 只去包装，场景卡和正文保留，旧回复同样可显示',async()=>{
+ const text='<顶栏>'+slate+'</顶栏>\n<DRAFTING>\n<content>你走进报到大厅。<think>隐藏推理</think>\n楚昭南看向你。</content>\n</DRAFTING>';
+ const html=await renderToString(createSSRApp(StoryContent,{text}));
+ for(const tag of ['&lt;顶栏','&lt;/顶栏','&lt;DRAFTING','&lt;content','隐藏推理'])expect(html).not.toContain(tag);
+ expect(html).toContain('你走进报到大厅。');expect(html).toContain('楚昭南看向你。');expect(html).toContain('class="scene-slate"');
+ const s=newSession('存档',{name:'玩家',appearance:'',background:'',personality:''},'');const v={id:'v',text,status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'报到'});expect(v.text).not.toContain('<DRAFTING>');expect(v.text).toContain('你走进报到大厅。');
+});
+it('分片未闭合的包装标签暂不闪出，未知 HTML 仍是不可执行文字',async()=>{
+ for(const tag of ['<DRAFTING>','</DRAFTING>','<content>','</content>','<顶栏>','</顶栏>'])for(let i=1;i<tag.length;i++)expect(storyBlocks('正文'+tag.slice(0,i),true)).toEqual([{kind:'text',text:'正文'}]);
+ const html=await renderToString(createSSRApp(StoryContent,{text:'<content><img src=x onerror=alert(1)>正文</content>'}));expect(html).not.toContain('<img');expect(html).toContain('&lt;img');expect(html).toContain('正文');
+});
+it('截图中的 DRAFTINKG 拼写变体及关闭标签不再显示，逐片输出也不会闪出',async()=>{
+ const text='<DRAFTINKG><content>完整正文。</content></DRAFTINKG>';
+ const html=await renderToString(createSSRApp(StoryContent,{text}));expect(html).toContain('完整正文。');expect(html).not.toContain('DRAFTINKG');
+ for(const tag of ['<DRAFTINKG>','</DRAFTINKG>'])for(let i=1;i<tag.length;i++)expect(storyBlocks('正文'+tag.slice(0,i),true)).toEqual([{kind:'text',text:'正文'}]);
 });

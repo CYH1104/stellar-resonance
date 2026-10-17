@@ -1,4 +1,5 @@
 import {normalizeMemoryResult} from '../src/domain/memories';
+import {newWorldEntry} from '../src/domain/worldbooks';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {effectScope,nextTick} from 'vue';
 import {useWorkspace} from '../src/app/useWorkspace';
@@ -318,4 +319,26 @@ it('旧记忆补记读取完整原问答且按回合传递约定，打开存档�
 it('补修状态未改变记忆事实时不重复整理已保存的记忆',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修',{name:'玩家',appearance:'',personality:'',background:''},'');const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'固定正文。'};yield{type:'done',outcome:{event:'同一事件',characters:[]}};});await w.generate('行动');const id=w.memories.value[0].id;
  gen.mockImplementation(async function*(){yield{type:'done',outcome:{event:'同一事件',characters:[]}};});await w.repairState(0);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1);expect(w.memories.value).toHaveLength(1);expect(w.memories.value[0].id).toBe(id);expect(w.memories.value[0].status).toBe('ready');
+});
+it('补全替换旧的空群聊，并保留本轮已有的有效角色状态',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('修复群聊',{name:'玩家',appearance:'',background:'',personality:''},'');
+ const s=w.active.value!,v={id:'v',text:'已经完成的正文。',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});
+ finishVariant(s,0,v,{event:'原事件',characters:[{id:'guide',present:true,affinity:42,identity:'学生会 会长'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'旧说明，没有群聊消息'}]});
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'done',outcome:{event:'补齐',characters:[{id:'guide',present:true}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'新群聊消息'}]}]}};});
+ await w.repairState(0);expect(w.problem.value).toBe('');expect(w.theaters.value[0].messages?.[0].content).toBe('新群聊消息');expect(w.state.value?.characters[0].affinity).toBe(42);expect(w.state.value?.characters[0].identity).toBe('学生会 会长');expect(v.text).toBe('已经完成的正文。');
+});
+
+it('世界书导入绑定新游戏、每轮仅注入命中条目且不增加额外模型调用',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();
+ w.importUserWorldbook(JSON.stringify({entries:{0:{key:['学院'],content:'这是测试学院的公开补充。'},1:{key:['别的地点'],content:'本轮不该发送'}}}),'用户世界书.json');
+ expect(w.preferences.worldbooks).toHaveLength(1);expect(w.boundWorldbookIds.value).toHaveLength(1);
+ await w.create('世界书测试',{name:'玩家',appearance:'',personality:'',background:''},'');expect(w.active.value?.worldbookIds).toEqual(w.preferences.defaultWorldbookIds);
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'你走进学院。'};yield{type:'done',outcome:{event:'进入学院',characters:[]}};});
+ await w.generate('走进学院');expect(gen).toHaveBeenCalledTimes(1);expect(gen.mock.calls[0][0].worldInfo?.map(e=>e.content)).toEqual(['这是测试学院的公开补充。']);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1);
+ w.bindWorldbook(w.worldbooks.value[0].id,false);await w.generate('观察学院');expect(gen.mock.calls[1][0].worldInfo).toEqual([]);expect(w.preferences.defaultWorldbookIds).toHaveLength(1);
+});
+it('条目验证失败不会清除错误或覆盖原书，删除书时解除所有绑定',async()=>{
+ const w=await workspace();w.addWorldbook();const b=w.worldbooks.value[0];
+ w.saveWorldEntry(b.id,{...newWorldEntry('invalid'),depth:-1});expect(w.problem.value).toContain('世界书');expect(w.worldbooks.value[0].entries).toHaveLength(0);
+ w.removeWorldbook(b.id);expect(w.worldbooks.value).toEqual([]);expect(w.boundWorldbookIds.value).toEqual([]);
 });

@@ -1,8 +1,14 @@
-import {stripReasoning} from './reasoning';
+import {stripReasoning} from './reasoning.ts';
 
 export interface SceneSlate {sceneNo?:string;title?:string;englishTitle?:string;quote?:string;location?:string;time?:string}
 export type StoryBlock={kind:'text';text:string}|{kind:'slate';scene:SceneSlate}|{kind:'pending'};
 const fields:Record<string,keyof SceneSlate>={scene_no:'sceneNo',scene_title:'title',en_title:'englishTitle',quote:'quote',location:'location',ti:'time'};
+const wrappers=['顶栏','DRAFTING','DRAFTINKG','content'];
+export function unwrapStoryTags(source:string,streaming=false):string{
+  let text=source.replace(/<\/?(?:顶栏|DRAFTIN(?:K)?G|content)\s*>/gi,'');
+  if(streaming){const at=text.lastIndexOf('<'),tail=text.slice(at).toLowerCase();if(at>=0&&wrappers.some(name=>['<'+name.toLowerCase()+'>','</'+name.toLowerCase()+'>'].some(tag=>tag.startsWith(tail))))text=text.slice(0,at);}
+  return text;
+}
 
 function sceneFrom(source:string):SceneSlate|undefined{
   if(source.length>16000)return;
@@ -18,7 +24,7 @@ function sceneFrom(source:string):SceneSlate|undefined{
 
 /** Recognize a small display vocabulary; model output is never interpreted as executable HTML. */
 export function storyBlocks(source:string,streaming=false):StoryBlock[]{
-  const text=stripReasoning(source),blocks:StoryBlock[]=[];let offset=0;
+  const text=unwrapStoryTags(stripReasoning(source),streaming),blocks:StoryBlock[]=[];let offset=0;
   const append=(value:string)=>{if(value.trim())blocks.push({kind:'text',text:value});};
   const open=/<Slate\s*>/ig;let match:RegExpExecArray|null;
   while((match=open.exec(text))){

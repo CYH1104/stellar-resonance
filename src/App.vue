@@ -42,6 +42,7 @@ import type {Persona} from './domain/contracts';
 import {setMasterPersona,masterPersonaKey} from './domain/masterPersona';
 
 import PresetManager from './components/PresetManager.vue';
+import WorldbookManager from './components/WorldbookManager.vue';
 
 import {restorePersonaMedia} from './storage/personaMedia';
 
@@ -180,7 +181,7 @@ async function terminalNavigate(event:Event){
   if(detail.entry==='continue'){resume();return;}
 
 
-  const panels:Panel[]=['story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves'];
+  const panels:Panel[]=['story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves','worldbooks'];
 
   if(panels.includes(detail.panel)){
 
@@ -229,6 +230,8 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
   { id: 'presets', label: '预设管理', no: '08' },
 
   { id: 'saves', label: '存档与导出', no: '09' },
+
+  { id: 'worldbooks', label: '世界书', no: '10' },
 
   { id: 'game-settings', label: '小剧场设置', no: '11' }
 
@@ -319,6 +322,8 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
             <SettingsView v-else-if="w.panel==='settings'" :w="w" @saved="savedFirstApi" />
 
             <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div><button @click="w.save()">保存配置</button></header><PresetManager :w="w" /></section>
+
+            <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="w" />
 
             <SavesView v-else-if="w.panel==='saves'" :w="w" />
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DeveloperDiagnostics from './DeveloperDiagnostics.vue';
 import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Profile} from '../domain/contracts';
@@ -49,7 +50,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
     <p class="rail-note">开启后，每条玩家评论额外调用论坛 AI 回复接口一次，随机由一名 char 或 NPC 回复，可随时停止；关闭时只保存你的评论，不调用 AI。论坛回复不改变主线状态。</p>
   </section>
   <section class="api-extra"><h3>本机保存</h3><label class="toggle"><input :checked="w.rememberApiKeys" type="checkbox" :disabled="disabled" @change="w.setRememberApiKeys(($event.target as HTMLInputElement).checked)" />在此浏览器保存 Key，下次自动恢复</label><button type="button" :disabled="disabled" @click="w.clearApiKeys()">清除本机全部 Key</button></section>
-  <details class="api-extra"><summary>本机诊断与报错{{w.problem||w.apiIssues?.length?'（有待处理项目）':''}}</summary><p class="rail-note">本机后台：{{w.localService?'已连接':'未连接，请使用“启动预览.bat”启动'}}</p><p v-if="w.problem" class="model-list-error" role="alert">{{w.problem}}</p><ul v-if="w.apiIssues?.length" class="plain-list"><li v-for="(issue,i) in w.apiIssues" :key="i">{{issue}}</li></ul><p v-else-if="!w.problem" class="rail-note">当前没有报错。</p><button v-if="w.problem" type="button" @click="w.problem=''">清除报错提示</button></details>
+  <details class="api-extra"><summary>本机诊断与报错{{w.problem||w.apiIssues?.length?'（有待处理项目）':''}}</summary><p class="rail-note">本机后台：{{w.localService?'已连接':'未连接，请使用“启动预览.bat”启动'}}</p><p v-if="w.problem" class="model-list-error" role="alert">{{w.problem}}</p><ul v-if="w.apiIssues?.length" class="plain-list"><li v-for="(issue,i) in w.apiIssues" :key="i">{{issue}}</li></ul><p v-else-if="!w.problem" class="rail-note">当前没有报错。</p><button v-if="w.problem" type="button" @click="w.problem=''">清除报错提示</button><DeveloperDiagnostics /></details>
   <div class="actions api-ready-actions"><span class="muted">{{w.apiReady?'API 已就绪':'请保存必需的 API 后进入剧情'}}</span><button type="button" :disabled="!w.apiReady||disabled" @click="w.enterStory()">进入剧情</button></div>
   <DialogShell v-if="draft" title="增加副 API" @close="closeDraft"><ApiProfileEditor :w="w" :p="draft" title="副 API" help="填写并保存后，这个接口才会加入副 API 列表。取消不会添加。" :save-profile="saveNew" /><button type="button" :disabled="adding" @click="closeDraft">取消</button></DialogShell>
   <DialogShell v-if="removeOpen&&auxiliary" title="删除副 API" @close="removeOpen=false"><p>删除“{{auxiliary.name}}”？使用它的功能将恢复主 API。</p><div class="actions"><button @click="removeOpen=false">取消</button><button class="danger" :disabled="disabled" @click="remove">删除</button></div></DialogShell>

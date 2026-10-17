@@ -8,3 +8,9 @@ it('作者固定性别补入同一世界卡的旧存档和旧补丁，不改变�
  expect(stateAt(s).characters.map(c=>c.primaryGender)).toEqual(['女','男']);expect(stateAt(s).characters[0].affinity).toBe(8);expect(s.turns[0].variants[0].text).toBe('原正文');expect(JSON.stringify(s.persona)).toBe(persona);
  const before=JSON.stringify(s);syncCharacterFacts(s,'another-world',[{id:'chu',primaryGender:'男'}]);expect(JSON.stringify(s)).toBe(before);
 });
+it('同源旧 char 补入身份，当前回合任职覆盖初始身份，回退和玩家人设不被改写',()=>{
+ const s=newSession('旧存档',{name:'user',identity:'我自己的身份',appearance:'',personality:'',background:''},'');s.sourceDataset='same';s.initial.characters=[{id:'one',name:'角色',present:false}];
+ s.turns.push({id:'t',input:'行动',selected:0,variants:[{id:'v',text:'原正文',status:'complete',createdAt:'',outcome:{event:'任职',characters:[{id:'one',present:true,identity:'学生会 会长'}]}}]});
+ syncCharacterFacts(s,'same',[{id:'one',primaryGender:'男',identity:'领航者系 四年级首席'}]);expect(stateAt(s).characters[0].identity).toBe('学生会 会长');expect(s.initial.characters[0].identity).toBe('领航者系 四年级首席');expect(s.persona.identity).toBe('我自己的身份');
+ syncCharacterFacts(s,'same',[{id:'one',primaryGender:'男',identity:'不能覆盖已有初始值'}]);expect(s.initial.characters[0].identity).toBe('领航者系 四年级首席');
+});

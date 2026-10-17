@@ -17,7 +17,7 @@ try {
   let previous;try{previous=JSON.parse(await readFile(resolve(local,'runtime.json'),'utf8'));}catch{}
   let info=previous?await health(previous.port):undefined;
   if(!info){const running=await health(8807);if(running?.projectId===projectId){info=running;previous={...running,port:8807};}}
-  if(!(info?.app==='stellar-resonance-local'&&info.projectId===projectId&&info.instance===previous.instance&&info.version==='0.19.0')){
+  if(!(info?.app==='stellar-resonance-local'&&info.projectId===projectId&&info.instance===previous.instance&&info.version==='0.20.5')){
     let port;for(let candidate=8807;candidate<=8814;candidate++){if(await available(candidate)){port=candidate;break;}}
     if(!port)throw new Error('No local port available (8807-8814). Close an old preview.');
     const log=await open(resolve(local,'server.log'),'a');

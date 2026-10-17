@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import type {Persona} from '../domain/contracts';
+import SpiritPersonaFields from './SpiritPersonaFields.vue';
 import ChoiceChips from './ChoiceChips.vue';
 import {readPersonaExtra,writePersonaExtra,personaNotes,writePersonaNotes,type ExtraLabel} from '../domain/personaExtras';
 const model=defineModel<Persona>({required:true});
@@ -18,8 +19,10 @@ const departments=['领航者 · 星舰指挥与战略系','破军 · 机甲驾�
         <div class="file-field"><label>第二性别<input v-model="model.secondaryGender" maxlength="100" list="secondary-genders" placeholder="可留空，也可自行填写" /></label><ChoiceChips v-model="model.secondaryGender" :options="['aboe','Alpha','Beta','Omega','其他']" label="第二性别快捷选项" /></div>
         <label>信息素<input v-model="pheromone" maxlength="100" placeholder="例如：冷杉混雪松" /></label>
         <div class="file-field"><label>精神力等级<input v-model="spiritLevel" maxlength="100" placeholder="S / A / B / C / D" /></label><ChoiceChips v-model="spiritLevel" :options="['S','A','B','C','D']" label="精神力等级快捷选项" /></div>
+        <label class="file-wide">异能<textarea v-model="model.ability" rows="2" maxlength="2000" /></label>
         <div class="file-field file-wide"><label>精神体<textarea v-model="model.spiritAnimal" rows="2" maxlength="1500" placeholder="点击下方选项，或自行填写种类、外形、特征" /></label><ChoiceChips v-model="model.spiritAnimal" :options="['狼','蛇','虎','豹','狐','鹰','鲨','蛛','鸦','鹿']" label="精神体快捷选项" /></div>
-        <div class="file-field file-wide"><label>院系 / 职业<input v-model="model.identity" maxlength="200" placeholder="点击下方院系，或自行填写" /></label><ChoiceChips v-model="model.identity" :options="departments" label="院系快捷选项" /></div>
+        <SpiritPersonaFields :persona="model" :disabled="disabled" />
+        <div class="file-field file-wide"><label>院系 / 职业<textarea v-model="model.identity" rows="2" maxlength="200" placeholder="院系／组织与年级／职位，多重身份分行填写" /></label><ChoiceChips v-model="model.identity" :options="departments" label="院系快捷选项" /></div>
         <datalist id="primary-genders"><option>男</option><option>女</option></datalist><datalist id="secondary-genders"><option>Alpha</option><option>Beta</option><option>Omega</option><option>其他</option></datalist>
         <label class="file-wide">外貌<input v-model="model.appearance" maxlength="500" /></label>
         <label>性格<textarea v-model="model.personality" rows="2" maxlength="1500" /></label>

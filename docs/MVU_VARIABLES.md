@@ -72,3 +72,8 @@
 预设条目支持 `{{get_message_variable::stat_data}}`、`{{get_message_variable::stat_data.custom.字段}}` 和同路径的 `{{getvar::...}}`，按当前会话变量替换。没有实现 EJS、世界书、slash 命令、脚本执行器、全局／角色跨会话存储或完整酒馆 API。
 
 核心实现：`src/domain/mvu.ts`、`src/domain/story.ts`、`src/app/mvuBridge.ts`、`server/ai.mjs`。测试：`tests/mvu.test.ts`、`tests/mvu-bridge.test.ts`、`tests/mvu-protocol.test.mjs`。
+
+
+## v0.20.5 资料补充
+
+人物资料新增独立的 ability（异能），不与 identity（院系／职位）混写。user 人设的精神体资料支持 spiritName、spiritAppearance、spiritPersonality、spiritAbility，并进入模型上下文。精神体 OS 保持 spiritThought，按精神体性格生成即时内心独白。世界书作为补充设定注入，不替代既有 MVU 更新协议。

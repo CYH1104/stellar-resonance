@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SpiritPersonaFields from './SpiritPersonaFields.vue';
 import {reactive,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {blankPersona} from '../domain/persona';
@@ -16,10 +17,12 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
     <form @submit.prevent="w.savePersona(persona)">
       <div class="field-grid"><label>姓名<input v-model="persona.name" required maxlength="80" /></label><label>外貌<input v-model="persona.appearance" maxlength="500" /></label></div>
       <div class="field-grid"><label>第一性别<input v-model="persona.primaryGender" maxlength="100" /></label><label>精神力等级<input v-model="persona.mentalPowerLevel" maxlength="100" /></label><label>第二性别<input v-model="persona.secondaryGender" maxlength="100" /></label></div>
-      <label>身份（院系/职业）<input v-model="persona.identity" maxlength="200" /></label>
+      <label>身份（院系/职业）<textarea v-model="persona.identity" maxlength="200" rows="2" placeholder="院系／组织与年级／职位，每个身份写一行" /></label>
       <label>性格<textarea v-model="persona.personality" rows="2" maxlength="1500" /></label>
       <label>背景<textarea v-model="persona.background" rows="3" maxlength="3000" /></label>
+      <label>异能<textarea v-model="persona.ability" rows="2" maxlength="2000" /></label>
       <label>精神体<textarea v-model="persona.spiritAnimal" rows="2" maxlength="1500" /></label>
+      <SpiritPersonaFields :persona="persona" />
       <label>同人文配对偏好<select v-model="persona.pairingPreference"><option value="">按明确人设判断／暂未指定</option><option value="BL-攻">BL · user 为攻</option><option value="BL-受">BL · user 为受</option><option value="BG">BG</option><option value="GB">GB</option></select></label>
       <label v-if="persona.rawText">原文人设<textarea v-model="persona.rawText" rows="8" maxlength="60000" /></label>
       <label>其他<textarea v-model="persona.other" rows="3" maxlength="3000" /></label>

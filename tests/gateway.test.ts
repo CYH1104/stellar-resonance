@@ -11,6 +11,11 @@ function streamResponse(text: string, end = true) {
   return new Response(new ReadableStream<Uint8Array>({ start(c) { for (const byte of bytes) c.enqueue(new Uint8Array([byte])); if (end) c.close(); } }), { headers: { 'Content-Type': 'text/event-stream' } });
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+it('开发诊断的 SSE 只传入白名单元数据，不让原始文本或 Key 进入页面事件',async()=>{
+ const diagnostic={kind:'state-json',stage:'rejected',attempt:1,format:'invalid',line:3,column:4,code:'MODEL_STATE_JSON_INVALID',raw:'private-response',key:'synthetic-secret',reasoning:'hidden-thought'};
+ vi.stubGlobal('fetch',async()=>streamResponse('data: '+JSON.stringify({type:'diagnostic',diagnostic})+'\n\ndata: '+JSON.stringify({type:'done',outcome:{event:'完成'}})+'\n\n'));
+ const events=await collect(new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal));expect(events[0]).toMatchObject({type:'diagnostic',diagnostic:{line:3,column:4}});expect(JSON.stringify(events)).not.toMatch(/private-response|synthetic-secret|hidden-thought/);
+});
 it('安全进度信息传入页面，只有推理或未闭合标签会显示明确错误',async()=>{
   for(const code of ['MODEL_REASONING_ONLY','MODEL_REASONING_UNCLOSED','MODEL_EMPTY_RESPONSE']){
     vi.stubGlobal('fetch',async()=>streamResponse('data: {"type":"progress","phase":"hidden"}\n\ndata: '+JSON.stringify({type:'error',code})+'\n\n'));

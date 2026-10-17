@@ -1,3 +1,6 @@
+import {unwrapStoryTags} from './storyMarkup.ts';
+import {separateIdentityAbility} from './identityAbility.ts';
+import {cleanWorldbooks,cleanWorldbookIds} from './worldbooks.ts';
 import {memorySignature,validateMemoryRecord,memoryText} from './memories.ts';
 import {cleanSuggestions} from './suggestions.ts';
 import {restoreKnownPromptGroups} from './promptGroups.ts';
@@ -18,7 +21,7 @@ export const copy = <T>(value: T): T => value === undefined ? value : JSON.parse
 export const now = () => new Date().toISOString();
 export function defaults(): Preferences {
   const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 1600 });
-  return { layout:defaultLayout(),suggestionsEnabled:true,randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
+  return { worldbooks:[],defaultWorldbookIds:[],layout:defaultLayout(),suggestionsEnabled:true,randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
 }
 export function initialState(name: string): WorldState {
   const actor = (id: string, label: string, affinity: number): ActorState => ({ id, name: label, energy: 80, focus: 70, affinity, present: true, primaryGender: '', secondaryGender: '', innerThought: '' });
@@ -26,7 +29,7 @@ export function initialState(name: string): WorldState {
 }
 export function newSession(name: string, persona: Persona, opening: string): Session {
   persona=normalizePersona(persona);
-  return { id: uid(), name: name.trim() || '新的旅程', createdAt: now(), updatedAt: now(), persona: copy(persona), opening: opening.trim() || '你来到一处虚构的星际接待站。引导员向你招手，等待你开口。', initial: initialState(persona.name), turns: [], memories: [], suggestions: [], forumActivity: {} };
+  return { worldbookIds:[],id: uid(), name: name.trim() || '新的旅程', createdAt: now(), updatedAt: now(), persona: copy(persona), opening: opening.trim() || '你来到一处虚构的星际接待站。引导员向你招手，等待你开口。', initial: initialState(persona.name), turns: [], memories: [], suggestions: [], forumActivity: {} };
 }
 
 export function rollDice(): Dice {
@@ -41,19 +44,19 @@ function record(value: unknown): value is Record<string, unknown> { return !!val
 function shortText(value: unknown, max: number, required = false): value is string { return typeof value === 'string' && value.length <= max && (!required || !!value.trim()); }
 function actorPatch(value: unknown, character = false): ActorPatch {
   if (!record(value)) throw new Error('MVU 人物更新格式不正确');
-  const allowed = ['mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
+  const allowed = ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
   if (Object.keys(value).some(k => !allowed.includes(k))) throw new Error('MVU 人物更新包含未允许的字段');
   const patch: ActorPatch = {};
-  for (const field of ['mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
+  for (const field of ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
     if (value[field] === undefined) continue;
-    const limit = ['innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field === 'name' ? 80 : 100;
+    const limit = ['ability','innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field === 'name' ? 80 : 100;
     if (!shortText(value[field], limit, field === 'name'||field==='mentalPowerLevel')) throw new Error(`MVU ${field} 字段不正确`);
     patch[field] = value[field];
   }
   if (value.affinity !== undefined) { if (!affinityValue(value.affinity)) throw new Error('好感度必须为有限数值'); patch.affinity = value.affinity; }
   if (value.present !== undefined) { if (typeof value.present !== 'boolean') throw new Error('在场标记必须为布尔值'); patch.present = value.present; }
   for (const field of ['energy', 'focus'] as const) if (value[field] !== undefined) { if (!bounded(value[field])) throw new Error('旧版状态数值不合法'); patch[field] = value[field]; }
-  return patch;
+  return separateIdentityAbility(patch);
 }
 function forumPosts(value: unknown): ForumPost[] {
   if (!Array.isArray(value) || value.length > 12) throw new Error('论坛动态格式或数量不正确');
@@ -101,6 +104,8 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
 export function selected(turn: Turn): Variant | undefined { return turn.variants[turn.selected]; }
 export function stateAt(session: Session, before = session.turns.length): WorldState {
   let state = copy(session.initial);
+  Object.assign(state.player,separateIdentityAbility(state.player));for(const actor of state.characters)Object.assign(actor,separateIdentityAbility(actor));
+  if(state.player.ability===undefined&&session.persona.ability)state.player.ability=session.persona.ability;
   if(state.player.mentalPowerLevel===undefined&&session.persona.mentalPowerLevel)state.player.mentalPowerLevel=session.persona.mentalPowerLevel;
   if(!state.player.mentalPowerLevel){const level=readPersonaExtra(session.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(level)state.player.mentalPowerLevel=level;}
   if(state.player.identity===undefined&&session.persona.identity)state.player.identity=session.persona.identity;
@@ -189,7 +194,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   session.updatedAt=now();
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
-  variant.text=stripReasoning(variant.text);const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
+  variant.text=unwrapStoryTags(stripReasoning(variant.text));const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
   variant.outcome=validated;variant.status='complete';restoreSuggestions(session);
   const turn=session.turns[turnIndex],before=stateAt(session,turnIndex),after=stateAt(session,turnIndex+1);
   const sourceFingerprint=memorySignature({input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent});
@@ -223,7 +228,7 @@ function sanitizeSessions(sessions:Session[]):Session[]{
   }return sessions;
 }
 export function cleanPreferences(p: Preferences): Preferences {
-  return migrateApiSettings({ layout:cleanLayout(p.layout),suggestionsEnabled:p.suggestionsEnabled!==false,randomEventProfile:p.randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile:p.forumReplyProfile,mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presetParameters:cleanPresetParameters(p.presetParameters),presets: restoreKnownPromptGroups(p.presets.map(cleanPreset)), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
+  return migrateApiSettings({ worldbooks:cleanWorldbooks(p.worldbooks),defaultWorldbookIds:cleanWorldbookIds(p.defaultWorldbookIds),layout:cleanLayout(p.layout),suggestionsEnabled:p.suggestionsEnabled!==false,randomEventProfile:p.randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile:p.forumReplyProfile,mode: p.mode, diceEnabled: !!p.diceEnabled, vectorEnabled: !!p.vectorEnabled, mainProfile: p.mainProfile, auxiliaryProfile: p.auxiliaryProfile, embeddingProfile: p.embeddingProfile,auxiliaryProfiles:p.auxiliaryProfiles,storyProfile:p.storyProfile,summaryProfile:p.summaryProfile,suggestionsProfile:p.suggestionsProfile,personaProfile:p.personaProfile, profiles: p.profiles.map(x => ({ id:x.id, name:x.name, providerId:x.providerId, model:x.model, temperature:x.temperature, maxTokens:x.maxTokens,...(cleanApiUrl(x.apiBaseUrl)?{apiBaseUrl:cleanApiUrl(x.apiBaseUrl)}:{}),...(x.topP!==undefined?{topP:x.topP}:{}),...(x.frequencyPenalty!==undefined?{frequencyPenalty:x.frequencyPenalty}:{}),...(x.presencePenalty!==undefined?{presencePenalty:x.presencePenalty}:{}) })), presetParameters:cleanPresetParameters(p.presetParameters),presets: restoreKnownPromptGroups(p.presets.map(cleanPreset)), shortcuts:[...p.shortcuts],activePreset:p.activePreset||'legacy',theaters:cleanTheaters(p.theaters) });
 }
 function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
@@ -243,9 +248,10 @@ export function parseBackup(text: string): Snapshot {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
     ids.add(s.id);
     s.persona=normalizePersona(s.persona,false);
+    if(s.worldbookIds!==undefined)s.worldbookIds=cleanWorldbookIds(s.worldbookIds);
     for (const a of [s.initial.player, ...s.initial.characters]) {
       if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || (a.energy!==undefined&&!bounded(a.energy)) || (a.focus!==undefined&&!bounded(a.focus)) || (a.affinity!==undefined&&!affinityValue(a.affinity)) || typeof a.present !== 'boolean') throw new Error('初始状态不合法');
-      actorPatch({ mentalPowerLevel:a.mentalPowerLevel,name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
+      actorPatch({ mentalPowerLevel:a.mentalPowerLevel,name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity,ability:a.ability, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
     }
     if(s.initial.variables!==undefined)cleanJson(s.initial.variables);
     const turnIds = new Set<string>();
