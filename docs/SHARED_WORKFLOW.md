@@ -38,7 +38,12 @@ git push origin HEAD:main
 在服务器终端执行，不在本机执行。先将最新更新脚本下载到临时文件，下载成功才执行；脚本会备份、覆盖 main、安装、构建、重启并检查服务。
 
 ```bash
+export NVM_DIR="$HOME/.nvm" &&
+. "$NVM_DIR/nvm.sh" &&
+nvm use 24 &&
 cd /home/ubuntu/stellar-resonance &&
+git config --local http.version HTTP/1.1 &&
+git config --local http.maxRequests 1 &&
 update_script="$(mktemp /tmp/stellar-update-XXXXXX.sh)" &&
 git fetch origin +refs/heads/main:refs/remotes/origin/main &&
 git show origin/main:scripts/update-server.sh > "$update_script" &&
@@ -49,11 +54,19 @@ bash scripts/update-server.sh http://43.138.251.91:8807
 
 私有仓库继续使用服务器已配置的 Git 凭据。下载失败时停止，不修改代码，不把访问令牌写进文档。
 
+本服务器已通过 HTTP/1.1、单并发的 `git ls-remote` 检查。上述命令把这两个参数保存到本项目 Git 配置，后续脚本的 fetch 也会使用它们；不关闭证书验证。小请求成功不能保证完整 fetch 一定成功，遇到 TLS 或连接超时仍需检查网络。这里的 nvm 加载步骤适用于当前已用 nvm 安装 Node 24 的服务器；使用其他安装方式时，只需保证 `node -v` 为 24.12 或更新版本。
+
 ## 之后每次服务器更新
 
 ```bash
-cd /home/ubuntu/stellar-resonance && bash scripts/update-server.sh http://43.138.251.91:8807
+export NVM_DIR="$HOME/.nvm" &&
+. "$NVM_DIR/nvm.sh" &&
+nvm use 24 &&
+cd /home/ubuntu/stellar-resonance &&
+bash scripts/update-server.sh http://43.138.251.91:8807
 ```
+
+当前终端已使用 Node 24 时，可以简写为 `cd /home/ubuntu/stellar-resonance && bash scripts/update-server.sh http://43.138.251.91:8807`。
 
 脚本每次获取远程 main 最新提交，直接覆盖受 Git 跟踪的代码，不融合服务器本地代码。更新前自动把工作目录备份到 `/home/ubuntu/.stellar-resonance-backups/`，排除 .git、依赖、构建产物及本地集成缓存；备份包含私有数据，仅服务器用户可读取。请按磁盘容量自行保留必要备份。
 
