@@ -132,8 +132,8 @@ test('encoded reasoning in state strings and old assistant history is removed, s
   const d=new StoryDecoder();d.push('正文<SR_STATE>'+JSON.stringify({presentCharacterIds:[],event:'事件',player:{spiritThought:'<think>synthetic-secret</think>想睡觉'}}).replaceAll('<','\\u003c')+'</SR_STATE>'+RESPONSE_END);assert.equal(d.finish(card,{...state,player:{...state.player,spiritAnimal:'白猫'}}).player.spiritThought,'想睡觉');
   const built=buildMessages(card,{input:'行动',persona:{name:'玩家'},state,history:[{role:'assistant',content:'<think>history-secret</think>旧正文'}],memories:['<analysis>memory-secret</analysis>记忆'],presets:[]});assert.ok(!JSON.stringify(built.messages).includes('history-secret'));assert.ok(!JSON.stringify(built.messages).includes('memory-secret'));assert.ok(JSON.stringify(built.messages).includes('旧正文'));
 });
-test('same-depth injected prompts use user, assistant and system role groups before their order',()=>{
-  const base=[{role:'system',content:'rules'},{role:'system',content:'card'},{role:'system',content:'state'},{role:'user',content:'action'}];const entries=[['s','system',0],['a','assistant',0],['u2','user',9],['u1','user',1]].map(([id,role,order])=>({id,name:id,content:id,role,order,enabled:true,position:'in-chat',depth:0}));const out=applyPromptEntries(base,entries,{name:'玩家'},'角色');assert.deepEqual(out.slice(-4).map(m=>m.content),['u1','u2','a','s']);
+test('same-depth injection follows Tavern priority first and reversed role groups',()=>{
+  const base=[{role:'system',content:'rules'},{role:'system',content:'card'},{role:'system',content:'state'},{role:'user',content:'action'}];const entries=[['s','system',0],['a','assistant',0],['u2','user',9],['u1','user',1]].map(([id,role,order])=>({id,name:id,content:id,role,order,enabled:true,position:'in-chat',depth:0}));const out=applyPromptEntries(base,entries,{name:'玩家'},'角色');assert.deepEqual(out.slice(-4).map(m=>m.content),['a','s','u1','u2']);
 });
 
 test('finish_reason completes and cancels a relay stream even if DONE and socket close never arrive',async()=>{

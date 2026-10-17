@@ -16,7 +16,10 @@ export function applyPromptEntries(messages,entries,persona,charName,generationT
   const before=enabled.filter(p=>!p.position||p.position==='before').map(message),after=enabled.filter(p=>p.position==='after').map(message);
   const chat=messages.slice(3),positions=new Map();
   enabled.filter(p=>p.position==='in-chat').forEach((p,index)=>{const at=Math.max(0,chat.length-(p.depth??4));const group=positions.get(at)||[];group.push({p,index});positions.set(at,group);});
-  const rank={user:0,assistant:1,system:2};
-  const history=[];for(let i=0;i<=chat.length;i++){const injected=positions.get(i)||[];injected.sort((a,b)=>rank[a.p.role||'system']-rank[b.p.role||'system']||(a.p.order??100)-(b.p.order??100)||a.index-b.index);history.push(...injected.map(x=>message(x.p)));if(i<chat.length)history.push(chat[i]);}
+  // SillyTavern populationInjectionPrompts builds descending priority groups,
+  // then reverses the message list: final order is priority ascending,
+  // assistant / user / system within each priority group.
+  const rank={assistant:0,user:1,system:2};
+  const history=[];for(let i=0;i<=chat.length;i++){const injected=positions.get(i)||[];injected.sort((a,b)=>(a.p.order??100)-(b.p.order??100)||rank[a.p.role||'system']-rank[b.p.role||'system']||a.index-b.index);history.push(...injected.map(x=>message(x.p)));if(i<chat.length)history.push(chat[i]);}
   return [...messages.slice(0,3),...before,...history,...after];
 }

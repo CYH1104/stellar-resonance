@@ -56,7 +56,8 @@ export class HttpGateway implements Gateway {
           if(!data) continue;
           let event:Record<string,unknown>;
           try {event=JSON.parse(data) as Record<string,unknown>;}catch{throw new Error('流式数据格式不正确');}
-          if(event.type==='format-error'&&typeof event.raw==='string'&&event.raw.length<=400000&&typeof event.code==='string'&&/^[A-Z_]{1,100}$/.test(event.code)){yield {type:'format-error',raw:event.raw,code:event.code};}
+          if(event.type==='developer-trace'&&event.trace&&typeof event.trace==='object'){const t=event.trace as import('../domain/contracts').DeveloperTrace;if(['request','complete'].includes(t.stage)&&typeof t.model==='string'&&Number.isFinite(t.elapsedMs)&&Array.isArray(t.messages)&&t.messages.length<=10000&&t.messages.every(m=>Number.isInteger(m.index)&&['system','user','assistant'].includes(m.role)&&Number.isFinite(m.characters)))yield {type:'developer-trace',trace:t};}
+          else if(event.type==='format-error'&&typeof event.raw==='string'&&event.raw.length<=400000&&typeof event.code==='string'&&/^[A-Z_]{1,100}$/.test(event.code)){yield {type:'format-error',raw:event.raw,code:event.code};}
           else if(event.type==='diagnostic'){const safe=cleanDiagnostic(event.diagnostic);if(safe)yield {type:'diagnostic',diagnostic:safe};}
           else if(event.type==='progress'&&['waiting','hidden','receiving'].includes(String(event.phase)))yield {type:'progress',phase:event.phase as 'waiting'|'hidden'|'receiving'};
           else if(event.type==='delta' && typeof event.text==='string') yield {type:'delta',text:event.text};
