@@ -170,22 +170,21 @@ it('AI 人设填写使用自己的选择，删除副 API 后所有选用它的�
   expect([w.preferences.storyProfile,w.preferences.summaryProfile,w.preferences.suggestionsProfile,w.preferences.personaProfile]).toEqual(['main','main','main','main']);
 });
 
-it('候选确认后才投骰生成；重试重演保留事件骰点，关事件后新行动不带骰子事件',async()=>{
+it('命中后自动投骰并一次生成；重演保留骰点，关闭后新行动不带事件',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;
   const random=vi.spyOn(crypto,'getRandomValues').mockImplementation(array=>{(array as Uint32Array)[0]=0;return array;});
   const generate=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield{type:'delta',text:'剧情'};yield{type:'done',outcome:{event:'推进',characters:[],...(r.dice?{diceEvent:{direction:'negative' as const,description:'资料缺页，需要补办'}}:{})}};});vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);
-  await w.generate('第一次行动');expect(generate).not.toHaveBeenCalled();expect(w.active.value?.turns[0].variants).toHaveLength(0);expect(w.active.value?.turns[0].randomEvent?.status).toBe('pending');await w.decideRandomEvent(0,true);expect(generate.mock.calls[0][0].specialEvent?.title).toBe('突发事件');expect(w.active.value?.turns[0].dice?.value).toBe(1);expect(w.memories.value[0].text).toContain('资料缺页');
+  await w.generate('第一次行动');expect(generate).toHaveBeenCalledTimes(1);expect(w.active.value?.turns[0].variants).toHaveLength(1);expect(w.active.value?.turns[0].randomEvent?.status).toBe('accepted');expect(generate.mock.calls[0][0].specialEvent?.title).toBe('突发事件');expect(w.active.value?.turns[0].dice?.value).toBe(1);expect(w.memories.value[0].text).toContain('资料缺页');
   w.preferences.diceEnabled=false;await w.generate(undefined,0);expect(generate.mock.calls[1][0].dice?.value).toBe(1);expect(random).toHaveBeenCalledTimes(3);
   await w.generate('关闭骰子后的行动');expect(generate.mock.calls[2][0].dice).toBeUndefined();expect(w.active.value?.turns[1].variants[0].outcome?.diceEvent).toBeUndefined();
 });
 
-it('未命中50%不请求事件；拒绝候选不把候选或骰点传给正文',async()=>{
+it('未命中不请求事件；明确配置副接口时命中后自动衔接正文',async()=>{
   const w=await workspace();fill(w);fill(w,'aux');w.preferences.diceEnabled=true;w.preferences.randomEventProfile='aux';await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');
   let value=50;const rng=vi.spyOn(crypto,'getRandomValues').mockImplementation(a=>{(a as Uint32Array)[0]=value;return a;});
   const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'正常正文'};yield{type:'done',outcome:{event:'正常推进',characters:[]}};});vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);
   await w.generate('未命中');expect(HttpGateway.prototype.randomEvent).not.toHaveBeenCalled();expect(gen).toHaveBeenCalledTimes(1);expect(gen.mock.calls[0][0].dice).toBeUndefined();
-  value=0;await w.generate('命中');expect(HttpGateway.prototype.randomEvent).toHaveBeenCalledTimes(1);expect(vi.mocked(HttpGateway.prototype.randomEvent).mock.calls[0][1].id).toBe('aux');expect(vi.mocked(HttpGateway.prototype.randomEvent).mock.calls[0][0].history.map(m=>m.content)).toEqual(['未命中','正常正文']);expect(gen).toHaveBeenCalledTimes(1);
-  await w.generate('不能绕过');expect(w.active.value!.turns).toHaveLength(2);await w.decideRandomEvent(1,false);expect(gen).toHaveBeenCalledTimes(2);expect(gen.mock.calls[1][0].specialEvent).toBeUndefined();expect(gen.mock.calls[1][0].dice).toBeUndefined();expect(gen.mock.calls[1][0].generationType).toBe('normal');expect(rng).toHaveBeenCalledTimes(3);await w.decideRandomEvent(1,true);expect(gen).toHaveBeenCalledTimes(2);
+  value=0;await w.generate('命中');expect(HttpGateway.prototype.randomEvent).toHaveBeenCalledTimes(1);expect(vi.mocked(HttpGateway.prototype.randomEvent).mock.calls[0][1].id).toBe('aux');expect(vi.mocked(HttpGateway.prototype.randomEvent).mock.calls[0][0].history.map(m=>m.content)).toEqual(['未命中','正常正文']);expect(gen).toHaveBeenCalledTimes(2);expect(gen.mock.calls[1][0].specialEvent?.title).toBe('意外来信');expect(gen.mock.calls[1][0].dice?.value).toBe(1);expect(gen.mock.calls[1][0].generationType).toBe('normal');expect(rng).toHaveBeenCalledTimes(4);await w.decideRandomEvent(1,true);expect(gen).toHaveBeenCalledTimes(2);
 });
 it('候选失败可同类重试或跳过，不重新抽概率，不提前生成正文',async()=>{
   const w=await workspace();fill(w);fill(w,'aux');w.preferences.randomEventProfile='aux';await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;
@@ -194,13 +193,13 @@ it('候选失败可同类重试或跳过，不重新抽概率，不提前生成�
   await w.generate('行动');expect(w.problem.value).toContain('候选请求失败');expect(w.active.value!.turns[0].randomEvent).toEqual({status:'failed',kind:'危机事件'});expect(gen).not.toHaveBeenCalled();await w.generate(undefined,0);expect(HttpGateway.prototype.randomEvent).toHaveBeenCalledTimes(2);expect(rng).toHaveBeenCalledTimes(2);
   await w.decideRandomEvent(0,false);expect(gen).toHaveBeenCalledTimes(1);expect(gen.mock.calls[0][0].dice).toBeUndefined();expect(w.active.value!.turns[0].randomEvent?.status).toBe('skipped');
 });
-it('刷新恢复待选事件，确认只掷一次骰，连续点击不会重掷',async()=>{
+it('刷新恢复旧版待选事件，继续时自动投骰，连续点击不重掷',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;
-  const rng=vi.spyOn(crypto,'getRandomValues').mockImplementation(a=>{(a as Uint32Array)[0]=0;return a;});await w.generate('行动');const savedPending=structuredClone(saved!);const eventCalls=vi.mocked(HttpGateway.prototype.randomEvent).mock.calls.length;
+  const rng=vi.spyOn(crypto,'getRandomValues').mockImplementation(a=>{(a as Uint32Array)[0]=0;return a;});await w.generate('行动');const savedPending=structuredClone(saved!);const oldTurn=savedPending.sessions[0].turns[0];oldTurn.randomEvent={status:'pending',proposal:{kind:'突发事件',title:'突发事件',description:'旧版候选'}};delete oldTurn.dice;oldTurn.variants=[];oldTurn.selected=0;const eventCalls=vi.mocked(HttpGateway.prototype.randomEvent).mock.calls.length;
   vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(savedPending);vi.mocked(IndexedDbRepository.prototype.readApiCredentials).mockResolvedValue(privateSaved);const reopened=await workspace();expect(reopened.active.value).toBeUndefined();reopened.open(savedPending.sessions[0].id);expect(reopened.pendingRandomEvent.value).toBe(true);
   // Reload does not automatically call a model or draw again.
-  expect(HttpGateway.prototype.randomEvent).toHaveBeenCalledTimes(eventCalls);expect(rng).toHaveBeenCalledTimes(2);
-  const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'负面正文'};yield{type:'done',outcome:{event:'不利推进',characters:[],diceEvent:{direction:'negative',description:'来信带来坏消息'}}};});vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);await Promise.all([reopened.decideRandomEvent(0,true),reopened.decideRandomEvent(0,true)]);expect(gen).toHaveBeenCalledTimes(1);expect(rng).toHaveBeenCalledTimes(3);expect(gen.mock.calls[0][0].specialEvent?.title).toBe('突发事件');
+  expect(HttpGateway.prototype.randomEvent).toHaveBeenCalledTimes(eventCalls);expect(rng).toHaveBeenCalledTimes(3);
+  const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'负面正文'};yield{type:'done',outcome:{event:'不利推进',characters:[],diceEvent:{direction:'negative',description:'来信带来坏消息'}}};});vi.spyOn(HttpGateway.prototype,'utility').mockResolvedValue(['建议']);await Promise.all([reopened.generate(undefined,0),reopened.generate(undefined,0)]);expect(gen).toHaveBeenCalledTimes(1);expect(rng).toHaveBeenCalledTimes(4);expect(gen.mock.calls[0][0].specialEvent?.title).toBe('突发事件');
 });
 
 it('三次续写未完成保留正文和原状态，不提交记忆或调用建议摘要',async()=>{

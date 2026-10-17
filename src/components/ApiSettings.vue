@@ -55,7 +55,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
     <label>记忆整理间隔（累计轮数）<input v-model.number="w.preferences.memorySummaryInterval" type="number" min="1" max="20" :disabled="disabled" /></label><p class="rail-note">达到轮数后整批整理一次；未达到时只保存本轮原文与事件，向量检索保持独立。</p>
     <label>随机事件触发概率 %<input v-model.number="w.preferences.randomEventProbability" type="number" min="0" max="100" :disabled="disabled" /></label>
     <label class="toggle"><input v-model="w.preferences.diceEnabled" type="checkbox" :disabled="disabled" />开启随机事件</label>
-    <p class="rail-note">开启后按上方概率本地判定；跟随主 API 时，接受后随正文一次生成事件，不单独调用候选接口。仅明确选择副 API 时单独准备候选，投骰始终在本地完成。</p>
+    <p class="rail-note">开启后按上方概率本地判定；跟随主 API 时，命中后自动随正文一次生成事件，不单独调用候选接口。仅明确选择副 API 时单独生成事件并自动衔接正文，投骰始终在本地完成。</p>
     <label class="toggle"><input v-model="w.preferences.forumReplyEnabled" type="checkbox" :disabled="disabled" />发表论坛评论后，允许角色／NPC 回复我（默认关闭）</label>
     <p class="rail-note">开启后，每条玩家评论额外调用论坛 AI 回复接口一次，随机由一名 char 或 NPC 回复，可随时停止；关闭时只保存你的评论，不调用 AI。论坛回复不改变主线状态。</p>
   </section>

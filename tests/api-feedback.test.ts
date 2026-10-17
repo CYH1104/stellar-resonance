@@ -25,9 +25,11 @@ it('正文为空时仍展示生成浮层，失败原因由外层提示避免在�
   const w={active,preferences:defaults(),busy:true,generationPhase:'中转站正在返回数据，目前尚无可展示正文',generationStarted:Date.now(),problem:'模型没有返回可展示正文',input:''} as unknown as ViewModel;
   const html=await renderToString(createSSRApp(StoryView,{w}));expect(html).toContain('INTERSTELLAR ACADEMY');expect(html).toContain('academy-generating');expect(html).toContain('generation-dots');expect(html).not.toContain('模型没有返回可展示正文');expect(html).toContain('停止生成');
 });
-it('待选事件展示两种决定、不展示空正文，恢复中断显示重试和跳过',async()=>{
+it('事件只显示实际生成文本；旧版待选可继续，中断可重试',async()=>{
   const active=newSession('测试',{name:'玩家',appearance:'',personality:'',background:''},'');active.turns.push({id:'t',input:'本轮行动',randomEvent:{status:'pending',proposal:{kind:'奇遇事件',title:'来信',description:'等待查看。'}},variants:[],selected:0});
   const w={active,preferences:defaults(),busy:false,input:'下一轮',pendingRandomEvent:true} as unknown as ViewModel;
-  const html=await renderToString(createSSRApp(StoryView,{w}));expect(html).toContain('等待查看。');expect(html).toContain('跳过');expect(html).toContain('触发');expect(html).not.toContain('assistant-message');expect(html).toContain('type="submit" disabled');
-  active.turns[0].randomEvent={status:'preparing',kind:'奇遇事件'};const restored=await renderToString(createSSRApp(StoryView,{w}));expect(restored).toContain('重试事件候选');expect(restored).toContain('跳过事件，生成正文');
+  const html=await renderToString(createSSRApp(StoryView,{w}));expect(html).not.toContain('等待查看。');expect(html).toContain('继续生成');expect(html).not.toContain('assistant-message');
+  active.turns[0].randomEvent={status:'failed',kind:'奇遇事件'};const restored=await renderToString(createSSRApp(StoryView,{w}));expect(restored).toContain('重试');expect(restored).toContain('跳过事件');
+  active.turns[0].randomEvent={status:'accepted',proposal:{kind:'奇遇事件',title:'来信',description:'不应展示的候选说明'}};active.turns[0].dice={value:50,grade:'平稳'} as any;active.turns[0].variants=[{id:'v',text:'正文',status:'complete',createdAt:'',outcome:{event:'本轮实际事件',characters:[],suggestions:[],diceEvent:{direction:'negative',description:'收到一封破损的信件'}}}];
+  const completed=await renderToString(createSSRApp(StoryView,{w}));expect(completed).toContain('收到一封破损的信件');expect(completed).not.toContain('不应展示的候选说明');
 });
