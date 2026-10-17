@@ -1,3 +1,4 @@
+import {exportApiSettings,parseApiSettings} from '../domain/apiTransfer';
 import {accountStorage} from '../storage/accountScope';
 import {useFormatErrors} from './useFormatErrors';
 import {recordDiagnostic} from './developerDiagnostics';
@@ -21,7 +22,7 @@ import {defaultTheaters,visibleTheaters} from '../domain/theaters';
 import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyApi,taskApi,textApiTasks} from '../domain/apis';
 
 export function useWorkspace() {
-  const formatErrors=useFormatErrors();
+  const formatErrors=useFormatErrors(()=>Object.values(credentials));
   const hideFloors=ref((()=>{try{return accountStorage.getItem('academy:auto-hide-floors')!=='false';}catch{return true;}})());
   watch(hideFloors,value=>{try{accountStorage.setItem('academy:auto-hide-floors',String(value));}catch{}});
   const preferences=reactive<Preferences>({...defaults(),activePreset:'legacy',theaters:defaultTheaters()});
@@ -63,8 +64,8 @@ export function useWorkspace() {
   const connectionSignature=(p:Profile)=>JSON.stringify([apiAddress(p.apiBaseUrl),p.model,credentials[p.id]||'']);
   const connectionReady=(p:Profile)=>approved[p.id]===connectionSignature(p);
   async function connectProfile(p:Profile){try{const missing=apiFieldIssues(p,credentials[p.id]);if(missing.length)throw new Error(`请填写：${missing.join('、')}`);const signature=connectionSignature(p);await http.configure(copy(p));if(signature!==connectionSignature(p))throw new Error('配置已改变，请重新确认。');approved[p.id]=signature;problem.value='';if(!loading.value)await persist();notice.value=rememberApiKeys.value?'当前接口已确认并保存在此浏览器；尚未进行模型生成测试。':'当前接口已确认，仅在本次页面使用。';return true;}catch(e){problem.value=message(e);return false;}}
-  async function fetchModels(p:Profile,signal:AbortSignal){if(!localService.value)throw new Error('请先连接本机后台，再获取模型。');return http.models(p.apiBaseUrl||'',key(p),signal);}
-  async function testProfile(p:Profile,embedding:boolean,signal:AbortSignal){if(!localService.value)throw new Error('本机后台未连接，请用启动预览.bat 启动。');const issues=apiFieldIssues(p,key(p));if(issues.length)throw new Error('请填写：'+issues.join('、'));return http.probe(copy(p),key(p),embedding?'embedding':'text',signal);}
+  async function fetchModels(p:Profile,signal:AbortSignal){try{if(!localService.value)throw new Error('请先连接本机后台，再获取模型。');return await http.models(p.apiBaseUrl||'',key(p),signal);}catch(e){if(!signal.aborted)logRuntime(e,'获取模型');throw e;}}
+  async function testProfile(p:Profile,embedding:boolean,signal:AbortSignal){try{if(!localService.value)throw new Error('本机后台未连接，请用启动预览.bat 启动。');const issues=apiFieldIssues(p,key(p));if(issues.length)throw new Error('请填写：'+issues.join('、'));return await http.probe(copy(p),key(p),embedding?'embedding':'text',signal);}catch(e){if(!signal.aborted)logRuntime(e,'测试连接');throw e;}}
   const generationPhase=ref(''),generationStarted=ref(0);
   const loading=ref(true), authorized=ref(false), busy=ref(false), workingMemory=ref(false);
   const configuringApis=ref(false),pendingSessionId=ref(''),continuationAttempt=ref(0),repairingState=ref(false);
@@ -79,6 +80,14 @@ export function useWorkspace() {
   function enterStory(){if(!ensureApiConfiguration())return false;if(pendingSessionId.value){const id=pendingSessionId.value;pendingSessionId.value='';open(id);}else panel.value='story';return true;}
   async function confirmAllApis(){if(configuringApis.value||busy.value)return;const structural=apiConfigurationIssues(preferences,credentials,()=>true);if(structural.length){problem.value=structural[0];return;}configuringApis.value=true;try{for(const p of [...new Map([...requiredApis(preferences),...auxiliaryApis(preferences).filter(apiSelectable)].map(p=>[p.id,p])).values()])if(!await connectProfile(p))return;notice.value='必需的 API 配置已就绪，可以进入游戏。';await safePersist();}finally{configuringApis.value=false;}}
   const notice=ref('正在读取本地存档…'), problem=ref(''), input=ref(''), lastSaved=ref('');
+  function logRuntime(error:unknown,stage='运行错误'){
+    if(error instanceof Error&&error.name==='AbortError')return;
+    const detail=error instanceof Error?error.message:String(error);if(!detail.trim())return;
+    const session=active.value,turn=session?.turns.at(-1);
+    void formatErrors.record(detail,stage,session?.id||'',turn?.id||'','runtime');
+  }
+  watch(problem,value=>{if(value)logRuntime(value,generationPhase.value||'运行错误');},{flush:'sync'});
+  watch(forumReplyError,value=>{if(value)logRuntime(value,'论坛 AI 回复');},{flush:'sync'});
   const repository=new IndexedDbRepository(); let writes=Promise.resolve(); let controller:AbortController|undefined;let storageReady=false,apiStorageReady=false;
   const deletingSessionId=ref('');let deletionTask:Promise<boolean>|undefined;
   const mock=new MockGateway(), http=new HttpGateway();
@@ -121,6 +130,7 @@ export function useWorkspace() {
   }
   let timer:ReturnType<typeof setTimeout>;
   const scheduleSave=()=>{if(loading.value)return;clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
+  watch(()=>preferences.vectorEnabled,()=>{preferences.vectorEnabled=true;},{flush:'sync'});
   watch(preferences,scheduleSave,{deep:true});
   watch([credentials,approved],scheduleSave,{deep:true});
   watch(()=>preferences.mode,()=>{authorized.value=preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
@@ -160,7 +170,15 @@ export function useWorkspace() {
     return {turnId:turn.id,variantId:v.id,input:turn.input,story:v.text,event:v.outcome.event,diceEvent:copy(v.outcome.diceEvent),before:memoryState(stateAt(session,index)),after:memoryState(stateAt(session,index+1)),priorCommitments:activeCommitments(memoryLedger(session,index))};
   }
   function memoryNeedsWork(session:Session,index:number){const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)return false;const m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===v.id);return !m||!memoryReady(m)||m.sourceFingerprint!==memorySignature(roundMemoryInput(session,index));}
-  const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome&&!active.value!.memories.some(m=>m.kind==='event'&&m.sourceTurn===t.id&&m.sourceVariant===v.id&&memoryReady(m));}).length:0);
+  const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter((_,i)=>memoryNeedsWork(active.value!,i)).length:0);
+  const chatRoundCount=computed(()=>active.value?.turns.filter(t=>t.input.trim()).length||0);
+  const effectiveMemoryCount=computed(()=>active.value?active.value.turns.filter((t,i)=>{const v=selected(t);return v?.status==='complete'&&v.outcome&&!memoryNeedsWork(active.value!,i);}).length:0);
+  const memoryEntries=computed<Memory[]>(()=>{
+    const session=active.value;if(!session)return[];
+    return [...session.turns.flatMap(t=>{const v=selected(t);if(v?.status!=='complete'||!v.outcome)return[];return[session.memories.find(m=>m.kind==='event'&&m.sourceTurn===t.id&&m.sourceVariant===v.id)||{id:`missing:${t.id}`,kind:'event' as const,text:'本轮记忆待补记。',createdAt:v.createdAt,sourceTurn:t.id,sourceVariant:v.id,status:'pending' as const}];}),...memories.value.filter(m=>m.kind!=='event')];
+  });
+  function memoryNeedsRepair(m:Memory){const session=active.value,index=session?.turns.findIndex(t=>t.id===m.sourceTurn)??-1;return !!session&&index>=0&&memoryNeedsWork(session,index);}
+  const missingVectorCount=computed(()=>memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
   function vectorStatus(m:Memory){if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'待补记';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
   async function encodeMemories(session:Session,items:Memory[],signal:AbortSignal){
     if(!preferences.vectorEnabled)return;const p=copy(profile(preferences.embeddingProfile)),model=fingerprint(p),signature=connectionSignature(p);
@@ -186,19 +204,19 @@ export function useWorkspace() {
       target.record=result;target.status='ready';target.text=memoryText(target);delete target.error;delete target.indexError;
     }catch(e){target.status=signal.aborted?'pending':'failed';target.error=signal.aborted?'记忆整理已停止。':'记忆整理失败，请补记。';await safePersist();throw e;}
     await persist();
-    if(preferences.vectorEnabled){try{await encodeMemories(session,[target],signal);}catch(e){target.indexError=signal.aborted?'索引已停止。':'索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}}
+    if(preferences.vectorEnabled){try{await encodeMemories(session,[target],signal);}catch(e){if(!signal.aborted)logRuntime(e,'记忆索引');target.indexError=signal.aborted?'索引已停止。':'索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}}
   }
   async function retryMemory(id?:string){
     const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!ensureApiConfiguration())return;
     workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;
-    try{for(let i=0;i<session.turns.length;i++){const t=session.turns[i],v=selected(t);if(!v||!memoryNeedsWork(session,i))continue;const m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===v.id&&m.kind==='event');if(id&&m?.id!==id)continue;current.signal.throwIfAborted();await writeRoundMemory(session,i,current.signal);}notice.value='记忆已保存。';}
+    try{for(let i=0;i<session.turns.length;i++){const t=session.turns[i],v=selected(t);if(!v||!memoryNeedsWork(session,i))continue;const m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===v.id&&m.kind==='event');if(id&&m?.id!==id&&id!==`missing:${t.id}`)continue;current.signal.throwIfAborted();await writeRoundMemory(session,i,current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
   async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
     const list=memoryLedger(session,before).filter(memoryReady).reverse();if(!list.length)return [];
     const contextState=stateAt(session,before),recent=session.turns.slice(0,before).flatMap(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome?[v.outcome.event]:[];});
     const query=contextual?buildRecallQuery(text,contextState,recent,memoryLedger(session,before).filter(m=>m.record&&memoryReady(m)).at(-1)?.record?.location):text;let vector:number[]|undefined;const p=copy(profile(preferences.embeddingProfile));
-    if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;notice.value='向量接口不可用，已退回关键词检索';}
+    if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;logRuntime(e,'记忆向量检索');notice.value='向量接口不可用，已退回关键词检索';}
     return retrieve(list,query,fingerprint(p),vector);
   }
   async function prepareRandomEvent(session:Session,index:number){
@@ -295,6 +313,25 @@ export function useWorkspace() {
   async function searchMemory(query:string):Promise<Memory[]>{if(!active.value)return[];if(!query.trim())return memories.value;try{return await recall(active.value,query,active.value.turns.length,false);}catch(e){problem.value=message(e);return[];}}
   function download(filename:string,content:string,type='application/json'){const url=URL.createObjectURL(new Blob([content],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportBackup(){download(`群星共振-备份-${new Date().toISOString().slice(0,10)}.json`,backup(snapshot()));notice.value='备份已导出，不包含 Key';}
+  function exportApiConfiguration(includeKeys=false){
+    if(loading.value||busy.value||configuringApis.value)return;
+    download(`群星共振-API设置${includeKeys?'-含Key':''}-${new Date().toISOString().slice(0,10)}.json`,exportApiSettings(preferences,credentials,includeKeys));
+    notice.value=includeKeys?'API 设置已导出，文件包含明文 Key，请妥善保管。':'API 设置已导出，不包含 Key。';
+  }
+  async function importApiConfiguration(text:string){
+    if(loading.value||busy.value||workingMemory.value||configuringApis.value||workingPersona.value||creatingGame.value||workingForumReply.value)return false;
+    try{
+      const imported=parseApiSettings(text);
+      const retained=Object.fromEntries(imported.configuration.profiles.filter(p=>{
+        const old=preferences.profiles.find(old=>old.id===p.id);return old&&apiAddress(old.apiBaseUrl)===apiAddress(p.apiBaseUrl)&&!!credentials[p.id];
+      }).map(p=>[p.id,credentials[p.id]]));
+      for(const id of Object.keys(approved))delete approved[id];
+      for(const id of Object.keys(credentials))delete credentials[id];
+      Object.assign(preferences,imported.configuration);
+      Object.assign(credentials,retained,imported.keys||{});apiStorageReady=true;
+      await persist();problem.value='';notice.value='API 设置已导入，请保存 API 确认配置后使用。';return true;
+    }catch(e){problem.value=message(e);return false;}
+  }
   async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(localService.value)for(const session of value.sessions)syncCharacterFacts(session,localService.value.dataset,localService.value.characterFacts);if(replace){inputDrafts.clear();sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{mergeWorldbookBackup(preferences,value.preferences,value.sessions);for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
   function exportBook(){const s=active.value;if(!s)return;const escape=(x:string)=>x.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');const body=s.turns.map(t=>{const v=selected(t);return v?.status==='complete'?`<section><p class="action">${escape(t.input)}</p><p>${escape(v.text)}</p></section>`:'';}).join('');download(`${s.name}-故事.html`,`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(s.name)}</title><style>body{max-width:44rem;margin:3rem auto;padding:0 1.5rem;font:18px/1.8 system-ui;color:#222}p{white-space:pre-wrap}.action{color:#666}section{margin-bottom:2rem}</style><h1>${escape(s.name)}</h1><p>${escape(s.opening)}</p>${body}</html>`,'text/html');}
   function addProfile(){if(preferences.profiles.length>=30){problem.value='接口总数最多30个，请先移除不需要的副 API。';return '';}const id=uid();preferences.profiles.push({id,name:`副 API ${(preferences.auxiliaryProfiles?.length||0)+1}`,providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600});(preferences.auxiliaryProfiles||=[]).push(id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;return id;}
@@ -310,7 +347,7 @@ export function useWorkspace() {
   function duplicatePresetSet(){if(busy.value)return;const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

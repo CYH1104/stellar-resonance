@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {parseApiSettings,type ApiTransfer} from '../domain/apiTransfer';
 import DeveloperDiagnostics from './DeveloperDiagnostics.vue';
 import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -14,6 +15,11 @@ const main=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.pref
 const embedding=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.preferences.embeddingProfile));
 const disabled=computed(()=>props.w.busy||props.w.workingMemory||props.w.configuringApis);
 const selectedAux=ref(''),draft=ref<Profile>(),adding=ref(false),removeOpen=ref(false);
+const filePicker=ref<HTMLInputElement>(),includeKeys=ref(false),pendingImport=ref<ApiTransfer>(),importing=ref(false);
+const transferDisabled=computed(()=>disabled.value||wBusy()||!!draft.value||importing.value||props.w.loading);
+function wBusy(){return props.w.workingPersona||props.w.creatingGame||!!props.w.workingForumReply;}
+async function readSettings(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;try{if(file.size>1024*1024)throw new Error('API 设置文件最多1MB。');pendingImport.value=parseApiSettings(await file.text());props.w.problem='';}catch(e){props.w.problem=e instanceof Error?e.message:'读取 API 设置失败。';}finally{input.value='';}}
+async function applyImport(){if(!pendingImport.value||transferDisabled.value)return;importing.value=true;try{if(await props.w.importApiConfiguration(JSON.stringify(pendingImport.value)))pendingImport.value=undefined;}finally{importing.value=false;}}
 const auxiliary=computed(()=>props.w.auxiliaryProfiles.find(p=>p.id===selectedAux.value));
 watch(()=>props.w.auxiliaryProfiles.map(p=>p.id),ids=>{if(!ids.includes(selectedAux.value))selectedAux.value=ids[0]||'';},{immediate:true});
 function add(){draft.value={id:uid(),name:'副 API '+(props.w.auxiliaryProfiles.length+1),providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600};}
@@ -28,11 +34,12 @@ async function saveNew(p:Profile){
 function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);removeOpen.value=false;}
 </script>
 <template><section class="api-settings simple-api-settings">
+  <section class="api-extra"><h3>API 设置导入／导出</h3><div class="actions"><button type="button" :disabled="transferDisabled" @click="filePicker?.click()">导入 API 设置</button><button type="button" :disabled="transferDisabled" @click="w.exportApiConfiguration(includeKeys)">导出 API 设置</button><input ref="filePicker" type="file" accept=".json,application/json" hidden @change="readSettings" /></div><label class="toggle"><input v-model="includeKeys" type="checkbox" :disabled="transferDisabled" />导出时包含 Key（明文，请勿分享）</label></section>
   <ApiProfileEditor v-if="main" :w="w" :p="main" title="主 API" @saved="emit('saved')" />
   <section class="auxiliary-picker"><div class="api-aux-row"><label>副 API<select v-model="selectedAux" :disabled="disabled||!w.auxiliaryProfiles.length"><option v-if="!w.auxiliaryProfiles.length" value="">暂无副 API</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id">{{p.name||'未命名副 API'}}</option></select></label><button type="button" :disabled="disabled||w.preferences.profiles.length>=30" @click="add">增加副 API</button></div>
     <ApiProfileEditor v-if="auxiliary" @saved="emit('saved')" :key="auxiliary.id" :w="w" :p="auxiliary" title="副 API" help="副 API 可选，可以添加多个；在下方功能接口选择中指定用途。只有主 API 也能使用全部文字功能。"><button type="button" :disabled="disabled" @click="removeOpen=true">删除</button></ApiProfileEditor>
   </section>
-  <label class="toggle"><input v-model="w.preferences.vectorEnabled" type="checkbox" :disabled="disabled" />开启向量检索</label>
+  <label class="toggle"><input type="checkbox" checked disabled />向量检索（已开启）</label>
   <ApiProfileEditor v-if="embedding" :w="w" :p="embedding" title="向量模型" embedding @saved="emit('saved')" />
   <EmbeddingGuide />
   <section class="api-extra" aria-labelledby="api-task-heading">
@@ -54,4 +61,5 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
   <div class="actions api-ready-actions"><button type="button" class="api-enter-button" :disabled="!w.apiReady||disabled" @click="w.enterStory()">{{w.apiReady?'进入剧情':'请先保存必需的 API'}}</button></div>
   <DialogShell v-if="draft" title="增加副 API" @close="closeDraft"><ApiProfileEditor :w="w" :p="draft" title="副 API" help="填写并保存后，这个接口才会加入副 API 列表。取消不会添加。" :save-profile="saveNew" /><button type="button" :disabled="adding" @click="closeDraft">取消</button></DialogShell>
   <DialogShell v-if="removeOpen&&auxiliary" title="删除副 API" @close="removeOpen=false"><p>删除“{{auxiliary.name}}”？使用它的功能将恢复主 API。</p><div class="actions"><button @click="removeOpen=false">取消</button><button class="danger" :disabled="disabled" @click="remove">删除</button></div></DialogShell>
+  <DialogShell v-if="pendingImport" title="导入 API 设置" @close="!importing&&(pendingImport=undefined)"><p>包含主 API、{{pendingImport.configuration.auxiliaryProfiles?.length||0}} 个副 API、向量 API 和功能接口选择。{{pendingImport.keys?'包含 Key。':'不含 Key；仅保留当前同 ID、同地址接口的 Key，其余需重新填写。'}}</p><p>将替换当前 API 设置，预设、人设和存档保持不变。导入不会测试或调用模型，请保存 API 后使用。</p><div class="actions"><button type="button" :disabled="importing" @click="pendingImport=undefined">取消</button><button type="button" :disabled="transferDisabled" @click="applyImport">确认导入</button></div></DialogShell>
 </section></template>

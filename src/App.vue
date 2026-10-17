@@ -277,7 +277,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
         <button class="random-event-toggle suggestions-toggle" :aria-pressed="w.preferences.suggestionsEnabled!==false" :disabled="w.busy" @click="w.preferences.suggestionsEnabled=w.preferences.suggestionsEnabled===false"><span>13</span>行动建议<i :class="{enabled:w.preferences.suggestionsEnabled!==false}" aria-hidden="true"></i><span class="sr-only">{{w.preferences.suggestionsEnabled!==false?'已开启':'已关闭'}}</span></button>
 
-        <button :class="{selected:w.panel==='format-errors'}" @click="navigate('format-errors')"><span>14</span>格式错误文本</button><button class="random-event-toggle" :aria-pressed="w.hideFloors" @click="w.hideFloors=!w.hideFloors"><span>15</span>自动隐藏楼层<i :class="{enabled:w.hideFloors}" aria-hidden="true"></i></button>
+        <button :class="{selected:w.panel==='format-errors'}" @click="navigate('format-errors')"><span>14</span>运行日志</button><button class="random-event-toggle" :aria-pressed="w.hideFloors" @click="w.hideFloors=!w.hideFloors"><span>15</span>自动隐藏楼层<i :class="{enabled:w.hideFloors}" aria-hidden="true"></i></button>
       </nav>
 
     </header>

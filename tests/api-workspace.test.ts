@@ -1,3 +1,4 @@
+import {exportApiSettings} from '../src/domain/apiTransfer';
 import {normalizeMemoryResult} from '../src/domain/memories';
 import {newWorldEntry} from '../src/domain/worldbooks';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
@@ -22,6 +23,7 @@ beforeEach(()=>{
   vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async value=>{saved=JSON.parse(backup(value));});
   vi.spyOn(HttpGateway.prototype,'bootstrap').mockImplementation(async function(this:HttpGateway){this.capabilities=service.capabilities;return service;});
   vi.spyOn(HttpGateway.prototype,'randomEvent').mockImplementation(async data=>({kind:data.kind,title:'意外来信',description:'一封来历不明的信件等待查看。'}));
+  vi.spyOn(HttpGateway.prototype,'embed').mockImplementation(async texts=>texts.map(()=>[1,0.5]));
   vi.spyOn(HttpGateway.prototype,'configure').mockResolvedValue({origin:'https://synthetic.example'});
   vi.spyOn(HttpGateway.prototype,'newGame').mockResolvedValue({dataset:service.dataset,opening:'迎新',initial:initialState('玩家')});
 });
@@ -38,6 +40,7 @@ it('完整回复可以续写，原完整稿保留，失败也不会覆盖原稿'
   await w.generate(undefined,0,true);expect(turn.variants).toHaveLength(3);expect(turn.variants[0]).toEqual(original);expect(turn.variants[1].status).toBe('complete');expect(turn.variants[2].status).toBe('incomplete');expect(w.problem.value).toContain('中断');
 });
 function fill(w:ReturnType<typeof useWorkspace>,id='main'){
+  if(id==='main')fill(w,'embed');
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }
 it('从学院重新打开当前存档和切换存档各自恢复输入草稿，不串到新的会话',async()=>{
@@ -87,7 +90,7 @@ it('建议随正文返回，每轮通过所选记忆接口整理一次，取消�
 });
 it('开启向量时先要求确认，随后记忆编码使用独立模型并存入本地快照',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');
-  w.preferences.vectorEnabled=true;expect(w.apiReady.value).toBe(false);fill(w,'embed');await w.confirmAllApis();expect(w.apiReady.value).toBe(true);
+  w.preferences.vectorEnabled=false;expect(w.preferences.vectorEnabled).toBe(true);w.credentials.embed='changed-key';expect(w.apiReady.value).toBe(false);fill(w,'embed');await w.confirmAllApis();expect(w.apiReady.value).toBe(true);
   await w.saveMemory('需要记住的事件');const embed=vi.spyOn(HttpGateway.prototype,'embed').mockResolvedValue([[1,0.5]]);await w.indexMemories();
   expect(embed.mock.calls[0][0]).toEqual(['需要记住的事件']);expect(embed.mock.calls[0][1].id).toBe('embed');expect(embed.mock.calls[0][2]).toBe('synthetic-key-embed');
   expect(saved?.sessions[0].memories[0].vector?.values).toEqual([1,0.5]);
@@ -124,7 +127,7 @@ it('清除全部 Key 后，自动保存不会把旧凭据写回来',async()=>{
 it('已保存地址或模型与当前配置不同，不自动确认；保存失败不会报告成功',async()=>{
   const first=await workspace();fill(first);await first.confirmAllApis();const previous=structuredClone(privateSaved!);const changed=structuredClone(saved!);changed.preferences.profiles[0].apiBaseUrl='https://changed.example/v1';
   vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(changed);vi.mocked(IndexedDbRepository.prototype.readApiCredentials).mockResolvedValue(previous);vi.mocked(HttpGateway.prototype.configure).mockClear();
-  const reopened=await workspace();expect(reopened.apiReady.value).toBe(false);expect(HttpGateway.prototype.configure).not.toHaveBeenCalled();
+  const reopened=await workspace();expect(reopened.apiReady.value).toBe(false);expect(vi.mocked(HttpGateway.prototype.configure).mock.calls.map(([p])=>p.id)).toEqual(['embed']);
   vi.mocked(IndexedDbRepository.prototype.writeApiCredentials).mockRejectedValue(new Error('本机写入失败'));await reopened.setRememberApiKeys(false);
   expect(reopened.problem.value).toBe('本机写入失败');expect(reopened.notice.value).not.toContain('已删除');
 });
@@ -349,3 +352,42 @@ it('switching reading panels while generating does not abort the request or chan
  vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(_r,_key,s){signal=s;yield {type:'delta',text:'前半段。'};await gate;yield {type:'delta',text:'后半段。'};yield {type:'done',outcome:{event:'已生成',characters:[]}};});const job=w.generate('继续');await vi.waitFor(()=>expect(session.turns[0]?.variants[0]?.text).toBe('前半段。'));w.panel.value='memory';await nextTick();expect(signal?.aborted).toBe(false);w.panel.value='settings';await nextTick();expect(w.busy.value).toBe(true);expect(w.active.value?.id).toBe(session.id);release();await job;expect(session.turns[0].variants[0].text).toBe('前半段。后半段。');expect(session.turns[0].variants[0].status).toBe('complete');expect(w.panel.value).toBe('settings');
 });
 it('state repair retains each completed side scene only in its own slot',async()=>{const w=await workspace();fill(w);await w.confirmAllApis();await w.create('分栏补全',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.theaters![3]={slot:4,kind:'custom',enabled:true,title:'访谈',instruction:'访谈'};const s=w.active.value!,v={id:'v',text:'主线。',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'原事件',theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'甲',content:'群聊独有内容'}]},{slot:4,kind:'custom',title:'访谈',content:'访谈独有内容'}]});vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'done',outcome:{event:'补全',theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'甲',content:'新群聊'}]},{slot:4,kind:'custom',title:'访谈',content:'新访谈'}]}};});await w.repairState(0);expect(w.problem.value).toBe('');expect(w.theaters.value).toHaveLength(2);expect(w.theaters.value.find(t=>t.slot===2)?.messages?.[0].content).toBe('群聊独有内容');expect(w.theaters.value.find(t=>t.slot===4)?.content).toBe('访谈独有内容');});
+
+it('记忆页统计只计有效逐轮记录，删除后显示占位并可在该条补记，正常记忆不补写',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('统计',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'你观察接待站。'};yield{type:'done',outcome:{event:'观察接待站',characters:[]}};});
+ await w.generate('观察');await w.generate('等待');expect(w.chatRoundCount.value).toBe(2);expect(w.effectiveMemoryCount.value).toBe(2);expect(w.missingVectorCount.value).toBe(0);
+ const first=w.memoryEntries.value[0];expect(w.memoryNeedsRepair(first)).toBe(false);const calls=vi.mocked(HttpGateway.prototype.memory).mock.calls.length;await w.retryMemory(first.id);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(calls);
+ w.removeMemory(first.id);expect(w.effectiveMemoryCount.value).toBe(1);expect(w.pendingMemoryCount.value).toBe(1);const missing=w.memoryEntries.value[0];expect(missing.id).toBe('missing:'+first.sourceTurn);expect(w.memoryNeedsRepair(missing)).toBe(true);
+ await w.retryMemory(missing.id);expect(w.effectiveMemoryCount.value).toBe(2);expect(w.pendingMemoryCount.value).toBe(0);expect(w.memoryEntries.value.some(m=>m.id.startsWith('missing:'))).toBe(false);
+ w.preferences.vectorEnabled=false;expect(w.preferences.vectorEnabled).toBe(true);
+});
+it('API 设置导入仅替换接口，清除确认状态，保存 Key 而不请求模型',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();const before=JSON.stringify(w.preferences.presets);
+ const p=defaults();p.profiles[0].name='导入的主 API';p.profiles[0].apiBaseUrl='https://import.synthetic.example';p.profiles[0].model='imported';p.summaryProfile='aux';
+ const configure=vi.mocked(HttpGateway.prototype.configure);configure.mockClear();
+ expect(await w.importApiConfiguration(exportApiSettings(p,{main:'imported-synthetic-key'},true))).toBe(true);
+ expect(w.preferences.profiles[0].name).toBe('导入的主 API');expect(w.credentials.main).toBe('imported-synthetic-key');expect(w.connectionReady(w.preferences.profiles[0])).toBe(false);
+ expect(JSON.stringify(w.preferences.presets)).toBe(before);expect(privateSaved?.keys.main).toBe('imported-synthetic-key');expect(configure).not.toHaveBeenCalled();
+ const previous=JSON.stringify(w.preferences);expect(await w.importApiConfiguration('{broken')).toBe(false);expect(JSON.stringify(w.preferences)).toBe(previous);
+});
+it('不含 Key 的导入只保留相同 ID 和地址的凭据，新增地址不复用旧 Key',async()=>{
+ const w=await workspace();fill(w);const p=structuredClone(JSON.parse(JSON.stringify(w.preferences)));
+ expect(await w.importApiConfiguration(exportApiSettings(p,{}))).toBe(true);expect(w.credentials.main).toBe('synthetic-key-main');
+ p.profiles[0].apiBaseUrl='https://other.synthetic.example';expect(await w.importApiConfiguration(exportApiSettings(p,{}))).toBe(true);expect(w.credentials.main).toBeUndefined();
+});
+
+it('获取模型、测活和剧情连接失败统一进入运行日志，重复失败仍记录',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('日志',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'models').mockRejectedValue(new Error('无法连接模型服务'));
+ vi.spyOn(HttpGateway.prototype,'probe').mockRejectedValue(new Error('模型测试超时'));
+ const signal=new AbortController().signal;
+ for(let i=0;i<2;i++)await expect(w.fetchModels(w.preferences.profiles[0],signal)).rejects.toThrow('无法连接');
+ await expect(w.testProfile(w.preferences.profiles[0],false,signal)).rejects.toThrow('超时');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){throw Error('无法连接模型服务，请检查地址及网络。');});
+ await w.generate('观察');
+ await vi.waitFor(()=>expect(w.formatErrors.entries.value.filter(e=>e.kind==='runtime')).toHaveLength(4));
+ expect(w.formatErrors.entries.value.filter(e=>e.code==='获取模型')).toHaveLength(2);
+ expect(w.formatErrors.entries.value.some(e=>e.raw.includes('请检查地址及网络'))).toBe(true);
+ expect(JSON.stringify(w.formatErrors.entries.value)).not.toContain('synthetic-key');
+});

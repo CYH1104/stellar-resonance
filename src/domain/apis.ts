@@ -23,12 +23,12 @@ export function migrateApiSettings(p:Preferences):Preferences{
   const routes=Object.fromEntries(textApiTasks.map(task=>{const id=p[task.field]??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(id))throw new Error(`${task.label} API 引用不正确`);return[task.field,id];}));
   const forumReplyProfile=p.forumReplyProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(forumReplyProfile))throw new Error('论坛回复 API 引用不正确');
   const randomEventProfile=p.randomEventProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(randomEventProfile))throw new Error('随机事件 API 引用不正确');
-  return {...p,...routes,suggestionsProfile:p.suggestionsProfile??p.mainProfile,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
+  return {...p,vectorEnabled:true,...routes,suggestionsProfile:p.suggestionsProfile??p.mainProfile,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
 }
 export function auxiliaryApis(p:Preferences){return(p.auxiliaryProfiles||[]).map(id=>p.profiles.find(profile=>profile.id===id)).filter((profile):profile is Profile=>!!profile);}
 export function taskApi(p:Preferences,task:TextApiTask|'suggestions'){const field=textApiTasks.find(t=>t.key===(task==='suggestions'?'story':task))!.field;return p.profiles.find(profile=>profile.id===(p[field]||p.mainProfile));}
 export function storyApi(p:Preferences){const base=taskApi(p,'story'),params=p.presetParameters?.[p.activePreset||'legacy'];return base&&params?{...base,...Object.fromEntries(samplingFields.filter(([key])=>params[key]!==undefined).map(([key])=>[key,params[key]]))}:base;}
-export function requiredApis(p:Preferences){const ids=new Set([p.mainProfile,...textApiTasks.map(task=>p[task.field]||p.mainProfile),...(p.vectorEnabled?[p.embeddingProfile]:[]),...(p.diceEnabled?[p.randomEventProfile||p.mainProfile]:[]),...(p.forumReplyEnabled?[p.forumReplyProfile||p.mainProfile]:[])]);return p.profiles.filter(profile=>ids.has(profile.id));}
+export function requiredApis(p:Preferences){const ids=new Set([p.mainProfile,...textApiTasks.map(task=>p[task.field]||p.mainProfile),p.embeddingProfile,...(p.diceEnabled?[p.randomEventProfile||p.mainProfile]:[]),...(p.forumReplyEnabled?[p.forumReplyProfile||p.mainProfile]:[])]);return p.profiles.filter(profile=>ids.has(profile.id));}
 export function apiFieldIssues(profile:Profile,key=''){
   const missing:string[]=[];
   if(!profile.apiBaseUrl?.trim())missing.push('API 地址');else try{const u=new URL(profile.apiBaseUrl);if(u.username||u.password||u.search||u.hash||!(u.protocol==='https:'||u.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(u.hostname)))missing.push('有效的 HTTPS／本机 HTTP 地址');}catch{missing.push('有效的 API 地址');}
@@ -41,7 +41,7 @@ export function apiConfigurationIssues(p:Preferences,credentials:Record<string,s
   const issues:string[]=[];
   if(!p.profiles.some(profile=>profile.id===p.mainProfile))issues.push('缺少主 API');
   for(const task of textApiTasks)if(!taskApi(p,task.key)||![p.mainProfile,...(p.auxiliaryProfiles||[])].includes(p[task.field]||p.mainProfile))issues.push(`请为${task.label}选择主 API 或副 API`);
-  if(p.vectorEnabled&&!p.profiles.some(profile=>profile.id===p.embeddingProfile))issues.push('缺少向量 API');
+  if(!p.profiles.some(profile=>profile.id===p.embeddingProfile))issues.push('缺少向量 API');
   for(const profile of requiredApis(p)){const role=profile.id===p.mainProfile?'主 API':profile.id===p.embeddingProfile?'向量 API':'副 API';const missing=apiFieldIssues(profile,credentials[profile.id]);if(missing.length)issues.push(`${role}「${profile.name}」需要填写：${missing.join('、')}`);else if(!confirmed(profile))issues.push(`${role}「${profile.name}」尚未确认当前配置`);}
   const story=storyApi(p);if(story&&apiFieldIssues(story,credentials[story.id]).some(s=>s.includes('参数')))issues.push('当前预设的采样参数不正确，请到预设页面检查。');
   return issues;
