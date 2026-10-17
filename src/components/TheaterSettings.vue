@@ -6,7 +6,7 @@ defineProps<{w:ViewModel;embedded?:boolean}>();
 function template(slot:TheaterSetting,id:string){const value=theaterTemplates.find(t=>t.id===id);if(!value)return;slot.kind=value.kind;slot.title=value.name;slot.instruction=value.instruction;slot.templateId=value.id;}
 </script>
 <template><section :class="embedded?'subsection':'surface'">
-  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><button :disabled="w.busy" @click="w.save()">保存设置</button></header>
+  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><button class="primary" :disabled="w.busy" @click="w.save()">保存设置</button></header>
   
   
   <p class="hint"><button type="button" @click="w.panel='settings'">前往 API 设置</button></p>

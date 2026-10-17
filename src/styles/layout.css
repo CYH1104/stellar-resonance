@@ -313,8 +313,8 @@ button.danger { color:#a32626; border-color:#c98d8d; }
 .random-event-card { margin:14px 8px 18px 20px;padding:18px;border:1px solid var(--color-accent);border-radius:var(--radius-surface);background:var(--color-surface-soft); }.random-event-card h3 { margin:10px 0; }.random-event-card p { white-space:pre-wrap;line-height:1.9; }
 
 /* Layout dimensions are browser preferences; resizing never changes story state. */
-.workspace.game-layout { grid-template-columns:var(--left-width,260px) 10px minmax(0,1fr) 10px var(--right-width,330px);gap:0;padding:16px; }
-.workspace.game-layout.forum-focus { grid-template-columns:var(--left-width,260px) 10px minmax(0,1fr); }
+.workspace.game-layout { grid-template-columns:var(--left-width,260px) 6px minmax(0,1fr) 6px var(--right-width,330px);gap:0;padding:16px; }
+.workspace.game-layout.forum-focus { grid-template-columns:var(--left-width,260px) 6px minmax(0,1fr); }
 .game-layout>.status-rail { grid-column:1; }.game-layout>.left-resizer { grid-column:2; }.game-layout>.center-pane { grid-column:3; }.game-layout>.right-resizer { grid-column:4; }.game-layout>.forum-rail { grid-column:5; }
 .resize-handle { position:absolute;z-index:2;border:0;border-radius:4px;padding:0;background:transparent;color:var(--color-muted);touch-action:none;user-select:none;min-width:0;min-height:0; }
 .resize-handle:hover,.resize-handle.dragging { background:var(--color-surface-soft);color:var(--color-accent); }
@@ -334,7 +334,7 @@ button.danger { color:#a32626; border-color:#c98d8d; }
 .theater-window.resizable-panel { height:clamp(180px,calc((100dvh - 270px) / var(--theater-count,2)),500px);min-height:140px;margin:0;overflow:visible;padding:0 10px 10px 0; }
 .theater-window>.resizable-panel-body { padding:14px; }
 .forum-comments p>button { padding:2px 5px;font-size:10px; }
-@media(max-width:1099px){.workspace.game-layout,.workspace.game-layout.forum-focus{grid-template-columns:var(--left-width,225px) 10px minmax(0,1fr);padding:16px;gap:0}.workspace>.right-resizer{display:none}}
+@media(max-width:1099px){.workspace.game-layout,.workspace.game-layout.forum-focus{grid-template-columns:var(--left-width,225px) 6px minmax(0,1fr);padding:16px;gap:0}.workspace>.right-resizer{display:none}}
 @media(max-width:759px){.workspace.game-layout,.workspace.game-layout.forum-focus{grid-template-columns:minmax(0,1fr);padding:10px}.workspace>.column-resizer{display:none}.game-layout>.center-pane{grid-column:1}.resizable-panel{max-width:100%}.header-actions>button{font-size:11px}}
 
 /* Read-only group messages inside a phone shell. Controls remain outside the shell. */

@@ -14,7 +14,7 @@
   const feature=q('.ah-feature');
   feature.dataset.action='conversation';
   feature.querySelector('small').textContent='STORY LINK / 进入对话';
-  feature.querySelector('p').textContent='继续上一次的故事，或开启新的会话。';
+  feature.querySelector('p').textContent='新建存档，开始新的故事。';
   const account=q('#accountButton');account.hidden=true;
   const clock=document.createElement('div');clock.className='academy-clock';clock.innerHTML='<time aria-label="当前时间，24小时制"></time><span class="academy-date"></span><small>LOCAL TIME / 本地时间</small>';account.before(clock);clock.append(orbit);
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
@@ -59,7 +59,7 @@
   document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
   window.addEventListener('focus',()=>void refreshCards());
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});
-  setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},5000);
+  setInterval(()=>{if(root.classList.contains('spl-chars'))void refreshCards();},1500);
   if(sessionStorage.getItem('academy:reopen-characters')){sessionStorage.removeItem('academy:reopen-characters');setTimeout(()=>{window.ACADEMY.directEnter();root.querySelector('.spl-menu [data-sact="chars"]').click();},0);}
 
 })();

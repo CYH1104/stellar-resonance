@@ -321,7 +321,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
             <SettingsView v-else-if="w.panel==='settings'" :w="w" @saved="savedFirstApi" />
 
-            <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div><button @click="w.save()">保存配置</button></header><PresetManager :w="w" /></section>
+            <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div></header><PresetManager :w="w" /></section>
 
             <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="w" />
 

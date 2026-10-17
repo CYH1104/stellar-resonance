@@ -60,3 +60,5 @@
 #__exp_splash__ .portrait-scale-control{display:flex;align-items:center;gap:10px;font-size:12px}
 #__exp_splash__ .portrait-scale-control input{width:160px;accent-color:var(--s-acc)}
 @media(max-width:700px){#enterRegistration,.gate-entry-links button{font-size:14px!important}#enterRegistration small,.gate-entry-links button small{font-size:10px}#__exp_splash__ .academy-clock time{font-size:30px}#__exp_splash__ .academy-date{font-size:13px}#__exp_splash__ .ah-tools{margin-top:65px}}
+
+body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(--a-text)!important}#__exp_splash__[data-brightness]{background:var(--s-bg)!important}body[data-brightness="0"] .gate-grid,body[data-brightness="0"] .gate-orbit,body[data-brightness="0"] .gate-glow{background-image:none!important}body[data-brightness="0"] #__exp_splash__{--s-grid:transparent!important;box-shadow:none!important}

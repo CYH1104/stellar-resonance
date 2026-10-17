@@ -36,6 +36,6 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
   <template v-else>
   <section class="subsection"><h2>文本快捷按钮</h2><ul class="plain-list"><li v-for="(s,i) in w.preferences.shortcuts" :key="i"><input v-model="w.preferences.shortcuts[i]" :aria-label="`快捷文字 ${i+1}`" maxlength="500" :disabled="w.busy" /><button :disabled="w.busy" @click="w.preferences.shortcuts.splice(i,1)">删除</button></li></ul><form class="search-row" @submit.prevent="addShortcut"><label>新快捷文字<input v-model="shortcut" maxlength="500" /></label><button type="submit" :disabled="w.busy">添加快捷按钮</button></form></section>
 
-    <button :disabled="w.busy" @click="w.save()">保存快捷操作</button>
+    <button class="primary" :disabled="w.busy" @click="w.save()">保存快捷操作</button>
   </template>
 </section></template>

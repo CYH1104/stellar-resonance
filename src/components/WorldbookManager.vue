@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FileImportButton from './FileImportButton.vue';
 import {computed,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {newWorldEntry,worldbookWarnings,worldEntryWarnings,resolveWorldbooks,WORLD_FILE_LIMIT,type Worldbook,type WorldEntry} from '../domain/worldbooks';
@@ -26,7 +27,7 @@ function test(){try{const ctx={messages:[...(props.w.active?[props.w.active.open
     <div class="worldbook-layout">
       <aside class="worldbook-library">
         <h2>我的世界书</h2>
-        <div class="actions"><button :disabled="locked" @click="w.addWorldbook()">新建</button><label class="worldbook-upload">导入 JSON<input type="file" multiple accept=".json,application/json" :disabled="locked" @change="importFiles" /></label></div>
+        <div class="actions"><button :disabled="locked" @click="w.addWorldbook()">新建</button><FileImportButton multiple accept=".json,application/json" :disabled="locked" @change="importFiles" /></div>
         <p class="worldbook-scope">{{w.active?'当前存档：'+w.active.name:'新游戏默认使用'}}</p>
         <p v-if="!w.worldbooks.length" class="empty">还没有用户世界书</p>
         <article v-for="b in w.worldbooks" :key="b.id" class="worldbook-library-row" :class="{selected:book?.id===b.id}">

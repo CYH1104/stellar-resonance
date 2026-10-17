@@ -27,3 +27,8 @@ test('char 身份进入初始资料及剧情上下文，支持 MVU 更新，超�
  const out=normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'参加任命',characters:[{id:'c',identity:'领航者系 四年级首席\n学生会 会长'}]},{theaterSettings:request.theaterSettings});assert.equal(out.characters[0].identity,'领航者系 四年级首席\n学生会 会长');
  for(const identity of [42,'x'.repeat(201)])assert.throws(()=>normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'错误更新',characters:[{id:'c',identity}]},{theaterSettings:request.theaterSettings}),e=>e.code==='MODEL_STATE_CHARACTERS_INVALID');
 });
+
+test('persona helper accepts fenced, wrapped and unescaped multiline JSON without exposing reasoning',()=>{
+ for(const raw of ['```json\n{"name":"玩家"}\n```','{"persona":{"name":"玩家"}}','<USER_PERSONA>{"name":"玩家"}</USER_PERSONA>','{"name":"玩家","background":"第一段\n第二段"}'])assert.equal(parsePersonaResult(raw).name,'玩家');
+ assert.throws(()=>parsePersonaResult('{"name":"玩家","unexpected":"不可接受"}'),{code:'INVALID_PERSONA_RESULT'});
+});

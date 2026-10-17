@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FileImportButton from './FileImportButton.vue';
 import {computed,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Preset,PresetPromptGroup} from '../domain/contracts';
@@ -72,7 +73,7 @@ function removeSet(){props.w.removePresetSet();deleting.value=false;}
     <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><button class="primary" :disabled="w.busy" @click="saveAll">保存预设</button></header>
     
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
-    <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><label class="file-button">导入 JSON<input type="file" accept=".json,application/json" :disabled="w.busy" @change="importFile" /></label><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>
+    <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><FileImportButton accept=".json,application/json" :disabled="w.busy" @change="importFile" /><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>
     <details class="import-report" open><summary>采样参数 · 随当前预设保存</summary><div class="field-grid"><label>Temperature<input v-model.number="w.presetParameters.temperature" type="number" min="0" max="2" step="0.05" :disabled="w.busy" /></label><label>最大输出 Token<input v-model.number="w.presetParameters.maxTokens" type="number" min="1" max="32000" :disabled="w.busy" /></label><label>Top P<input v-model.number="w.presetParameters.topP" type="number" min="0" max="1" step="0.05" placeholder="默认1" :disabled="w.busy" /></label><label>Frequency penalty<input v-model.number="w.presetParameters.frequencyPenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label><label>Presence penalty<input v-model.number="w.presetParameters.presencePenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label></div></details>
     <details v-if="w.presetWarnings.length" class="import-report"><summary>导入结果与兼容说明</summary><ul><li v-for="(note,i) in w.presetWarnings" :key="i">{{note}}</li></ul></details>
     <details class="subsection prompt-group" open><summary>提示词管理器</summary>

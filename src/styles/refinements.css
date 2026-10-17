@@ -70,8 +70,8 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .relation-detail .relation-close{position:absolute;right:8px;top:6px;z-index:2;width:26px;height:26px;padding:0!important;font-size:22px;line-height:1;background:var(--color-surface)!important}
 @media(max-width:650px){#academy-workspace .relation-detail{width:min(330px,calc(100% - 32px));bottom:auto;max-height:340px}#academy-workspace .relation-detail-body{max-height:338px}}
 
-#academy-workspace .resizable-workspace.game-layout{grid-template-columns:var(--left-width,260px) 10px minmax(0,1fr) 10px var(--right-width,330px);gap:0}
-#academy-workspace .resizable-workspace.game-layout.forum-focus{grid-template-columns:var(--left-width,260px) 10px minmax(0,1fr)}
+#academy-workspace .resizable-workspace.game-layout{grid-template-columns:var(--left-width,260px) 6px minmax(0,1fr) 6px var(--right-width,330px);gap:0}
+#academy-workspace .resizable-workspace.game-layout.forum-focus{grid-template-columns:var(--left-width,260px) 6px minmax(0,1fr)}
 #academy-workspace .resizable-workspace>.column-resizer{padding:0!important}
 #academy-workspace .chat-phone{border-color:var(--color-border);background:var(--color-surface);color:var(--color-text);box-shadow:none}
 #academy-workspace .phone-chat-messages{background:var(--color-background)}
@@ -79,7 +79,7 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .phone-status,#academy-workspace .phone-chat-header small,#academy-workspace .phone-speaker,#academy-workspace .phone-chat-empty{color:var(--color-muted)}
 #academy-workspace .spirit-diary{color:var(--color-text);background:var(--color-surface)}
 #academy-workspace .diary-kicker,#academy-workspace .diary-meta,#academy-workspace .diary-signature{color:var(--color-muted)}
-@media(max-width:1099px){#academy-workspace .resizable-workspace.game-layout{grid-template-columns:var(--left-width,225px) 10px minmax(0,1fr)}}
+@media(max-width:1099px){#academy-workspace .resizable-workspace.game-layout{grid-template-columns:var(--left-width,225px) 6px minmax(0,1fr)}}
 @media(max-width:759px){#academy-workspace .resizable-workspace.game-layout,#academy-workspace .resizable-workspace.game-layout.forum-focus{grid-template-columns:minmax(0,1fr)}}
 /* API sections use spacing instead of nested panel borders. */
 #academy-workspace .settings-view,#academy-workspace .simple-api-settings,#academy-workspace .compact-api-card{border:0!important;box-shadow:none!important;background:transparent!important;border-radius:0}
@@ -132,3 +132,14 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .worldbook-page .worldbook-entry-meta{float:none;margin:0;font-size:11px}
 #academy-workspace .worldbook-page .worldbook-entry-body{padding-top:12px}#academy-workspace .spirit-persona-fields{grid-column:1/-1;margin:14px 0;padding:12px 16px;background:var(--color-surface-soft)}
 @media(max-width:760px){#academy-workspace .worldbook-page{padding:16px}#academy-workspace .worldbook-page .worldbook-entry>summary{flex-wrap:wrap}}
+
+#academy-workspace .preset-page{border:0!important;box-shadow:none!important;background:transparent!important}
+#academy-workspace .api-ready-actions{justify-content:center;margin:22px 0}#academy-workspace button.api-enter-button{border:1px solid var(--color-border)!important;border-radius:6px!important;padding:5px 20px!important;min-width:180px}
+#academy-workspace .file-import-control{display:inline-flex;align-items:center}#academy-workspace .file-import-control input[hidden]{display:none!important}
+#academy-workspace .toggle{display:inline-flex;align-items:center;justify-content:flex-start;flex-direction:row;gap:7px}#academy-workspace .toggle input[type=checkbox]{width:14px;height:14px;flex:0 0 14px;margin:0}
+#academy-workspace .persona-home-image{margin:0 0 0 12px!important;cursor:pointer}#academy-workspace .persona-home-image input:disabled{cursor:not-allowed}
+#academy-workspace .theater-windows{padding:6px 4px;gap:8px}#academy-workspace .workspace.game-layout>.forum-rail{padding-left:0}#academy-workspace .resizable-workspace>.column-resizer{width:6px}
+#academy-workspace .reply-completion{display:block;font-size:10px;color:var(--color-muted);margin:12px 0 4px;text-align:right;opacity:.75}
+
+#academy-workspace button.primary:not(.composer-send):not(.composer-stop){border:1px solid var(--color-border)!important;border-radius:5px!important;padding:4px 12px!important}
+#academy-workspace .file-import-control{border:0!important;background:transparent!important;padding:0!important}#academy-workspace input[type=file][hidden]{display:none!important}
