@@ -100,7 +100,7 @@ test('overlap joiner preserves new words and only removes exact repeats of at le
 });
 
 test('bundled suggestions complete in the initial response, with no extra API for missing or malformed choices',async()=>{
- for(const suggestions of [['观察四周','询问向导'],undefined,'错误格式']){
+ for(const suggestions of [['观察四周','询问向导'],undefined,42]){
   const raw=STATE_OPEN+JSON.stringify({presentCharacterIds:[],event:'推进',suggestions})+STATE_CLOSE+RESPONSE_END;
   const result=await run(['完整正文。'+raw]);assert.equal(result.error,undefined);assert.equal(result.calls.length,0);assert.equal(result.text,'完整正文。');
   assert.deepEqual(result.events.at(-1).outcome.suggestions,Array.isArray(suggestions)?suggestions:[]);

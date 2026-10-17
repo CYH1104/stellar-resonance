@@ -164,7 +164,7 @@ test('story prompt and hidden state bundle next actions without making them mand
  const d=new StoryDecoder();let visible='';
  for(const c of '正常正文。<SR_STATE>'+JSON.stringify({presentCharacterIds:[],event:'推进',suggestions:['<think>secret</think>观察四周','询问向导']})+'</SR_STATE>'+RESPONSE_END)visible+=d.push(c);
  assert.equal(visible,'正常正文。');assert.deepEqual(d.finish(card,state).suggestions,['观察四周','询问向导']);
- for(const suggestions of [undefined,[],null,'错误格式'])assert.deepEqual(normalizeModelState(card,state,{presentCharacterIds:[],event:'推进',suggestions}).suggestions,[]);
+ for(const suggestions of [undefined,[],null,42])assert.deepEqual(normalizeModelState(card,state,{presentCharacterIds:[],event:'推进',suggestions}).suggestions,[]);
 });
 
 test('group folders do not enter model messages and a paused folder does not activate its children',()=>{

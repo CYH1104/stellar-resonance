@@ -447,5 +447,12 @@ export const promptDefinitions = [
         "expression": "仅开启功能的格式与内容要求"
       }
     ]
+  },
+  {
+    "id": "memory.batch",
+    "module": "memory",
+    "label": "累计轮次批量整理",
+    "template": "本次输入包含按剧情顺序排列的rounds。在一次回复内逐轮整理，每轮采用上述同样的记忆结构；仅输出JSON对象 {\"records\":[{\"turnId\":\"原回合ID\",\"variantId\":\"原回复ID\",\"record\":{上述记忆字段}}]}。每个输入回合恰好一项，不能漏轮、混淆人物或把后续事件写回前轮。约定跨轮使用同一ID，不重复创造；履行、取消沿用前轮ID。只整理主线正文与已提交状态，不把番外或论坛传闻当主线事实。",
+    "placeholders": []
   }
 ];

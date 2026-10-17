@@ -33,6 +33,7 @@ export class MockGateway implements Gateway {
       ]
     }};
   }
+  async memoryBatch(inputs:MemoryRequest[],profile:Profile,key:string,signal:AbortSignal){return Promise.all(inputs.map(input=>this.memory(input,profile,key,signal)));}
   async memory(input:MemoryRequest,_profile:Profile,_key:string,signal:AbortSignal){await delay(100,signal);return normalizeMemoryResult({participants:[input.after.player.name,...input.after.characters.filter(c=>c.present).map(c=>c.name)],time:'未明确',location:'样例接待站',userActions:[input.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]},input);}
   async utility(task: 'summary'|'suggestions', texts: string[], _profile: Profile, _key: string, signal: AbortSignal): Promise<string[]> {
     await delay(100,signal);

@@ -1,12 +1,21 @@
-import {buildMessages,completionChunks,openCompletion,modelError,StoryDecoder} from './ai.mjs';
+import {buildMessages,completionChunks,openCompletion,modelError,StoryDecoder,STATE_CLOSE} from './ai.mjs';
 import {repairedMessages,streamStory} from './story-stream.mjs';
 export async function* separatedState({source,data,privateBooks,firstResponse,firstSignal,signal,stateConnection,fetchImpl,onProgress}){
- const visible=new StoryDecoder();let story='';
+ const main=buildMessages(source,{...data,stateSeparate:true},privateBooks),visible=new StoryDecoder();let story='';
  for await(const chunk of completionChunks(firstResponse,{signal:firstSignal||signal,onProgress})){signal.throwIfAborted();const prose=visible.push(chunk);if(prose){story+=prose;yield {type:'delta',text:prose};}}
  if(!story.trim())throw modelError(502,'MODEL_STORY_EMPTY');
  const storyForState=(data.continuation?.partial||'')+story,stateSignal=AbortSignal.any([signal,AbortSignal.timeout(180000)]);
- const built=buildMessages(source,{...data,promptEntries:[],presets:[],stateSeparate:false},privateBooks),options={stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings:built.theaterSettings,persona:data.persona,dice:built.dice,requireDynamicState:true,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:true};
+ const warnings=[];let primary;
+ if(visible.inState&&visible.control.includes(STATE_CLOSE))primary=visible.finish(main.card,main.state,{stateEnabled:false,theaterSettings:main.theaterSettings,persona:data.persona,dice:main.dice,singleStateCall:true,requireDynamicState:true,validationWarnings:warnings});
+ else{primary={event:'本轮剧情已输出',suggestions:[]};if(main.theaterSettings.some(t=>t.enabled))warnings.push('STATE_SIDE_SCENE_RETAINED');}
+ for(const code of warnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt:0}};
+ if(warnings.length&&data.captureFormatErrors)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:visible.raw};
+ const stateData={...data,promptEntries:[],presets:[],stateSeparate:false,theaterSettings:main.theaterSettings.map(t=>({...t,enabled:false})),suggestionsEnabled:false,previousTheaters:[],forumContext:[],dice:undefined,specialEvent:undefined};
+ const built=buildMessages(source,stateData,privateBooks),options={stateEnabled:true,suggestionsEnabled:false,theaterSettings:stateData.theaterSettings,persona:data.persona,requireDynamicState:true,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:true};
  const messages=repairedMessages(built.messages,storyForState,built.card,built.state,options);
- const upstream=await openCompletion({connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,messages,signal:stateSignal,fetchImpl});
- for await(const event of streamStory({card:built.card,state:built.state,options,messages:built.messages,partial:storyForState,stateOnly:true,connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,firstResponse:upstream,signal:stateSignal,fetchImpl,onProgress}))if(event.type!=='delta')yield event;
+ try{const upstream=await openCompletion({connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,messages,signal:stateSignal,fetchImpl});
+ for await(const event of streamStory({card:built.card,state:built.state,options,messages:built.messages,partial:storyForState,stateOnly:true,connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,firstResponse:upstream,signal:stateSignal,fetchImpl,onProgress})){
+  if(event.type==='done')yield {type:'done',outcome:{...primary,...(event.outcome.mvu?{mvu:event.outcome.mvu}:{}),characters:event.outcome.characters,...(event.outcome.player?{player:event.outcome.player}:{})}};
+  else if(event.type!=='delta')yield event;
+ }}catch(error){signal.throwIfAborted();yield {type:'diagnostic',diagnostic:{kind:'generation',code:'STATE_AUX_RETAINED',stage:'accepted',attempt:0}};yield {type:'done',outcome:primary};}
 }

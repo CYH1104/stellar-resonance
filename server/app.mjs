@@ -1,3 +1,4 @@
+import {batchMemoryMessages,parseBatchMemoryResult} from './memory-batch.mjs';
 import {internalPrompt,withInternalPrompts,setInternalPrompts} from './internal-prompts.mjs';
 import {separatedState} from './separate-state.mjs';
 import {loadPrivateWorldbooks} from './worldbooks.mjs';
@@ -149,7 +150,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           let partial='',stateOnly=false;
           if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>!['partial','mode'].includes(k))||data.continuation.mode!==undefined&&data.continuation.mode!=='state'||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;stateOnly=data.continuation.mode==='state';}
-          const stateConnection=data.stateApi?connection(current,data.stateApi):undefined,generation=stateOnly&&stateConnection?data.stateApi:data;
+          const stateConnection=data.stateEnabled!==false&&data.stateApi&&data.stateApi.profile?.id!==data.profile?.id?connection(current,data.stateApi):undefined,generation=stateOnly&&stateConnection?data.stateApi:data;
           const selected=connection(current,generation),{messages,state,theaterSettings,dice,card:generationCard}=buildMessages(source,{...data,stateSeparate:!!stateConnection&&!stateOnly},privateBooks);
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
@@ -176,9 +177,9 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           signal.throwIfAborted();json(response,200,parseForumReply(content,speaker));return;
         }
         if(path==='/api/memory'){
-          const selected=connection(current,data),{input,messages}=memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>20000)throw modelError(502,'INVALID_MEMORY_RESULT');}
-          signal.throwIfAborted();json(response,200,{record:parseMemoryResult(content,input)});return;
+          const selected=connection(current,data),batch=data.rounds!==undefined,{input,inputs,messages}=batch?batchMemoryMessages(data.rounds):memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(batch?150000:20000))throw modelError(502,'INVALID_MEMORY_RESULT');}
+          signal.throwIfAborted();json(response,200,batch?{records:parseBatchMemoryResult(content,inputs)}:{record:parseMemoryResult(content,input)});return;
         }
         if(path==='/api/utility'){
           if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');

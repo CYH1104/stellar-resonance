@@ -16,7 +16,6 @@ const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?
 export function compatibleState(raw,card,state,options){
   if(!object(raw))return raw;
   if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
-  if(options.suggestionsEnabled===false)raw={...raw,suggestions:undefined};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
   const known=new Map(state.characters.filter(c=>card.characters.some(k=>k.id===c.id)).map(c=>[c.id,c]));
   const resolve=value=>{const key=typeof value==='string'?value:object(value)?value.id??value.name:undefined;if(known.has(key))return key;const matches=[...known.values()].filter(c=>c.name===key);return matches.length===1?matches[0].id:undefined;};
@@ -76,7 +75,8 @@ export function compatibleState(raw,card,state,options){
     out.presentCharacterIds=state.characters.filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
   }
   if(raw.diceEvent!==undefined)out.diceEvent=raw.diceEvent;
-  if(raw.suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions:raw.suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}
+  const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
+  if(suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}
   if(Array.isArray(raw.forum)){
     out.forum=[];const ids=new Set();
     for(const [index,p]of raw.forum.slice(0,12).entries()){

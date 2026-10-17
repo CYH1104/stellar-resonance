@@ -179,7 +179,7 @@ export function useWorkspace() {
   });
   function memoryNeedsRepair(m:Memory){const session=active.value,index=session?.turns.findIndex(t=>t.id===m.sourceTurn)??-1;return !!session&&index>=0&&memoryNeedsWork(session,index);}
   const missingVectorCount=computed(()=>memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
-  function vectorStatus(m:Memory){if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'待补记';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
+  function vectorStatus(m:Memory){if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'等待累计整理';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
   async function encodeMemories(session:Session,items:Memory[],signal:AbortSignal){
     if(!preferences.vectorEnabled)return;const p=copy(profile(preferences.embeddingProfile)),model=fingerprint(p),signature=connectionSignature(p);
     if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存向量 API。');
@@ -206,10 +206,28 @@ export function useWorkspace() {
     await persist();
     if(preferences.vectorEnabled){try{await encodeMemories(session,[target],signal);}catch(e){if(!signal.aborted)logRuntime(e,'记忆索引');target.indexError=signal.aborted?'索引已停止。':'索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}}
   }
+  async function writeMemoryBatch(session:Session,indices:number[],signal:AbortSignal){
+    const requests=indices.map(index=>copy(roundMemoryInput(session,index))),fingerprints=requests.map(memorySignature),p=copy(summaryProfile.value!);
+    if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存记忆整理 API。');
+    const signature=connectionSignature(p),records=await gateway().memoryBatch(requests,{...p,maxTokens:Math.min(32000,Math.max(p.maxTokens,requests.length*1200))},key(p),signal);signal.throwIfAborted();
+    if(records.length!==requests.length||!sessions.value.includes(session)||signature!==connectionSignature(profile(p.id))||requests.some((r,i)=>!visibleSourceStillMatches(session,r.turnId,r.variantId)||memorySignature(roundMemoryInput(session,indices[i]))!==fingerprints[i]))throw new Error('剧情或接口已改变，本批记忆未应用。');
+    const commitments=new Map();const normalized=records.map((r,i)=>{for(const c of requests[i].priorCommitments)if(!commitments.has(c.id))commitments.set(c.id,c);const record=normalizeMemoryResult(r,{...requests[i],priorCommitments:[...commitments.values()]});for(const c of record.commitments)commitments.set(c.id,c);return record;});
+    const targets=normalized.map((record,i)=>{const r=requests[i];let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===r.turnId&&m.sourceVariant===r.variantId);if(!m){m={id:uid(),kind:'event',text:'',createdAt:now(),sourceTurn:r.turnId,sourceVariant:r.variantId};session.memories.push(m);}m.record=record;m.status='ready';m.sourceFingerprint=fingerprints[i];m.text=memoryText(m);delete m.vector;delete m.error;delete m.indexError;return m;});
+    await persist();if(preferences.vectorEnabled)try{await encodeMemories(session,targets,signal);}catch(e){for(const m of targets)m.indexError='索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}
+  }
+  async function flushMemoryInterval(session:Session,signal:AbortSignal){
+    const interval=Math.max(1,Math.min(20,Math.trunc(preferences.memorySummaryInterval||10)));
+    const pending=session.turns.map((t,i)=>({t,i})).filter(({t,i})=>selected(t)?.text.trim()&&memoryNeedsWork(session,i)).map(({i})=>i);
+    if(pending.length<interval)return;
+    const batch=pending.slice(0,interval),attempt=batch.map(i=>{const r=roundMemoryInput(session,i);return r.turnId+':'+r.variantId+':'+memorySignature(r);}).join('|');
+    if(session.memoryBatchAttempt===attempt)return;session.memoryBatchAttempt=attempt;await safePersist();
+    generationPhase.value=`正在一次整理累计 ${batch.length} 轮记忆…`;
+    if(batch.length===1)await writeRoundMemory(session,batch[0],signal);else await writeMemoryBatch(session,batch,signal);
+  }
   async function retryMemory(id?:string){
     const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!ensureApiConfiguration())return;
     workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;
-    try{for(let i=0;i<session.turns.length;i++){const t=session.turns[i],v=selected(t);if(!v||!memoryNeedsWork(session,i))continue;const m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===v.id&&m.kind==='event');if(id&&m?.id!==id&&id!==`missing:${t.id}`)continue;current.signal.throwIfAborted();await writeRoundMemory(session,i,current.signal);}notice.value='记忆已保存。';}
+    try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(let start=0;start<indices.length;start+=20){current.signal.throwIfAborted();const batch=indices.slice(start,start+20);if(batch.length===1)await writeRoundMemory(session,batch[0],current.signal);else await writeMemoryBatch(session,batch,current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
   async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
@@ -223,7 +241,8 @@ export function useWorkspace() {
     const turn=session.turns[index],gate=turn.randomEvent;if(!gate||(gate.status!=='preparing'&&gate.status!=='failed'))return;const kind=gate.kind,p=copy(profile(preferences.randomEventProfile||preferences.mainProfile));
     turn.randomEvent={status:'preparing',kind};busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在生成随机事件候选，正文尚未开始…';const current=new AbortController();controller=current;await safePersist();
     try{
-      const proposal=localService.value?await http.randomEvent({kind,persona:copy(session.persona),input:turn.input,history:session.turns.slice(Math.max(0,index-6),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input.slice(-12000)},{role:'assistant' as const,content:v.text.slice(-12000)}]:[];}),presentCharacterIds:stateAt(session,index).characters.filter(c=>c.present).map(c=>c.id)},p,key(p),current.signal):{kind,title:'【演示】'+kind,description:'眼前出现了一个尚未发生的意外情境。你可以拒绝，也可以掷骰决定事件结果。'};
+      const separate=preferences.randomEventProfile&&preferences.randomEventProfile!==preferences.mainProfile&&p.id!==storyProfile.value?.id;
+      const proposal=localService.value&&separate?await http.randomEvent({kind,persona:copy(session.persona),input:turn.input,history:session.turns.slice(Math.max(0,index-6),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input.slice(-12000)},{role:'assistant' as const,content:v.text.slice(-12000)}]:[];}),presentCharacterIds:stateAt(session,index).characters.filter(c=>c.present).map(c=>c.id)},p,key(p),current.signal):{kind,title:kind,description:'本轮脚本已命中此类随机事件。接受后由剧情接口结合当前场景，在同一次正文请求中生成事件；跳过则不发送事件提示词。'};
       current.signal.throwIfAborted();turn.randomEvent={status:'pending',proposal};notice.value='随机事件候选已准备，请拒绝或掷骰后再生成正文。';
     }catch(e){turn.randomEvent={status:'failed',kind};problem.value=message(e);notice.value='事件候选未完成，正文尚未生成。可重试或跳过本轮事件。';}
     finally{busy.value=false;if(controller===current)controller=undefined;await safePersist();}
@@ -259,7 +278,7 @@ export function useWorkspace() {
       for await(const event of gateway().generate(request,key(p),controller.signal,stateApi)) {
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
         if(event.type==='format-error'){await formatErrors.record(event.raw,event.code,session.id,turn.id);}
-        else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_SIDE_SCENE_RETAINED')notice.value='模型遗漏了本轮已开启的部分小剧场，正文和有效内容已保存；可在回复操作中手动补全，不会自动再次调用。';if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
+        else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未完成更新；主接口的正文、小剧场和快捷回复已保存，原状态沿用。';if(event.diagnostic.code==='STATE_SIDE_SCENE_RETAINED')notice.value='模型遗漏了本轮已开启的部分小剧场，正文和有效内容已保存；可在回复操作中手动补全，不会自动再次调用。';if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
         else if(event.type==='progress'){generationPhase.value=event.phase==='hidden'?'中转站正在返回数据，目前尚无可展示正文（思考内容保持隐藏）…':event.phase==='receiving'?'正在接收正文和隐藏状态…':'等待模型返回…';}
         else if(event.type==='delta'){generationPhase.value='正在接收正文…';if(repairingState.value)continue;variant.text+=event.text;if(Date.now()-checkpoint>700){checkpoint=Date.now();await safePersist();}}
         else if(event.type==='repair'){generationPhase.value='正文已保留，正在补修状态…';repairingState.value=true;continuationAttempt.value=event.attempt;notice.value=`正在补修状态 ${event.attempt}/${event.maxAttempts}：${event.reason}`;}
@@ -271,11 +290,11 @@ export function useWorkspace() {
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
-      generationPhase.value='正文已完成，正在整理本轮记忆…';
-      try{await writeRoundMemory(session,index,controller.signal);}catch(e){notice.value='正文已保存，本轮记忆待补记。';problem.value=message(e);}
+      generationPhase.value='正文已完成，正在检查记忆整理轮数…';
+      try{await flushMemoryInterval(session,controller.signal);}catch(e){notice.value='正文已保存，累计记忆整理未完成，可手动补记。';problem.value=message(e);}
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
     }catch(e){problem.value=message(e);}
-    finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last&&!memoryReady(last))notice.value='正文已保存，本轮记忆待补记。';else if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';}
+    finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){if(!active.value||busy.value)return;try{truncate(active.value,count);await safePersist();notice.value='已恢复对应剧情状态与记忆';}catch(e){problem.value=message(e);}}
