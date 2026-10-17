@@ -1,3 +1,5 @@
+import {promptVisualization} from './prompt-visualization.mjs';
+import {cardWithEditor} from './editor-store.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -10,7 +12,7 @@ export function createEditorServer({projectRoot,card,port=8808,gameUrl='http://1
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
     if(!hosts.includes(req.headers.host)||req.headers.origin&&!hosts.some(h=>req.headers.origin===`http://${h}`)||req.headers['sec-fetch-site']==='cross-site'){json(res,403,{code:'LOCAL_EDITOR_ONLY'});return;}
     try{const path=new URL(req.url,'http://localhost').pathname;
-      if(req.method==='GET'&&path==='/api/editor'){json(res,200,{...await store.read(),token,gameUrl:typeof gameUrl==='function'?gameUrl():gameUrl});return;}
+      if(req.method==='GET'&&path==='/api/editor'){const snapshot=await store.read();json(res,200,{...snapshot,prompts:promptVisualization(cardWithEditor(card,snapshot.data),snapshot.data),token,gameUrl:typeof gameUrl==='function'?gameUrl():gameUrl});return;}
       if(req.method==='POST'&&path==='/api/editor'){
         if(req.headers['x-editor-token']!==token||!req.headers['content-type']?.startsWith('application/json')){json(res,403,{code:'EDITOR_TOKEN_REQUIRED'});return;}
         let bytes=0;const chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>8*1024*1024)throw Object.assign(Error(),{status:413,code:'EDITOR_DATA_TOO_LARGE'});chunks.push(chunk);}let body;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Object.assign(Error(),{status:400,code:'INVALID_JSON'});}

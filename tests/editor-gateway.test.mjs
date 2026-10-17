@@ -2,7 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,cp,writeFile,readFile,rm} from 'node:fs/promises';import {resolve} from 'node:path';
 import {createLocalServer} from '../server/app.mjs';import {createEditorServer} from '../server/editor.mjs';import {editorAccessKey} from '../server/editor-gateway.mjs';import {validateMapAssets} from '../server/map-assets.mjs';
 const root=resolve(import.meta.dirname,'..');
-test('map URL schema rejects executable URLs and preserves main/place values',()=>{assert.deepEqual(validateMapAssets({main:'https://example.com/map.jpg',places:{学院:'https://example.com/campus.png'}}),{main:'https://example.com/map.jpg',places:{学院:'https://example.com/campus.png'}});for(const raw of [{main:'javascript:alert(1)'},{main:'https://name:password@example.com/a'},{places:JSON.parse('{"__proto__":"https://example.com/a"}')}])assert.throws(()=>validateMapAssets(raw));});
+test('map URL schema rejects executable URLs and preserves main/place values',()=>{assert.deepEqual(validateMapAssets({main:'https://example.com/map.jpg',places:{学院:'https://example.com/campus.png'}}),{main:'https://example.com/map.jpg',secondary:'',places:{学院:'https://example.com/campus.png'}});for(const raw of [{main:'javascript:alert(1)'},{main:'https://name:password@example.com/a'},{places:JSON.parse('{"__proto__":"https://example.com/a"}')}])assert.throws(()=>validateMapAssets(raw));});
 test('same-origin admin page requires a separate key, proxies editor writes, syncs map URLs, and revokes logout',async()=>{
  const fixture=await mkdtemp(resolve(root,'.integration/gateway-test-'));let editor,game;
  try{

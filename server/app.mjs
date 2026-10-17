@@ -1,3 +1,4 @@
+import {internalPrompt,withInternalPrompts,setInternalPrompts} from './internal-prompts.mjs';
 import {separatedState} from './separate-state.mjs';
 import {loadPrivateWorldbooks} from './worldbooks.mjs';
 import {memoryMessages,parseMemoryResult} from './memory.mjs';
@@ -58,7 +59,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
     return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
   }
-  server=createServer(async(request,response)=>{
+  server=createServer((request,response)=>withInternalPrompts({},async()=>{
     const currentPort=server.address()?.port||port,allowedHosts=new Set([`127.0.0.1:${currentPort}`,`localhost:${currentPort}`]);
     if(external)allowedHosts.add(external.host);
     if(!allowedHosts.has(request.headers.host)){json(response,403,{code:'LOCAL_HOST_ONLY'});return;}
@@ -99,9 +100,9 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(['GET','HEAD'].includes(request.method)&&['/','/index.html'].includes(path)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
       function accountHtml(html){const info=JSON.stringify(account).replace(/</g,'\\u003c');return html.replace(/\blocalStorage\b/g,'academyStorage').replace(/<head\b[^>]*>/i,match=>match+`<script>window.__ACADEMY_ACCOUNT__=${info};</script><script src="/auth/account.js"></script>`).replace('</body>','<style>.account-tools{position:fixed;z-index:2147480000;right:12px;bottom:8px;display:flex;gap:10px;align-items:center;padding:4px 9px;background:#fffaf2e8;border-radius:4px;font-size:11px;color:#73869a}.account-tools button{border:0;background:transparent;color:inherit;font:inherit;padding:3px 5px;cursor:pointer}.account-tools button:hover{color:#294a68}</style></body>');}
       const editorial=editorStore?await editorStore.read():null;
-      const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;
+      const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;setInternalPrompts(editorial?.data.internalPrompts);
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}
-      if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:editorial?.data.map||{main:'',places:{}}});return;}
+      if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:{...(editorial?.data.map||{main:'',places:{}}),locations:source.places}});return;}
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
       if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
@@ -128,7 +129,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
             const {vectors}=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:['连接测试'],signal,fetchImpl});
             signal.throwIfAborted();json(response,200,{kind:'embedding',durationMs:Math.round(performance.now()-started),dimensions:vectors[0].length});
           }else{
-            const upstream=await openCompletion({connection:selected,profile:{...data.profile,temperature:0.7,maxTokens:512,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key:data.key,messages:[{role:'user',content:'这是接口连通测试。请只回复 OK，不输出思考过程。'}],signal,fetchImpl});
+            const upstream=await openCompletion({connection:selected,profile:{...data.profile,temperature:0.7,maxTokens:512,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key:data.key,messages:[{role:'user',content:internalPrompt('app.3')}],signal,fetchImpl});
             let visibleChars=0;for await(const chunk of completionChunks(upstream,{signal})){visibleChars+=chunk.length;}
             signal.throwIfAborted();if(!visibleChars)throw modelError(502,'MODEL_EMPTY_RESPONSE');
             json(response,200,{kind:'text',durationMs:Math.round(performance.now()-started),visibleChars});
@@ -182,7 +183,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/utility'){
           if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');
           const selected=connection(current,data),signal=AbortSignal.timeout(60000);
-          const instruction=data.task==='summary'?'将下面公开剧情简要整理为一条事实摘要。':'仅根据下面公开剧情提供最多四条可选的玩家行动，每行一条。不替玩家执行行动，不编造作者固定设定。';
+          const instruction=data.task==='summary'?internalPrompt('app.2'):internalPrompt("app.1");
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(data.texts)}],signal,fetchImpl});
           let result='';for await(const chunk of completionChunks(upstream,{signal})){result+=chunk;if(result.length>12000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');}
           json(response,200,{items:data.task==='summary'?[result.trim()]:result.split('\n').map(s=>s.replace(/^\s*[-*\d.、)]+\s*/,'').trim()).filter(Boolean).slice(0,4)});return;
@@ -198,11 +199,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/terminal'){
         let terminal=await readFile(resolve(projectRoot,'星穹游戏终端 (1).html'),'utf8');
         const catalog=JSON.stringify(publicCards({characters:source.characters})).replace(/</g,'\\u003c');
-        terminal=terminal.replace('<script>','<script>window.__ACADEMY_MAP_ASSETS__='+JSON.stringify(editorial?.data.map||{main:'',places:{}}).replace(/</g,'\\u003c')+';');
+        terminal=terminal.replace('<script>','<script>window.__ACADEMY_MAP_ASSETS__='+JSON.stringify({...editorial?.data.map,locations:source.places}).replace(/</g,'\\u003c')+';');
         terminal=terminal.replace(/const SPLASH_CHARACTERS = \[[\s\S]*?\n    \];/,()=> 'const SPLASH_CHARACTERS = '+catalog+';window.__ACADEMY_CARD_REVISION__='+JSON.stringify(editorial?.revision||dataset)+';');
         const index=await readFile(resolve(dist,'index.html'),'utf8');
         const assets=[...index.matchAll(/<(?:script\b[^>]*src="\/assets\/[^"]+"[^>]*><\/script>|link\b[^>]*href="\/assets\/[^"]+"[^>]*>)/g)].map(match=>match[0]).join('\n');
-        const boot='<style>html[data-academy-boot]{min-height:100%;background:#f7f1e8}html[data-academy-boot] body{visibility:hidden}html[data-academy-boot]:after{content:"正在进入学院…";position:fixed;inset:0;display:grid;place-items:center;color:#6d87a1;font:16px Georgia,serif;letter-spacing:2px}html[data-academy-boot][data-academy-error]:after{content:"页面加载失败，请刷新重试。"}.localhost{display:none!important}</style><script src="/auth/boot.js"></script>';
+        const boot="<style>html[data-academy-boot]{min-height:100%;background:#f7f1e8}html[data-academy-boot] body{visibility:hidden}html[data-academy-boot]:after{content:\"正在进入学院…\";position:fixed;inset:0;display:grid;place-items:center;color:#6d87a1;font:16px Georgia,serif;letter-spacing:2px}html[data-academy-boot][data-academy-error]:after{content:\"页面加载失败，请刷新重试。\"}.localhost{display:none!important}</style><script src=\"/auth/boot.js\"></script>";
         const composed=terminal.replace('<html ','<html data-academy-boot ').replace('</head>',boot+'</head>').replace('</body>',assets+'\n</body>');
         const html=account?accountHtml(composed):composed;
         response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
@@ -211,7 +212,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
     }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR'});}
-  });
+  }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
   server.once('close',closeAccounts);server.once('error',closeAccounts);
   return {server,dataset,start:()=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>resolve(server.address().port));})};

@@ -1,0 +1,10 @@
+﻿import {buildMessages} from './ai.mjs';
+import {repairedMessages,continuedMessages} from './story-stream.mjs';
+import {traceInternalPrompts,withInternalPrompts,promptDefinitions} from './internal-prompts.mjs';
+function describe(sample){return sample.result.map((m,index)=>{const hits=sample.calls.map(c=>({...c,at:m.content.indexOf(c.text)})).filter(c=>c.text&&c.at>=0).sort((a,b)=>a.at-b.at||b.text.length-a.text.length);const parts=[];let end=0;for(const h of hits){if(h.at<end)continue;parts.push({id:h.id});end=h.at+h.text.length;}return {index:index+1,role:m.role,kind:parts.length?'internal':'user',parts,label:parts.length?'内部规则':m.content.includes('以下 JSON')?'动态上下文：人设／变量／记忆／小剧场配置':m.content.includes('服务器私有')?'世界书及世界定义插入锚点':m.role==='assistant'?'存档开场／历史剧情／已固定正文':m.role==='user'?'玩家输入／历史输入':'世界书条目（按设置插入）'};});}
+export function promptVisualization(card,data){
+ const request={persona:{name:'{{玩家姓名}}'},input:'{{本轮玩家输入}}',opening:'{{存档开场}}',history:[{role:'user',content:'{{历史玩家输入}}'},{role:'assistant',content:'{{历史剧情正文}}'}],memories:['{{检索记忆}}'],presets:[],state:{player:{id:'player',name:'{{玩家姓名}}',present:true},characters:card.characters.map(c=>({id:c.id,name:c.name,present:false}))}};
+ const build=()=>buildMessages(card,request);
+ const paths=[['combined','剧情与状态同次生成',()=>build().messages],['story','副 API 模式：主 API 正文',()=>buildMessages(card,{...request,stateSeparate:true}).messages],['state','副 API／手动补全：状态整理',()=>{const b=build();return repairedMessages(b.messages,'{{已生成的剧情正文}}',card,b.state,{theaterSettings:b.theaterSettings});}],['continue','续写控制（跟随剧情 API）',()=>continuedMessages(build().messages,'{{已有正文末尾}}','{{玩家姓名}}')]].map(([id,label,fn])=>({id,label,layout:describe(withInternalPrompts(data.internalPrompts,()=>traceInternalPrompts(fn)))}));
+ return {definitions:promptDefinitions,layout:paths[0].layout,paths,notes:['此顺序由实际消息组装函数生成；没有重新排列消息。示例使用占位的玩家输入与历史，条件规则依当前请求决定是否启用。','世界书按触发结果、插入位置和深度插入；用户预设按 before／in-chat／after 设置插入，实际启用内容依用户配置变化。','独立任务的顺序：人设为内部规则→世界书约束→玩家愿望；逐轮记忆为内部规则→本轮事实；论坛为内部规则→发言者与世界书→帖子评论；随机事件为内部规则→世界书约束→玩家与剧情；摘要／建议为内部规则→选定正文。','骰子、已接受事件、精神体日记示例及关闭建议等条件规则仅在对应功能启用时出现；相关模板列在下方。']};
+}

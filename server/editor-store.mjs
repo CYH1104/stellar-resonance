@@ -1,3 +1,5 @@
+import {validateInternalPrompts} from './internal-prompts.mjs';
+import {validateMapPlaces,bundledPlaces} from './map-places.mjs';
 import {WORLD_DEFAULTS,characterRows} from './editor-ui/worldbook.js';
 import {isPlaceholderCharacter} from './placeholders.mjs';
 import {validateMapAssets} from './map-assets.mjs';
@@ -33,13 +35,13 @@ export function validateEditorData(raw){
   let worldbooks;
   if(raw.worldbooks!==undefined){if(!Array.isArray(raw.worldbooks)||raw.worldbooks.length>50)throw error('INVALID_WORLDBOOKS');const bookIds=new Set();worldbooks=raw.worldbooks.map(book=>{if(!book||typeof book.id!=='string'||book.id.length>100||bookIds.has(book.id)||typeof book.name!=='string'||book.name.length>200)throw error('INVALID_WORLDBOOK');bookIds.add(book.id);return {id:book.id,name:book.name,enabled:book.enabled!==false,metadata:safeJson(book.metadata||{}),entries:validateEditorData({version:1,characters:raw.characters,entries:book.entries}).entries};});entries=worldbooks.filter(b=>b.enabled).flatMap(book=>book.entries.map(entry=>({...entry,uid:book.id+':'+entry.uid})));}
   if(entries.length>1000)throw error('TOO_MANY_ENTRIES');
-  return {version:1,characters,entries,map:validateMapAssets(raw.map),worldbook:safeJson(raw.worldbook||{}),...(worldbooks?{worldbooks}:{})};
+  return {version:1,characters,entries,internalPrompts:validateInternalPrompts(raw.internalPrompts),map:validateMapAssets(raw.map),...(raw.mapPlaces!==undefined?{mapPlaces:validateMapPlaces(raw.mapPlaces)}:{}),worldbook:safeJson(raw.worldbook||{}),...(worldbooks?{worldbooks}:{})};
 }
 export function publicCards(data){return data.characters.map(c=>Object.fromEntries(Object.entries(c).filter(([key])=>(Object.hasOwn(fields,key)&&key!=='hiddenPrompt')||['id','displayFields'].includes(key))));}
-export function cardWithEditor(base,data){return {...clone(base),characters:clone(data.characters),world:{...clone(base.world),sourceText:'',entries:clone(data.entries)}};}
+export function cardWithEditor(base,data){return {...clone(base),characters:clone(data.characters),places:clone(data.mapPlaces??base.places??[]),world:{...clone(base.world),sourceText:'',entries:clone(data.entries)}};}
 export function createEditorStore(root,base){
   const directory=resolve(root,'server/private'),file=resolve(directory,'editor-data.json');let queue=Promise.resolve();
-  async function read(){let raw;try{raw=await readFile(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;raw=JSON.stringify(defaultEditorData(base));}const parsed=JSON.parse(raw);if(Array.isArray(parsed.characters)){parsed.characters=parsed.characters.filter(c=>!isPlaceholderCharacter(c));if(!parsed.characters.length)parsed.characters=await bundledCharacters(root);}const data=validateEditorData(parsed);return {revision:createHash('sha256').update(raw).update('\n').update(JSON.stringify(data)).digest('hex'),data};}
+  async function read(){let raw;try{raw=await readFile(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;raw=JSON.stringify(defaultEditorData(base));}const parsed=JSON.parse(raw);if(Array.isArray(parsed.characters)){parsed.characters=parsed.characters.filter(c=>!isPlaceholderCharacter(c));if(!parsed.characters.length)parsed.characters=await bundledCharacters(root);}if(parsed.mapPlaces===undefined)parsed.mapPlaces=await bundledPlaces(root,base);const data=validateEditorData(parsed);return {revision:createHash('sha256').update(raw).update('\n').update(JSON.stringify(data)).digest('hex'),data};}
   async function save(data,revision){const task=queue.then(async()=>{const current=await read();if(current.revision!==revision)throw error('EDITOR_CONFLICT',409);const clean=validateEditorData(data),oldIds=new Set(clean.characters.map(c=>c.id));if(current.data.characters.some(c=>!oldIds.has(c.id)))throw error('EXISTING_CHARACTER_ID_REQUIRED');await mkdir(directory,{recursive:true});try{await stat(file);await copyFile(file,resolve(directory,'editor-data.previous.json'));}catch(e){if(e.code!=='ENOENT')throw e;}const temporary=file+'.tmp';await writeFile(temporary,JSON.stringify(clean,null,2),'utf8');await rename(temporary,file);return read();});queue=task.catch(()=>{});return task;}
   return {read,save};
 }

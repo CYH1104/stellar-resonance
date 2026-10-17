@@ -2757,18 +2757,19 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
         const mp = root.querySelector('.mp');
         const bodyBox = root.querySelector('.spl-mapbody');
         if (!mp || !bodyBox) return null;
-        const P = MAP_PLACES.map(x => Object.assign({ intro: MAP_INTROS[x.name] || '' }, x));
+        const P = (window.__ACADEMY_MAP_ASSETS__?.locations||MAP_PLACES).map(x => Object.assign({ intro: MAP_INTROS[x.name] || '' }, x));
         /* 默认地图图:主地图和每个地点的次地图都先给这一张,用户在「插入URL」里填自己的就覆盖 */
         const MAP_DEFAULT_URL = 'data:image/webp;base64,' + MAP_DEFAULT_B64;
         const MAP_FALLBACK_URL = 'data:image/jpeg;base64,' + MAP_DEFAULT_B64;   /* 远程图挂了就退回内嵌兜底 */
         /* 地图图片存档:主地图一张 + 每个地点一张次地图(mapImg:v1) */
         const MI = (() => {
-            try { const o = JSON.parse(GM_getValue('mapImg:v1', '{}')) || {}; return { main: o.main || '', places: o.places || {} }; }
+            try { const o = JSON.parse(GM_getValue('mapImg:v1', '{}')) || {}; return { main: o.main || '', secondary:o.secondary||'', places: o.places || {} }; }
             catch (e) { return { main: '', places: {} }; }
         })();
         if(window.__ACADEMY_MAP_ASSETS__)Object.assign(MI,window.__ACADEMY_MAP_ASSETS__);
+        let mapAssetRevision=JSON.stringify(window.__ACADEMY_MAP_ASSETS__||{});
         const miSave = () => GM_setValue('mapImg:v1', JSON.stringify(MI));
-        P.forEach(p => { p.image = MI.places[p.name] || MAP_DEFAULT_URL; });
+        P.forEach(p => { p.image = MI.places[p.name] || MI.secondary || MAP_DEFAULT_URL; });
         const $ = id => root.querySelector('#mp-' + id);
         const stage = $('stage'), svg = $('svg'), main = $('sMain'), list = $('list');
         const subs = [$('s0')];
@@ -2784,6 +2785,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
                 if (++f > t.length * 2) { el.textContent = t; clearInterval(id); }
             }, 25);
         };
+        function renderPlaces(){list.replaceChildren();main.querySelectorAll('.pt,.ptl').forEach(e=>e.remove());
         P.forEach((p, i) => {
             const li = document.createElement('li'), b = document.createElement('button');
             b.className = 'item'; b.type = 'button';
@@ -2806,6 +2808,8 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             lb.style.top = p.py + '%';
             main.appendChild(lb);
         });
+        }
+        renderPlaces();
         const setImg = (el, src) => {
             el.style.backgroundImage = src ? 'url("' + src + '")' : '';
             el.classList.toggle('has', !!src);
@@ -3022,7 +3026,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
         });
         return {
             refreshLayout(){if(idx>=0){svg.classList.add('st');lines();placeTag();}},
-            setAssets(assets){if(!assets)return;MI.main=assets.main||'';MI.places=assets.places||{};P.forEach(p=>{p.image=MI.places[p.name]||MAP_DEFAULT_URL;});if(idx>=0)select(idx);else setImg(main,MI.main||MAP_DEFAULT_URL);},
+            setAssets(assets){if(!assets)return;const revision=JSON.stringify(assets);if(revision===mapAssetRevision)return;mapAssetRevision=revision;let updated=false;if(Array.isArray(assets.locations)&&JSON.stringify(assets.locations)!==MI.locationRevision){MI.locationRevision=JSON.stringify(assets.locations);P.splice(0,P.length,...assets.locations.map(p=>({...p})));idx=-1;chosen=-1;stage.classList.remove('sel');$('tag').classList.remove('show');$('detail').classList.remove('open');svg.innerHTML='';updated=true;}MI.main=assets.main||'';MI.secondary=assets.secondary||'';MI.places=assets.places||{};P.forEach(p=>{p.image=MI.places[p.name]||MI.secondary||MAP_DEFAULT_URL;});if(updated)renderPlaces();if(idx>=0)select(idx);else setImg(main,MI.main||MAP_DEFAULT_URL);},
             onShow() {
                 setVh();
                 if (!inited) { inited = true; scr($('h1'), 'WELCOME'); }
@@ -10306,8 +10310,9 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   function tick(){const now=new Date();clock.querySelector('time').dateTime=now.toISOString();clock.querySelector('time').textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Shanghai'}).format(now);clock.querySelector('.academy-date').textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Asia/Shanghai'}).format(now).replaceAll('/','.');}tick();setInterval(tick,1000);
   const nav=q('.ah-tools');nav.replaceChildren();
   window.addEventListener('focus',()=>void refreshMapAssets());
-  async function refreshMapAssets(){try{const r=await fetch('/api/map-assets',{cache:'no-store'});if(r.ok){const data=await r.json();root.__mapApi?.setAssets(data.map);}}catch{}}
+  let refreshingMap=false;async function refreshMapAssets(){if(refreshingMap)return;refreshingMap=true;try{const r=await fetch('/api/map-assets',{cache:'no-store'});if(r.ok){const data=await r.json();root.__mapApi?.setAssets(data.map);}}catch{}finally{refreshingMap=false;}}
   document.addEventListener('click',event=>{if(event.target.closest('[data-sact=map],[data-module=map]'))void refreshMapAssets();},true);
+  setInterval(()=>{if(!document.hidden&&root.classList.contains('spl-map'))void refreshMapAssets();},2000);
   const mapStage=q('.mp .stage');
   if(mapStage){let zoomFrame=0;function refreshMap(){root.__mapApi?.refreshLayout?.();}function followZoom(){cancelAnimationFrame(zoomFrame);if(matchMedia('(prefers-reduced-motion: reduce)').matches){refreshMap();return;}const start=performance.now();function tick(now){if(!root.classList.contains('spl-map'))return;refreshMap();if(now-start<460)zoomFrame=requestAnimationFrame(tick);}zoomFrame=requestAnimationFrame(tick);}const zoom=document.createElement('button');zoom.type='button';zoom.className='map-zoom';zoom.textContent='+';zoom.title='放大地图';zoom.setAttribute('aria-label','放大地图');zoom.setAttribute('aria-pressed','false');zoom.onclick=event=>{event.stopPropagation();const expanded=mapStage.classList.toggle('map-expanded');zoom.textContent=expanded?'−':'+';zoom.title=expanded?'缩小地图':'放大地图';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-pressed',String(expanded));followZoom();};mapStage.addEventListener('transitionend',event=>{if(event.target===mapStage)refreshMap();});mapStage.append(zoom);}
   const items=[['chars','人物公开介绍'],['personas','user 人设档案'],['chat','进入对话'],['rev','编辑随机事件'],['memory','剧情记忆'],['saves','存档与导出'],['portrait','调整立绘大小'],['hub','全部功能']];

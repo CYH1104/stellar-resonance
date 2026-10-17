@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>学院 · 内置档案编辑</title><link rel="stylesheet" href="./editor.css"><script src="./editor.js" type="module"></script></head><body>
 <header><div><small>INTERSTELLAR ACADEMY / PRIVATE EDITOR</small><h1>学院档案编辑</h1></div><nav><a id="game-link" href="/terminal" target="_blank" rel="noopener">查看学院 ↗</a><button id="admin-logout" hidden>退出管理</button><button id="save">立即保存</button></nav></header>
-<div class="toolbar"><button data-tab="characters" class="selected">角色卡片</button><button data-tab="entries">隐藏世界书</button><button data-tab="map">地图 URL</button><span id="status" role="status">正在读取…</span></div>
+<div class="toolbar"><button data-tab="characters" class="selected">角色卡片</button><button data-tab="entries">隐藏世界书</button><button data-tab="map">地图与地点</button><button data-tab="prompts">内部 AI 提示词</button><span id="status" role="status">正在读取…</span></div>
 <main><aside><div class="list-tools"><button id="add">＋ 新增角色</button><input id="search" placeholder="搜索名称或关键词" aria-label="搜索"></div><div id="list"></div><div class="archive-tools"><button id="import">导入世界书</button><button id="export">导出世界书</button><input id="file" type="file" accept=".json,application/json" hidden></div></aside>
 <section id="form"><p>正在读取本机档案…</p></section><aside class="preview"><small>PREVIEW / 公开展示</small><div id="preview"></div><p>隐藏提示词由服务器保存。修改会自动保存，学院角色卡会同步更新。新增角色用于新建存档，已有存档保留原角色集合。</p></aside></main>
 </body></html>

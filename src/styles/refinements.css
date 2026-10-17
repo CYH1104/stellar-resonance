@@ -143,3 +143,7 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 #academy-workspace button.primary:not(.composer-send):not(.composer-stop){border:1px solid var(--color-border)!important;border-radius:5px!important;padding:4px 12px!important}
 #academy-workspace .file-import-control{border:0!important;background:transparent!important;padding:0!important}#academy-workspace input[type=file][hidden]{display:none!important}
+
+/* Keep the native details content inside the rail's available height. */
+#academy-workspace .theater-window.expanded::details-content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}#academy-workspace .theater-window.expanded>.theater-pane{height:calc(100% - 38px);overflow:hidden}
+
