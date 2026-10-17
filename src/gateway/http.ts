@@ -9,6 +9,7 @@ Object.assign(apiMessages,{
   INVALID_WORLD_INFO:'世界书触发内容或插入设置不正确，请检查世界书页面。',
   REQUEST_TOO_LARGE:'本轮请求内容过多，请减少世界书预算或关闭不需要的预设条目后重试。',
   MODEL_REASONING_UNCLOSED:'模型返回了未闭合的思考标签，后面的内容无法安全区分为正文，已停止。请关闭预设中要求输出思考标签的条目后重试；不会显示思维链。',
+  STATE_FORMAT_INVALID:'正文已保留，但本次状态格式未通过。可检查状态与格式接口，再手动补修；不会自动重复调用。',
   MODEL_REASONING_ONLY:'中转站返回了推理内容，但没有可展示的正文。请提高最大输出 Token 或检查模型／预设；不会显示思维链。',
   MODEL_NO_VISIBLE_CONTENT:'中转站有返回内容，但只有隐藏内容，没有可展示的正文。请检查预设的输出格式。',
   MODEL_EMPTY_RESPONSE:'中转站结束了回复，但没有返回正文。请检查所选模型是否支持 OpenAI chat/completions 及其输出长度。',
@@ -41,8 +42,8 @@ export class HttpGateway implements Gateway {
     return response;
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
-  async *generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent> {
-    const response=await this.post('generate',{...request,key},signal);
+  async *generate(request: GenerateRequest, key: string, signal: AbortSignal, stateApi?:{profile:Profile;key:string}): AsyncIterable<GenerateEvent> {
+    const response=await this.post('generate',{...request,key,stateApi,singleStateCall:true},signal);
     if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw new Error('服务器应返回 SSE 流式响应');
     const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer='', finished=false;
     try {

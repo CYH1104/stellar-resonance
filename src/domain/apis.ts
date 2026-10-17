@@ -2,6 +2,7 @@ import type {Preferences,Profile} from './contracts';
 import {samplingFields} from './presets.ts';
 export const textApiTasks=[
   {key:'story',field:'storyProfile',label:'剧情',hint:'包含正文、人物状态、全部已开启小剧场和下一步建议，同一次回复生成。'},
+  {key:'state',field:'stateProfile',label:'状态与格式',hint:'跟随主 API 时与正文一次生成；选择副 API 后，由副 API 单独处理正文的状态与格式。'},
   {key:'summary',field:'summaryProfile',label:'每轮记忆整理',hint:'每轮正文完成后整理人物、时间、地点、行动、得失、约定与状态变化。'},
   {key:'persona',field:'personaProfile',label:'AI 帮我写人设',hint:'新游戏的人设辅助填写。'},
 ] as const;

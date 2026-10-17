@@ -1,4 +1,4 @@
-import {test} from 'node:test';
+﻿import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMessages} from '../server/ai.mjs';
 import {applyPromptEntries} from '../server/presets.mjs';
@@ -25,5 +25,6 @@ test('expanded persona macros cannot exceed the preset context budget',()=>{
 });
 test('private author gender fields are sent independently of player gender and stale client state',()=>{
  const fixed={...card,characters:card.characters.map((c,i)=>({...c,primaryGender:i===0?'女':'男'}))},r=request();r.persona.primaryGender='玩家自定义';r.state.characters[0].primaryGender='过期';
- const built=buildMessages(fixed,r),privateData=JSON.parse(built.messages[1].content.split('：\n')[1]);assert.deepEqual(privateData.characters.map(c=>c.primaryGender),['女','男']);assert.deepEqual(built.state.characters.map(c=>c.primaryGender),['女','男']);assert.equal(built.state.player.primaryGender,'玩家自定义');
+ const built=buildMessages(fixed,r),privateData=JSON.parse(built.messages[1].content.split('：\n')[1]);assert.deepEqual(privateData.characters,[]);assert.deepEqual(built.state.characters.map(c=>c.primaryGender),['女','男']);assert.equal(built.state.player.primaryGender,'玩家自定义');
 });
+

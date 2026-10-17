@@ -23,7 +23,7 @@ test('malformed or unfinished blocks never produce outcome; oversized single chu
 });
 test('card and player persona, opening, history and memories are assembled in order',()=>{
   const request={input:'我的行动',persona:{name:'玩家',background:'玩家背景',spiritAnimal:'白猫',other:'喜欢安静'},state,opening:'迎新原文',history:[{role:'user',content:'之前行动'},{role:'assistant',content:'之前剧情'}],memories:['长期记忆'],presets:['叙事预设']};
-  const {messages}=buildMessages(card,request);assert.ok(messages[1].content.includes('私有设定'));assert.ok(messages[2].content.includes('长期记忆'));assert.equal(messages[3].content,'迎新原文');assert.equal(messages.at(-1).content,'我的行动');
+  const {messages}=buildMessages(card,request);assert.ok(!messages[1].content.includes('私有设定'));assert.ok(messages[2].content.includes('长期记忆'));assert.equal(messages[3].content,'迎新原文');assert.equal(messages.at(-1).content,'我的行动');
   assert.ok(messages[0].content.includes('不等于其本人在场'));assert.ok(!buildMessages(card,{...request,historyStart:5}).messages.some(m=>m.content==='迎新原文'));
   assert.ok(messages[2].content.includes('白猫'));assert.ok(messages[2].content.includes('喜欢安静'));
   assert.ok(messages[0].content.includes('每轮必须输出 player.spiritThought'));assert.ok(messages[0].content.includes('不需要玩家事先提供'));

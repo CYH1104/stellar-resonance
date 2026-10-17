@@ -1,3 +1,4 @@
+import {separatedState} from './separate-state.mjs';
 import {loadPrivateWorldbooks} from './worldbooks.mjs';
 import {memoryMessages,parseMemoryResult} from './memory.mjs';
 import {createEditorStore,cardWithEditor,publicCards} from './editor-store.mjs';
@@ -147,16 +148,17 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           let partial='',stateOnly=false;
           if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>!['partial','mode'].includes(k))||data.continuation.mode!==undefined&&data.continuation.mode!=='state'||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;stateOnly=data.continuation.mode==='state';}
-          const selected=connection(current,data),{messages,state,theaterSettings,dice,card:generationCard}=buildMessages(source,data,privateBooks);
+          const stateConnection=data.stateApi?connection(current,data.stateApi):undefined,generation=stateOnly&&stateConnection?data.stateApi:data;
+          const selected=connection(current,generation),{messages,state,theaterSettings,dice,card:generationCard}=buildMessages(source,{...data,stateSeparate:!!stateConnection&&!stateOnly},privateBooks);
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);
           const initialMessages=stateOnly?repairedMessages(messages,partial,generationCard,state,{theaterSettings,persona:data.persona,dice}):partial?continuedMessages(messages,partial,state.player.name):messages;
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
+          const upstream=await openCompletion({connection:selected,key:generation.key,profile:generation.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
           response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
           const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
-          try{for await(const event of streamStory({card:generationCard,state,options:{theaterSettings,persona:data.persona,dice,requireDynamicState:true},messages,partial,stateOnly,connection:selected,profile:data.profile,key:data.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
+          try{for await(const event of (stateConnection&&!stateOnly?separatedState({source,data,privateBooks,firstResponse:upstream,firstSignal,signal:controller.signal,stateConnection,fetchImpl,onProgress}):streamStory({card:generationCard,state,options:{theaterSettings,persona:data.persona,dice,requireDynamicState:true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress}))){response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
           catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
           finally{clearInterval(heartbeat);}
           return;

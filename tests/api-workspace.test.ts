@@ -342,3 +342,5 @@ it('条目验证失败不会清除错误或覆盖原书，删除书时解除所�
  w.saveWorldEntry(b.id,{...newWorldEntry('invalid'),depth:-1});expect(w.problem.value).toContain('世界书');expect(w.worldbooks.value[0].entries).toHaveLength(0);
  w.removeWorldbook(b.id);expect(w.worldbooks.value).toEqual([]);expect(w.boundWorldbookIds.value).toEqual([]);
 });
+
+it('状态格式仅在明确选副API时分流，跟随主API不发送第二份凭据',async()=>{const w=await workspace();fill(w);fill(w,'aux');w.preferences.stateProfile='aux';await w.confirmAllApis();await w.create('状态路由',{name:'玩家',appearance:'',personality:'',background:''},'');const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'正文。'};yield{type:'done',outcome:{event:'推进',characters:[]}};});await w.generate('观察');expect(gen.mock.calls[0][3]?.profile.id).toBe('aux');expect(gen.mock.calls[0][3]?.key).toBe('synthetic-key-aux');w.preferences.stateProfile='main';await w.generate('继续');expect(gen.mock.calls[1][3]).toBeUndefined();});

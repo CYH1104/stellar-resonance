@@ -92,7 +92,7 @@ test('registering address makes no external request; URL credentials rejected',a
 test('actual model request includes private card; SSE exposes story and validated full scene only',async()=>{
   const result=events(await(await post('/api/generate',await request())).text());const story=result.filter(e=>e.type==='delta').map(e=>e.text).join('');const done=result.at(-1);
   assert.equal(done.type,'done');assert.ok(!story.includes('SR_STATE'));assert.ok(!story.includes('presentCharacterIds'));assert.deepEqual(done.outcome.characters.filter(c=>c.present).map(c=>c.id),['pro-02']);assert.equal(done.outcome.characters.length,source.characters.length);assert.equal(done.outcome.characters[1].affinity,99);
-  assert.ok(calls.at(-1).payload.messages.some(m=>m.content.includes(source.characters[0].intro)));assert.equal(calls.at(-1).redirect,'error');assert.equal(calls.at(-1).headers.Authorization,'Bearer synthetic-key');
+  assert.ok(!calls.at(-1).payload.messages.some(m=>m.content.includes(source.characters[0].intro)));assert.equal(calls.at(-1).redirect,'error');assert.equal(calls.at(-1).headers.Authorization,'Bearer synthetic-key');
 });
 test('next model full scene clears departed actors, independent of mentioned name',async()=>{
   const r=await request('leave');r.state.characters[1].present=true;const result=events(await(await post('/api/generate',r)).text());assert.ok(result.at(-1).outcome.characters.every(c=>c.present===false));

@@ -37,9 +37,9 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
   <EmbeddingGuide />
   <section class="api-extra" aria-labelledby="api-task-heading">
     <h2 id="api-task-heading">功能接口选择（默认主 API）</h2>
-    <p class="rail-note">正文、人物状态、已开启的小剧场和下一步建议一起生成，均使用剧情接口；建议不再单独调用 API。</p>
+    <p class="rail-note">状态与格式跟随主 API 时，正文、状态与小剧场在一次请求内生成；选择副 API 后，剧情接口只写正文，副 API 再按正文整理状态。</p>
     <div class="field-grid">
-      <label v-for="task in textApiTasks" :key="task.key">{{task.label}}<select v-model="w.preferences[task.field]" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
+      <label v-for="task in textApiTasks" :key="task.key">{{task.label}}<select v-model="w.preferences[task.field]" :disabled="disabled"><option :value="w.preferences.mainProfile">{{task.key==='state'?'跟随剧情 API（一次生成）':'主 API · '+main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
       <label>随机事件<select v-model="w.preferences.randomEventProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
       <label>论坛 AI 回复<select v-model="w.preferences.forumReplyProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
     </div>
