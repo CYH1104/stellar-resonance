@@ -17,6 +17,7 @@
 git fetch --prune origin +refs/heads/main:refs/remotes/origin/main
 git reset --hard origin/main
 git checkout -B main origin/main
+git remote set-branches --add origin main
 git branch --set-upstream-to=origin/main main
 pnpm install --frozen-lockfile
 ```
@@ -55,6 +56,8 @@ cd /home/ubuntu/stellar-resonance && bash scripts/update-server.sh http://43.138
 ```
 
 脚本每次获取远程 main 最新提交，直接覆盖受 Git 跟踪的代码，不融合服务器本地代码。更新前自动把工作目录备份到 `/home/ubuntu/.stellar-resonance-backups/`，排除 .git、依赖、构建产物及本地集成缓存；备份包含私有数据，仅服务器用户可读取。请按磁盘容量自行保留必要备份。
+
+旧 `--single-branch` 克隆可能只允许跟踪 preview 分支。更新脚本会自动补充 main 的拉取配置；如果正在运行旧版脚本而停在“origin/main is not a branch”，先执行 `git remote set-branches --add origin main`，再运行更新脚本即可。此时报错前代码可能已经切到 main，但尚未构建和重启。
 
 `server/private/`、`server/.local/`、`server.config.json`、`.env` 保留，禁止将这些路径纳入 main；不删除未跟踪文件。旧版被 Git 跟踪的 `server.config.json` 会先备份，再仅解除跟踪，实际配置文件继续留在原处。安装或构建失败就停止，不重启服务。代码已覆盖时可从备份恢复或修正后再次运行。脚本不自动迁移或回滚数据库；运行中 tar 备份不能代替一致的数据库离线备份。
 

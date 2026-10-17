@@ -13,6 +13,12 @@ test "$(git rev-parse --show-toplevel)" = "$ROOT"
 mkdir -p server/.local
 exec 200>server/.local/update.lock
 flock -n 200 || { echo '另一次更新正在执行。'; exit 1; }
+# A previous --single-branch clone may fetch only the old preview branch.
+# Register main as well: fetching a ref alone does not make it eligible for
+# `git branch --set-upstream-to` in that checkout. Preserve other refspecs.
+if ! git config --get-all remote.origin.fetch | grep -Fxq '+refs/heads/main:refs/remotes/origin/main'; then
+  git remote set-branches --add origin main
+fi
 git fetch --prune origin +refs/heads/main:refs/remotes/origin/main
 TARGET="$(git rev-parse refs/remotes/origin/main)"
 # Refuse a remote snapshot that would track and replace deployment secrets/data.
