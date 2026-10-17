@@ -155,3 +155,9 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .player-message>header strong{order:2}
 #academy-workspace .player-message>header .tag{order:3}
 #academy-workspace .player-message>p{text-align:left;margin-left:0;margin-right:0}
+
+#academy-workspace .reply-actions-anchor{display:flex;flex-direction:column;align-items:center;gap:2px}
+#academy-workspace .variant-arrows{display:flex;align-items:center;gap:6px}
+#academy-workspace .variant-arrows button{border:0;background:transparent;box-shadow:none;padding:1px 4px;min-height:22px;line-height:20px;color:var(--color-accent)}
+#academy-workspace .variant-arrows button:disabled{opacity:.25}
+#academy-workspace .composer-input-row>textarea{min-height:40px;resize:none}
