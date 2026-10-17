@@ -3,7 +3,7 @@ import { ref } from 'vue';import type { ViewModel } from '../app/useWorkspace';i
 const props=defineProps<{w:ViewModel}>();const text=ref(''),editing=ref<string>();
 function begin(m:Memory){text.value=m.record?m.annotation||'':m.text;editing.value=m.id;}
 async function save(){await props.w.saveMemory(text.value,editing.value);text.value='';editing.value=undefined;}
-function source(id:string){props.w.panel='story';setTimeout(()=>document.getElementById(`turn-${id}`)?.scrollIntoView({block:'center'}),100);}
+function source(id:string){props.w.panel='story';setTimeout(()=>window.dispatchEvent(new CustomEvent('academy:story-turn',{detail:id})),100);}
 </script>
 <template><section class="surface"><header class="panel-heading"><div><p class="eyebrow">MEMORY / 记忆</p><h1>记忆</h1></div><span class="tag">聊天{{w.chatRoundCount}}轮/有效记忆{{w.effectiveMemoryCount}}条</span></header>
   <div class="actions"><button v-if="w.workingMemory" @click="w.stopMemory()">停止</button><button :disabled="!w.missingVectorCount||w.busy||w.workingMemory||(w.preferences.mode==='server'&&w.localService?.capabilities.embeddings===false)" @click="w.indexMemories()">{{w.workingMemory?'正在建立索引…':'补建记忆索引'}}</button></div>

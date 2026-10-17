@@ -1,17 +1,17 @@
 # Linux 云服务器部署
 
-发布分支：`preview/local-v0.11.2-20261016`。先安装 Git、Node.js **24.12.0 或更高版本**及 pnpm 10。以下按普通 Linux 用户、直接通过 IP 和 8807 端口访问部署。
+发布分支：`main`。先安装 Git、Node.js **24.12.0 或更高版本**及 pnpm 10。以下按普通 Linux 用户、直接通过 IP 和 8807 端口访问部署。
 
 角色介绍的邂逅入口：第一个选项为“建立新的会话与之相遇”。填写人设并建立新存档后，会将所选角色的邂逅提示放进剧情输入框，不自动发送。普通邂逅和随机邂逅需要已有会话，没有会话时保留角色页面并显示提示。
 
-角色卡片现在会在回到游戏窗口、打开角色介绍，以及角色页停留期间自动检查更新，直接同步新增、排序和文字修改，不刷新整页。编辑器与游戏必须来自同一个项目目录；服务器的 8808 仍通过 SSH 转发访问。两名内置演示角色不再显示，未添加正式角色时可从空角色库开始。正在进行的存档仍保留原角色集合，新角色用于新存档。
+角色卡片现在会在回到游戏窗口、打开角色介绍，以及角色页停留期间自动检查更新，直接同步新增、排序和文字修改，不刷新整页。编辑器与游戏必须来自同一个项目目录；服务器管理页统一通过同一地址的 `/editor/` 访问。两名内置演示角色不再显示，未添加正式角色时可从空角色库开始。正在进行的存档仍保留原角色集合，新角色用于新存档。
 
 完整回复也可以使用“继续续写”，会保存原完整稿并创建续写稿；失败时可切回旧稿。较早回合续写会先提示后续剧情失效。
 
 ## 首次拉取
 
 ```sh
-git clone --branch preview/local-v0.11.2-20261016 --single-branch https://github.com/CYH1104/stellar-resonance.git "$HOME/stellar-resonance"
+git clone --branch main --single-branch https://github.com/CYH1104/stellar-resonance.git "$HOME/stellar-resonance"
 cd "$HOME/stellar-resonance"
 pnpm install --frozen-lockfile
 pnpm build
@@ -128,33 +128,15 @@ node scripts/users.mjs --json
 
 存档、人设和 API 设置仍在各账号对应的浏览器存储中，不会自动云同步。同一浏览器切换账号会分开读取。换电脑或从本地改为服务器 IP 前，先导出旧存档，在新地址登录后导入；API Key 需重新填写。原本地数据不会删除。
 
-以后更新（确认没有正在生成的剧情，逐条执行；任一步失败即停止）：
-
-如果按前面的 nohup 方式运行，使用以下完整命令，把 IP 换为实际地址：
+以后只更新 `main`，不再融合本地代码。首次从旧分支切换，请先执行 [双方交接与服务器更新约定](SHARED_WORKFLOW.md) 的“服务器首次切换”命令。之后每次：
 
 ```sh
-cd "$HOME/stellar-resonance" &&
-git pull --ff-only origin preview/local-v0.11.2-20261016 &&
-pnpm install --frozen-lockfile &&
-pnpm build &&
-bash scripts/restart-server.sh http://YOUR_SERVER_IP:8807
+cd "$HOME/stellar-resonance" && bash scripts/update-server.sh http://YOUR_SERVER_IP:8807
 ```
 
-重启脚本会核验健康信息、项目路径和运行命令后才停止旧进程，并重新启用公网账号入口；失败时不会强制杀进程。nohup 启动能在断开 SSH 后继续运行，但服务器重启后仍需手动启动，或配置前述 systemd 常驻。
+脚本先备份，然后 fetch main 并覆盖受跟踪代码，安装、构建和重启；支持现有 nohup 和 systemd 用户服务。构建失败即停止，不重启。账号数据库、私有资料和配置继续保留，不执行 git clean。备份在项目目录外，详细交接与恢复说明见上面的文档。服务器不再作为源码编辑入口。
 
-已配置 systemd 用户服务时，也可以用下面的命令：
-
-```sh
-cd "$HOME/stellar-resonance"
-git status --short
-git pull --ff-only origin preview/local-v0.11.2-20261016
-pnpm install --frozen-lockfile
-pnpm build
-systemctl --user restart stellar-resonance
-curl --fail http://127.0.0.1:8807/api/health
-```
-
-本地源码有改动时先处理差异，不要强制重置；构建失败不要重启。Git 不会覆盖被忽略的账号数据库和角色资料。备份私有数据时先停服务，备份整个目录，再启动：
+需要一致的私有数据库离线备份时，先停服务，备份整个目录，再启动：
 
 ```sh
 systemctl --user stop stellar-resonance
