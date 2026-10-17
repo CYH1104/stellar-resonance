@@ -6,3 +6,5 @@ main{grid-template-columns:220px minmax(0,1fr)}.preview{display:none}#form{min-w
 .worldbook-tools #world-search{width:155px;flex:none;margin:0;padding:5px 8px;font-size:12px}.worldbook-tools #world-sort{width:100px;flex:none;margin:0;padding:5px 8px;font-size:12px}.worldbook-tools{flex-wrap:wrap}
 
 .location-entry,.prompt-entry{border-bottom:1px solid var(--line);padding:16px 0}.location-entry summary,.prompt-entry summary{cursor:pointer;color:var(--blue);padding:6px 0}.location-entry .fields{margin:16px 0}.prompt-order li{padding:12px 4px;border-bottom:1px solid var(--line)}.prompt-order a{font-size:12px;color:var(--blue)}.placeholder-list{display:grid;grid-template-columns:90px 1fr;gap:8px;font-size:12px;overflow-wrap:anywhere}.placeholder-list dd{margin:0}.prompt-entry textarea{font:13px/1.8 Georgia,SimSun,serif;min-height:220px}.toolbar{flex-wrap:wrap}
+
+[data-entry-drag]{cursor:grab;touch-action:none;user-select:none}.world-entry.drop-before{border-top:2px solid var(--blue)}.world-entry.drop-after{border-bottom:2px solid var(--blue)}

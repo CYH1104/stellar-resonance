@@ -147,3 +147,5 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 /* Keep the native details content inside the rail's available height. */
 #academy-workspace .theater-window.expanded::details-content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}#academy-workspace .theater-window.expanded>.theater-pane{height:calc(100% - 38px);overflow:hidden}
 
+
+.world-entry-drag{cursor:grab;touch-action:none;user-select:none}.worldbook-entry.drop-before{border-top:2px solid var(--color-accent)}.worldbook-entry.drop-after{border-bottom:2px solid var(--color-accent)}.history-page-link{display:block;width:100%;text-align:center;font-size:12px;margin:10px 0;color:var(--color-muted)}

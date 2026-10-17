@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {displayText} from '../domain/storyMarkup';
 import {computed,ref,watch,nextTick,onMounted} from 'vue';
 import type {TheaterScene} from '../domain/contracts';
 const props=defineProps<{scene?:TheaterScene&{round?:number};title:string;playerName:string}>();
@@ -15,7 +16,7 @@ onMounted(()=>void latest());watch(()=>props.scene,()=>void latest());
   <div ref="feed" class="phone-chat-messages" role="log" aria-label="群聊消息" @scroll="track">
     <article v-for="(message,index) in scene?.messages" :key="index" class="phone-message" :class="{'phone-message-mine':mine(message.speaker)}">
       <span class="phone-avatar" :class="'avatar-tone-'+(speakers.indexOf(message.speaker)%4)" aria-hidden="true">{{message.speaker.slice(0,1)}}</span>
-      <div class="phone-message-text"><span class="phone-speaker">{{message.speaker}}</span><p class="phone-bubble">{{message.content}}</p></div>
+      <div class="phone-message-text"><span class="phone-speaker">{{message.speaker}}</span><p class="phone-bubble">{{displayText(message.content)}}</p></div>
     </article>
     <p v-if="!scene?.messages?.length" class="phone-chat-empty">{{scene?.content||'暂无群聊消息。'}}</p>
   </div>

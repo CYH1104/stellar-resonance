@@ -1,0 +1,5 @@
+﻿import {ref} from 'vue';import {FormatErrorRepository,type FormatErrorRecord} from '../storage/formatErrors';import {stripReasoning} from '../domain/reasoning';
+export function useFormatErrors(){const entries=ref<FormatErrorRecord[]>([]),problem=ref('');const repository=new FormatErrorRepository();let queue=Promise.resolve();const ready=repository.read().then(rows=>{entries.value=rows;}).catch(()=>{});
+ function change(fn:()=>void){const task=queue.then(async()=>{await ready;fn();try{await repository.write(JSON.parse(JSON.stringify(entries.value)));problem.value='';}catch{problem.value='错误记录暂未写入浏览器，请检查本地存储空间。';}});queue=task.catch(()=>{});return task;}
+ async function record(raw:string,code:string,sessionId:string,turnId:string){if(!raw.trim())return;await change(()=>{entries.value.unshift({id:crypto.randomUUID(),at:new Date().toISOString(),sessionId,turnId,code:code.slice(0,100),raw:stripReasoning(raw).slice(0,400000)});entries.value=entries.value.slice(0,100);});}
+ const clear=()=>change(()=>{entries.value=[];});return {entries,problem,record,clear};}

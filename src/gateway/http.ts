@@ -43,7 +43,7 @@ export class HttpGateway implements Gateway {
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
   async *generate(request: GenerateRequest, key: string, signal: AbortSignal, stateApi?:{profile:Profile;key:string}): AsyncIterable<GenerateEvent> {
-    const response=await this.post('generate',{...request,key,stateApi,singleStateCall:true},signal);
+    const response=await this.post('generate',{...request,key,stateApi,singleStateCall:true,captureFormatErrors:true},signal);
     if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw new Error('服务器应返回 SSE 流式响应');
     const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer='', finished=false;
     try {
@@ -56,7 +56,8 @@ export class HttpGateway implements Gateway {
           if(!data) continue;
           let event:Record<string,unknown>;
           try {event=JSON.parse(data) as Record<string,unknown>;}catch{throw new Error('流式数据格式不正确');}
-          if(event.type==='diagnostic'){const safe=cleanDiagnostic(event.diagnostic);if(safe)yield {type:'diagnostic',diagnostic:safe};}
+          if(event.type==='format-error'&&typeof event.raw==='string'&&event.raw.length<=400000&&typeof event.code==='string'&&/^[A-Z_]{1,100}$/.test(event.code)){yield {type:'format-error',raw:event.raw,code:event.code};}
+          else if(event.type==='diagnostic'){const safe=cleanDiagnostic(event.diagnostic);if(safe)yield {type:'diagnostic',diagnostic:safe};}
           else if(event.type==='progress'&&['waiting','hidden','receiving'].includes(String(event.phase)))yield {type:'progress',phase:event.phase as 'waiting'|'hidden'|'receiving'};
           else if(event.type==='delta' && typeof event.text==='string') yield {type:'delta',text:event.text};
           else if(event.type==='continuation'&&Number.isInteger(event.attempt)&&Number(event.attempt)>=1&&Number(event.attempt)<=3&&event.maxAttempts===3)yield {type:'continuation',attempt:Number(event.attempt),maxAttempts:3};

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {displayText} from '../domain/storyMarkup';
 import {computed} from 'vue';
 import type { ActorState } from '../domain/contracts';
 import {mentalGenderLabel,identityLines} from '../domain/statusPresentation';
@@ -6,7 +7,7 @@ import {separateIdentityAbility} from '../domain/identityAbility';
 const props=defineProps<{actor:ActorState; player?:boolean;characters?:ActorState[]}>();
 const identityFields=computed(()=>separateIdentityAbility(props.actor));
 const spiritOs=computed(()=>{
-  const value=props.actor.spiritThought?.trim();
+  const value=displayText(props.actor.spiritThought?.trim()||'');
   if(value&&!/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(value))return value;
   if(!props.player)return props.actor.spiritAnimal?.trim()?'等待 AI 补全本轮精神体 OS':'尚未设定精神体';
   return props.actor.spiritAnimal?.trim()?'等待 AI 随剧情生成':'请先在人设中填写精神体';

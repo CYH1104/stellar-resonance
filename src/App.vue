@@ -15,6 +15,7 @@ import type { Panel } from './domain/contracts';
 import HomeView from './components/HomeView.vue';
 
 import StoryView from './components/StoryView.vue';
+import FormatErrorsView from './components/FormatErrorsView.vue';
 
 import StatusBar from './components/StatusBar.vue';
 
@@ -132,7 +133,7 @@ function resume(){pendingText='';library.value=false;w.home();entry.value='conti
 
 function settings(){library.value=false;w.home();entry.value='new';w.panel='settings';}
 
-function opening(){if(w.busy||w.workingMemory||w.workingPersona||w.creatingGame)return;if(embedded){window.dispatchEvent(new Event('academy:home'));return;}w.home();entry.value='opening';}
+function opening(){if(w.workingPersona||w.creatingGame)return;if(embedded){window.dispatchEvent(new Event('academy:home'));return;}w.home();entry.value='opening';}
 
 let navigationSequence=0;
 async function terminalNavigate(event:Event){
@@ -141,14 +142,14 @@ async function terminalNavigate(event:Event){
 
   if(detail)detail.accepted=false;
 
-  if(!embedded||w.busy||w.workingMemory||w.workingPersona||w.creatingGame||!detail)return;
+  if(!embedded||w.workingPersona||w.creatingGame||!detail)return;
 
   detail.accepted=true;
   const sequence=++navigationSequence;
 
   if(w.loading){pendingNavigation=detail;return;}
 
-  if(detail.entry==='new'){
+  if(detail.entry==='new'){if(w.busy||w.workingMemory){w.notice='生成期间可浏览其他页面，新建存档请先等待或停止生成。';return;}
     pendingText=typeof detail.insert==='string'?detail.insert.trim().slice(0,16000):'';
     pendingExistingSessions=pendingText?new Set(w.sessions.map(session=>session.id)):undefined;
     if(w.active)w.home();w.resetNewGameDraft();library.value=false;entry.value='new';w.panel='story';
@@ -258,7 +259,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
           <template v-if="embedded"><button :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="start">新建存档</button><button :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="resume">过往存档</button></template>
 
-          <button :disabled="w.busy || w.workingMemory || w.workingPersona || w.creatingGame" @click="opening">{{embedded?'返回学院':'返回开场'}}</button>
+          <button :disabled="w.workingPersona || w.creatingGame" @click="opening">{{embedded?'返回学院':'返回开场'}}</button>
 
         </div>
 
@@ -270,12 +271,13 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
         <button v-if="w.active" class="compact-only" :class="{selected:w.panel==='theaters'}" @click="w.panel='theaters'">查看小剧场</button>
 
-        <button v-for="tab in tabs" :key="tab.id" :class="{selected:w.panel===tab.id}" :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="navigate(tab.id)"><span>{{ tab.no }}</span>{{ tab.label }}</button>
+        <button v-for="tab in tabs" :key="tab.id" :class="{selected:w.panel===tab.id}" :disabled="w.workingPersona||w.creatingGame" @click="navigate(tab.id)"><span>{{ tab.no }}</span>{{ tab.label }}</button>
 
         <button class="random-event-toggle" :aria-pressed="w.preferences.diceEnabled" :disabled="w.busy" @click="w.preferences.diceEnabled=!w.preferences.diceEnabled"><span>12</span>随机事件<i :class="{enabled:w.preferences.diceEnabled}" aria-hidden="true"></i><span class="sr-only">{{w.preferences.diceEnabled?'已开启':'已关闭'}}</span></button>
 
         <button class="random-event-toggle suggestions-toggle" :aria-pressed="w.preferences.suggestionsEnabled!==false" :disabled="w.busy" @click="w.preferences.suggestionsEnabled=w.preferences.suggestionsEnabled===false"><span>13</span>行动建议<i :class="{enabled:w.preferences.suggestionsEnabled!==false}" aria-hidden="true"></i><span class="sr-only">{{w.preferences.suggestionsEnabled!==false?'已开启':'已关闭'}}</span></button>
 
+        <button :class="{selected:w.panel==='format-errors'}" @click="navigate('format-errors')"><span>14</span>格式错误文本</button><button class="random-event-toggle" :aria-pressed="w.hideFloors" @click="w.hideFloors=!w.hideFloors"><span>15</span>自动隐藏楼层<i :class="{enabled:w.hideFloors}" aria-hidden="true"></i></button>
       </nav>
 
     </header>
@@ -300,7 +302,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
             <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @master="setMasterPersona" @saved="savedFirstPersona" />
 
-            <HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" :first-setup="firstSetup==='name'" />
+            <FormatErrorsView v-else-if="w.panel==='format-errors'" :w="w" /><HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" :first-setup="firstSetup==='name'" />
 
             <StoryView v-else-if="w.panel==='story'&&w.apiReady" :w="w" />
 

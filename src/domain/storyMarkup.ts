@@ -4,9 +4,13 @@ export interface SceneSlate {sceneNo?:string;title?:string;englishTitle?:string;
 export type StoryBlock={kind:'text';text:string}|{kind:'slate';scene:SceneSlate}|{kind:'pending'};
 const fields:Record<string,keyof SceneSlate>={scene_no:'sceneNo',scene_title:'title',en_title:'englishTitle',quote:'quote',location:'location',ti:'time'};
 const wrappers=['顶栏','DRAFTING','DRAFTINKG','content'];
+export function displayText(source:string):string{
+  return source.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`|\b[A-Za-z]:\\[^\s]+|https?:\/\/[^\s]+)/g).map((part,i)=>i%2?part:part.replace(/\\r\\n|\\n/g,'\n')).join('');
+}
 export function unwrapStoryTags(source:string,streaming=false):string{
-  let text=source.replace(/<\/?(?:顶栏|DRAFTIN(?:K)?G|content)\s*>/gi,'');
+  let text=displayText(source).replace(/^[\t ]*\[(?:USER|CHAR)\s*\/\s*(?:player|world-card)\s*\/[^\]\r\n]{0,200}\][\t ]*(?:\r?\n|$)/gm,'').replace(/<\/?(?:顶栏|DRAFTIN(?:K)?G|content)\s*>/gi,'');
   if(streaming){const at=text.lastIndexOf('<'),tail=text.slice(at).toLowerCase();if(at>=0&&wrappers.some(name=>['<'+name.toLowerCase()+'>','</'+name.toLowerCase()+'>'].some(tag=>tag.startsWith(tail))))text=text.slice(0,at);}
+  if(streaming){const lines=text.split('\n');if(/^\[(?:C(?:H(?:A(?:R)?)?)?|U(?:S(?:E(?:R)?)?)?)(?:\s*\/[^\]]*)?$/.test(lines.at(-1)?.trim()||''))lines.pop();text=lines.join('\n');}
   return text;
 }
 

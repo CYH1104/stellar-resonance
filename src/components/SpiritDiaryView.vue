@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import {displayText} from '../domain/storyMarkup';
 import {computed} from 'vue';
 import type {TheaterScene} from '../domain/contracts';
 const props=defineProps<{scene?:TheaterScene&{round?:number};title:string}>();
-const diary=computed(()=>props.scene?.diary),paragraphs=computed(()=>(diary.value?.content||props.scene?.content||'').split(/\n\s*\n/).filter(p=>p.trim()));
+const diary=computed(()=>props.scene?.diary),paragraphs=computed(()=>displayText(diary.value?.content||props.scene?.content||'').split(/\n\s*\n/).filter(p=>p.trim()));
 </script>
 <template><article class="spirit-diary" aria-label="精神体日记">
   <div class="diary-binding" aria-hidden="true"><i v-for="i in 5" :key="i"></i></div>

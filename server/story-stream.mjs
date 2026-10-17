@@ -71,6 +71,7 @@ export async function* streamStory({card,state,options,messages,partial='',state
     if(readError&&!decoder.raw.trim())throw readError;
     try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt}};yield {type:'done',outcome};return;}
     catch(error){
+      if(options.captureFormatErrors&&decoder.raw.trim())yield {type:'format-error',code:error.code||'INVALID_MODEL_STATE',raw:decoder.raw};
       yield {type:'diagnostic',diagnostic:{...(error.diagnostic||{kind:'generation'}),...diagnosticStats(),code:error.code,attempt,stage:'rejected'}};
       if(options.singleStateCall){if(repairable.has(error.code))throw Object.assign(modelError(502,'STATE_FORMAT_INVALID'),{reasonCode:error.code});throw error;}
       if(repairable.has(error.code)&&decoder.story.trim()){repairing=true;repairReason=error.code;}

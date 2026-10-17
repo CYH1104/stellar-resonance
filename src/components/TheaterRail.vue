@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {displayText} from '../domain/storyMarkup';
 import {computed,ref} from 'vue';
 import TheaterScroll from './TheaterScroll.vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -21,8 +22,8 @@ const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,pro
       <template v-else><header class="rail-heading"><h3>{{s.title}}</h3></header>
         <template v-if="w.theaters.find(t=>t.slot===s.slot&&t.kind===s.kind)">
           <template v-for="scene in w.theaters.filter(t=>t.slot===s.slot&&t.kind===s.kind)" :key="scene.slot">
-            <div v-if="scene.messages?.length" class="group-chat"><p v-for="(message,i) in scene.messages" :key="i"><strong>{{message.speaker}}</strong><span>{{message.content}}</span></p></div>
-            <p v-if="scene.content" class="theater-prose">{{scene.content}}</p>
+            <div v-if="scene.messages?.length" class="group-chat"><p v-for="(message,i) in scene.messages" :key="i"><strong>{{message.speaker}}</strong><span>{{displayText(message.content)}}</span></p></div>
+            <p v-if="scene.content" class="theater-prose">{{displayText(scene.content)}}</p>
           </template>
         </template><p v-else class="empty">等待下一轮剧情完成后生成。</p>
       </template>

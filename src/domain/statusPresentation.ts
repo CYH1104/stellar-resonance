@@ -1,3 +1,4 @@
+import {displayText} from './storyMarkup';
 import type {ActorState} from './contracts';
 /** Formatting only: the saved MVU fields remain separate and unchanged. */
 export function mentalGenderLabel(actor:Pick<ActorState,'mentalPowerLevel'|'secondaryGender'>):string {
@@ -6,5 +7,5 @@ export function mentalGenderLabel(actor:Pick<ActorState,'mentalPowerLevel'|'seco
   return [level,actor.secondaryGender?.trim()].filter(Boolean).join(' ');
 }
 export function identityLines(value?:string):string[]{
-  return [...new Set((value||'').split(/\r?\n|[；;]/).map(line=>line.trim().replace(/^[【\[]|[】\]]$/g,'').trim()).filter(Boolean))];
+  return [...new Set(displayText(value||'').split(/\r?\n|[；;]/).map(line=>line.trim().replace(/^[【\[]|[】\]]$/g,'').trim()).filter(Boolean))];
 }
