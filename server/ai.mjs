@@ -1,3 +1,5 @@
+import {withTavernContext} from './tavern-macro-engine.mjs';
+import {personaDescription} from './participants.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
 import {parseStateJson} from './state-json.mjs';
@@ -70,7 +72,10 @@ function safeState(card, request) {
   return {player:separateIdentityAbility(player),characters:characters.map(separateIdentityAbility),variables};
 }
 
-export function buildMessages(card, request, privateBooks=[]) {
+export function buildMessages(card,request,privateBooks=[]){
+ return withTavernContext({user:request.persona?.name||'',char:card.world?.name||'群星共振世界卡',persona:request.persona?personaDescription(request.persona):'',input:request.input||'',history:request.history||[]},()=>buildMessagesWithinContext(card,request,privateBooks));
+}
+function buildMessagesWithinContext(card, request, privateBooks=[]) {
   card={...card,characters:card.characters.filter(c=>request.state?.characters?.some(a=>a.id===c.id))};
   try{request={...request,persona:normalizePersona(request.persona)};}catch{throw modelError(400,'INVALID_PERSONA');}
   if(!text(request.input,16000,true)||!Array.isArray(request.history)||request.history.length>24||request.history.some(m=>!['user','assistant'].includes(m.role)||!text(m.content,100000))||!Array.isArray(request.memories)||request.memories.length>8||request.memories.some(m=>!text(m,6000))||!Array.isArray(request.presets)||request.presets.some(p=>!text(p,8000)))throw modelError(400,'INVALID_GENERATION_REQUEST');

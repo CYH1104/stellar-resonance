@@ -16,6 +16,8 @@ import {fetchModelList} from './models.mjs';
 import {requestEmbeddings} from './embeddings.mjs';
 import {continuedMessages,repairedMessages,streamStory} from './story-stream.mjs';
 import {loadCard} from './load-card.mjs';
+import {setTavernContext} from './tavern-macro-engine.mjs';
+import {personaDescription} from './participants.mjs';
 import {developerAllowed,developerTrace} from './developer-mode.mjs';
 import {createAccounts} from './accounts.mjs';
 import {createEditorGateway} from './editor-gateway.mjs';
@@ -110,6 +112,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
+        setTavernContext({user:data.persona?.name||data.before?.player?.name||'',char:source.world.name||'群星共振世界卡',persona:data.persona?personaDescription(data.persona):'',input:data.input||'',history:data.history||[]});
         if(path==='/api/connection'){
           if(!safeString(data.profileId,128)||!data.profileId||!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
           const url=endpoint(data.apiBaseUrl);if(current.connections.size>=30&&!current.connections.has(data.profileId))throw modelError(400,'TOO_MANY_CONNECTIONS');

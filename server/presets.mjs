@@ -8,11 +8,9 @@ export function applyPromptEntries(messages,entries,persona,charName,generationT
   let list;try{list=entries.map(cleanPreset);}catch{throw modelError(400,'INVALID_PRESET');}
   const names={user:persona.name,char:charName||'群星共振世界卡',persona:personaDescription(persona),charifnotgroup:charName||'群星共振世界卡'};
   // Single pass: text inside a persona or name is data, never a second macro program.
-  let expandedChars=0;
-  const expand=s=>{expandedChars+=s.length;if(expandedChars>300000)throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');return s.replace(/\{\{(user|char|persona|charIfNotGroup)\}\}|<(USER|BOT|CHAR)>/gi,(token,macro,legacy)=>{const value=names[(macro||(legacy.toLowerCase()==='user'?'user':'char')).toLowerCase()];expandedChars+=value.length-token.length;if(expandedChars>300000)throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');return value;});};
-  let enabled;try{enabled=expandTavernMacros(activePromptEntries(list,generationType),{input:messages.findLast(m=>m.role==='user')?.content||'',history:messages});}catch{throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');}
+  let enabled;try{enabled=expandTavernMacros(activePromptEntries(list,generationType).map(p=>({...p,content:p.content.replace(/<(USER|BOT|CHAR)>/gi,(_,name)=>name.toLowerCase()==='user'?'{{user}}':'{{char}}')})),{input:messages.findLast(m=>m.role==='user')?.content||'',history:messages,user:persona.name,char:names.char,persona:names.persona,group:names.char});}catch{throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');}
   if(enabled.reduce((n,p)=>n+p.content.length,0)>300000)throw modelError(400,'PRESET_CONTEXT_TOO_LARGE');
-  const message=p=>({role:p.role||'system',content:expand(p.content)});
+  const message=p=>({role:p.role||'system',content:p.content});
   const before=enabled.filter(p=>!p.position||p.position==='before').map(message),after=enabled.filter(p=>p.position==='after').map(message);
   const chat=messages.slice(3),positions=new Map();
   enabled.filter(p=>p.position==='in-chat').forEach((p,index)=>{const at=Math.max(0,chat.length-(p.depth??4));const group=positions.get(at)||[];group.push({p,index});positions.set(at,group);});
