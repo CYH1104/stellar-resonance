@@ -161,3 +161,21 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .variant-arrows button{border:0;background:transparent;box-shadow:none;padding:1px 4px;min-height:22px;line-height:20px;color:var(--color-accent)}
 #academy-workspace .variant-arrows button:disabled{opacity:.25}
 #academy-workspace .composer-input-row>textarea{min-height:40px;resize:none}
+
+/* A single card owns its header and its independently scrolling contents. */
+#academy-workspace .status-panel .actor-collapse{box-sizing:border-box;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);overflow:hidden;margin:0 0 12px}
+#academy-workspace .status-panel .actor-collapse>summary{padding:8px 12px;min-height:38px}
+#academy-workspace .status-panel .actor-collapse[open]>summary{border-bottom:1px solid var(--color-border)}
+#academy-workspace .actor-collapse>.resizable-panel{display:flex;flex-direction:column;min-height:0;margin:0;padding:0 0 8px;overflow:hidden}
+#academy-workspace .status-panel .resizable-panel-body{flex:1;min-height:0;height:auto;overflow-y:auto;overflow-x:hidden;border:0;border-radius:0;overscroll-behavior:contain}
+#academy-workspace .status-panel .actor-card{box-sizing:border-box;width:100%;padding:12px;overflow-wrap:anywhere}
+#academy-workspace .actor-fields>div{grid-template-columns:minmax(60px,.85fr) minmax(0,1.35fr);gap:8px}
+#academy-workspace .actor-fields dd{min-width:0;overflow-wrap:anywhere}
+#academy-workspace .collapse-sign::after{content:'+'}
+#academy-workspace details[open]>.theater-collapse-toggle .collapse-sign::after{content:'−'}
+#academy-workspace .theater-window.expanded{flex:none;min-height:0}
+#academy-workspace .theater-window.expanded::details-content{display:block;overflow:hidden}
+#academy-workspace .theater-window.expanded>.theater-pane{height:auto;flex:none;overflow:hidden}
+#academy-workspace .theater-window .theater-scroll-body{overflow:hidden;flex:none;padding:0 10px 8px}
+#academy-workspace .theater-window .resizable-panel{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+#academy-workspace .theater-window .resizable-panel-body{flex:1;height:auto;min-height:0;overflow:auto;overscroll-behavior:contain}

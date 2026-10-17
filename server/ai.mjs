@@ -2,7 +2,7 @@ import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
 import {parseStateJson} from './state-json.mjs';
 import {compatibleState} from './state-compat.mjs';
-import {featurePrompts,featureContext} from './feature-prompts.mjs';
+import {featurePrompts,featureContext,featureContract} from './feature-prompts.mjs';
 import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {separateIdentityAbility} from '../src/domain/identityAbility.ts';
 import {storyWorldInfo,applyWorldInfo} from './worldbooks.mjs';
@@ -96,7 +96,7 @@ export function buildMessages(card, request, privateBooks=[]) {
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.filter(entry=>!request.stateSeparate||!/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|状态输出|格式修复|正则/i.test(entry.content)).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
-  return {messages:anchorNarration((request.stateSeparate?((m)=>m):applyStateProtocol)(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
+  return {messages:anchorNarration((request.stateSeparate?((m)=>m):((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false))))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {

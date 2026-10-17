@@ -11,6 +11,12 @@ test('disabled features remove instructions and dedicated context without removi
  const repaired=JSON.stringify(repairedMessages(built.messages,'正文',card,built.state,{theaterSettings:request.theaterSettings,suggestionsEnabled:false}));assert.ok(!repaired.includes('diceEvent'));assert.ok(!repaired.includes('群聊历史哨兵'));
 });
 test('only enabled side-scene schema is sent',()=>{const built=buildMessages(card,{...request,theaterSettings:request.theaterSettings.map(t=>({...t,enabled:t.slot===2}))});const text=JSON.stringify(built.messages);assert.ok(text.includes('messages'));assert.ok(!text.includes('同人文'));assert.ok(!text.includes('diaryOwners'));});
+test('final transport contract enumerates every enabled side scene and suggestions after preset injection',()=>{
+ const built=buildMessages(card,{...request,suggestionsEnabled:true,theaterSettings:defaultTheaters(),promptEntries:[{id:'p',name:'格式预设',enabled:true,content:'STYLE_SENTINEL',position:'before'}]});
+ const protocol=built.messages.find(m=>m.content.includes('[固定输出协议'));
+ assert.ok(protocol.content.includes('本轮输出检查'));for(const token of ['"forum"','"theaters"','"messages"','"suggestions"'])assert.ok(protocol.content.includes(token));
+ assert.ok(built.messages.indexOf(protocol)>built.messages.findIndex(m=>m.content==='STYLE_SENTINEL'));
+});
 test('disabling state generation omits state instructions and retains existing state on return',()=>{const built=buildMessages(card,{...request,stateEnabled:false});const text=JSON.stringify(built.messages);assert.ok(!text.includes('affinity'));const decoder=new StoryDecoder();decoder.push('正文<SR_STATE>{"event":"行动","presentCharacterIds":["pro-00"],"characters":[{"id":"pro-00","affinity":80}]}</SR_STATE><SR_DONE>');const out=decoder.finish(card,built.state,{singleStateCall:true,stateEnabled:false,theaterSettings:request.theaterSettings});assert.equal(out.characters[0].present,false);assert.equal(out.characters[0].affinity,undefined);});
 test('complete state without a marker or prose preserves valid side data with no automatic call',async()=>{
  const built=buildMessages(card,request),raw='<SR_STATE>'+JSON.stringify({presentCharacterIds:[],player:{spiritThought:''},characters:[],event:'校园通讯中断',suggestions:[],forum:[{id:'one',authorName:'匿名',content:'通讯故障'}]})+'</SR_STATE>';

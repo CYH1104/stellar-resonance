@@ -16,14 +16,14 @@ export function completeTheater(scene:TheaterScene|undefined,setting:TheaterSett
   return provided(scene.content);
 }
 /** Check the selected round itself; inherited values do not prove this round was updated. */
-export function needsStateRepair(session:Session,index:number,settings?:TheaterSetting[]):boolean {
+export function needsStateRepair(session:Session,index:number,settings?:TheaterSetting[],stateEnabled=true):boolean {
   const v=session.turns[index]&&selected(session.turns[index]);if(v?.status!=='complete')return false;
   try{
     if(!v.outcome)return true;
     validateOutcome(v.outcome,stateAt(session,index));
     const state=stateAt(session,index+1),out=v.outcome;
-    if(state.player.spiritAnimal?.trim()&&!provided(out.player?.spiritThought))return true;
-    for(const char of state.characters.filter(a=>a.present)){
+    if(stateEnabled&&state.player.spiritAnimal?.trim()&&!provided(out.player?.spiritThought))return true;
+    for(const char of stateEnabled?state.characters.filter(a=>a.present):[]){
       const patch=out.characters?.find(a=>a.id===char.id);
       if(!Number.isFinite(patch?.affinity)||patch!.affinity!< -100||patch!.affinity!>100)return true;
       if(char.spiritAnimal?.trim()&&!provided(patch?.spiritThought))return true;

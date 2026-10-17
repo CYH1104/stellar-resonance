@@ -259,7 +259,7 @@ export function useWorkspace() {
       for await(const event of gateway().generate(request,key(p),controller.signal,stateApi)) {
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
         if(event.type==='format-error'){await formatErrors.record(event.raw,event.code,session.id,turn.id);}
-        else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
+        else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_SIDE_SCENE_RETAINED')notice.value='模型遗漏了本轮已开启的部分小剧场，正文和有效内容已保存；可在回复操作中手动补全，不会自动再次调用。';if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
         else if(event.type==='progress'){generationPhase.value=event.phase==='hidden'?'中转站正在返回数据，目前尚无可展示正文（思考内容保持隐藏）…':event.phase==='receiving'?'正在接收正文和隐藏状态…':'等待模型返回…';}
         else if(event.type==='delta'){generationPhase.value='正在接收正文…';if(repairingState.value)continue;variant.text+=event.text;if(Date.now()-checkpoint>700){checkpoint=Date.now();await safePersist();}}
         else if(event.type==='repair'){generationPhase.value='正文已保留，正在补修状态…';repairingState.value=true;continuationAttempt.value=event.attempt;notice.value=`正在补修状态 ${event.attempt}/${event.maxAttempts}：${event.reason}`;}
