@@ -10,126 +10,126 @@ export const presetGroupCatalog=[
     "groups": [
       {
         "id": "533ceb93-65d8-44c6-9bc4-426bb03cdf83",
-        "name": "🔒头部越狱",
+        "name": "头部越狱",
         "order": 0,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "3cfc7dfb-1622-42fd-88e0-80220e54458c",
-        "name": "🆔身份",
+        "name": "身份",
         "order": 1,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "6ac81b49-98e5-45fe-aa3d-874575afc17f",
-        "name": "🦋人物设定",
+        "name": "人物设定",
         "order": 2,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "6b326c1c-7130-49dc-a3f2-a9669c599cfa",
-        "name": "💗情感指导",
+        "name": "情感指导",
         "order": 3,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "6b2d0cea-47a7-407e-9abf-9059020e2c9c",
-        "name": "📦人物补充刻画",
+        "name": "人物补充刻画",
         "order": 4,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "35b26b99-b130-47fa-93a0-0cc213ad2a52",
-        "name": "🎶文风选择",
+        "name": "文风选择",
         "order": 5,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "0870e3bd-5529-445a-b10d-904f29c90425",
-        "name": "🖊️写作长线指导",
+        "name": "写作长线指导",
         "order": 6,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "578646d0-e937-43ab-a38d-ad72be52535d",
-        "name": "✏️正文规定",
+        "name": "正文规定",
         "order": 7,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "6486aba9-317c-4b7e-969b-dc442c3aec81",
-        "name": "🔞NSFW",
+        "name": "NSFW",
         "order": 8,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "563801b0-798b-4093-aa46-c1f4a59d5256",
-        "name": "🧸附加内容",
+        "name": "附加内容",
         "order": 9,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "dbdc8875-63f8-424d-bf90-996b6676ef49",
-        "name": "🔮极光小剧场",
+        "name": "极光小剧场",
         "order": 10,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "6acc0a9c-0d09-4871-b1c5-c2cdb4a84ee4",
-        "name": "🌐世界设定",
+        "name": "世界设定",
         "order": 11,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "65b54168-fbc4-4c2d-8f1d-0f9cbf3b36a6",
-        "name": "💭思维链开始",
+        "name": "思维链开始",
         "order": 12,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "d0200b23-c2f2-4b89-a720-46371bb790ba",
-        "name": "⚖️防止八股",
+        "name": "防止八股",
         "order": 13,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "f765b68c-6d96-435b-94c0-7428da06b407",
-        "name": "🔔自检草稿",
+        "name": "自检草稿",
         "order": 14,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "9e942609-9701-42c1-a57f-31e693e71e7a",
-        "name": "🔒防截断越狱",
+        "name": "防截断越狱",
         "order": 15,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "8727ce80-63f4-4a8a-8239-b027a778f68d",
-        "name": "🔑卡原生cot",
+        "name": "卡原生cot",
         "order": 16,
         "collapsed": true,
         "enabled": true
       },
       {
         "id": "fa5b9311-edb4-4d35-b8e0-26574a1923e6",
-        "name": "📜变量及字数修改",
+        "name": "变量及字数修改",
         "order": 17,
         "collapsed": true,
         "enabled": true

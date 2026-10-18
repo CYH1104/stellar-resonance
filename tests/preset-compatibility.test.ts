@@ -4,16 +4,16 @@ import {restorePresetCompatibility,confirmPresetCompatibility} from '../src/doma
 import {backup,defaults,parseBackup} from '../src/domain/story';
 const entry=(name:string,content:string,enabled=true)=>({name,content,enabled});
 const source=(prompts:unknown[])=>JSON.stringify({prompts});
-it('import review closes selected candidates and preserves unchecked source switches and text',()=>{
+it('import review explicitly enables unselected candidates and preserves text',()=>{
  const text=source([entry('状态栏', '每轮必须输出状态栏：<panel>玩家地点与好感度等状态信息</panel>'),entry('输出格式','请输出 <custom>自定义内容</custom>'),entry('状态栏旧版','每轮必须输出状态栏：<panel>玩家地点与好感度等状态信息</panel>',false)]);
  const rows=importTavernPreset(text).entries,original=rows.map(p=>p.content);
  expect(rows.every(p=>p.compatibility)).toBe(true);
- confirmPresetCompatibility(rows,[]);expect(rows.map(p=>p.enabled)).toEqual([true,true,false]);
+ confirmPresetCompatibility(rows,[]);expect(rows.map(p=>p.enabled)).toEqual([true,true,true]);
  confirmPresetCompatibility(rows,[0,1,2]);expect(rows.every(p=>!p.enabled)).toBe(true);
- confirmPresetCompatibility(rows,[1]);expect(rows.map(p=>p.enabled)).toEqual([true,false,false]);
+ confirmPresetCompatibility(rows,[1]);expect(rows.map(p=>p.enabled)).toEqual([true,false,true]);
  expect(rows.map(p=>p.content)).toEqual(original);
  const again=importTavernPreset(exportTavernPreset(rows,defaults().profiles[0])).entries;
- expect(rows.map(row=>again.find(p=>p.name===row.name)?.enabled)).toEqual([true,false,false]);
+ expect(rows.map(row=>again.find(p=>p.name===row.name)?.enabled)).toEqual([true,false,true]);
 });
 it('detects dynamic output templates by purpose, not a fixed status tag',()=>{
  for(const tag of ['StatusBlock','custom_stats','人物面板']){

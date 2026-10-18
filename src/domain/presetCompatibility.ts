@@ -41,11 +41,11 @@ export function detectPresetCompatibility(entries:Preset[],preserve=false){
 export function restorePresetCompatibility(entries:Preset[],category?:CompatibilityCategory){
  for(const p of entries){const c=p.compatibility;if(c?.verdict==='disabled'&&!c.restored&&(!category||c.categories.includes(category))){p.enabled=c.originalEnabled;c.restored=true;}}
 }
-/** Explicit import review: checked means disabled; unchecked keeps the source switch. */
+/** Explicit import review: disabledIndices explicitly closes candidates; all other candidates are enabled. */
 export function confirmPresetCompatibility(entries:Preset[],disabledIndices:number[]){
  const selected=new Set(disabledIndices);
  entries.forEach((p,index)=>{const c=p.compatibility;if(!c)return;
-  p.enabled=selected.has(index)?false:c.originalEnabled;
+  p.enabled=!selected.has(index);
   c.verdict=selected.has(index)?'disabled':'review';
   c.restored=!selected.has(index);
  });

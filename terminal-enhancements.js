@@ -34,7 +34,7 @@
   const quick=q('.ah-quick');quick?.remove();
   const logotype=q('.ah-logotype');logotype.innerHTML='<span>星穹联合军事学院</span><small>INTERSTELLAR ACADEMY</small>';
   feature.querySelector('small').textContent='STORY LINK';feature.querySelector('h2').textContent='进入对话';feature.querySelector('h2').after(feature.querySelector('small'));
-  q('.ah-office').innerHTML='全部功能<small>ALL MODULES ↗</small>';
+  q('.ah-office').innerHTML='全部功能<small>ALL MODULES </small>';
   const entryLabels=[['学院星图','STAR MAP'],['新建存档','NEW JOURNEY'],['进入剧情','STORY LINK'],['学院编年史','CHRONICLE']];
   q('.ah-entries').querySelectorAll('button').forEach((button,index)=>{if(entryLabels[index]){button.querySelector('span').textContent=entryLabels[index][0];button.querySelector('small').textContent=entryLabels[index][1]+' →';}});
   [feature,q('.ah-office'),...q('.ah-entries').querySelectorAll('button')].forEach((button,index)=>{const no=document.createElement('i');no.className='academy-home-number';no.textContent=String(items.length+index+1).padStart(2,'0');no.setAttribute('aria-hidden','true');button.prepend(no);});

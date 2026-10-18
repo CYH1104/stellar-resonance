@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import {withoutEmoji} from '../domain/displayText';
 import FileImportButton from './FileImportButton.vue';
 import {computed,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {newWorldEntry,worldbookWarnings,worldEntryWarnings,resolveWorldbooks,WORLD_FILE_LIMIT,type Worldbook,type WorldEntry} from '../domain/worldbooks';
 import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel}>();
+const importSearch=ref('');
+const reviewRows=computed(()=>(props.w.worldbookImportPending?.rows||[]).filter(row=>!importSearch.value.trim()||JSON.stringify(row.entry).toLowerCase().includes(importSearch.value.trim().toLowerCase())));
+function setReviewEnabled(id:string,enabled:boolean){const review=props.w.worldbookImportPending;if(!review)return;review.disabled=enabled?review.disabled.filter(value=>value!==id):[...new Set([...review.disabled,id])];}
 const query=ref(''),entryDraft=ref<WorldEntry>(),entryBookId=ref(''),bookDraft=ref<Worldbook>(),deletingBook=ref<Worldbook>(),deletingEntry=ref<WorldEntry>(),testInput=ref(''),preview=ref<string[]>();
 const locked=computed(()=>props.w.busy||props.w.workingMemory);
 const book=computed(()=>props.w.currentWorldbook);
@@ -37,27 +41,27 @@ function guardClick(e:MouseEvent){if(ignoreClick){e.preventDefault();e.stopPropa
         <p v-if="!w.worldbooks.length" class="empty">还没有用户世界书</p>
         <article v-for="b in w.worldbooks" :key="b.id" class="worldbook-library-row" :class="{selected:book?.id===b.id}">
           <label class="toggle"><input type="checkbox" :checked="w.boundWorldbookIds.includes(b.id)" :disabled="locked" :aria-label="'使用世界书 '+b.name" @change="w.bindWorldbook(b.id,($event.target as HTMLInputElement).checked)" /></label>
-          <button class="worldbook-name" @click="w.selectedWorldbookId=b.id">{{b.name}}<small>{{b.entries.length}} 条</small></button>
+          <button class="worldbook-name" @click="w.selectedWorldbookId=b.id">{{withoutEmoji(b.name)}}<small>{{b.entries.length}} 条</small></button>
         </article>
       </aside>
       <div v-if="book" class="worldbook-editor">
-        <header class="worldbook-toolbar"><h2>{{book.name}}</h2><div class="actions"><button :disabled="locked" @click="bookDraft=clone(book)">世界书设置</button><button :disabled="locked" @click="w.duplicateWorldbook()">复制</button><button :disabled="locked" @click="w.exportUserWorldbook()">导出</button><button :disabled="locked" @click="deletingBook=book">删除</button></div></header>
+        <header class="worldbook-toolbar"><h2>{{withoutEmoji(book.name)}}</h2><div class="actions"><button :disabled="locked" @click="bookDraft=clone(book)">世界书设置</button><button :disabled="locked" @click="w.duplicateWorldbook()">复制</button><button :disabled="locked" @click="w.exportUserWorldbook()">导出</button><button :disabled="locked" @click="deletingBook=book">删除</button></div></header>
         <details v-if="warnings.length" class="worldbook-warning"><summary>兼容提示（{{warnings.length}} 条）</summary><p>以下条目保留在本地及导出文件中，暂不触发：</p><ul><li v-for="line in warnings" :key="line">{{line}}</li></ul></details>
         <div class="field-grid"><label>搜索条目<input v-model="query" placeholder="名称、关键词或内容" /></label><div class="actions"><button class="primary" :disabled="locked" @click="editEntry()">增加条目</button></div></div>
         <p v-if="!shown.length" class="empty">{{query?'没有匹配的条目':'还没有条目'}}</p>
         <details v-for="e in shown" :key="e.id" class="worldbook-entry" :data-world-entry="e.id" :class="{'worldbook-disabled':!e.enabled}">
-          <summary><button type="button" class="world-entry-drag" aria-label="拖动条目排序" :disabled="locked" @pointerdown.stop="dragEntry($event,e.id)" @click.stop.prevent>≡</button><span>{{e.constant?'🔵':'🟢'}} {{e.title||'未命名条目'}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length"> · 暂不兼容</span></span></summary>
+          <summary><button type="button" class="world-entry-drag" aria-label="拖动条目排序" :disabled="locked" @pointerdown.stop="dragEntry($event,e.id)" @click.stop.prevent>≡</button><span>{{e.constant?'常驻 ·':'关键词 ·'}} {{withoutEmoji(e.title||'未命名条目')}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length"> · 暂不兼容</span></span></summary>
           <div class="worldbook-entry-body"><p v-if="e.keys.length" class="worldbook-keywords">{{e.keys.join('、')}}</p><p class="worldbook-content">{{e.content||'（空条目）'}}</p><div class="actions"><button :disabled="locked" @click="toggle(e)">{{e.enabled?'关闭':'启用'}}</button><button :disabled="locked" @click="editEntry(e)">编辑</button><button :disabled="locked" @click="deletingEntry=e">删除</button></div></div>
         </details>
         <details class="subsection"><summary>测试触发</summary><label>测试输入<textarea v-model="testInput" rows="3" /></label><button @click="test">检查启用的世界书</button><div v-if="preview" role="status"><p v-if="!preview.length">未触发条目</p><ul v-else><li v-for="item in preview" :key="item">{{item}}</li></ul></div></details>
       </div>
     </div>
     <DialogShell v-if="w.worldbookImportPending" :title="'确认世界书条目 · '+w.worldbookImportPending.book.name" @close="w.cancelWorldbookImport()">
-      <p>勾选表示关闭该条目；取消勾选保留原开关。疑似问题不代表一定冲突，请查看后决定。所有条目和原文都会保留。</p>
+      <p>导入检查默认开启。扫描到的以下条目默认全部关闭，勾选表示开启，可自行选择或全部开启。搜索仅筛选列表，不改变开关；所有原文都会保留。</p>
       <p>暂不支持的触发设置不会因取消勾选而获得支持；不会自动删除包含组，也不会把空关键词改为常驻。<code v-pre>{{char}}</code> 目前仍代表世界叙述者。</p>
-      <div class="actions"><button :disabled="locked" @click="w.worldbookImportPending.disabled=w.worldbookImportPending.rows.map(r=>r.entry.id)">一键全选关闭</button><button :disabled="locked" @click="w.worldbookImportPending.disabled=[]">全部取消勾选</button></div>
-      <div style="max-height:50vh;overflow:auto"><article v-for="row in w.worldbookImportPending.rows" :key="row.entry.id" class="worldbook-warning"><label class="toggle"><input v-model="w.worldbookImportPending.disabled" type="checkbox" :value="row.entry.id" :disabled="locked" />关闭：{{row.entry.title||row.entry.id}}</label><p>{{row.entry.enabled?'原本开启':'原本关闭'}} · {{row.recommended?'建议保持关闭':'可能需要调整，请核查'}}</p><ul><li v-for="reason in row.reasons" :key="reason">{{reason}}</li></ul><details><summary>查看原文</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.entry.content}}</pre></details></article></div>
-      <div class="actions"><button :disabled="locked" @click="w.cancelWorldbookImport()">取消这份导入</button><button class="primary" :disabled="locked" @click="w.confirmWorldbookImport()">确认并导入（勾选关闭 {{w.worldbookImportPending.disabled.length}} 条）</button></div>
+      <div class="actions"><button :disabled="locked" @click="w.worldbookImportPending.disabled=w.worldbookImportPending.rows.map(r=>r.entry.id)">全部关闭</button><button :disabled="locked" @click="w.worldbookImportPending.disabled=[]">全部开启</button></div>
+      <label class="import-search">搜索条目<input v-model="importSearch" placeholder="名称、关键词或内容" /></label><div class="import-review-list" style="max-height:50vh;overflow:auto;display:grid;gap:16px;padding:4px"><article v-for="row in reviewRows" :key="row.entry.id" class="worldbook-warning"><label class="toggle"><input :checked="!w.worldbookImportPending.disabled.includes(row.entry.id)" @change="setReviewEnabled(row.entry.id,($event.target as HTMLInputElement).checked)" type="checkbox" :disabled="locked" />开启：{{withoutEmoji(row.entry.title||row.entry.id)}}</label><p>{{row.entry.enabled?'原本开启':'原本关闭'}} · {{row.recommended?'建议保持关闭':'可能需要调整，请核查'}}</p><ul><li v-for="reason in row.reasons" :key="reason">{{reason}}</li></ul><details><summary>查看原文</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.entry.content}}</pre></details></article></div>
+      <div class="actions"><button :disabled="locked" @click="w.cancelWorldbookImport()">取消这份导入</button><button class="primary" :disabled="locked" @click="w.confirmWorldbookImport()">确认并导入（关闭 {{w.worldbookImportPending.disabled.length}} 条）</button></div>
     </DialogShell>
     <DialogShell v-if="bookDraft" title="世界书设置" @close="bookDraft=undefined"><form @submit.prevent="saveBook"><fieldset :disabled="locked"><label>名称<input v-model="bookDraft.name" required maxlength="200" /></label><div class="field-grid"><label>默认扫描深度（消息条数）<input v-model.number="bookDraft.scanDepth" type="number" min="0" max="1000" required /></label><label>本书预算（字符）<input v-model.number="bookDraft.budget" type="number" min="100" max="100000" required /></label></div><label class="toggle"><input v-model="bookDraft.recursive" type="checkbox" />递归触发</label><label class="toggle"><input v-model="bookDraft.caseSensitive" type="checkbox" />区分大小写</label><label class="toggle"><input v-model="bookDraft.wholeWords" type="checkbox" />英文整词匹配</label><button class="primary" type="submit">保存</button></fieldset></form></DialogShell>
     <DialogShell v-if="entryDraft" title="世界书条目" @close="entryDraft=undefined"><form @submit.prevent="saveEntry"><fieldset :disabled="locked">
