@@ -21,7 +21,7 @@ async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,draft
     <header class="rail-heading"><div><p class="eyebrow">IN-WORLD / 论坛</p><h2>{{title||'星际论坛'}}</h2></div><span class="tag">{{ w.forum.length }} 条</span></header>
     <div class="forum-feed"><button v-if="pageStart>0" class="history-page-link" @click="page(-1)">查看更新 10 条</button>
       <article v-for="post in posts" :key="post.key" class="forum-post">
-        <header class="forum-author"><span class="forum-avatar" aria-hidden="true">{{ post.authorName.slice(0,1) }}</span><div><strong>{{ post.authorName }}</strong></div><span v-if="w.preferences.mode==='demo'" class="tag">演示</span></header>
+        <header class="forum-author"><span class="forum-avatar" aria-hidden="true">{{ post.authorName.slice(0,1) }}</span><div><strong>{{ post.authorName }}</strong><small v-if="post.type||post.time" class="forum-post-meta">{{[post.type,post.time].filter(Boolean).join(' · ')}}</small></div><span v-if="w.preferences.mode==='demo'" class="tag">演示</span></header>
         <span v-if="post.topic" class="topic-link">#{{ post.topic }}#</span>
         <p class="forum-body">{{ displayText(post.content) }}</p>
         <div class="forum-actions">

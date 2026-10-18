@@ -5,8 +5,9 @@ import {cleanSpecialEvent,specialEventKinds} from '../src/domain/randomEvents.ts
 import {stripReasoning,scrubModelData} from '../src/domain/reasoning.ts';
 export function randomEventMessages(card,data){
   if(!specialEventKinds.includes(data.kind)||typeof data.input!=='string'||!data.input.trim()||data.input.length>16000||!Array.isArray(data.history)||data.history.length>12||data.history.some(m=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>12000)||!Array.isArray(data.presentCharacterIds)||data.presentCharacterIds.some(id=>!card.characters.some(c=>c.id===id)))throw modelError(400,'INVALID_RANDOM_EVENT');
+  if(data.instruction!==undefined&&(typeof data.instruction!=='string'||data.instruction.length>4000))throw modelError(400,'INVALID_RANDOM_EVENT');
   let persona;try{persona=normalizePersona(data.persona);}catch{throw modelError(400,'INVALID_PERSONA');}
-  return [{role:'system',content:internalPrompt("random-events.1")},
+  return [{role:'system',content:internalPrompt("random-events.1")+(data.instruction?.trim()?'\nEvent creative direction (keep the assigned kind and JSON contract):\n'+data.instruction.trim():'')},
     {role:'system',content:internalPrompt("random-events.2")+JSON.stringify({world:card.world,characters:card.characters.map(c=>({id:c.id,name:c.name}))})},
     {role:'user',content:JSON.stringify({kind:data.kind,persona,input:data.input,presentCharacterIds:data.presentCharacterIds,history:data.history.map(m=>({role:m.role,content:m.role==='assistant'?stripReasoning(m.content):m.content}))})}];
 }

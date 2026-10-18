@@ -7,7 +7,7 @@ export function featurePrompts(plans,suggestions=true){
 }
 export function featureContract(plans,suggestions=true){
  const required={};if(suggestions)required.suggestions=['A possible next action at the scene ending'];
- if(plans.some(p=>p.slot===1))required.forum=[{id:'unique-this-turn',authorName:'Public author name',content:'A new in-world post grounded in this turn'}];
+ if(plans.some(p=>p.slot===1))required.forum=[{id:'unique-this-turn',authorName:'Generic campus alias',type:'Student update',time:'Just now',content:'A casual campus mood or public service reminder, never a scene recap',comments:[]}];
  const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':'New content for this turn',...(p.kind==='group'?{messages:[{speaker:'Public speaker name',content:'A fresh in-world message'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','known-character-id'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'known-spirit-owner-id',title:'New entry title',content:'A complete first-person spirit diary'}}:{})}));
  if(scenes.length)required.theaters=scenes;
  if(!Object.keys(required).length)return '';

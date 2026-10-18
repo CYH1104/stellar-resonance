@@ -101,7 +101,8 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATUS_OPEN),p1:(STATUS_CLOSE),p2:(DONE),p3:(STATUS_CLOSE)});
   const dynamicRules=featureContract(theaterPlans,request.suggestionsEnabled!==false);
   const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):'';
-  const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8"):'';
+  if(request.randomEventInstruction!==undefined&&(typeof request.randomEventInstruction!=='string'||request.randomEventInstruction.length>4000))throw modelError(400,'INVALID_RANDOM_EVENT');
+  const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8")+(request.randomEventInstruction?.trim()?'\nEvent creative direction (preserve the script roll, player agency and output protocol):\n'+request.randomEventInstruction.trim():''):'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
   const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'New diary title',mood:'Mood',content:'Today I...\n\nI discovered...'}})+internalPrompt("ai.10"):'';
   const privateCard={world:{},places:[],characters:[]};

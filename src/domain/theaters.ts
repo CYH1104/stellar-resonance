@@ -1,8 +1,9 @@
+import {forumInstruction,legacyForumInstruction} from './forumRequirements.ts';
 import {fanficInstruction,legacyFanficInstruction} from './theaterRequirements.ts';
 import {cleanSpiritDiary,isSpiritDiary,diaryInstruction,legacyDiaryInstruction,previousDiaryInstruction} from './spiritDiary.ts';
 import type {ActorState,Pairing,Persona,Session,TheaterScene,TheaterSetting} from './contracts';
 export const theaterTemplates=[{id:'fanfic',name:'同人文小剧场',kind:'fanfic',instruction:fanficInstruction},{id:'interview',name:'角色访谈',kind:'custom',instruction:'用简短采访呈现角色对一件公开日常小事的回答，不复述主线正文，不泄露秘密设定。'},{id:'spirit',name:'精神体日记',kind:'custom',instruction:diaryInstruction},{id:'off-duty',name:'课后碎片',kind:'custom',instruction:'围绕课后的小事写轻松独立片段，不推进或改变主线事实。'},{id:'custom',name:'自定义',kind:'custom',instruction:''}] as const;
-export function defaultTheaters():TheaterSetting[]{return [{slot:1,kind:'forum',enabled:true,title:'星际论坛',instruction:'校园微博式论坛；写与当下氛围相关的新动态，不直接复述本轮正文，不把私密事件公开。'},{slot:2,kind:'group',enabled:true,title:'群聊',instruction:'以群聊消息呈现公开日常互动，不复制正文对白，不改变主线在场人物。'},{slot:3,kind:'fanfic',enabled:false,title:'同人文小剧场',instruction:theaterTemplates[0].instruction},{slot:4,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''}];}
+export function defaultTheaters():TheaterSetting[]{return [{slot:1,kind:'forum',enabled:true,title:'星际论坛',instruction:forumInstruction},{slot:2,kind:'group',enabled:true,title:'群聊',instruction:'以群聊消息呈现公开日常互动，不复制正文对白，不改变主线在场人物。'},{slot:3,kind:'fanfic',enabled:false,title:'同人文小剧场',instruction:theaterTemplates[0].instruction},{slot:4,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''}];}
 export function cleanTheaters(value:unknown):TheaterSetting[]{
   if(value===undefined)return defaultTheaters();
   if(!Array.isArray(value)||value.length!==4)throw new Error('小剧场设置必须是4个位置');
@@ -11,7 +12,7 @@ export function cleanTheaters(value:unknown):TheaterSetting[]{
     if(p.templateId!==undefined&&!theaterTemplates.some(t=>t.id===p.templateId))throw new Error('小剧场模板不正确');
     const diary=isSpiritDiary(p);
     slots.add(p.slot);if(p.slot===1&&p.kind!=='forum'||p.slot===2&&p.kind!=='group'||p.slot>=3&&!['fanfic','custom'].includes(p.kind))throw new Error('论坛和群聊的位置不可改为其他类型');
-    return {slot:p.slot,kind:p.kind,enabled:p.enabled,title:p.title.trim(),instruction:diary&&[legacyDiaryInstruction,previousDiaryInstruction].includes(p.instruction)?diaryInstruction:p.kind==='fanfic'&&p.instruction===legacyFanficInstruction?fanficInstruction:p.instruction,...(p.templateId?{templateId:p.templateId}:diary?{templateId:'spirit' as const}:{}),...(p.charId?{charId:p.charId}:{})};
+    return {slot:p.slot,kind:p.kind,enabled:p.enabled,title:p.title.trim(),instruction:p.kind==='forum'&&p.instruction===legacyForumInstruction?forumInstruction:diary&&[legacyDiaryInstruction,previousDiaryInstruction].includes(p.instruction)?diaryInstruction:p.kind==='fanfic'&&p.instruction===legacyFanficInstruction?fanficInstruction:p.instruction,...(p.templateId?{templateId:p.templateId}:diary?{templateId:'spirit' as const}:{}),...(p.charId?{charId:p.charId}:{})};
   }).sort((a,b)=>a.slot-b.slot);
 }
 export function determinePairing(persona:Persona,char:ActorState):Pairing{

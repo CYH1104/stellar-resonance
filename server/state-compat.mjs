@@ -68,15 +68,24 @@ export function compatibleState(raw,card,state,options){
   const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
   if(suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}
   if(Array.isArray(raw.forum)){
-    out.forum=[];const ids=new Set();
-    for(const [index,p]of raw.forum.slice(0,12).entries()){
+    out.forum=[];const ids=new Set();if(raw.forum.length>3)warn('STATE_FORUM_LIMIT_APPLIED');
+    for(const [index,p]of raw.forum.slice(0,3).entries()){
       if(!object(p))continue;const id=typeof p.id==='string'&&p.id.trim()?p.id:'post-'+index;if(ids.has(id))continue;
-      const post={id,authorName:p.authorName??p.author??p.name,content:typeof p.content==='string'?displayText(p.content):p.content};
-      if(p.topic!==undefined)post.topic=p.topic;
+      const content=p.content??p.text??p.body??p['内容'];
+      const post={id,authorName:p.authorName??p.author??p.name??p['发布主体']??'匿名',content:typeof content==='string'?displayText(content):content};
+      for(const [key,value,max]of [['type',p.type??p.postType??p['类型'],40],['time',p.time??p.timeLabel??p['时间'],80]]){
+        if(value===undefined)continue;
+        if(typeof value==='string'&&value.length<=max)post[key]=value.trim();else warn('STATE_FORUM_METADATA_SKIPPED');
+      }
+      const topic=p.topic??p['话题'];if(typeof topic==='string')post.topic=topic.replace(/^#+|#+$/g,'').trim();
       try{validateOutcome({event:out.event,forum:[post]},state);}catch{warn('STATE_FORUM_POST_SKIPPED');continue;}
       ids.add(id);post.comments=[];
-      for(const [i,c]of (Array.isArray(p.comments)?p.comments:[]).slice(0,16).entries()){
-        if(!object(c))continue;const comment={id:typeof c.id==='string'?c.id:'comment-'+i,authorName:c.authorName??c.author??c.name,content:typeof c.content==='string'?displayText(c.content):c.content};
+      const comments=p.comments??p['评论'];if(Array.isArray(comments)&&comments.length>3)warn('STATE_FORUM_COMMENT_LIMIT_APPLIED');
+      for(const [i,value]of (Array.isArray(comments)?comments:[]).slice(0,3).entries()){
+        const match=typeof value==='string'?value.match(/^([^:：\n]{1,80})[:：]([\s\S]+)$/):undefined;
+        const c=typeof value==='string'?{authorName:match?.[1]?.trim()||'匿名',content:match?.[2]?.trim()||value}:value;
+        if(!object(c))continue;const content=c.content??c.text??c['内容'];
+        const comment={id:typeof c.id==='string'?c.id:'comment-'+i,authorName:c.authorName??c.author??c.name??c['用户']??'匿名',content:typeof content==='string'?displayText(content):content};
         try{validateOutcome({event:out.event,forum:[{...post,comments:[...post.comments,comment]}]},state);post.comments.push(comment);}catch{warn('STATE_FORUM_COMMENT_SKIPPED');}
       }
       out.forum.push(post);

@@ -1,0 +1,2 @@
+export const legacyForumInstruction='校园微博式论坛；写与当下氛围相关的新动态，不直接复述本轮正文，不把私密事件公开。';
+export const forumInstruction='校园微博式论坛：根据本轮氛围、情绪余波、校园生活侧面或公共服务需求，写1—3条新动态。学生口吻短句自然；官方账号只写克制的服务、秩序或活动提醒，不复述剧情、不引用对话、不暗示具体当事人、不泄露私人关系或身份。每条1—3句（最多4句），附泛化昵称/账号、类型、相对时间，可选一个话题与0—3条简短评论；无合适评论用空数组。用内置论坛JSON字段id、authorName、type、time、content、topic、comments返回，评论用id、authorName、content；不要输出“动态1”等文字清单、HTML、脚本或自检过程，不改变状态栏、MVU和其他模块格式。';

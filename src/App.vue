@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RandomEventControl from './components/RandomEventControl.vue';
 import RegexPanel from './components/RegexPanel.vue';
 import {accountStorage} from './storage/accountScope';
 
@@ -274,7 +275,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
         <button v-for="tab in tabs" :key="tab.id" :class="{selected:w.panel===tab.id}" :disabled="w.workingPersona||w.creatingGame" @click="navigate(tab.id)"><span>{{ tab.no }}</span>{{ tab.label }}</button>
 
-        <button class="random-event-toggle" :aria-pressed="w.preferences.diceEnabled" :disabled="w.busy" @click="w.preferences.diceEnabled=!w.preferences.diceEnabled"><span>12</span>随机事件<i :class="{enabled:w.preferences.diceEnabled}" aria-hidden="true"></i><span class="sr-only">{{w.preferences.diceEnabled?'已开启':'已关闭'}}</span></button>
+        <RandomEventControl :preferences="w.preferences" :disabled="w.busy" />
 
         <button class="random-event-toggle suggestions-toggle" :aria-pressed="w.preferences.suggestionsEnabled!==false" :disabled="w.busy" @click="w.preferences.suggestionsEnabled=w.preferences.suggestionsEnabled===false"><span>13</span>行动建议<i :class="{enabled:w.preferences.suggestionsEnabled!==false}" aria-hidden="true"></i><span class="sr-only">{{w.preferences.suggestionsEnabled!==false?'已开启':'已关闭'}}</span></button>
 
