@@ -11,7 +11,11 @@ export function featureContract(plans,suggestions=true){
  const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':'New content for this turn',...(p.kind==='group'?{messages:[{speaker:'Public speaker name',content:'A fresh in-world message'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','known-character-id'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'known-spirit-owner-id',title:'New entry title',content:'A complete first-person spirit diary'}}:{})}));
  if(scenes.length)required.theaters=scenes;
  if(!Object.keys(required).length)return '';
- return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)});
+ const blocks=[];
+ if(suggestions)blocks.push('<choices>'+JSON.stringify(required.suggestions)+'</choices>');
+ if(required.forum)blocks.push('<forum>'+JSON.stringify(required.forum)+'</forum>');
+ for(const scene of scenes)blocks.push('<theater slot="'+scene.slot+'">'+JSON.stringify(scene)+'</theater>');
+ return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)})+'\n'+internalPrompt('feature.envelope',{p0:blocks.join('\n')});
 }
 export function featureContext(context,plans,{stateEnabled=true,suggestionsEnabled=true}={}){
  const out={...context};

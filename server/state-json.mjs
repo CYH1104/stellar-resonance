@@ -1,5 +1,5 @@
-/** Syntax-only normalization. Never evaluate JS or guess missing quotes/braces/values. */
-export function parseStateJson(source){
+/** Syntax-only normalization; optional outer side-block closure never invents values. No JS evaluation. */
+export function parseStateJson(source,{closeOuterContainer=false}={}){
   let text=source.trim();const fence=text.match(/^```(?:json)?[ \t]*(?:\r?\n)?([\s\S]*?)\s*```$/i);if(fence)text=fence[1].trim();
   const info={kind:'state-json',chars:text.length,format:'strict',controls:0,trailingCommas:0,fenced:!!fence};
   try{return {value:JSON.parse(text),info};}catch{}
@@ -20,6 +20,12 @@ export function parseStateJson(source){
   }
   try{return {value:JSON.parse(normalized),info:{...info,format:'normalized'}};}
   catch(error){
+    // Explicitly delimited side blocks sometimes omit only their final outer bracket.
+    // Recover a complete child, never a cut-off string, value, or nested structure.
+    if(closeOuterContainer&&!quoted&&depth===1&&/[}\]]\s*$/.test(normalized)){
+      const first=normalized.trimStart()[0],close=first==='['?']':first==='{'?'}':'';
+      if(close)try{return {value:JSON.parse(normalized+close),info:{...info,format:'normalized',outerClosed:true}};}catch{}
+    }
     const position=String(error.message).match(/position (\d+)/i),offset=position?Number(position[1]):undefined;
     const line=offset===undefined?undefined:normalized.slice(0,offset).split('\n').length;
     const column=offset===undefined?undefined:offset-normalized.lastIndexOf('\n',offset-1);

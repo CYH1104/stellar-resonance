@@ -244,10 +244,14 @@ function partialTag(text) {
 }
 
 function parseChoices(content) {
+  const clean=value=>typeof value==='string'?value.replace(/<\/?(?:选项|option|choice|item)(?=\s|>)[^>]*>/gi,'').replace(/^\s*[-*•\d.、)]+\s*/, '').trim():value;
+  const cleanList=value=>Array.isArray(value)?value.map(clean).filter(value=>typeof value==='string'&&value):undefined;
   let v; try { v = parseStateJson(content).value; } catch { v = undefined; }
-  if (Array.isArray(v)) return v;
-  if (v && typeof v === 'object' && !Array.isArray(v)) { const arr = v.suggestions ?? v.choices ?? v.quickReplies ?? v.quick_replies; return Array.isArray(arr) ? arr : undefined; }
-  const lines = content.split(/\r?\n/).map(s => s.replace(/^\s*[-*•\d.、)]+\s*/, '').trim()).filter(Boolean);
+  if (Array.isArray(v)) return cleanList(v);
+  if (v && typeof v === 'object' && !Array.isArray(v)) { const arr = v.suggestions ?? v.choices ?? v.quickReplies ?? v.quick_replies; return cleanList(arr); }
+  const tagged=[...content.matchAll(/<(选项|option|choice|item)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi)].map(m=>clean(m[2])).filter(Boolean);
+  if(tagged.length)return tagged.slice(0,4);
+  const lines = content.split(/\r?\n/).map(clean).filter(Boolean);
   return lines.length ? lines.slice(0, 4) : undefined;
 }
 
@@ -295,8 +299,8 @@ export class StoryDecoder {
     if(candidates.length&&!received){if(!single)throw modelError(502,'MODEL_STATE_JSON_INVALID');warn('STATE_STATUS_INVALID');rejected=true;}
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
     if(blocks.choices.length){const choices=parseChoices(blocks.choices.at(-1));if(choices!==undefined)assembled.suggestions=choices;else warn('STATE_CHOICES_INVALID');}
-    for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i]).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
-    const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}if(theaters.length)assembled.theaters=theaters;
+    for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
+    const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}if(theaters.length)assembled.theaters=theaters;
     let mvu=assembled.mvu,mvuFailed=false;
     if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
     else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
