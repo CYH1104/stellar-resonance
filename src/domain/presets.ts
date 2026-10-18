@@ -1,4 +1,4 @@
-import {importRegexRules,type RegexRule} from './regex.ts';
+import {importRegexRules,injectsHtml,type RegexRule} from './regex.ts';
 import type {Preset,Profile} from './contracts';
 import {cleanPromptGroup,importPromptGroups,exportPromptGroups,restoreKnownPromptGroups} from './promptGroups.ts';
 export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
@@ -87,7 +87,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
   const other=Object.keys(raw).filter(key=>!accepted.includes(key)&&!special.includes(key)&&/^[a-z][a-z0-9_]{0,64}$/i.test(key)&&!/(?:key|token|url|proxy|password|secret|header)/i.test(key));if(other.length)warnings.push(`其他未执行的酒馆选项：${other.slice(0,12).join('、')}${other.length>12?` 等${other.length}项`:''}。`);
   warnings.push('模型思维链强制隐藏；导入的思考展示选项不能覆盖此规则。');
   warnings.push('仅应用提示词及受支持的采样参数；文件中的服务地址、模型与凭据不会导入。');
-  const regexRules=importRegexRules(raw,id);if(regexRules.length)warnings.push(`已导入 ${regexRules.length} 条正则，可在聊天顶栏“正则”中编辑和开关。`);return {id,name,entries,parameters,warnings,regexRules};
+  const regexRules=importRegexRules(raw,id);if(regexRules.length)warnings.push(`已导入 ${regexRules.length} 条正则，可在聊天顶栏“正则”中编辑和开关。显示侧 HTML 注入规则停用，使用内置渲染；提示词侧规则保留。`);return {id,name,entries,parameters,warnings,regexRules};
 }
 export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:RegexRule[]=[]){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;

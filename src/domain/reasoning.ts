@@ -1,5 +1,5 @@
 /** Only recognized, explicitly delimited model reasoning is removed; story character thoughts remain. */
-const names=['think','thinking','think_rules','analysis','reasoning','chain_of_thought','chain-of-thought','cot','scratchpad','internal','thought','thoughts'];
+const names=['think','thinking','think_rules','analysis','reasoning','chain_of_thought','chain-of-thought','cot','scratchpad','internal','thought','thoughts','ink','preparation','draft'];
 const name='(?:'+names.join('|')+')';
 const tag=new RegExp('^<(/?)('+name+')(?:\\s[^<>]*)?\\s*>$','i');
 const partial=new RegExp('^</?(?:'+names.flatMap(s=>Array.from({length:s.length},(_,i)=>s.slice(0,i+1))).join('|')+')?$','i');

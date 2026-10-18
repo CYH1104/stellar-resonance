@@ -23,10 +23,13 @@ export function regexPattern(source:string):RegExp{
   return new RegExp(literal?literal[1]:source,literal?literal[2]: 'g');
 }
 export interface RegexContext {placement:number;scope:'display'|'prompt';depth?:number;edited?:boolean;user?:string;char?:string}
+/** Imported rules may clean text, but cannot supply executable or decorative markup. */
+export function injectsHtml(rule:RegexRule){return /<!--|<!doctype|<\/?(?!(?:br|b|i|em|strong)\b)[a-z][\w:-]*(?:\s[^<>]*|\s*\/?)>/i.test(rule.replaceString.replace(/\$<[^>]+>/g,''));}
 function macros(text:string,c:RegexContext,escape=false){return text.replace(/\{\{(user|char)\}\}/gi,(_,key:string)=>{const value=c[key.toLowerCase() as 'user'|'char']||'';return escape?value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'):value;});}
 export function applyRegexRules(text:string,rules:RegexRule[],context:RegexContext){
   const errors:string[]=[];let output=text;
   for(const r of rules){
+    if(context.scope==='display'&&injectsHtml(r))continue;
     if(r.disabled||!r.placement.includes(context.placement)||context.edited&&!r.runOnEdit)continue;
     if((r.markdownOnly||r.promptOnly)&&!(context.scope==='display'?r.markdownOnly:r.promptOnly))continue;
     if(context.depth!==undefined&&(r.minDepth!==null&&r.minDepth>=-1&&context.depth<r.minDepth||r.maxDepth!==null&&r.maxDepth>=0&&context.depth>r.maxDepth))continue;

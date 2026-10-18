@@ -27,7 +27,7 @@ it('支持多个场景块、缺省字段和不区分大小写，不添加模型�
 it('真实渲染显示排版，思维链不展示，模型HTML仅作为文字而不能执行',async()=>{
   const text='<think>synthetic-secret'+slate+'</think>'+slate+'正文<img src=x onerror="alert(1)">';
   const html=await renderToString(createSSRApp(StoryContent,{text}));expect(html).toContain('class="scene-slate"');expect(html).toContain('金属与浮尘');expect(html).toContain('学院正门广场');expect(html).not.toContain('synthetic-secret');expect(html).not.toContain('&lt;Scene_NO&gt;');expect(html).not.toContain('<img');expect(html).toContain('&lt;img');
-  const injected=await renderToString(createSSRApp(StoryContent,{text:'<Slate><Scene_Title><script>alert(1)</script></Scene_Title></Slate>'}));expect(injected).not.toContain('<script>');expect(injected).toContain('&lt;script&gt;');
+  const injected=await renderToString(createSSRApp(StoryContent,{text:'<Slate><Scene_Title><script>alert(1)</script></Scene_Title></Slate>'}));expect(injected).not.toContain('<script>');expect(injected).not.toContain('alert(1)');
 });
 it('顶栏、DRAFTING 与 content 只去包装，场景卡和正文保留，旧回复同样可显示',async()=>{
  const text='<顶栏>'+slate+'</顶栏>\n<DRAFTING>\n<content>你走进报到大厅。<think>隐藏推理</think>\n楚昭南看向你。</content>\n</DRAFTING>';
