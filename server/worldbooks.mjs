@@ -18,7 +18,7 @@ export async function loadPrivateWorldbooks(root){
 export function storyWorldInfo(privateBooks,request,charName){
   try{
     const user=cleanLoreInsertions(request.worldInfo);
-    const ctx={messages:[...(request.historyStart===0||!request.historyStart?[request.opening||'']:[]),...request.history.map(m=>m.content),request.input],userName:request.persona.name,charName,persona:personaDescription(request.persona),seed:request.turnId||request.input};
+    const ctx={messages:[...(request.historyStart===0||!request.historyStart?[request.opening||'']:[]),...request.history.map(m=>m.content),request.input],userName:request.persona.name,charName,persona:personaDescription(request.persona),seed:request.turnId||request.input,actors:request.state?.characters||[]};
     const server=resolveWorldbooks(privateBooks,ctx).entries;
     return {user,server};
   }catch{throw error('INVALID_WORLD_INFO');}

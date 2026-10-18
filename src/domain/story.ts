@@ -89,7 +89,8 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
   if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
-  if(v.mvu!==undefined){out.mvu=cleanOperations(v.mvu);applyMvu(state,out.mvu);}
+  const mvuState=v.mvu!==undefined?applyMvu(state,cleanOperations(v.mvu)):state;
+  if(v.mvu!==undefined)out.mvu=cleanOperations(v.mvu);
   if(v.suggestions!==undefined)out.suggestions=cleanSuggestions(v.suggestions);
   if(v.diceEvent!==undefined)out.diceEvent=cleanDiceEvent(v.diceEvent);
   if (v.player !== undefined) {
@@ -100,7 +101,10 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
     const actorIds = new Set<string>();
     out.characters = v.characters.map(c => {
       if (!record(c) || !validActorId(c.id) || actorIds.has(c.id)) throw new Error('人物更新不合法');
-      actorIds.add(c.id); return state.characters.some(a=>a.id===c.id)?{id:c.id,...actorPatch(c,true)}:newDynamicActor(c);
+      actorIds.add(c.id);const before=state.characters.find(a=>a.id===c.id),committed=mvuState.characters.find(a=>a.id===c.id);
+      const patch=committed?{id:c.id,...actorPatch(c,true)}:newDynamicActor(c);
+      for(const field of ['affinity','relationship'] as const)if(committed&&committed[field]!==before?.[field])delete patch[field];
+      return patch;
     });
   }
   if (v.forum !== undefined) out.forum = forumPosts(v.forum);
@@ -132,7 +136,7 @@ export function stateAt(session: Session, before = session.turns.length): WorldS
 }
 export function encounteredCharacters(session:Session,before=session.turns.length){
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
-  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const out=validateOutcome(v.outcome,stateAt(session,index));assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true)ids.add(c.id);}catch{}}
+  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch{}}
   return stateAt(session,before).characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {

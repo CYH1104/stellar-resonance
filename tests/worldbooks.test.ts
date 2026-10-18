@@ -25,7 +25,7 @@ describe('酒馆世界书 JSON',()=>{
     const b=book([{constant:true}]);expect(()=>cleanWorldbooks([b,b])).toThrow();expect(()=>cleanLoreInsertions([{content:'x'.repeat(100001),position:1,depth:4,role:'system',order:1}])).toThrow();
   });
   it('高级选项明确提示并跳过相关条目，不执行正则／脚本／向量或定时机制',()=>{
-    for(const raw of [{key:['/a+/i']},{sticky:2},{vectorized:true},{automationId:'call'},{position:7,outletName:'x'},{group:'group'},{content:'{{getvar::x}}'},{triggers:['continue']},{matchScenario:true}]){
+    for(const raw of [{key:['/a+/i']},{sticky:2},{vectorized:true},{automationId:'call'},{position:7,outletName:'x'},{content:'{{getvar::x}}'},{triggers:['continue']},{matchScenario:true}]){
       const b=importWorldbook(JSON.stringify({entries:{0:{content:'正文',constant:true,...raw}}}));
       expect(worldEntryWarnings(b.entries[0]).length).toBeGreaterThan(0);expect(resolveWorldbooks([b],ctx('a')).entries).toHaveLength(0);
     }

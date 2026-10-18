@@ -10,16 +10,17 @@ function closeOutside(event:MouseEvent){const target=event.target;if(chosen.valu
 onMounted(()=>document.addEventListener('click',closeOutside));
 onUnmounted(()=>document.removeEventListener('click',closeOutside));
 const positions=ref<Record<string,{x:number;y:number}>>({});
+const manuallyPlaced=new Set<string>();
 const actors=computed(()=>{const state=props.w.state;if(!state)return [];const met=new Set(props.w.active?encounteredCharacters(props.w.active).map(a=>a.id):[]);return [state.player,...state.characters.filter(a=>a.present||!!a.relationship||met.has(a.id))];});
 const actor=computed(()=>actors.value.find(a=>a.id===chosen.value));
-watch(()=>props.w.active?.id,()=>{positions.value={};chosen.value='';place.value='';description.value='';});
-watch(actors,list=>{list.forEach((a,i)=>{if(!positions.value[a.id]){const angle=(i-1)*Math.PI*2/Math.max(1,list.length-1);positions.value[a.id]=i===0?{x:260,y:160}:{x:260+175*Math.cos(angle),y:160+100*Math.sin(angle)};}});},{immediate:true});
+watch(()=>props.w.active?.id,()=>{positions.value={};manuallyPlaced.clear();chosen.value='';place.value='';description.value='';});
+watch(actors,list=>{for(const id of Object.keys(positions.value))if(!list.some(a=>a.id===id)){delete positions.value[id];manuallyPlaced.delete(id);}list.forEach((a,i)=>{if(!manuallyPlaced.has(a.id)){const angle=(i-1)*Math.PI*2/Math.max(1,list.length-1);positions.value[a.id]=i===0?{x:260,y:160}:{x:260+175*Math.cos(angle),y:160+100*Math.sin(angle)};}});},{immediate:true});
 const demoPlaces=[{id:'reception',name:'接待区',area:'样例',px:25,py:30,description:'虚构样例：公共接待设施的介绍。'},{id:'archive',name:'公开资料室',area:'样例',px:70,py:30,description:'虚构样例：用于展示地图的公开说明。'},{id:'platform',name:'观景平台',area:'样例',px:50,py:75,description:'虚构样例：一处站点设施。'}];
 const places=computed(()=>props.w.localService&&props.w.preferences.mode==='server'?props.w.localService.places:demoPlaces);
 function relationLabel(value?:number){return value===undefined?'\u5173\u7cfb\u672a\u8bb0\u5f55':value>0?'\u53cb\u597d\u503e\u5411':value<0?'\u758f\u8fdc\u503e\u5411':'\u4e2d\u6027';}
 let dragging:string|undefined;let request=0;
 function down(id:string,e:PointerEvent){dragging=id;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId);}
-function move(e:PointerEvent){if(!dragging)return;const r=(e.currentTarget as SVGSVGElement).getBoundingClientRect();positions.value[dragging]={x:Math.max(50,Math.min(470,(e.clientX-r.left)*520/r.width)),y:Math.max(35,Math.min(275,(e.clientY-r.top)*320/r.height))};}
+function move(e:PointerEvent){if(!dragging)return;manuallyPlaced.add(dragging);const r=(e.currentTarget as SVGSVGElement).getBoundingClientRect();positions.value[dragging]={x:Math.max(50,Math.min(470,(e.clientX-r.left)*520/r.width)),y:Math.max(35,Math.min(275,(e.clientY-r.top)*320/r.height))};}
 function up(){if(dragging)chosen.value=dragging;dragging=undefined;}
 async function selectPlace(id:string){place.value=id;description.value='';const ticket=++request;if(props.w.localService&&props.w.preferences.mode==='server'){loading.value=true;const result=await props.w.loadPlace(id);if(ticket===request){description.value=result?.description||'';loading.value=false;}}else description.value=demoPlaces.find(p=>p.id===id)?.description||'';}
 </script>

@@ -7,7 +7,7 @@ const sample=JSON.stringify({entries:{0:{uid:0,comment:'分组常驻',content:'�
 function harness(){const p=defaults();const w=useWorldbooks(p,computed(()=>undefined),()=>[],()=>false,async()=>{},()=>{},()=>{},()=>{});return {p,w};}
 it('stages imports without binding or saving books; cancellation preserves previous data',()=>{
  const {p,w}=harness();w.importUserWorldbook(sample,'样本.json');expect(p.worldbooks||[]).toHaveLength(0);expect(p.defaultWorldbookIds||[]).toHaveLength(0);
- expect(w.worldbookImportPending.value?.rows).toHaveLength(3);expect(w.worldbookImportPending.value?.disabled).toEqual(['0','2']);
+ expect(w.worldbookImportPending.value?.rows).toHaveLength(2);expect(w.worldbookImportPending.value?.disabled).toEqual(['2']);
  w.cancelWorldbookImport();expect(w.worldbookImportPending.value).toBeUndefined();expect(p.worldbooks||[]).toHaveLength(0);
 });
 it('unchecked candidates preserve source switches and unsupported settings without dropping entries',()=>{
@@ -19,6 +19,6 @@ it('unchecked candidates preserve source switches and unsupported settings witho
 it('select all closes every listed candidate and handles multiple files in order',()=>{
  const {p,w}=harness();w.importUserWorldbook(sample,'一.json');w.importUserWorldbook(sample,'二.json');
  const pending=w.worldbookImportPending.value!;pending.disabled=pending.rows.map(r=>r.entry.id);w.confirmWorldbookImport();
- expect(p.worldbooks![0].entries.map(e=>e.enabled)).toEqual([false,false,false,true]);expect(w.worldbookImportPending.value?.book.name).toBe('二');
+ expect(p.worldbooks![0].entries.map(e=>e.enabled)).toEqual([true,false,false,true]);expect(w.worldbookImportPending.value?.book.name).toBe('二');
  w.cancelWorldbookImport();expect(p.worldbooks).toHaveLength(1);
 });

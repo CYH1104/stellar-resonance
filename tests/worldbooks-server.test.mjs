@@ -6,9 +6,15 @@ import {loadPrivateWorldbooks,applyWorldInfo} from '../server/worldbooks.mjs';
 import {buildMessages,RESPONSE_END} from '../server/ai.mjs';
 import {createLocalServer} from '../server/app.mjs';
 import {defaultTheaters} from '../src/domain/theaters.ts';
+import {importWorldbook,resolveWorldbooks} from '../src/domain/worldbooks.ts';
 const card={source:{sha256:'synthetic-worldbook-test'},world:{name:'测试叙述者',greeting:['测试开场'],departments:[]},places:[],characters:[],missing:[]};
 const profile={id:'test',model:'test',apiBaseUrl:'https://synthetic.example/v1',maxTokens:1600,temperature:0.7};
 const request=()=>({sessionId:'s',turnId:'t',persona:{name:'测试玩家',appearance:'',background:'',personality:''},opening:'测试开场',input:'进入学院',historyStart:0,history:[],memories:[],presets:[],profile,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false})),state:{player:{id:'player',name:'测试玩家',present:true},characters:[]}});
+test('group winners reach actual user and private worldbook messages without leaking loser content',()=>{
+ const books=[importWorldbook(JSON.stringify({entries:[{content:'winner-canary',constant:true,group:'System',groupOverride:true,order:200},{content:'loser-canary',constant:true,group:'System',order:100}]}),'test.json','group-test')];
+ const req=request(),user=resolveWorldbooks(books,{messages:[req.input],userName:req.persona.name,charName:'测试叙述者',seed:req.turnId});
+ for(const messages of [buildMessages(card,req,books).messages,buildMessages(card,{...req,worldInfo:user.entries}).messages]){const joined=JSON.stringify(messages);assert(joined.includes('winner-canary'));assert(!joined.includes('loser-canary'));}
+});
 test('世界书前后插入和深度插入，保留原预设及固定玩家约束',()=>{
   const r=request();r.history=[{role:'user',content:'旧行动'},{role:'assistant',content:'旧回复'}];r.worldInfo=[{content:'before',position:0,depth:4,role:'system',order:1},{content:'after',position:1,depth:4,role:'system',order:2},{content:'depth',position:4,depth:1,role:'user',order:3}];
   const messages=buildMessages(card,r).messages;

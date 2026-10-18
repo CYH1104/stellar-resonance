@@ -1,5 +1,6 @@
 import {computed,ref,type ComputedRef} from 'vue';
 import type {Preferences,Session} from '../domain/contracts';
+import {stateAt} from '../domain/story';
 import {cleanWorldbooks,cleanWorldbookIds,importWorldbook,exportWorldbook,newWorldbook,resolveWorldbooks,worldbookImportReview,type Worldbook,type WorldEntry} from '../domain/worldbooks';
 export function useWorldbooks(p:Preferences,active:ComputedRef<Session|undefined>,sessions:()=>Session[],locked:()=>boolean,save:()=>Promise<void>,problem:(s:string)=>void,notice:(s:string)=>void,download:(name:string,text:string)=>void){
   const selectedWorldbookId=ref('');
@@ -31,5 +32,5 @@ export function mergeWorldbookBackup(p:Preferences,incoming:Preferences,sessions
 }
 export function sessionLore(p:Preferences,s:Session,index:number,input:string,seed:string,charName:string){
   const messages=[s.opening,...s.turns.slice(Math.max(0,index-500),index).flatMap(t=>{const v=t.variants[t.selected];return v?.status==='complete'?[t.input,v.text]:[];}),input];
-  return resolveWorldbooks((p.worldbooks||[]).filter(b=>(s.worldbookIds||[]).includes(b.id)),{messages,userName:s.persona.name,charName,persona:Object.values(s.persona).filter(v=>typeof v==='string').join('\n'),seed});
+  return resolveWorldbooks((p.worldbooks||[]).filter(b=>(s.worldbookIds||[]).includes(b.id)),{messages,userName:s.persona.name,charName,persona:Object.values(s.persona).filter(v=>typeof v==='string').join('\n'),seed,actors:stateAt(s,index).characters});
 }
