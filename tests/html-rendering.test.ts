@@ -1,5 +1,11 @@
 import {expect,it} from 'vitest';
 import {hasRenderableHtml,htmlMessageContent,htmlRenderDocument} from '../src/domain/htmlRendering';
+it('uses the page palette rather than OS dark mode and preserves explicit preset styles',()=>{
+ const source='<style>.heading{color:#2a2a2a}body{background:ivory}</style><div class="heading">标题</div>';
+ const light=htmlRenderDocument(source,'x',{},false,'',{color:'rgb(32,36,42)',background:'rgb(255,250,243)',scheme:'light'});
+ expect(light).toContain('color-scheme:only light');expect(light).not.toContain('color-scheme:light dark');expect(light).toContain('color:rgb(32,36,42)');expect(light.indexOf('body{background:ivory}')).toBeGreaterThan(light.indexOf('color-scheme:only light'));
+ const dark=htmlRenderDocument('<p>正文</p>','x',{},false,'',{color:'#eee',background:'#222',scheme:'dark'});expect(dark).toContain('color-scheme:only dark');expect(dark).toContain('background:#222');
+});
 it('recognizes fenced/direct HTML without requiring a regex replacement',()=>{
  for(const text of ['```html\n<button>打开</button>\n```','<!doctype html><html><body>内容</body></html>','<script>document.body.textContent="hello"</script>'])expect(hasRenderableHtml(text)).toBe(true);
  expect(hasRenderableHtml('普通正文。')).toBe(false);
