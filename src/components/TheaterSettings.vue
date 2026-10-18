@@ -10,11 +10,13 @@ function template(slot:TheaterSetting,id:string){const value=theaterTemplates.fi
   
   
   <p class="hint"><button type="button" @click="w.panel='settings'">前往 API 设置</button></p>
+  <p class="rail-note">论坛独立，最多可开启六个小剧场（含群聊）。各项由你自行开关，新增位置默认关闭。</p>
+  <p class="rail-note">当前开启 {{w.preferences.theaters?.filter(s=>s.slot>1&&s.enabled).length||0}} 个小剧场；内容较多时，可到预设页按需调整最大输出 Token。</p>
   <div class="theater-settings-grid"><article v-for="s in w.preferences.theaters" :key="s.slot" class="list-entry">
     <header class="panel-heading"><h2>位置 {{s.slot}} · {{s.slot===1?'论坛':s.slot===2?'群聊':'自定义'}}</h2><label class="toggle"><input v-model="s.enabled" type="checkbox" :disabled="w.busy" />开启</label></header>
     <label v-if="s.slot>=3">使用内置模板<select :disabled="w.busy" :value="s.templateId||''" @change="template(s,($event.target as HTMLSelectElement).value)"><option value="" disabled>选择模板或自行编辑</option><option v-for="t in theaterTemplates" :key="t.id" :value="t.id">{{t.name}}</option></select></label>
     <label>名称<input v-model="s.title" maxlength="80" :disabled="w.busy" /></label>
-    <label v-if="s.slot>=3">小剧场类型<select v-model="s.kind" :disabled="w.busy" @change="s.templateId=undefined"><option value="custom">自定义文字</option><option value="fanfic">user × char 同人文</option></select></label>
+    <label v-if="s.slot>=3">小剧场类型<select v-model="s.kind" :disabled="w.busy" @change="s.templateId=undefined"><option value="custom">自定义文字</option><option value="fanfic">user × char 同人文</option><option value="group">群聊消息</option></select></label>
     <label>内容要求<textarea v-model="s.instruction" rows="4" maxlength="4000" :disabled="w.busy" /></label>
     <template v-if="s.kind==='fanfic'"><label>同人文搭档<select v-model="s.charId" :disabled="w.busy"><option value="">根据当前场景选择</option><option v-for="c in w.state?.characters" :key="c.id" :value="c.id">{{c.name}}</option></select></label></template>
   </article></div>

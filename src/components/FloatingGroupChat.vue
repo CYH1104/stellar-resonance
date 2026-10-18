@@ -3,7 +3,7 @@ import {computed,ref,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import GroupChatPhone from './GroupChatPhone.vue';
 const props=withDefaults(defineProps<{w:ViewModel;visible?:boolean}>(),{visible:true});
-const group=computed(()=>props.w.preferences.theaters?.find(t=>t.enabled&&t.kind==='group'));
+const group=computed(()=>props.w.preferences.theaters?.find(t=>t.enabled&&t.slot===2&&t.kind==='group'));
 const scene=computed(()=>props.w.theaters.find(t=>t.slot===group.value?.slot&&t.kind==='group'));
 const open=ref(false),x=ref(typeof window==='undefined'?20:innerWidth-76),y=ref(typeof window==='undefined'?20:innerHeight-100);
 let launcher:{x:number;y:number}|undefined;

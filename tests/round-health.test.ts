@@ -7,7 +7,7 @@ import type {ViewModel} from '../src/app/useWorkspace';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import StoryActions from '../src/components/StoryActions.vue';
-const settings=()=>defaultTheaters().map(s=>({...s,enabled:true,...(s.slot===4?{templateId:'spirit' as const}:{} )}));
+const settings=()=>defaultTheaters().map(s=>({...s,enabled:s.slot<=4,...(s.slot===4?{templateId:'spirit' as const}:{} )}));
 function round(){
  const s=newSession('测试',{name:'玩家',appearance:'',background:'',personality:'',spiritAnimal:'白猫'},'');
  s.initial={player:{id:'player',name:'玩家',present:true,spiritAnimal:'白猫',spiritThought:'旧想法'},characters:[{id:'one',name:'同学',present:false,spiritAnimal:'狐狸',affinity:10,spiritThought:'旧想法'}]};
