@@ -1,3 +1,4 @@
+import {newDynamicActor} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {withTavernContext} from './tavern-macro-engine.mjs';
 import {tracePresets} from './preset-diagnostics.mjs';
@@ -78,8 +79,9 @@ function safeState(card, request) {
     const ability=text(previous?.ability,2000,true)?previous.ability:abilityOf(c);
     return {id:c.id,name:c.name,present:previous?.present===true,...(ability?{ability}:{}),...(identity?{identity}:{}),...(mentalPowerLevel?{mentalPowerLevel}:{}),...(Number.isFinite(previous?.affinity)?{affinity:previous.affinity}:{}),...(text(previous?.relationship,200)?{relationship:previous.relationship}:{}),...(c.sex?{secondaryGender:c.sex}:{}),...(c.primaryGender?{primaryGender:c.primaryGender}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(text(previous?.innerThought,2000)?{innerThought:previous.innerThought}:{}),...(text(previous?.spiritThought,2000)?{spiritThought:previous.spiritThought}:{})};
   });
+  for(const value of request.state.characters){if(!characters.some(c=>c.id===value.id)){try{characters.push(newDynamicActor(value));}catch{throw modelError(400,'INVALID_GAME_STATE');}}}
   const level=request.state.player?.mentalPowerLevel||request.persona.mentalPowerLevel||readPersonaExtra(request.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(text(level,100,true))player.mentalPowerLevel=level;
-  for(const character of characters){const previous=request.state.characters.find(a=>a.id===character.id);const level=previous?.mentalPowerLevel||mentalPowerLevelOf(card.characters.find(c=>c.id===character.id));if(text(level,100))character.mentalPowerLevel=level;}
+  for(const character of characters){const previous=request.state.characters.find(a=>a.id===character.id);const level=previous?.mentalPowerLevel||mentalPowerLevelOf(card.characters.find(c=>c.id===character.id)||{});if(text(level,100))character.mentalPowerLevel=level;}
   let variables;try{variables=cleanJson(request.state.variables||{});}catch{throw modelError(400,'INVALID_GAME_STATE');}if(!variables||Array.isArray(variables)||typeof variables!=='object')throw modelError(400,'INVALID_GAME_STATE');
   return {player:separateIdentityAbility(player),characters:characters.map(separateIdentityAbility),variables};
 }
@@ -120,6 +122,12 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
+  let expanded=state;
+  if(options.stateEnabled!==false&&raw?.mvu){try{expanded=applyMvu(state,raw.mvu);}catch{}}
+  const actors=new Map(card.characters.map(c=>[c.id,c]));for(const actor of expanded.characters)if(!actors.has(actor.id))actors.set(actor.id,actor);
+  const incoming=options.stateEnabled===false?[]:Array.isArray(raw?.characters)?raw.characters:raw?.characters&&typeof raw.characters==='object'?Object.entries(raw.characters).map(([id,v])=>({...v,id:v?.id??id})):[];
+  for(const value of incoming)if(value&&!actors.has(value.id)){try{const actor=newDynamicActor(value);actors.set(actor.id,actor);}catch{}}
+  card={...card,characters:[...actors.values()]};
   if(options.singleStateCall){raw=compatibleState(raw,card,state,options);options={...options,requireDynamicState:false,compatibilityPrepared:true};}
   const allowed=['mvu','presentCharacterIds','player','characters','event','diceEvent','forum','theaters','suggestions'];
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw modelError(502,'INVALID_MODEL_STATE');
@@ -135,7 +143,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(raw.presentCharacterIds.some(id=>!known.has(id)))throw modelError(502,'UNKNOWN_MODEL_CHARACTER');
   let updates=raw.characters||[];
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
-  if(raw.mvu!==undefined){updates=state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','innerThought','spiritThought','mentalPowerLevel'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;});for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
+  if(raw.mvu!==undefined){const added=mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id));updates=[...added,...state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','innerThought','spiritThought','mentalPowerLevel'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;})];for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
   const present=new Set(raw.presentCharacterIds);
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
   // The model's full scene roster is authoritative; no client-selected cast is used.
@@ -148,7 +156,7 @@ export function normalizeModelState(card, state, raw,options={}) {
       if(spiritAnimalOf(c)&&(!text(patch.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(patch.spiritThought.trim())))throw modelError(502,'CHARACTER_SPIRIT_THOUGHT_MISSING');
     }
     const identity=patch.identity??(present.has(c.id)?state.characters.find(a=>a.id===c.id)?.identity||identityOf(c):undefined);
-    return {id:c.id,present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(patch.mentalPowerLevel!==undefined?{mentalPowerLevel:patch.mentalPowerLevel}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(patch.relationship!==undefined?{relationship:patch.relationship}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
+    return {id:c.id,...(!state.characters.some(a=>a.id===c.id)?newDynamicActor({...c,...patch,id:c.id}):{}),present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(patch.mentalPowerLevel!==undefined?{mentalPowerLevel:patch.mentalPowerLevel}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(patch.relationship!==undefined?{relationship:patch.relationship}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
   });
   let player;
   if(raw.mvu!==undefined){const patch={...(raw.player||{})};for(const field of ['identity','spiritThought','mentalPowerLevel'])if(mvuState.player[field]!==state.player[field]){if(patch[field]!==undefined&&patch[field]!==mvuState.player[field])throw modelError(502,'MODEL_STATE_PLAYER_INVALID');patch[field]=mvuState.player[field];}raw={...raw,player:patch};}
@@ -161,12 +169,12 @@ export function normalizeModelState(card, state, raw,options={}) {
       const setting=enabled.find(t=>t.slot===scene.slot);if(scene.kind!==setting.kind)throw Error();
       const result={...scene,title:setting.title};
       if(isSpiritDiary(setting)){
-        const owners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim());
+        const owners=[state.player,...card.characters.map(c=>({...c,spiritAnimal:spiritAnimalOf(c)}))].filter(c=>c.spiritAnimal?.trim());
         if(scene.diary){const owner=owners.find(c=>c.id===scene.diary.ownerId);if(!owner||!options.compatibilityPrepared&&!/我|咱/u.test(scene.diary.content))throw modelError(502,'MODEL_STATE_DIARY_INVALID');result.diary={...scene.diary,ownerName:owner.name,spiritAnimal:owner.spiritAnimal};result.content=scene.diary.content;}
         else if(options.requireDynamicState&&owners.length)throw modelError(502,'MODEL_STATE_DIARY_INVALID');
       }else if(scene.diary)throw modelError(502,'MODEL_STATE_DIARY_INVALID');
       if(scene.kind==='fanfic'){
-        const char=setting.charId?state.characters.find(c=>c.id===setting.charId):state.characters.find(c=>present.has(c.id)&&c.id===scene.participantIds?.[1])||state.characters.find(c=>c.id===scene.participantIds?.[1]);
+        const char=setting.charId?state.characters.find(c=>c.id===setting.charId):state.characters.find(c=>present.has(c.id)&&c.id===scene.participantIds?.[1])||state.characters.find(c=>c.id===scene.participantIds?.[1])||known.get(scene.participantIds?.[1]);
         if(!char||scene.participantIds?.[1]!==char.id)throw Error();
         result.pairing=determinePairing(options.persona||{},char);
       }

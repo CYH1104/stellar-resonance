@@ -1,4 +1,5 @@
 import {cleanRegexRules} from './regex.ts';
+import {newDynamicActor,validActorId} from './dynamicActors.ts';
 import {validAffinity} from './affinity.ts';
 import {unwrapStoryTags} from './storyMarkup.ts';
 import {separateIdentityAbility} from './identityAbility.ts';
@@ -94,15 +95,15 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
     out.player = actorPatch(v.player);
   }
   if (v.characters !== undefined) {
-    if (!Array.isArray(v.characters) || v.characters.length > 50) throw new Error('人物更新格式不正确');
+    if (!Array.isArray(v.characters) || v.characters.length > 1000) throw new Error('人物更新格式不正确');
     const actorIds = new Set<string>();
     out.characters = v.characters.map(c => {
-      if (!record(c) || typeof c.id !== 'string' || actorIds.has(c.id) || !state.characters.some(a => a.id === c.id)) throw new Error('人物更新不合法');
-      actorIds.add(c.id); return { id: c.id, ...actorPatch(c, true) };
+      if (!record(c) || !validActorId(c.id) || actorIds.has(c.id)) throw new Error('人物更新不合法');
+      actorIds.add(c.id); return state.characters.some(a=>a.id===c.id)?{id:c.id,...actorPatch(c,true)}:newDynamicActor(c);
     });
   }
   if (v.forum !== undefined) out.forum = forumPosts(v.forum);
-  if(v.theaters!==undefined){out.theaters=cleanTheaterScenes(v.theaters);for(const scene of out.theaters)if(scene.diary&&scene.diary.ownerId!=='player'&&!state.characters.some(c=>c.id===scene.diary!.ownerId))throw Error('日记精神体主人不存在');}
+  if(v.theaters!==undefined){out.theaters=cleanTheaterScenes(v.theaters);const actorIds=new Set([...state.characters,...out.characters||[],...(out.mvu?applyMvu(state,out.mvu).characters:[])].map(c=>c.id));for(const scene of out.theaters)if(scene.diary&&scene.diary.ownerId!=='player'&&!actorIds.has(scene.diary.ownerId))throw Error('日记精神体主人不存在');}
   return out;
 }
 export function selected(turn: Turn): Variant | undefined { return turn.variants[turn.selected]; }
@@ -121,7 +122,7 @@ export function stateAt(session: Session, before = session.turns.length): WorldS
       assertDiceEventBinding(outcome.diceEvent,turn.dice);
       let candidate=outcome.mvu?applyMvu(state,outcome.mvu):copy(state);
       Object.assign(candidate.player, outcome.player);
-      for (const change of outcome.characters || []) { const actor = candidate.characters.find(a => a.id === change.id); if (actor) { const { id: _id, ...patch } = change; Object.assign(actor, patch); } }
+      for (const change of outcome.characters || []) { const actor = candidate.characters.find(a => a.id === change.id); if (actor) { const { id: _id, ...patch } = change; Object.assign(actor, patch); } else candidate.characters.push(newDynamicActor(change)); }
       if(v.mvuOverride)candidate=applyMvu(candidate,v.mvuOverride);
       state=candidate;
     } catch { /* Imported invalid patches never mutate the effective state. */ }
@@ -131,7 +132,7 @@ export function stateAt(session: Session, before = session.turns.length): WorldS
 export function encounteredCharacters(session:Session,before=session.turns.length){
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
   for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const out=validateOutcome(v.outcome,stateAt(session,index));assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true)ids.add(c.id);}catch{}}
-  return stateAt(session,before).characters.filter(c=>ids.has(c.id));
+  return stateAt(session,before).characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
   const active = new Map(session.turns.slice(0, before).map(t => [t.id, selected(t)]));

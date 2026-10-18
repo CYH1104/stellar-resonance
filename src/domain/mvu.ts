@@ -1,4 +1,5 @@
 import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
+import {newDynamicActor} from './dynamicActors.ts';
 import type { WorldState } from './contracts';
 
 export interface JsonObject { [key:string]:Json }
@@ -71,7 +72,7 @@ const dynamic=new Set(['identity','mentalPowerLevel','affinity','relationship','
 export function applyMvu(state:WorldState,updates:unknown):WorldState{
   const original=dataFromState(state).stat_data,next=patchData(original,updates);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
-  if(Object.keys(next.characters).sort().join('\0')!==state.characters.map(c=>c.id).sort().join('\0'))fail();
+  if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
   function actor(before:Record<string,Json>,after:Json,player=false){if(!object(after))fail();
     for(const k of new Set([...Object.keys(before),...Object.keys(after)])){
       if(JSON.stringify(before[k])===JSON.stringify(after[k]))continue;
@@ -82,7 +83,8 @@ export function applyMvu(state:WorldState,updates:unknown):WorldState{
     }return clone(after);
   }
   const player=actor(original.player as Record<string,Json>,next.player,true),characters=state.characters.map(c=>actor((original.characters as Record<string,Json>)[c.id] as Record<string,Json>,(next.characters as Record<string,Json>)[c.id]));
-  return {...clone(state),player,characters,variables:next.custom} as unknown as WorldState;
+  const additions=Object.entries(next.characters).filter(([id])=>!state.characters.some(c=>c.id===id)).map(([id,value])=>{if(!object(value)||value.id!==id)fail();return newDynamicActor(value);});
+  return {...clone(state),player,characters:[...characters,...additions],variables:next.custom} as unknown as WorldState;
 }
 
 /** Parse literal MVU commands; model text is never evaluated as JavaScript. */

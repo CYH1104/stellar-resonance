@@ -1,3 +1,4 @@
+import {newDynamicActor} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
 import {applyMvu,cleanOperations,pointer} from '../src/domain/mvu.ts';
@@ -18,7 +19,7 @@ export function compatibleState(raw,card,state,options){
   if(!object(raw))return raw;
   if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
-  const known=new Map(state.characters.filter(c=>card.characters.some(k=>k.id===c.id)).map(c=>[c.id,c]));
+  const known=new Map(state.characters.map(c=>[c.id,c]));
   const resolve=value=>{const key=typeof value==='string'?value:object(value)?value.id??value.name:undefined;if(known.has(key))return key;const matches=[...known.values()].filter(c=>c.name===key);return matches.length===1?matches[0].id:undefined;};
   const out={event:typeof raw.event==='string'&&raw.event.trim()?displayText(raw.event).slice(0,500):'本轮剧情已生成，状态按有效字段更新。'};
   if(out.event!==raw.event)warn('STATE_EVENT_RECOVERED');
@@ -32,7 +33,8 @@ export function compatibleState(raw,card,state,options){
     // variables remain an MVU update; no duplicate delta or immutable overwrite.
     if(JSON.stringify(mvuState.variables||{})!==JSON.stringify(state.variables||{}))out.mvu=[{op:'replace',path:'/custom',value:mvuState.variables||{}}];
   }
-  const patches=new Map();
+  for(const actor of mvuState.characters)if(!known.has(actor.id))known.set(actor.id,actor);
+  const patches=new Map(mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id)).map(c=>[c.id,{...c}]));
   const actorFields=(value,before,player=false)=>{
     const result={};if(!object(value))return result;
     for(const [key,original]of Object.entries(value)){
@@ -41,7 +43,7 @@ export function compatibleState(raw,card,state,options){
       let v=field==='affinity'?numeric(original):original;if(typeof v==='string')v=displayText(v);if(typeof v==='string'&&!v.trim()&&before?.[field]){warn('STATE_EMPTY_FIELD_RETAINED');continue;}
       try{
         const candidate=player?{player:{[field]:v}}:{characters:[{id:before.id,[field]:v}]};
-        validateOutcome({event:out.event,...candidate},state);
+        validateOutcome({event:out.event,...candidate},{...state,characters:[...known.values()]});
         if(field==='affinity'&&(!validAffinity(v)))throw Error();
         result[field]=v;if(v!==original||key!==field)warn('STATE_FIELD_NORMALIZED');
       }catch{warn('STATE_FIELD_SKIPPED');}
@@ -52,7 +54,7 @@ export function compatibleState(raw,card,state,options){
   const entries=Array.isArray(raw.characters)?raw.characters:object(raw.characters)?Object.entries(raw.characters).map(([id,v])=>object(v)?{...v,id:v.id??id}:v):[];
   if(raw.characters!==undefined&&!Array.isArray(raw.characters))warn('STATE_CHARACTERS_NORMALIZED');
   let embeddedPlayer={};
-  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}const id=resolve(value);if(!id){warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
+  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const actor=newDynamicActor(value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
   out.characters=[...patches.values()];
   const playerChanges=Object.fromEntries(dynamic.filter(k=>mvuState.player?.[k]!==state.player[k]).map(k=>[k,mvuState.player[k]]));
   const player={...actorFields(playerChanges,state.player,true),...embeddedPlayer,...actorFields(raw.player,state.player,true)};if(Object.keys(player).length)out.player=player;
@@ -63,7 +65,7 @@ export function compatibleState(raw,card,state,options){
     out.presentCharacterIds=roster.length&&ids.every(id=>!id)?state.characters.filter(c=>c.present).map(c=>c.id):[...new Set(ids.filter(Boolean))];
   }else{
     warn('STATE_ROSTER_RETAINED');
-    out.presentCharacterIds=state.characters.filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
+    out.presentCharacterIds=[...known.values()].filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
   }
   if(raw.diceEvent!==undefined)out.diceEvent=raw.diceEvent;
   const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
