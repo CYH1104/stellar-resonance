@@ -12,6 +12,16 @@ let app,base,cookie,source,calls=[];
 const profile={id:'test',apiBaseUrl:'https://synthetic.example/v1',model:'synthetic-model',temperature:0.7,maxTokens:1600};
 const post=(path,body,headers={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,...headers},body:JSON.stringify(body)});
 const events=text=>text.split('\n\n').filter(t=>t.startsWith('data: ')).map(t=>JSON.parse(t.slice(6)));
+test('opaque HTML renderers can load only public vendor scripts, never API or other app assets',async()=>{
+  for(const name of ['jquery','lodash']){
+    const response=await fetch(base+'/assets/academy-render-'+name+'.js',{headers:{Origin:'null','Sec-Fetch-Site':'cross-site'}});
+    assert.equal(response.status,200);assert.match(response.headers.get('Content-Type'),/javascript/);assert.ok((await response.text()).length>10000);
+  }
+  for(const path of ['/api/health','/terminal','/assets/other.js','/editor/']){
+    const response=await fetch(base+path,{headers:{Origin:'null','Sec-Fetch-Site':'cross-site'}});assert.equal(response.status,403);assert.equal((await response.json()).code,'SAME_ORIGIN_ONLY');
+  }
+  const write=await fetch(base+'/assets/academy-render-jquery.js',{method:'POST',headers:{Origin:'null','Sec-Fetch-Site':'cross-site'}});assert.equal(write.status,403);
+});
 function sides(payload){
   const context=JSON.parse(payload.messages[2].content.split(':\n')[1]);
   return {forum:context.theaterPlans.some(t=>t.slot===1)?[{id:'test-post',authorName:'校园同学',content:'今天食堂上新了'}]:[],theaters:context.theaterPlans.filter(t=>t.slot>1).map(t=>({slot:t.slot,kind:t.kind,title:t.title,content:t.kind==='group'?'':t.kind==='fanfic'?'独立番外内容'.repeat(160):'独立番外内容',...(t.kind==='group'?{messages:[{speaker:'同学',content:'群聊独有的问候'}]}:{}),...(t.kind==='fanfic'?{complete:true,participantIds:t.participantIds||['player','pro-02']}:{} )}))};

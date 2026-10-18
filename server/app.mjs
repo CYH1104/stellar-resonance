@@ -68,7 +68,9 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     if(external)allowedHosts.add(external.host);
     if(!allowedHosts.has(request.headers.host)){json(response,403,{code:'LOCAL_HOST_ONLY'});return;}
     const allowedOrigins=new Set([`http://127.0.0.1:${currentPort}`,`http://localhost:${currentPort}`,...(external?[external.origin]:[])]);
-    if(request.headers.origin&&!allowedOrigins.has(request.headers.origin)||request.headers['sec-fetch-site']==='cross-site'){json(response,403,{code:'SAME_ORIGIN_ONLY'});return;}
+    // Opaque-origin HTML sandboxes may load only these public, immutable runtime libraries.
+    const renderLibrary=['GET','HEAD'].includes(request.method)&&/^\/assets\/academy-render-(?:jquery|lodash)\.js$/.test(request.url||'');
+    if(!renderLibrary&&(request.headers.origin&&!allowedOrigins.has(request.headers.origin)||request.headers['sec-fetch-site']==='cross-site')){json(response,403,{code:'SAME_ORIGIN_ONLY'});return;}
     response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
     let path;try{path=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname);}catch{json(response,400,{code:'INVALID_PATH'});return;}
     try{

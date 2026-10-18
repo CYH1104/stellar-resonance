@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {computed,ref,onMounted,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import {cleanRegexRules,importRegexRules,regexPattern,regexHtmlDocument,type RegexRule} from '../domain/regex';
+import {cleanRegexRules,importRegexRules,regexPattern,type RegexRule} from '../domain/regex';
 import {runRegex} from '../domain/regexRunner';
+import HtmlMessageFrame from './HtmlMessageFrame.vue';
+import {hasRenderableHtml} from '../domain/htmlRendering';
 import FileImportButton from './FileImportButton.vue';
 const matchLabel='{{match}}';
 const props=defineProps<{w:ViewModel}>();
@@ -27,7 +29,7 @@ function position(value:number,checked:boolean){if(!draft.value)return;draft.val
   <section v-if="open" id="regex-dropdown" class="regex-dropdown surface" role="dialog" aria-label="正则管理">
     <header><strong>正则 · {{w.presetSets.find(s=>s.id===w.currentPreset)?.name||'当前预设'}}</strong><button type="button" aria-label="关闭正则面板" @click="open=false">×</button></header>
     <div class="actions"><button type="button" :disabled="w.busy" @click="add">新建正则</button><FileImportButton label="导入正则" accept=".json,application/json" :disabled="w.busy" @change="importFile" /><button type="button" @click="exportFile">导出正则</button></div>
-    <p class="rail-note">开关立即保存；修改仅影响显示或下一次发送，原始正文和状态变量保留。HTML 支持隔离展示，不执行脚本。</p>
+    <p class="rail-note">开关立即保存；修改仅影响显示或下一次发送，原始正文和状态变量保留。HTML 代码块支持样式、交互脚本和自动高度；脚本在隔离页面运行。</p>
     <div class="regex-rule-list"><article v-for="r in rules" :key="r.id"><label class="toggle"><input type="checkbox" :checked="!r.disabled" :disabled="w.busy" @change="toggle(r)" />{{r.scriptName}}</label><small>{{r.markdownOnly&&r.promptOnly?'显示＋提示词':r.markdownOnly?'仅显示':r.promptOnly?'仅提示词':'显示＋提示词'}}</small><button type="button" @click="edit(r)">编辑</button></article><p v-if="!rules.length">当前预设没有正则，可新建或导入。</p></div>
     <form v-if="draft" class="regex-editor" @submit.prevent="save">
       <label>名称<input v-model="draft.scriptName" maxlength="200" /></label><label>查找正则<textarea v-model="draft.findRegex" rows="3" placeholder="/表达式/g" /></label><label>替换内容（支持 HTML、$1、$&lt;name&gt;、{{matchLabel}}）<textarea v-model="draft.replaceString" rows="6" /></label>
@@ -37,7 +39,7 @@ function position(value:number,checked:boolean){if(!draft.value)return;draft.val
       <div class="field-grid"><label>最小深度<input v-model.number="draft.minDepth" type="number" min="-1" placeholder="不限" /></label><label>最大深度<input v-model.number="draft.maxDepth" type="number" min="-1" placeholder="不限" /></label><label>查找中的宏<select v-model.number="draft.substituteRegex"><option :value="0">不替换</option><option :value="1">直接替换</option><option :value="2">转义后替换</option></select></label></div>
       <p class="rail-note">当前运行用户消息、AI 回复与提示词世界书位置；命令输出、推理字段仅保留配置。</p>
       <div class="actions"><button type="submit" :disabled="w.busy">保存正则</button><button type="button" @click="draft=undefined">取消</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
-      <details><summary>测试替换</summary><textarea v-model="sample" rows="3" aria-label="正则测试文本" /><button type="button" :disabled="testing" @click="test">{{testing?'处理中…':'测试'}}</button><iframe v-if="preview&&/<[a-z!][\s\S]*>/i.test(preview)" sandbox="" :srcdoc="regexHtmlDocument(preview)" title="正则 HTML 预览" class="regex-html-frame" /><pre v-else>{{preview}}</pre></details>
+      <details><summary>测试替换</summary><textarea v-model="sample" rows="3" aria-label="正则测试文本" /><button type="button" :disabled="testing" @click="test">{{testing?'处理中…':'测试'}}</button><HtmlMessageFrame v-if="preview&&hasRenderableHtml(preview)" :content="preview" /><pre v-else>{{preview}}</pre></details>
     </form><p v-if="error" class="error" role="alert">{{error}}</p>
   </section>
 </div></template>

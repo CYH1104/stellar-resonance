@@ -195,3 +195,5 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 #academy-workspace .forum-post-meta{display:block;margin-top:3px;color:var(--color-muted);font-size:11px;line-height:1.4}
 
+
+#academy-workspace .interactive-html-frame{min-height:40px;max-height:none;resize:none;margin:8px 0;overflow:auto}#academy-workspace .html-source-toggle{font-size:11px;color:var(--color-muted);padding:2px 4px;background:transparent;border:0}#academy-workspace .html-source-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;font-size:12px}

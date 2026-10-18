@@ -2,9 +2,11 @@
 import {computed,ref,watch} from 'vue';
 import {stripReasoning} from '../domain/reasoning';
 import {runRegex} from '../domain/regexRunner';
-import {regexHtmlDocument,type RegexRule,type RegexContext} from '../domain/regex';
+import HtmlMessageFrame from './HtmlMessageFrame.vue';
+import {hasRenderableHtml,type HtmlRenderContext} from '../domain/htmlRendering';
+import {type RegexRule,type RegexContext} from '../domain/regex';
 import {storyBlocks} from '../domain/storyMarkup';
-const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean}>();
+const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext}>();
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);
 watch(()=>[props.text,JSON.stringify(props.regexRules),JSON.stringify(props.regexContext)],(_,__,cleanup)=>{
  formatted.value=undefined;regexErrors.value=[];if(!props.regexRules?.some(r=>!r.disabled&&r.placement.includes(props.regexContext?.placement||2)&&(!r.markdownOnly&&!r.promptOnly||r.markdownOnly)))return;
@@ -12,10 +14,10 @@ watch(()=>[props.text,JSON.stringify(props.regexRules),JSON.stringify(props.rege
  cleanup(()=>{clearTimeout(timer);controller.abort();});
 },{immediate:true});
 const blocks=computed(()=>storyBlocks(formatted.value??props.text,props.streaming));
-const html=computed(()=>formatted.value!==undefined&&/<(?:!doctype|html|div|span|style|section|article|table|details|p|img|svg|button|h[1-6])\b/i.test(formatted.value)?regexHtmlDocument(formatted.value,props.highlighted):'');
+const html=computed(()=>{const source=stripReasoning(formatted.value??props.text);return hasRenderableHtml(source,formatted.value!==undefined)?source:'';});
 </script>
 <template><div class="story-content">
-  <iframe v-if="html" class="regex-html-frame" sandbox="" :srcdoc="html" title="正则 HTML 内容" referrerpolicy="no-referrer" />
+  <HtmlMessageFrame v-if="html" :content="html" :context="htmlContext" :highlighted="highlighted" />
   <template v-for="(block,index) in html?[]:blocks" :key="index">
     <p v-if="block.kind==='text'" class="narrative">{{block.text}}</p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
