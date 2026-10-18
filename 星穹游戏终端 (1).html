@@ -2583,9 +2583,9 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
 
     /* ---------------------------------------------------------------------------
        07 MAP · 你想去哪里(v4.22.0):把「你想去哪里.html」搬进大前端。
-       点一个地点 → 自动把「<此为系统指令:用户决定下一步前往{地点}承接上下文合理转折>」
-       写进 qqy 输入框(v4.27.3 换模板;再点别的地点是替换,不是追加),显隐跟随
-       「页面上显示事件文本」开关(可视关着时发出去的这条在页面上隐形,和随机事件同款);
+       点一个地点 → 把目的地与可选行动意图写进草稿，使用 {{user}} 表示当前玩家。
+       再点别的地点或修改行动时替换本次地图草稿，保留原先手写的内容。
+       行动模板为「{{user}}接下来打算做:」加实际输入文字，不新增中文宏。
        下面那个输入条可以再写「要做什么事」(可不填),写一个字输入框就跟着更新;
        「确定前往」= 最后写一次并退回聊天页。地点数据在 MAP_PLACES,想加地点照格式添一条。
        --------------------------------------------------------------------------- */
@@ -2853,10 +2853,10 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             });
             Array.prototype.forEach.call(list.querySelectorAll('.item'), (e, k) => e.classList.toggle('done', k === chosen));
         }
-        /* 输入框里的文字:v4.27.3 起是系统指令模板 —— 地点填进「前往{}」,要做的有填才追加 */
+        /* 地点与行动意图分行；保留 {{user}} 宏，由当前会话的人设解析。只填草稿，不自动发送。 */
         function text() {
             const p = P[idx], d = String(($('do').value || '')).trim();
-            return '<此为系统指令:用户决定下一步前往' + p.name + '承接上下文合理转折' + (d ? ';要做的事:' + d : '') + '>';
+            return '{{user}}接下来打算前往:' + p.name + (d ? '\n{{user}}接下来打算做:' + d : '');
         }
         function push(quiet) {
             if (idx < 0) return false;

@@ -97,9 +97,11 @@ function insertCampusText(event:Event){
 
   const before=w.active?.id===target.id?w.input:sessionDrafts.get(target.id)||'';
 
-  const text=typeof detail.text==='string'?detail.text.trim():'';
+  const resolveUser=(value:string)=>value.replaceAll('{{user}}',()=>target.persona.name);
 
-  const previous=typeof detail.replace==='string'?detail.replace:'';
+  const text=typeof detail.text==='string'?resolveUser(detail.text.trim()):'';
+
+  const previous=typeof detail.replace==='string'?resolveUser(detail.replace):'';
 
   w.sessionId=target.id;
 
