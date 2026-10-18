@@ -11,8 +11,17 @@ it('executes transformations off-thread and terminates the worker after completi
 it('times out a stalled worker, preserves original text, and reports the failure',async()=>{
  vi.useFakeTimers();let terminated=false;
  vi.stubGlobal('Worker',class{postMessage(){}terminate(){terminated=true;}});
- const pending=runRegex('原文',rules,{placement:2,scope:'display'});await vi.advanceTimersByTimeAsync(1501);
+ const pending=runRegex('原文',rules,{placement:2,scope:'display'});await vi.advanceTimersByTimeAsync(10001);
  const result=await pending;expect(result.text).toBe('原文');expect(result.errors[0]).toContain('超时');expect(terminated).toBe(true);
+});
+it('worker startup does not consume regex execution time and a stalled later rule preserves completed rendering',async()=>{
+ vi.useFakeTimers();let worker:any;
+ vi.stubGlobal('Worker',class{onmessage?:Function;postMessage(){worker=this;}terminate(){}});
+ const pending=runRegex('原文',rules,{placement:2,scope:'display'});
+ await vi.advanceTimersByTimeAsync(2000);
+ worker.onmessage({data:{type:'progress',text:'已完成的卡片',errors:[],ruleName:'慢规则'}});
+ await vi.advanceTimersByTimeAsync(1501);
+ const result=await pending;expect(result.text).toBe('已完成的卡片');expect(result.errors[0]).toContain('慢规则');
 });
 it('abort cancels pending work without a late replacement',async()=>{
  let terminated=false;vi.stubGlobal('Worker',class{postMessage(){}terminate(){terminated=true;}});
