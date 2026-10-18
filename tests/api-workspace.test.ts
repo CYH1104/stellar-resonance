@@ -268,6 +268,14 @@ it('实际预设入口保存独立参数，复制与重开保留，切换不改�
   const id=w.presetEntries.value[0].id;w.removePresetEntry(id);expect(w.presetEntries.value[0].id).toBe(id);w.duplicatePresetSet();expect(w.currentPreset.value).not.toBe(first);expect(w.presetParameters.value.temperature).toBe(0.2);w.presetParameters.value.temperature=0.5;w.preferences.activePreset=first;expect(w.storyProfile.value?.temperature).toBe(0.2);
   await w.save();vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(saved);const reopened=await workspace();reopened.preferences.activePreset=second;expect(reopened.storyProfile.value?.temperature).toBe(1.1);expect(reopened.preferences.profiles[0].temperature).toBe(0.7);
 });
+it('预设正则随复制和浏览器备份保留，删除预设不删除其他预设的规则',async()=>{
+  const w=await workspace();w.importPreset(JSON.stringify({prompts:[{identifier:'main',content:'正文'}],extensions:{regex_scripts:[{id:'r',scriptName:'显示',findRegex:'正文',replaceString:'<b>正文</b>',placement:[2],markdownOnly:true}]}}));
+  const original=w.currentPreset.value;expect(w.preferences.regexRules).toHaveLength(1);
+  w.duplicatePresetSet();const duplicate=w.currentPreset.value;expect(duplicate).not.toBe(original);expect(w.preferences.regexRules).toHaveLength(2);
+  expect(w.preferences.regexRules?.find(r=>r.setId===duplicate)?.replaceString).toBe('<b>正文</b>');
+  await w.save();expect(saved?.preferences.regexRules).toHaveLength(2);
+  w.removePresetSet();expect(w.preferences.regexRules).toHaveLength(1);expect(w.preferences.regexRules?.[0].setId).toBe(original);
+});
 it('论坛AI回复默认关闭不请求，开启后只用指定副API；混合评论可备份且不改变主线状态',async()=>{
   const w=await workspace();fill(w);fill(w,'aux');await w.confirmAllApis();await w.create('论坛',{name:'玩家',appearance:'',personality:'',background:''},'');
   const session=w.active.value!,v={id:'v',text:'正文',status:'incomplete' as const,createdAt:''};session.turns.push({id:'t',input:'行动',variants:[v],selected:0});finishVariant(session,0,v,{event:'事件',forum:[{id:'post',authorName:'路人',content:'食堂上新了'}]});
