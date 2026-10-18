@@ -39,6 +39,9 @@ export function compatibleState(raw,card,state,options){
     const result={};if(!object(value))return result;
     for(const [key,original]of Object.entries(value)){
       const field=aliases[key]||key;
+      // An explicit valid MVU change wins over a stale status snapshot.
+      const committed=player?mvuState.player:mvuState.characters.find(c=>c.id===before?.id);
+      if(mvuAccepted&&['affinity','relationship'].includes(field)&&committed?.[field]!==before?.[field]){result[field]=committed[field];continue;}
       if(!dynamic.includes(field)||player&&['affinity','innerThought'].includes(field)||field==='spiritThought'&&!before?.spiritAnimal)continue;
       let v=field==='affinity'?numeric(original):original;if(typeof v==='string')v=displayText(v);if(typeof v==='string'&&!v.trim()&&before?.[field]){warn('STATE_EMPTY_FIELD_RETAINED');continue;}
       try{

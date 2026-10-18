@@ -143,7 +143,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(raw.presentCharacterIds.some(id=>!known.has(id)))throw modelError(502,'UNKNOWN_MODEL_CHARACTER');
   let updates=raw.characters||[];
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
-  if(raw.mvu!==undefined){const added=mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id));updates=[...added,...state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','innerThought','spiritThought','mentalPowerLevel'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;})];for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
+  if(raw.mvu!==undefined){const added=mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id));updates=[...added,...state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','relationship','innerThought','spiritThought','mentalPowerLevel'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;})];for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
   const present=new Set(raw.presentCharacterIds);
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
   // The model's full scene roster is authoritative; no client-selected cast is used.
@@ -317,7 +317,7 @@ export class StoryDecoder {
     else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
     if(mvu!==undefined&&!mvuFailed){try{applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch{mvuFailed=true;}}
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
-    if(rejected){delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
+    if(rejected){if(mvuFailed)delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
     if(!Object.keys(assembled).length&&!single)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     if(!this.story.trim()){if(single)warn('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}
     if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}

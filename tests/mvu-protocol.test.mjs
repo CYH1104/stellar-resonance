@@ -11,3 +11,11 @@ test('MVU markers split at every character stay hidden, commit once with full re
 test('post-state MVU blocks work; truncated or invalid updates do not commit',()=>{let d=new StoryDecoder();d.push('正文。'+control+patch+'<SR_DONE>');assert.equal(d.finish(card,stateAt(session())).mvu.length,3);for(const suffix of [patch+control,patch.slice(0,-4)+control+'<SR_DONE>','<UpdateVariable>_.set("player.name", "x");</UpdateVariable>'+control+'<SR_DONE>']){d=new StoryDecoder();d.push('正文。'+suffix);assert.throws(()=>d.finish(card,stateAt(session())));}});
 test('conflicting SR_STATE/MVU fields and invalid arrays fail safely',()=>{const state=stateAt(session());assert.throws(()=>normalizeModelState(card,state,{presentCharacterIds:['guide'],event:'事件',mvu:[{op:'delta',path:'/characters/guide/affinity',value:3}],characters:[{id:'guide',affinity:1}]}),e=>e.code==='MODEL_STATE_CHARACTERS_INVALID');assert.throws(()=>normalizeModelState(card,state,{presentCharacterIds:[],event:'事件',mvu:[],characters:{}}),e=>e.code==='MODEL_STATE_CHARACTERS_INVALID');});
 test('prompts include only this session MVU data and fixed-rule mental grade constraints',()=>{const s=session();const {messages,state}=buildMessages(card,{persona:s.persona,input:'行动',history:[],memories:[],presets:[],state:stateAt(s)});assert.match(messages[0].content,/MVU:/);assert.match(messages[0].content,/rank changes need established rules/);assert.match(messages[2].content,/stat_data/);assert.equal(state.characters[0].mentalPowerLevel,'特级');});
+
+test('single-call valid MVU survives malformed status and stale affinity snapshots',()=>{
+ const state=stateAt(session()),options={singleStateCall:true,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false}))};
+ for(const status of ['<SR_STATE>{broken}</SR_STATE>','<SR_STATE>'+JSON.stringify({presentCharacterIds:['guide'],event:'互动',characters:[{id:'guide',affinity:30}]})+'</SR_STATE>']){
+  const d=new StoryDecoder();d.push('正文。'+patch+status+'<SR_DONE>');const out=d.finish(card,state,options);
+  assert.equal(out.characters.find(c=>c.id==='guide').affinity,33);
+ }
+});

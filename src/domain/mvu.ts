@@ -32,9 +32,9 @@ export function readPath(root:Json,path:string):Json{
 export function cleanOperations(value:unknown):MvuOperation[]{
   if(!Array.isArray(value)||value.length>200)fail();
   return value.map(raw=>{if(!object(raw)||typeof raw.op!=='string'||!['replace','add','insert','remove','delta','move','copy','test'].includes(raw.op)||Object.keys(raw).some(k=>!['op','path','value','from','to'].includes(k)))fail();
-    const path=raw.path??raw.to;if(typeof path!=='string')fail();pointer(path);
+    const path=raw.path??raw.to;if(typeof path!=='string')fail();if(pointer(path).some(p=>p.startsWith('_')))fail();
     const op=raw.op as MvuOperation['op'],out:MvuOperation={op,path};
-    if(['move','copy'].includes(op)){if(typeof raw.from!=='string')fail();pointer(raw.from);out.from=raw.from;}
+    if(['move','copy'].includes(op)){if(typeof raw.from!=='string')fail();if(pointer(raw.from).some(p=>p.startsWith('_'))&&op==='move')fail();out.from=raw.from;}
     if(!['remove','move','copy'].includes(op)){if(!Object.hasOwn(raw,'value'))fail();const value=/^\/characters\/[^/]+\/affinity$/.test(path)&&['replace','add','insert','delta'].includes(op)?affinityNumber(raw.value):raw.value;out.value=cleanJson(value);if(op==='delta'&&typeof out.value!=='number')fail();}
     return out;
   });
