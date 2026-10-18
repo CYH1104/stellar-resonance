@@ -34,5 +34,5 @@ it('修改待选回合输入后重新写同类候选，不重新抽概率',()=>{
   const session=newSession('事件',{name:'玩家',appearance:'',personality:'',background:''},'');session.turns.push({id:'t',input:'旧行动',randomEvent:{status:'pending',proposal},variants:[],selected:0});editMessage(session,0,'user','新行动');expect(session.turns[0].randomEvent).toEqual({status:'preparing',kind:'奇遇事件'});
 });
 it('随机事件接口只在开启时要求配置，迁移默认主API，不允许向量接口',()=>{
-  const p=defaults();p.randomEventProfile='aux';expect(requiredApis(p).map(p=>p.id)).toEqual(['main','embed']);p.diceEnabled=true;expect(requiredApis(p).map(p=>p.id)).toEqual(['main','aux','embed']);delete p.randomEventProfile;expect(migrateApiSettings(p).randomEventProfile).toBe('main');p.randomEventProfile='embed';expect(()=>migrateApiSettings(p)).toThrow('随机事件');
+  const p=defaults();p.randomEventProfile='aux';expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);p.diceEnabled=true;expect(requiredApis(p).map(p=>p.id)).toEqual(['main','aux']);delete p.randomEventProfile;expect(migrateApiSettings(p).randomEventProfile).toBe('main');p.randomEventProfile='embed';expect(()=>migrateApiSettings(p)).toThrow('随机事件');
 });

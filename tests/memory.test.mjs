@@ -25,3 +25,5 @@ test('memory route calls selected auxiliary once, preserves error privacy and re
   assert.equal((await post('/api/memory',{...request(),profile,key:'synthetic-key',story:''})).status,400);assert.equal(count,1);broken=true;const failure=await post('/api/memory',{...request(),profile,key:'synthetic-key'});assert.equal(failure.status,502);const safe=await failure.text();assert.ok(safe.includes('UPSTREAM_AUTH'));assert.ok(!safe.includes('synthetic-secret'));
  }finally{app.server.closeAllConnections();await new Promise(resolve=>app.server.close(resolve));}
 });
+
+test('memory extraction accepts a dynamic roster beyond the former fifty-NPC limit',()=>{const r=request();for(let i=0;i<80;i++){const actor={id:'npc-'+i,name:'访客'+i,present:false,affinity:0};r.before.characters.push(actor);r.after.characters.push({...actor});}assert.equal(memoryMessages(r).input.after.characters.length,82);});

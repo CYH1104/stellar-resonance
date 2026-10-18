@@ -14,7 +14,7 @@ it('文字与向量表单均保留获取模型、测试与保存，说明默认�
   }
 });
 it('副接口下拉显示全部选项但只展开一份，新增表单和详细设置默认收起，向量攻略简短',async()=>{
-  const preferences=defaults(),auxiliaryProfiles=preferences.profiles.filter(p=>![preferences.mainProfile,preferences.embeddingProfile].includes(p.id));
+  const preferences=defaults();preferences.vectorEnabled=true;const auxiliaryProfiles=preferences.profiles.filter(p=>![preferences.mainProfile,preferences.embeddingProfile].includes(p.id));
   auxiliaryProfiles.push({...auxiliaryProfiles[0],id:'extra',name:'另一副 API'});
   const w={preferences,auxiliaryProfiles,credentials:{},connectionReady:()=>false,apiSelectable:()=>false,apiReady:false} as unknown as ViewModel;
   const html=await renderToString(createSSRApp(ApiSettings,{w}));expect(html).toContain('另一副 API');expect(html.match(/class="api-card compact-api-card"/g)).toHaveLength(3);expect(html).toContain('增加副 API');expect(html).not.toContain('<dialog');expect(html).not.toContain('<details open');expect(html).toContain('BAAI/bge-m3');expect(html).toContain('Pro/BAAI/bge-m3');expect(html).not.toContain('<table');

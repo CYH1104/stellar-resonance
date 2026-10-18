@@ -40,11 +40,11 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
   <section class="auxiliary-picker"><div class="api-aux-row"><label>副 API<select v-model="selectedAux" :disabled="disabled||!w.auxiliaryProfiles.length"><option v-if="!w.auxiliaryProfiles.length" value="">暂无副 API</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id">{{p.name||'未命名副 API'}}</option></select></label><button type="button" :disabled="disabled||w.preferences.profiles.length>=30" @click="add">增加副 API</button></div>
     <ApiProfileEditor v-if="auxiliary" @saved="emit('saved')" :key="auxiliary.id" :w="w" :p="auxiliary" title="副 API" help="副 API 可选，可以添加多个；在下方功能接口选择中指定用途。只有主 API 也能使用全部文字功能。"><button type="button" :disabled="disabled" @click="removeOpen=true">删除</button></ApiProfileEditor>
   </section>
-  <label class="toggle"><input type="checkbox" checked disabled />向量检索（已开启）</label>
-  <ApiProfileEditor v-if="embedding" :w="w" :p="embedding" title="向量模型" embedding @saved="emit('saved')" />
-  <EmbeddingGuide />
+  <label class="toggle"><input v-model="w.preferences.vectorEnabled" type="checkbox" :disabled="disabled" />启用可选向量检索</label><p class="rail-note">关闭时使用本地关键词检索，不需要向量模型，不影响记忆整理。</p>
+  <ApiProfileEditor v-if="embedding&&w.preferences.vectorEnabled" :w="w" :p="embedding" title="向量模型" embedding @saved="emit('saved')" />
+  <EmbeddingGuide v-if="w.preferences.vectorEnabled" />
   <section class="api-extra" aria-labelledby="api-task-heading">
-    <h2 id="api-task-heading">功能接口选择（默认主 API）</h2>
+    <h2 id="api-task-heading">功能接口选择（默认主 API）</h2><button type="button" :disabled="disabled" @click="w.useMainForAll()">全部使用主 API · 本地记忆检索</button>
     <p class="rail-note">状态与格式跟随主 API 时，正文、状态与小剧场在一次请求内生成；选择副 API 后，剧情接口仍生成正文、小剧场和快捷回复，副 API 只判断 MVU 状态变化。</p>
     <div class="field-grid">
       <label v-for="task in textApiTasks" :key="task.key">{{task.label}}<select v-model="w.preferences[task.field]" :disabled="disabled"><option :value="w.preferences.mainProfile">{{task.key==='state'?'跟随剧情 API（一次生成）':'主 API · '+main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>

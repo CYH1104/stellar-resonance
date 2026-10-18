@@ -1,3 +1,4 @@
+import {sourceFor,taskFor,textHash,validateLedgerMetadata} from './memoryLedger.ts';
 import {cleanRegexRules} from './regex.ts';
 import {newDynamicActor,validActorId} from './dynamicActors.ts';
 import {validAffinity} from './affinity.ts';
@@ -24,7 +25,7 @@ export const copy = <T>(value: T): T => value === undefined ? value : JSON.parse
 export const now = () => new Date().toISOString();
 export function defaults(): Preferences {
   const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 1600 });
-  return { preservePresetOutputs:false,regexRules:[],memorySummaryInterval:10,stateEnabled:true,randomEventProbability:30,randomEventInstruction:'',stateProfile:'main',worldbooks:[],defaultWorldbookIds:[],layout:defaultLayout(),suggestionsEnabled:true,randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: true, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
+  return { preservePresetOutputs:false,regexRules:[],memorySummaryInterval:10,stateEnabled:true,randomEventProbability:30,randomEventInstruction:'',stateProfile:'main',worldbooks:[],defaultWorldbookIds:[],layout:defaultLayout(),suggestionsEnabled:true,randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: ['观察周围的情况。', '询问眼前的人发生了什么。'],activePreset:'legacy',theaters:cleanTheaters(undefined) };
 }
 export function initialState(name: string): WorldState {
   const actor = (id: string, label: string, affinity: number): ActorState => ({ id, name: label, energy: 80, focus: 70, affinity, present: true, primaryGender: '', secondaryGender: '', innerThought: '' });
@@ -136,7 +137,7 @@ export function encounteredCharacters(session:Session,before=session.turns.lengt
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
   const active = new Map(session.turns.slice(0, before).map(t => [t.id, selected(t)]));
-  return session.memories.filter(m => !m.sourceTurn || (active.get(m.sourceTurn)?.status === 'complete' && active.get(m.sourceTurn)?.id === m.sourceVariant));
+  return session.memories.filter(m => {if(!m.sourceTurn)return m.kind!=='event'||session.memoryEngine!=='candidate';const v=active.get(m.sourceTurn),index=session.turns.findIndex(t=>t.id===m.sourceTurn);if(v?.status!=='complete'||v.id!==m.sourceVariant)return false;if(session.memoryEngine!=='candidate')return true;if(!m.source||m.source.sessionId!==session.id||m.source.sourceTextHash!==textHash(JSON.stringify([session.turns[index].input,v.text])))return false;return m.source.sourceStateRevision===memorySignature({input:session.turns[index].input,story:v.text,before:stateAt(session,index),after:stateAt(session,index+1),event:v.outcome?.event,diceEvent:v.outcome?.diceEvent});});
 }
 /** Internal event summaries for long-term memory, not a chronicle UI. */
 export function effectiveEvents(session: Session) {
@@ -184,6 +185,9 @@ export function truncate(session: Session, count: number): void {
   if (!Number.isInteger(count) || count < 0 || count > session.turns.length) throw new Error('回退位置不正确');
   session.turns = session.turns.slice(0, count);
   const ids = new Set(session.turns.map(t => t.id));
+  const removed=session.memories.filter(m=>m.sourceTurn&&!ids.has(m.sourceTurn));
+  if(removed.length)session.memoryArchive=[...(session.memoryArchive||[]),...removed];
+  for(const task of session.memoryTasks||[])if(!ids.has(task.source.sourceTurnId))task.status='stale';
   session.memories = session.memories.filter(m => !m.sourceTurn || ids.has(m.sourceTurn));
   pruneForum(session); restoreSuggestions(session); session.updatedAt = now();
 }
@@ -195,7 +199,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   const turn = session.turns[index]; if (!turn || !text.trim()) throw new Error('消息不能为空');
   if(role==='user'){turn.input=text.trim();turn.inputEdited=true;if(!turn.variants.length&&turn.randomEvent?.status==='pending')turn.randomEvent={status:'preparing',kind:turn.randomEvent.proposal.kind};}
   else {const variant=selected(turn);if(!variant)throw new Error('稿件不存在');const clean=stripReasoning(text.trim());if(!clean.trim())throw new Error('消息不能为空');variant.text=clean;variant.edited=true;}
-  for(const memory of session.memories)if(memory.kind==='event'&&memory.sourceTurn===turn.id){memory.status='pending';delete memory.record;delete memory.vector;delete memory.sourceFingerprint;}
+  for(const memory of session.memories)if(memory.kind==='event'&&memory.sourceTurn===turn.id){if(memory.record)session.memoryArchive=[...(session.memoryArchive||[]),copy(memory)];memory.status='pending';delete memory.record;delete memory.vector;delete memory.sourceFingerprint;}
   session.updatedAt=now();
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
@@ -206,7 +210,10 @@ export function finishVariant(session: Session, turnIndex: number, variant: Vari
   const sourceFingerprint=memorySignature({input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent});
   const existing=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);
   if(!existing||existing.sourceFingerprint!==sourceFingerprint){
-    const memory:Memory={id:existing?.id||uid(),text:'待整理：'+validated.event+(validated.diceEvent?'；'+validated.diceEvent.description:''),kind:'event',createdAt:existing?.createdAt||now(),sourceTurn:turn.id,sourceVariant:variant.id,status:'pending',sourceFingerprint};
+    if(existing?.record)session.memoryArchive=[...(session.memoryArchive||[]),copy(existing)];
+    const request={turnId:turn.id,variantId:variant.id,input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent,priorCommitments:[]};
+    taskFor(session,request);
+    const memory:Memory={source:sourceFor(session,request),revision:existing?.revision||1,id:existing?.id||uid(),text:'待整理：'+validated.event+(validated.diceEvent?'；'+validated.diceEvent.description:''),kind:'event',createdAt:existing?.createdAt||now(),sourceTurn:turn.id,sourceVariant:variant.id,status:'pending',sourceFingerprint};
     if(existing)session.memories.splice(session.memories.indexOf(existing),1,memory);else session.memories.push(memory);
   }
   session.updatedAt = now();
@@ -270,6 +277,7 @@ export function parseBackup(text: string): Snapshot {
       for(const v of t.variants)if(v?.generationRequirements!==undefined){const requirements=v.generationRequirements;if(!record(requirements)||Object.keys(requirements).some(k=>!['stateEnabled','theaters'].includes(k))||typeof requirements.stateEnabled!=='boolean')throw Error('本轮生成配置不正确');v.generationRequirements={stateEnabled:requirements.stateEnabled,theaters:cleanTheaters(requirements.theaters)};}
       for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if (v.outcome) {const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }
     }
+    validateLedgerMetadata(s);
     for (const m of s.memories) {
       if(!m||typeof m!=='object')throw new Error('记忆格式不正确');
       if(m.record!==undefined){m.record=validateMemoryRecord(m.record);if(m.status!=='ready')throw new Error('结构化记忆状态不正确');m.text=memoryText(m);}

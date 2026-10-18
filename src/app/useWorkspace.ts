@@ -1,3 +1,4 @@
+import {captureRevision,migrateMemoryLedger,sourceFor,taskFor,rebindMemorySources} from '../domain/memoryLedger';
 import {confirmPresetCompatibility} from '../domain/presetCompatibility';
 import {runRegex} from '../domain/regexRunner';
 import {exportApiSettings,parseApiSettings} from '../domain/apiTransfer';
@@ -81,6 +82,7 @@ export function useWorkspace() {
   const apiReady=computed(()=>!loading.value&&authorized.value&&!!localService.value&&!apiIssues.value.length);
   function ensureApiConfiguration(){if(apiReady.value)return true;problem.value=apiIssues.value[0]||'请先连接本机后台并完成 API 配置。';panel.value='settings';return false;}
   function enterStory(){if(!ensureApiConfiguration())return false;if(pendingSessionId.value){const id=pendingSessionId.value;pendingSessionId.value='';open(id);}else panel.value='story';return true;}
+  async function useMainForAll(){if(busy.value||workingMemory.value)return;for(const task of textApiTasks)preferences[task.field]=preferences.mainProfile;preferences.suggestionsProfile=preferences.randomEventProfile=preferences.forumReplyProfile=preferences.mainProfile;preferences.vectorEnabled=false;await safePersist();notice.value='全部文字功能使用主 API，记忆采用本地检索。';}
   async function confirmAllApis(){if(configuringApis.value||busy.value)return;const structural=apiConfigurationIssues(preferences,credentials,()=>true);if(structural.length){problem.value=structural[0];return;}configuringApis.value=true;try{for(const p of [...new Map([...requiredApis(preferences),...auxiliaryApis(preferences).filter(apiSelectable)].map(p=>[p.id,p])).values()])if(!await connectProfile(p))return;notice.value='必需的 API 配置已就绪，可以进入游戏。';await safePersist();}finally{configuringApis.value=false;}}
   const storageStatus=ref<'idle'|'saving'|'saved'|'failed'>('idle');
   const notice=ref('正在读取本地存档…'), problem=ref(''), input=ref(''), lastSaved=ref('');
@@ -124,7 +126,7 @@ export function useWorkspace() {
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);
   const message=(e:unknown)=> e instanceof Error ? (e.name==='AbortError'?'生成已停止，已收到的内容保留。':e.message) : '操作未完成，请重试。';
   async function boot() {
-    try {const value=await repository.read();if(value){sessions.value=value.sessions;Object.assign(preferences,value.preferences);}storageReady=true;notice.value=sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
+    try {const value=await repository.read();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}sessions.value=value.sessions;Object.assign(preferences,value.preferences);}storageReady=true;notice.value=sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
     catch(e){problem.value=message(e);notice.value='本地存储暂不可用，请勿覆盖旧数据';}
     finally {
       try{const service=await http.bootstrap();if(service){localService.value=service;for(const session of sessions.value)syncCharacterFacts(session,service.dataset,service.characterFacts);preferences.mode='server';await Promise.resolve();authorized.value=true;notice.value='服务器角色卡已载入 · 请在API 设置连接 AI';}}catch{problem.value='本机资料后台不可用；请使用新版 bat 启动。';}
@@ -134,7 +136,7 @@ export function useWorkspace() {
   }
   let timer:ReturnType<typeof setTimeout>;
   const scheduleSave=()=>{if(loading.value)return;clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
-  watch(()=>preferences.vectorEnabled,()=>{preferences.vectorEnabled=true;},{flush:'sync'});
+  
   watch(preferences,scheduleSave,{deep:true});
   watch([credentials,approved],scheduleSave,{deep:true});
   watch(()=>preferences.mode,()=>{authorized.value=preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
@@ -147,7 +149,7 @@ export function useWorkspace() {
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     if(!ensureApiConfiguration())return;
     creatingGame.value=true;
-    try{const session=newSession(name,persona,opening);session.worldbookIds=[...(preferences.defaultWorldbookIds||[])];if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}rememberInput();sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
+    try{const session=newSession(name,persona,opening);session.memoryEngine='candidate';session.worldbookIds=[...(preferences.defaultWorldbookIds||[])];if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.memoryEngine='candidate';session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}rememberInput();sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
   }
   function open(id:string) {if(busy.value)return;if(!ensureApiConfiguration()){pendingSessionId.value=id;return;}rememberInput();pendingSessionId.value='';sessionId.value=id;panel.value='story';input.value=inputDrafts.get(id)||'';problem.value='';}
   function home() {if(busy.value)return;rememberInput();pendingSessionId.value='';sessionId.value='';panel.value='story';input.value='';}
@@ -166,14 +168,14 @@ export function useWorkspace() {
     })();return deletionTask;
   }
   function stop(){controller?.abort();}
-  let memoryController:AbortController|undefined;
+  let memoryController:AbortController|undefined;const memoryQueue=new Set<Session>();
   function stopMemory(){memoryController?.abort();}
   function memoryLedger(session:Session,before=session.turns.length){const order=new Map(session.turns.map((t,i)=>[t.id,i]));return visibleMemories(session,before).slice().sort((a,b)=>(order.get(a.sourceTurn||'')??-1)-(order.get(b.sourceTurn||'')??-1));}
   function roundMemoryInput(session:Session,index:number):MemoryRequest{
     const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)throw new Error('只能整理已完成的剧情。');
     return {turnId:turn.id,variantId:v.id,input:turn.input,story:v.text,event:v.outcome.event,diceEvent:copy(v.outcome.diceEvent),before:memoryState(stateAt(session,index)),after:memoryState(stateAt(session,index+1)),priorCommitments:activeCommitments(memoryLedger(session,index))};
   }
-  function memoryNeedsWork(session:Session,index:number){const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)return false;const m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===v.id);return !m||!memoryReady(m)||m.sourceFingerprint!==memorySignature(roundMemoryInput(session,index));}
+  function memoryNeedsWork(session:Session,index:number){const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)return false;const m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===v.id);return !m||!memoryReady(m)||session.memoryEngine==='candidate'&&!m.source||m.sourceFingerprint!==memorySignature(roundMemoryInput(session,index));}
   const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter((_,i)=>memoryNeedsWork(active.value!,i)).length:0);
   const chatRoundCount=computed(()=>active.value?.turns.filter(t=>t.input.trim()).length||0);
   const effectiveMemoryCount=computed(()=>active.value?active.value.turns.filter((t,i)=>{const v=selected(t);return v?.status==='complete'&&v.outcome&&!memoryNeedsWork(active.value!,i);}).length:0);
@@ -182,8 +184,8 @@ export function useWorkspace() {
     return [...session.turns.flatMap(t=>{const v=selected(t);if(v?.status!=='complete'||!v.outcome)return[];return[session.memories.find(m=>m.kind==='event'&&m.sourceTurn===t.id&&m.sourceVariant===v.id)||{id:`missing:${t.id}`,kind:'event' as const,text:'本轮记忆待补记。',createdAt:v.createdAt,sourceTurn:t.id,sourceVariant:v.id,status:'pending' as const}];}),...memories.value.filter(m=>m.kind!=='event')];
   });
   function memoryNeedsRepair(m:Memory){const session=active.value,index=session?.turns.findIndex(t=>t.id===m.sourceTurn)??-1;return !!session&&index>=0&&memoryNeedsWork(session,index);}
-  const missingVectorCount=computed(()=>memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
-  function vectorStatus(m:Memory){if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'等待累计整理';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
+  const missingVectorCount=computed(()=>!preferences.vectorEnabled?0:memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
+  function vectorStatus(m:Memory){if(!preferences.vectorEnabled)return '本地关键词检索';if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'等待累计整理';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
   async function encodeMemories(session:Session,items:Memory[],signal:AbortSignal){
     if(!preferences.vectorEnabled)return;const p=copy(profile(preferences.embeddingProfile)),model=fingerprint(p),signature=connectionSignature(p);
     if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存向量 API。');
@@ -200,14 +202,14 @@ export function useWorkspace() {
     let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===request.turnId&&m.sourceVariant===request.variantId);
     if(m?.record&&memoryReady(m)&&m.sourceFingerprint===sourceFingerprint)return;
     if(!m){m={id:uid(),kind:'event',text:'本轮记忆待整理。',createdAt:now(),sourceTurn:request.turnId,sourceVariant:request.variantId};session.memories.push(m);m=session.memories.find(x=>x.id===m!.id)!;}
-    const target=m;target.status='pending';target.sourceFingerprint=sourceFingerprint;delete target.record;delete target.vector;delete target.error;await persist();
+    const target=m,originalTarget=copy(m);if(!target.record)target.status='pending';delete target.error;await persist();
     try{
       if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存记忆整理 API。');
       const signature=connectionSignature(p),result=normalizeMemoryResult(await gateway().memory(request,p,key(p),signal),request);signal.throwIfAborted();
       if(!sessions.value.includes(session)||!visibleSourceStillMatches(session,request.turnId,request.variantId)||memorySignature(roundMemoryInput(session,index))!==sourceFingerprint||signature!==connectionSignature(profile(p.id)))throw new Error('剧情或接口已改变，本次记忆未应用。');
-      target.record=result;target.status='ready';target.text=memoryText(target);delete target.error;delete target.indexError;
-    }catch(e){target.status=signal.aborted?'pending':'failed';target.error=signal.aborted?'记忆整理已停止。':'记忆整理失败，请补记。';await safePersist();throw e;}
-    await persist();
+      if(target.record)captureRevision(target);target.source=sourceFor(session,request);target.sourceFingerprint=sourceFingerprint;target.revision||=1;target.record=result;target.status='ready';target.text=memoryText(target);delete target.error;delete target.indexError;taskFor(session,request).status='ready';
+      try{await persist();}catch(e){Object.keys(target).forEach(k=>delete (target as any)[k]);Object.assign(target,originalTarget);throw e;}
+    }catch(e){if(!target.record)target.status=signal.aborted?'pending':'failed';target.error=signal.aborted?'记忆整理已停止。':'记忆整理失败，请补记。';await safePersist();throw e;}
     if(preferences.vectorEnabled){try{await encodeMemories(session,[target],signal);}catch(e){if(!signal.aborted)logRuntime(e,'记忆索引');target.indexError=signal.aborted?'索引已停止。':'索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}}
   }
   async function writeMemoryBatch(session:Session,indices:number[],signal:AbortSignal){
@@ -216,8 +218,8 @@ export function useWorkspace() {
     const signature=connectionSignature(p),records=await gateway().memoryBatch(requests,{...p,maxTokens:Math.min(32000,Math.max(p.maxTokens,requests.length*1200))},key(p),signal);signal.throwIfAborted();
     if(records.length!==requests.length||!sessions.value.includes(session)||signature!==connectionSignature(profile(p.id))||requests.some((r,i)=>!visibleSourceStillMatches(session,r.turnId,r.variantId)||memorySignature(roundMemoryInput(session,indices[i]))!==fingerprints[i]))throw new Error('剧情或接口已改变，本批记忆未应用。');
     const commitments=new Map();const normalized=records.map((r,i)=>{for(const c of requests[i].priorCommitments)if(!commitments.has(c.id))commitments.set(c.id,c);const record=normalizeMemoryResult(r,{...requests[i],priorCommitments:[...commitments.values()]});for(const c of record.commitments)commitments.set(c.id,c);return record;});
-    const targets=normalized.map((record,i)=>{const r=requests[i];let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===r.turnId&&m.sourceVariant===r.variantId);if(!m){m={id:uid(),kind:'event',text:'',createdAt:now(),sourceTurn:r.turnId,sourceVariant:r.variantId};session.memories.push(m);}m.record=record;m.status='ready';m.sourceFingerprint=fingerprints[i];m.text=memoryText(m);delete m.vector;delete m.error;delete m.indexError;return m;});
-    await persist();if(preferences.vectorEnabled)try{await encodeMemories(session,targets,signal);}catch(e){for(const m of targets)m.indexError='索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}
+    const originalMemories=copy(session.memories);const targets=normalized.map((record,i)=>{const r=requests[i];let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===r.turnId&&m.sourceVariant===r.variantId);if(!m){m={id:uid(),kind:'event',text:'',createdAt:now(),sourceTurn:r.turnId,sourceVariant:r.variantId};session.memories.push(m);}if(m.record)captureRevision(m);m.source=sourceFor(session,r);m.revision||=1;m.record=record;m.status='ready';m.sourceFingerprint=fingerprints[i];m.text=memoryText(m);delete m.vector;delete m.error;delete m.indexError;taskFor(session,r).status='ready';return m;});
+    try{await persist();}catch(e){session.memories=originalMemories;throw e;}if(preferences.vectorEnabled)try{await encodeMemories(session,targets,signal);}catch(e){for(const m of targets)m.indexError='索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}
   }
   async function flushMemoryInterval(session:Session,signal:AbortSignal){
     const interval=Math.max(1,Math.min(20,Math.trunc(preferences.memorySummaryInterval||10)));
@@ -225,13 +227,26 @@ export function useWorkspace() {
     if(pending.length<interval)return;
     const batch=pending.slice(0,interval),attempt=batch.map(i=>{const r=roundMemoryInput(session,i);return r.turnId+':'+r.variantId+':'+memorySignature(r);}).join('|');
     if(session.memoryBatchAttempt===attempt)return;session.memoryBatchAttempt=attempt;await safePersist();
-    generationPhase.value=`正在一次整理累计 ${batch.length} 轮记忆…`;
-    if(batch.length===1)await writeRoundMemory(session,batch[0],signal);else await writeMemoryBatch(session,batch,signal);
+    await executeMemoryBatch(session,batch,signal);
   }
+  async function executeMemoryBatch(session:Session,batch:number[],signal:AbortSignal){
+ const tasks=batch.map(i=>taskFor(session,roundMemoryInput(session,i)));
+ tasks.forEach(t=>{t.status='running';t.attempts++;t.updatedAt=now();delete t.error;});
+ try{await persist();if(batch.length===1)await writeRoundMemory(session,batch[0],signal);else await writeMemoryBatch(session,batch,signal);tasks.forEach(t=>{t.status='ready';t.updatedAt=now();});await persist();}
+ catch(e){tasks.forEach(t=>{t.status=signal.aborted?'pending':'failed';t.error='记忆整理未完成，可重试；正文已保留。';t.updatedAt=now();});await safePersist();throw e;}
+ }
+ async function scheduleMemoryWork(session:Session){
+ if(loading.value)return;memoryQueue.add(session);if(workingMemory.value)return;
+ workingMemory.value=true;const current=new AbortController();memoryController=current;
+ try{while(memoryQueue.size){const next=memoryQueue.values().next().value!;memoryQueue.delete(next);if(!sessions.value.includes(next))continue;
+  try{for(;;){const previous=next.memoryBatchAttempt;await flushMemoryInterval(next,current.signal);if(previous===next.memoryBatchAttempt)break;current.signal.throwIfAborted();}}
+  catch(e){if(current.signal.aborted)throw e;logRuntime(e,'后台记忆整理');}
+ }}catch(e){if(!current.signal.aborted)logRuntime(e,'后台记忆整理');}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
+ }
   async function retryMemory(id?:string){
     const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!ensureApiConfiguration())return;
     workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;
-    try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(let start=0;start<indices.length;start+=20){current.signal.throwIfAborted();const batch=indices.slice(start,start+20);if(batch.length===1)await writeRoundMemory(session,batch[0],current.signal);else await writeMemoryBatch(session,batch,current.signal);}notice.value='记忆已保存。';}
+    try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(let start=0;start<indices.length;start+=20){current.signal.throwIfAborted();const batch=indices.slice(start,start+20);await executeMemoryBatch(session,batch,current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
   async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
@@ -239,7 +254,7 @@ export function useWorkspace() {
     const contextState=stateAt(session,before),recent=session.turns.slice(0,before).flatMap(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome?[v.outcome.event]:[];});
     const query=contextual?buildRecallQuery(text,contextState,recent,memoryLedger(session,before).filter(m=>m.record&&memoryReady(m)).at(-1)?.record?.location):text;let vector:number[]|undefined;const p=copy(profile(preferences.embeddingProfile));
     if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;logRuntime(e,'记忆向量检索');notice.value='向量接口不可用，已退回关键词检索';}
-    return retrieve(list,query,fingerprint(p),vector);
+    return retrieve(list,query,fingerprint(p),vector,session.memoryEngine==='candidate');
   }
   async function prepareRandomEvent(session:Session,index:number){
     const turn=session.turns[index],gate=turn.randomEvent;if(!gate||(gate.status!=='preparing'&&gate.status!=='failed'))return;const kind=gate.kind,p=copy(profile(preferences.randomEventProfile||preferences.mainProfile));
@@ -258,7 +273,7 @@ export function useWorkspace() {
     await safePersist();await generate(undefined,index);
   }
   async function generate(text?:string,turnIndex?:number,continuePartial=false,stateOnly=false) {
-    const session=active.value;if(!session||busy.value||workingMemory.value)return;
+    const session=active.value;if(!session||busy.value)return;
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     const p=storyProfile.value!;
     if(!ensureApiConfiguration())return;
@@ -299,11 +314,10 @@ export function useWorkspace() {
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
-      generationPhase.value='正文已完成，正在检查记忆整理轮数…';
-      try{await flushMemoryInterval(session,controller.signal);}catch(e){notice.value='正文已保存，累计记忆整理未完成，可手动补记。';problem.value=message(e);}
+      notice.value='正文已保存，记忆任务将在后台按累计轮数整理。';
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
     }catch(e){problem.value=message(e);}
-    finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';}
+    finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';void scheduleMemoryWork(session);}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){if(!active.value||busy.value)return;try{truncate(active.value,count);await safePersist();notice.value='已恢复对应剧情状态与记忆';}catch(e){problem.value=message(e);}}
@@ -335,8 +349,13 @@ export function useWorkspace() {
     }catch(e){const detail=current.signal.aborted?'AI 回复已停止。':message(e);forumReplyError.value=detail+(/评论已(?:保留|保存)/.test(detail)?'':' 你的评论已保留。');}
     finally{if(forumController===current){forumController=undefined;workingForumReply.value='';}}return true;
   }
-  async function saveMemory(text:string,id?:string){const session=active.value;if(!session||busy.value||workingMemory.value)return;const m=session.memories.find(x=>x.id===id);if(m?.record){if(text.length>3000){problem.value='记忆补充最多3000字。';return;}m.annotation=text.trim();m.text=memoryText(m);delete m.vector;delete m.indexError;}else if(text.trim()){if(m){m.text=text.trim();delete m.vector;delete m.indexError;}else session.memories.push({id:uid(),text:text.trim(),kind:'note',createdAt:now()});}await safePersist();}
-  async function removeMemory(id:string){if(!active.value||busy.value||workingMemory.value)return;active.value.memories=active.value.memories.filter(m=>m.id!==id);await safePersist();}
+  async function saveMemory(text:string,id?:string){const session=active.value;if(!session||busy.value||workingMemory.value)return;const m=session.memories.find(x=>x.id===id);if(m?.record){if(text.length>3000){problem.value='记忆补充最多3000字。';return;}captureRevision(m);m.annotation=text.trim();m.text=memoryText(m);delete m.vector;delete m.indexError;}else if(text.trim()){if(m){captureRevision(m);m.text=text.trim();delete m.vector;delete m.indexError;}else session.memories.push({id:uid(),text:text.trim(),kind:'note',createdAt:now()});}await safePersist();}
+  async function reviseMemoryRecord(id:string,text:string){const s=active.value,m=s?.memories.find(m=>m.id===id);if(!s||!m||busy.value||workingMemory.value)return false;try{const index=s.turns.findIndex(t=>t.id===m.sourceTurn);if(index<0)throw Error('来源不存在');const record=normalizeMemoryResult(JSON.parse(text),roundMemoryInput(s,index));captureRevision(m);m.record=record;m.text=memoryText(m);await persist();problem.value='';return true;}catch(e){problem.value=message(e);return false;}}
+ function migrationPreview(){const s=active.value;if(!s)return {total:0,mappable:0,unconfirmed:0};let mappable=0;for(const m of s.memories){if(m.kind!=='event'){mappable++;continue;}const i=s.turns.findIndex(t=>t.id===m.sourceTurn);if(i>=0&&selected(s.turns[i])?.id===m.sourceVariant&&selected(s.turns[i])?.status==='complete'&&m.sourceFingerprint===memorySignature(roundMemoryInput(s,i)))mappable++;}return {total:s.memories.length,mappable,unconfirmed:s.memories.length-mappable};}
+  async function activateMemoryLedger(){const s=active.value;if(!s||busy.value||workingMemory.value)return;try{migrateMemoryLedger(s,i=>roundMemoryInput(s,i));await persist();notice.value='来源账本已启用，原记忆已保留，不会自动重建向量。';}catch(e){problem.value=message(e);}}
+  async function useLegacyMemory(){if(!active.value||busy.value||workingMemory.value)return;active.value.memoryEngine='legacy';await safePersist();notice.value='已回到原检索方式，新增记忆与历史记录均保留。';}
+  async function restoreMemoryRevision(id:string,revision:number){const s=active.value,m=s?.memories.find(m=>m.id===id),r=m?.revisions?.find(r=>r.revision===revision);if(!s||!m||!r||busy.value||workingMemory.value)return;const saved=copy(r);captureRevision(m);m.text=saved.text;m.annotation=saved.annotation;m.record=saved.record;if(m.record)m.text=memoryText(m);await safePersist();}
+  async function removeMemory(id:string){if(!active.value||busy.value||workingMemory.value)return;const removed=active.value.memories.find(m=>m.id===id);if(removed)active.value.memoryArchive=[...(active.value.memoryArchive||[]),copy(removed)];active.value.memories=active.value.memories.filter(m=>m.id!==id);await safePersist();}
   async function indexMemories(){const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!preferences.vectorEnabled){problem.value='请先开启向量检索并配置向量 API。';return;}workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;try{await encodeMemories(session,visibleMemories(session),current.signal);notice.value='记忆索引已保存。';}catch(e){for(const m of visibleMemories(session))if(memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile))))m.indexError='索引失败，记忆文字已保留。';problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}}
   async function searchMemory(query:string):Promise<Memory[]>{if(!active.value)return[];if(!query.trim())return memories.value;try{return await recall(active.value,query,active.value.turns.length,false);}catch(e){problem.value=message(e);return[];}}
   function download(filename:string,content:string,type='application/json'){const url=URL.createObjectURL(new Blob([content],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -360,7 +379,7 @@ export function useWorkspace() {
       await persist();problem.value='';notice.value='API 设置已导入，请保存 API 确认配置后使用。';return true;
     }catch(e){problem.value=message(e);return false;}
   }
-  async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(localService.value)for(const session of value.sessions)syncCharacterFacts(session,localService.value.dataset,localService.value.characterFacts);if(replace){inputDrafts.clear();sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{mergeWorldbookBackup(preferences,value.preferences,value.sessions);for(const s of value.sessions){s.id=uid();s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
+  async function importBackup(text:string,replace=false){if(busy.value||workingMemory.value)return;try{const value=parseBackup(text);if(localService.value)for(const session of value.sessions)syncCharacterFacts(session,localService.value.dataset,localService.value.characterFacts);if(replace){inputDrafts.clear();sessions.value=value.sessions;Object.assign(preferences,value.preferences);sessionId.value='';}else{mergeWorldbookBackup(preferences,value.preferences,value.sessions);for(const s of value.sessions){s.id=uid();rebindMemorySources(s);s.name+= '（导入）';sessions.value.push(s);}}await persist();problem.value='';notice.value='备份已恢复';}catch(e){problem.value=message(e);}}
   function exportBook(){const s=active.value;if(!s)return;const escape=(x:string)=>x.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');const body=s.turns.map(t=>{const v=selected(t);return v?.status==='complete'?`<section><p class="action">${escape(t.input)}</p><p>${escape(v.text)}</p></section>`:'';}).join('');download(`${s.name}-故事.html`,`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(s.name)}</title><style>body{max-width:44rem;margin:3rem auto;padding:0 1.5rem;font:18px/1.8 system-ui;color:#222}p{white-space:pre-wrap}.action{color:#666}section{margin-bottom:2rem}</style><h1>${escape(s.name)}</h1><p>${escape(s.opening)}</p>${body}</html>`,'text/html');}
   function addProfile(){if(preferences.profiles.length>=30){problem.value='接口总数最多30个，请先移除不需要的副 API。';return '';}const id=uid();preferences.profiles.push({id,name:`副 API ${(preferences.auxiliaryProfiles?.length||0)+1}`,providerId:'approved-provider',model:'',temperature:0.7,maxTokens:1600});(preferences.auxiliaryProfiles||=[]).push(id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;return id;}
   function removeProfile(id:string){if(id===preferences.mainProfile||id===preferences.embeddingProfile)return;preferences.profiles=preferences.profiles.filter(p=>p.id!==id);delete credentials[id];delete approved[id];preferences.auxiliaryProfiles=(preferences.auxiliaryProfiles||[]).filter(value=>value!==id);preferences.auxiliaryProfile=preferences.auxiliaryProfiles[0]||preferences.mainProfile;for(const task of textApiTasks)if(preferences[task.field]===id)preferences[task.field]=preferences.mainProfile;if(preferences.suggestionsProfile===id)preferences.suggestionsProfile=preferences.mainProfile;if(preferences.randomEventProfile===id)preferences.randomEventProfile=preferences.mainProfile;if(preferences.forumReplyProfile===id){preferences.forumReplyProfile=preferences.mainProfile;forumController?.abort();}}
@@ -375,7 +394,7 @@ export function useWorkspace() {
   function duplicatePresetSet(){if(busy.value)return;const sourcePreset=currentPreset.value;const rules=copy((preferences.regexRules||[]).filter(r=>r.setId===sourcePreset));const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;(preferences.regexRules||=[]).push(...rules.map(r=>({...r,id:uid(),setId:id})));preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {reviseMemoryRecord,migrationPreview,activateMemoryLedger,useLegacyMemory,restoreMemoryRevision,useMainForAll,storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;
