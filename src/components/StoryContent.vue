@@ -17,13 +17,14 @@ watch(()=>[committed.value,props.streaming,JSON.stringify(props.regexRules),JSON
  const input=committed.value,controller=new AbortController(),timer=setTimeout(()=>{void runRegex(input,props.regexRules||[],props.regexContext||{placement:2,scope:'display'},controller.signal).then(result=>{if(controller.signal.aborted)return;formatted.value=result.text;formattedInput=input;regexErrors.value=result.errors;}).catch(()=>{});},0);
  cleanup(()=>{clearTimeout(timer);controller.abort();});
 },{immediate:true});
-const normalized=computed(()=>builtinOutput(formatted.value??committed.value));
+// A worker result belongs to its input prefix, never to subsequently received text.
+const visibleText=computed(()=>formatted.value!==undefined&&cleanText.value.startsWith(formattedInput)?formatted.value+cleanText.value.slice(formattedInput.length):cleanText.value);
+const normalized=computed(()=>builtinOutput(visibleText.value,props.streaming));
 const chunks=computed(()=>normalized.value.prose?[{kind:'story',text:normalized.value.prose}]:[]);
-const pending=computed(()=>cleanText.value.slice(committed.value.length).split(/```|<(?=[\p{L}_!/])/u)[0]);
 </script>
 <template><div class="story-content">
   <template v-for="(chunk,chunkIndex) in chunks" :key="chunkIndex">
-  <template v-for="(block,index) in storyBlocks(chunk.text,false)" :key="index">
+  <template v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
     <p v-if="block.kind==='text'" class="narrative">{{block.text}}</p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
       <div v-if="block.scene.sceneNo" class="scene-number">SCENE <span>{{block.scene.sceneNo}}</span></div>
@@ -36,8 +37,7 @@ const pending=computed(()=>cleanText.value.slice(committed.value.length).split(/
   </template>
   </template>
   <details v-for="(block,index) in normalized.blocks" :key="'builtin-'+index" class="builtin-output-card"><summary>{{block.title}}</summary><p class="narrative">{{block.text}}</p></details>
-  <p v-if="pending.trim()" class="narrative">{{pending}}</p>
   <p v-if="regexErrors.length" class="rail-note" role="status">{{regexErrors.join('；')}}</p>
-  <p v-if="!chunks.length&&!pending.trim()&&placeholder" class="narrative">{{placeholder}}</p>
+  <p v-if="!chunks.length&&!normalized.blocks.length&&placeholder" class="narrative">{{placeholder}}</p>
 </div></template>
 <style scoped>.builtin-output-card{border:1px solid var(--line,#b8b1a6);border-radius:8px;padding:12px;margin:12px 0}.builtin-output-card>p{max-height:360px;overflow:auto;white-space:pre-wrap}.builtin-output-card>summary{cursor:pointer}</style>

@@ -1,3 +1,4 @@
+import {bootHead,bootScreen} from './boot-screen.mjs';
 import {batchMemoryMessages,parseBatchMemoryResult} from './memory-batch.mjs';
 import {internalPrompt,withInternalPrompts,setInternalPrompts} from './internal-prompts.mjs';
 import {separatedState} from './separate-state.mjs';
@@ -79,7 +80,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
-      const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript']};
+      const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript'],'/auth/boot.css':['boot.css','text/css']};
       if(authFiles[path]&&['GET','HEAD'].includes(request.method)){
         if(path==='/login'&&(!accounts||account)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
         const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(path==='/login'?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(projectRoot,'server/auth-ui',file)));return;
@@ -212,8 +213,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         terminal=terminal.replace(/const SPLASH_CHARACTERS = \[[\s\S]*?\n    \];/,()=> 'const SPLASH_CHARACTERS = '+catalog+';window.__ACADEMY_CARD_REVISION__='+JSON.stringify(editorial?.revision||dataset)+';');
         const index=await readFile(resolve(dist,'index.html'),'utf8');
         const assets=[...index.matchAll(/<(?:script\b[^>]*src="\/assets\/[^"]+"[^>]*><\/script>|link\b[^>]*href="\/assets\/[^"]+"[^>]*>)/g)].map(match=>match[0]).join('\n');
-        const boot="<style>html[data-academy-boot]{min-height:100%;background:#f7f1e8}html[data-academy-boot] body{visibility:hidden}html[data-academy-boot]:after{content:\"正在进入学院…\";position:fixed;inset:0;display:grid;place-items:center;color:#6d87a1;font:16px Georgia,serif;letter-spacing:2px}html[data-academy-boot][data-academy-error]:after{content:\"页面加载失败，请刷新重试。\"}.localhost{display:none!important}</style><script src=\"/auth/boot.js\"></script>";
-        const composed=terminal.replace('<html ','<html data-academy-boot ').replace('</head>',boot+'</head>').replace('</body>',assets+'\n</body>');
+        const boot=bootHead;
+        const composed=terminal.replace('<html ','<html data-academy-boot ').replace('</head>',boot+'</head>').replace(/<body\b[^>]*>/i,body=>body+bootScreen).replace('</body>',assets+'\n</body>');
         const html=account?accountHtml(composed):composed;
         response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
       }

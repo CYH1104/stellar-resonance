@@ -3,6 +3,16 @@ import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {storyBlocks,displayText} from '../src/domain/storyMarkup';
 import StoryContent from '../src/components/StoryContent.vue';
+it('streams visible prose inside unclosed HTML and fences before completion',async()=>{
+ for(const text of ['<content>正文正在出现','```html\n<div><p>正文正在出现','<content>正文正在出现<SR_STATE>{"secret":1']){
+  const html=await renderToString(createSSRApp(StoryContent,{text,streaming:true}));
+  expect(html).toContain('正文正在出现');expect(html).not.toContain('secret');expect(html).not.toContain('正在准备回复');
+ }
+ for(const suffix of ['<SR_ST','<think>secret','<!-- secret','<details><summary>草稿自检</summary>secret']){
+  const html=await renderToString(createSSRApp(StoryContent,{text:'正文'+suffix,streaming:true}));
+  expect(html).toContain('正文');expect(html).not.toContain('secret');expect(html).not.toContain('&lt;SR_ST');
+ }
+});
 import {finishVariant,newSession} from '../src/domain/story';
 const slate='<Slate>\n<Scene_NO>001</Scene_NO>\n<Scene_Title>金属与浮尘</Scene_Title>\n<EN_Title>Stardust Path</EN_Title>\n<Quote>新生踏入中立之地的第一步。</Quote>\n<Location>盖亚之眼 · 学院正门广场</Location>\n<Ti>0578.09.01 · 09:15</Ti>\n</Slate>';
 it('多层换行转义统一展示，代码、URL和Windows路径保持原样',()=>{
