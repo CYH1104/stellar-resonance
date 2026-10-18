@@ -92,6 +92,15 @@ export function worldEntryWarnings(entry:WorldEntry):string[]{
   return warnings;
 }
 export function worldbookWarnings(book:Worldbook):string[]{return book.entries.flatMap(e=>{const w=worldEntryWarnings(e);return w.length?[`${e.title||e.id}：${w.join('、')}，该条目暂不参与触发。`]:[];});}
+/** Import review does not remove unsupported settings or silently change activation. */
+export function worldbookImportReview(book:Worldbook){
+ return book.entries.flatMap(entry=>{
+  const unsupported=worldEntryWarnings(entry),reasons=[...unsupported.map(w=>`暂不支持：${w}（即使保留开启，也暂不参与触发）`)];
+  if(!entry.enabled)reasons.unshift('原文件已关闭');
+  if(!entry.constant&&!entry.keys.some(k=>k.trim()))reasons.push('非常驻且没有主要关键词，没有普通关键词触发入口');
+  return reasons.length?[{entry,reasons,recommended:!entry.enabled||unsupported.length>0}]:[];
+ });
+}
 export function exportWorldbook(book:Worldbook):string {
   const b=cleanWorldbooks([book])[0],root=readExtra(b.extra);
   delete root.originalData;

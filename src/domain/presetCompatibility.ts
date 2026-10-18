@@ -41,6 +41,15 @@ export function detectPresetCompatibility(entries:Preset[],preserve=false){
 export function restorePresetCompatibility(entries:Preset[],category?:CompatibilityCategory){
  for(const p of entries){const c=p.compatibility;if(c?.verdict==='disabled'&&!c.restored&&(!category||c.categories.includes(category))){p.enabled=c.originalEnabled;c.restored=true;}}
 }
+/** Explicit import review: checked means disabled; unchecked keeps the source switch. */
+export function confirmPresetCompatibility(entries:Preset[],disabledIndices:number[]){
+ const selected=new Set(disabledIndices);
+ entries.forEach((p,index)=>{const c=p.compatibility;if(!c)return;
+  p.enabled=selected.has(index)?false:c.originalEnabled;
+  c.verdict=selected.has(index)?'disabled':'review';
+  c.restored=!selected.has(index);
+ });
+}
 export function cleanPresetCompatibility(value:unknown):PresetCompatibility|undefined{
  if(value===undefined)return;
  const c=value as PresetCompatibility;

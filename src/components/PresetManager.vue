@@ -4,12 +4,15 @@ import {computed,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Preset,PresetPromptGroup} from '../domain/contracts';
 import {promptFolders} from '../domain/promptGroups';
-import {cleanPreset,pinnedPromptIds} from '../domain/presets';
+import {cleanPreset,pinnedPromptIds,importTavernPreset} from '../domain/presets';
 import DialogShell from './DialogShell.vue';
 import PresetPromptEditor from './PresetPromptEditor.vue';
 import {compatibilityCategories,restorePresetCompatibility,type CompatibilityCategory} from '../domain/presetCompatibility';
 const props=defineProps<{w:ViewModel}>();
 const importing=ref(false);
+const importReview=ref<{text:string;filename:string;rows:{index:number;entry:Preset}[];disabled:number[]}>();
+async function confirmImport(){const review=importReview.value;if(!review||props.w.busy||importing.value)return;importing.value=true;try{props.w.importPreset(review.text,review.filename,review.disabled);if(!props.w.problem){await props.w.save();importReview.value=undefined;}}finally{importing.value=false;}}
+
 const compatibilityRows=computed(()=>props.w.presetEntries.filter(p=>p.compatibility));
 function categoryLabels(p:Preset){return p.compatibility?.categories.map(c=>compatibilityCategories[c]).join('、');}
 async function restoreCompatibility(category?:CompatibilityCategory){if(props.w.busy)return;restorePresetCompatibility(props.w.presetEntries,category);await props.w.save();}
@@ -65,7 +68,14 @@ async function saveAll(){if(props.w.busy)return;try{
 }catch(e){props.w.problem=e instanceof Error?e.message:'预设未保存';}}
 function removePrompt(id:string){props.w.removePresetEntry(id);cancel(id);}
 function rename(name:string){if(props.w.busy)return;for(const p of props.w.presetEntries){p.setId=props.w.currentPreset;p.setName=name;}}
-async function readPreset(file:File){if(importing.value||props.w.busy)return;importing.value=true;try{if(file.size>5*1024*1024)throw Error('预设文件最多5MB');props.w.importPreset(await file.text(),file.name);if(!props.w.problem)await props.w.save();}catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{importing.value=false;}}
+async function readPreset(file:File){if(importing.value||props.w.busy||importReview.value)return;importing.value=true;try{
+ if(file.size>5*1024*1024)throw Error('预设文件最多5MB');const text=await file.text();
+ const preview=importTavernPreset(text,file.name,{preserveOutputs:props.w.preferences.preservePresetOutputs===true});
+ const rows=preview.entries.flatMap((entry,index)=>entry.compatibility?[{index,entry}]:[]);
+ if(rows.length){importReview.value={text,filename:file.name,rows,disabled:rows.filter(r=>r.entry.compatibility?.verdict==='disabled').map(r=>r.index)};return;}
+ props.w.importPreset(text,file.name);if(!props.w.problem)await props.w.save();
+ }catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{importing.value=false;}}
+
 async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file)await readPreset(file);}finally{input.value='';}}
 function dropPreset(event:DragEvent){const file=event.dataTransfer?.files[0];if(file)void readPreset(file);}
 
@@ -109,6 +119,12 @@ function removeSet(){props.w.removePresetSet();deleting.value=false;}
       </div>
       <p v-if="!shown.length" class="empty">没有匹配条目。</p>
     </details>
+    <DialogShell v-if="importReview" title="导入前确认条目开关" @close="!importing&&(importReview=undefined)">
+      <p>以下条目可能与内置功能冲突，不一定需要关闭。勾选表示导入时关闭；取消勾选保留文件原开关，不删除任何内容。确认前不会导入。</p>
+      <div class="actions"><button :disabled="importing" @click="importReview.disabled=importReview.rows.map(r=>r.index)">一键全选关闭</button><button :disabled="importing" @click="importReview.disabled=[]">全部取消勾选</button></div>
+      <div style="max-height:50vh;overflow:auto"><article v-for="row in importReview.rows" :key="row.index" class="import-report"><label class="toggle"><input v-model="importReview.disabled" type="checkbox" :value="row.index" :disabled="importing" />关闭：{{row.entry.name}}</label><p>{{categoryLabels(row.entry)}} · {{row.entry.compatibility!.verdict==='disabled'?'建议关闭':'可能有影响，请自行判断'}} · {{row.entry.compatibility!.originalEnabled?'原本开启':'原本关闭'}}</p><p>{{row.entry.compatibility!.reason}}</p><details><summary>查看条目原文</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.entry.content}}</pre></details></article></div>
+      <div class="actions"><button :disabled="importing" @click="importReview=undefined">取消导入</button><button class="primary" :disabled="importing||w.busy" @click="confirmImport">确认并导入（关闭 {{importReview.disabled.length}} 条）</button></div>
+    </DialogShell>
     <DialogShell v-if="groupForm" :title="'管理分组 · '+(groupForm.name||'新分组')" @close="groupForm=undefined"><label>分组名称<input v-model="groupForm.name" maxlength="200" :disabled="w.busy" /></label><div class="prompt-group-members"><label v-for="p in w.presetEntries" :key="p.id" class="toggle"><input v-model="groupForm.members" type="checkbox" :value="p.id" :disabled="w.busy" />{{p.name||'未命名条目'}}</label></div><div class="actions"><button :disabled="w.busy||!groupForm.name.trim()||!groupForm.members.length" @click="saveGroup">保存分组</button><button @click="groupForm=undefined">取消</button></div></DialogShell>
     <DialogShell v-if="deletingGroup" title="删除这个分组？" @close="deletingGroup=undefined"><p>删除“{{deletingGroup.name}}”后，其中的小条目会放回“未分组”，提示词内容和各自开关保留。</p><div class="actions"><button @click="deletingGroup=undefined">取消</button><button class="danger" :disabled="w.busy" @click="removeGroup">确认删除分组</button></div></DialogShell>
     <DialogShell v-if="deleting" title="删除当前预设？" @close="deleting=false"><p>将删除《{{w.presetSets.find(s=>s.id===w.currentPreset)?.name}}》的条目及采样参数。已导出的文件会保留。</p><div class="actions"><button @click="deleting=false">取消</button><button class="danger" :disabled="w.busy" @click="removeSet">确认删除</button></div></DialogShell>
