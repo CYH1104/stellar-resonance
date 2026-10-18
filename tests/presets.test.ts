@@ -41,3 +41,12 @@ it('可导入374条且总文字超过30万字的酒馆预设，停用条目仍�
   const prefs=defaults();prefs.presets=value.entries;prefs.activePreset=value.id;
   expect(parseBackup(backup({version:1,sessions:[],preferences:prefs})).preferences.presets).toHaveLength(374);
 });
+
+it('导出保留聊天历史后的深度注入位置和条目顺序，不移到历史占位前',()=>{
+  const raw={prompts:[{identifier:'main',content:'主提示'},{identifier:'chatHistory',marker:true},{identifier:'depth',content:'深度条目',injection_position:1,injection_depth:2},{identifier:'tail',content:'末尾'}],prompt_order:[{character_id:100001,order:[{identifier:'main',enabled:true},{identifier:'chatHistory',enabled:true},{identifier:'depth',enabled:true},{identifier:'tail',enabled:false}]}]};
+  const imported=importTavernPreset(JSON.stringify(raw));
+  const restored=importTavernPreset(exportTavernPreset(imported.entries,defaults().profiles[0]));
+  expect(restored.entries.map(p=>p.identifier)).toEqual(['main','chatHistory','depth','tail']);
+  expect(restored.entries.find(p=>p.identifier==='depth')).toMatchObject({position:'in-chat',depth:2,enabled:true});
+  expect(restored.entries.find(p=>p.identifier==='tail')).toMatchObject({position:'after',enabled:false});
+});

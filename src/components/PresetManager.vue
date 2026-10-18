@@ -8,6 +8,8 @@ import {cleanPreset,pinnedPromptIds} from '../domain/presets';
 import DialogShell from './DialogShell.vue';
 import PresetPromptEditor from './PresetPromptEditor.vue';
 const props=defineProps<{w:ViewModel}>();
+const importing=ref(false);
+const counts=computed(()=>({total:props.w.presetEntries.length,listed:props.w.presetEntries.filter(p=>p.included!==false).length,enabled:props.w.presetEntries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker).length}));
 const query=ref(''),library=ref(''),dragged=ref(''),drafts=ref<Record<string,Preset>>({}),originals=ref<Record<string,Preset>>({}),expanded=ref<string[]>([]),deleting=ref(false);
 const rows=computed(()=>props.w.presetEntries.filter(p=>p.included!==false));
 const unused=computed(()=>props.w.presetEntries.filter(p=>p.included===false));
@@ -59,7 +61,10 @@ async function saveAll(){if(props.w.busy)return;try{
 }catch(e){props.w.problem=e instanceof Error?e.message:'预设未保存';}}
 function removePrompt(id:string){props.w.removePresetEntry(id);cancel(id);}
 function rename(name:string){if(props.w.busy)return;for(const p of props.w.presetEntries){p.setId=props.w.currentPreset;p.setName=name;}}
-async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;try{if(file.size>5*1024*1024)throw Error('预设文件最多5MB');props.w.importPreset(await file.text(),file.name);}catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{input.value='';}}
+async function readPreset(file:File){if(importing.value||props.w.busy)return;importing.value=true;try{if(file.size>5*1024*1024)throw Error('预设文件最多5MB');props.w.importPreset(await file.text(),file.name);if(!props.w.problem)await props.w.save();}catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{importing.value=false;}}
+async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file)await readPreset(file);}finally{input.value='';}}
+function dropPreset(event:DragEvent){const file=event.dataTransfer?.files[0];if(file)void readPreset(file);}
+
 function drop(id:string){if(props.w.busy||!dragged.value)return;const entries=props.w.presetEntries;props.w.movePresetTo(entries.findIndex(p=>p.id===dragged.value),entries.findIndex(p=>p.id===id));dragged.value='';}
 function moveVisible(p:Preset,offset:number){const siblings=rows.value.filter(row=>row.group?.id===p.group?.id);const to=siblings[siblings.indexOf(p)+offset];if(to)props.w.movePresetTo(props.w.presetEntries.indexOf(p),props.w.presetEntries.indexOf(to));}
 function insert(){const p=props.w.presetEntries.find(p=>p.id===library.value);if(!p||props.w.busy)return;p.included=true;p.enabled=true;props.w.movePresetTo(props.w.presetEntries.indexOf(p),props.w.presetEntries.length-1);library.value='';}
@@ -69,11 +74,13 @@ function toggleAll(enabled:boolean){if(props.w.busy)return;for(const p of rows.v
 function removeSet(){props.w.removePresetSet();deleting.value=false;}
 </script>
 <template>
-  <section class="surface preset-manager">
-    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><button class="primary" :disabled="w.busy" @click="saveAll">保存预设</button></header>
+  <section class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">
+    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><button class="primary" :disabled="w.busy" @click="saveAll">保存预设</button></div></header>
+    <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
+    <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
     
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
-    <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><FileImportButton accept=".json,application/json" :disabled="w.busy" @change="importFile" /><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>
+    <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>
     <details class="import-report" open><summary>采样参数 · 随当前预设保存</summary><div class="field-grid"><label>Temperature<input v-model.number="w.presetParameters.temperature" type="number" min="0" max="2" step="0.05" :disabled="w.busy" /></label><label>最大输出 Token<input v-model.number="w.presetParameters.maxTokens" type="number" min="1" max="32000" :disabled="w.busy" /></label><label>Top P<input v-model.number="w.presetParameters.topP" type="number" min="0" max="1" step="0.05" placeholder="默认1" :disabled="w.busy" /></label><label>Frequency penalty<input v-model.number="w.presetParameters.frequencyPenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label><label>Presence penalty<input v-model.number="w.presetParameters.presencePenalty" type="number" min="-2" max="2" step="0.1" placeholder="默认0" :disabled="w.busy" /></label></div></details>
     <details v-if="w.presetWarnings.length" class="import-report"><summary>导入结果与兼容说明</summary><ul><li v-for="(note,i) in w.presetWarnings" :key="i">{{note}}</li></ul></details>
     <details class="subsection prompt-group" open><summary>提示词管理器</summary>

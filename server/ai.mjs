@@ -1,6 +1,6 @@
 import {validAffinity} from '../src/domain/affinity.ts';
 import {withTavernContext} from './tavern-macro-engine.mjs';
-import {tracePresets,recordFilteredPreset} from './preset-diagnostics.mjs';
+import {tracePresets} from './preset-diagnostics.mjs';
 import {personaDescription} from './participants.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {applyStateProtocol} from './state-protocol.mjs';
@@ -112,7 +112,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   if(request.stateSeparate){messages[0].content=identityRule(participants)+'\n'+internalPrompt('feature.story')+diceRules+selectedEventRules+dynamicRules+diaryExample+'\n'+narrationRule(state.player.name);messages[2].content=internalPrompt('ai.12')+JSON.stringify(featureContext({...context},theaterPlans,{stateEnabled:false}));}
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
-  let entries;try{entries=request.promptEntries?.filter(entry=>{if(request.stateSeparate&&/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|<\/?(?:status|choices|forum|theater|done)\b|状态输出|格式修复|正则/i.test(entry.content)){recordFilteredPreset(entry);return false;}return true;}).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
+  let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   return {messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
 }
 

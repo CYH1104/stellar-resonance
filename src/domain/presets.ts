@@ -91,7 +91,7 @@ export function importTavernPreset(text:string,filename='导入预设'){
 export function exportTavernPreset(entries:Preset[],profile:Profile){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
-  const ordered=[...entries.filter(p=>p!==anchor&&p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p!==anchor&&p.included!==false&&p.position==='after')];
+  const ordered=entries.includes(anchor)?entries.filter(p=>p.included!==false):[...entries.filter(p=>p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p.included!==false&&p.position==='after')];
   const grouping=exportPromptGroups(entries);
   return JSON.stringify({...(grouping?{extensions:{baibaiToolkit:{presetPromptGroups:grouping}}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }
