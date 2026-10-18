@@ -3,14 +3,16 @@ import {cleanDice} from './dice.ts';
 import {stripReasoning} from './reasoning.ts';
 import {displayText} from './storyMarkup.ts';
 import type {Variant} from './contracts';
-/** A compatibility status message is not an event. Recover actual enacted prose instead. */
+/** Only event metadata belongs in this card. Story prose stays in the story renderer. */
 export function eventCardDescription(variant?:Pick<Variant,'text'|'outcome'>):string{
-  const description=variant?.outcome?.diceEvent?.description?.trim();
+  const summary=(value:string|undefined,max:number)=>{
+    const text=displayText(stripReasoning(value||'')).trim();
+    if(!text||text.length>max||/^(本轮剧情已生成|状态按有效字段更新|本轮已兼容处理|本轮剧情已输出)/.test(text)||/<\/?[a-z][^>]*>|```/i.test(text))return '';
+    return text;
+  };
+  const description=summary(variant?.outcome?.diceEvent?.description,1000);
   if(description)return displayText(description);
-  const event=variant?.outcome?.event?.trim();
-  if(event&&!/^(本轮剧情已生成|状态按有效字段更新|本轮已兼容处理)/.test(event))return displayText(event);
-  const prose=displayText(stripReasoning(variant?.text||'')).trim();
-  return prose.length>600?prose.slice(0,600)+'…':prose;
+  return summary(variant?.outcome?.event,500);
 }
 export const specialEventKinds=['突发事件','奇遇事件','危机事件','修罗场事件','惊喜事件'] as const;
 export type SpecialEventKind=typeof specialEventKinds[number];
