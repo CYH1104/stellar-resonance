@@ -64,7 +64,7 @@ export class HttpGateway implements Gateway {
           else if(event.type==='continuation'&&Number.isInteger(event.attempt)&&Number(event.attempt)>=1&&Number(event.attempt)<=3&&event.maxAttempts===3)yield {type:'continuation',attempt:Number(event.attempt),maxAttempts:3};
           else if(event.type==='repair'&&Number.isInteger(event.attempt)&&Number(event.attempt)>=1&&Number(event.attempt)<=3&&event.maxAttempts===3)yield {type:'repair',attempt:Number(event.attempt),maxAttempts:3,reason:apiMessages[String(event.code)]||'隐藏状态数据未通过检查。'};
           else if(event.type==='done') {finished=true;yield {type:'done',outcome:event.outcome as Outcome};return;}
-          else if(event.type==='error') throw new Error((apiMessages[String(event.code)]||'生成接口报告错误，请重试。')+(event.code==='STATE_REPAIR_LIMIT'&&apiMessages[String(event.reasonCode)]?' 原因：'+apiMessages[String(event.reasonCode)]:''));
+          else if(event.type==='error') throw new Error((apiMessages[String(event.code)]||'生成接口报告错误，请重试。')+(['STATE_REPAIR_LIMIT','STATE_FORMAT_INVALID'].includes(String(event.code))&&apiMessages[String(event.reasonCode)]?' 原因：'+apiMessages[String(event.reasonCode)]:''));
         }
         if(next.done) break;
         if(buffer.length>1024*1024) throw new Error('流式分片超过允许大小');

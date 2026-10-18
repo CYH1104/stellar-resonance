@@ -11,6 +11,14 @@ function streamResponse(text: string, end = true) {
   return new Response(new ReadableStream<Uint8Array>({ start(c) { for (const byte of bytes) c.enqueue(new Uint8Array([byte])); if (end) c.close(); } }), { headers: { 'Content-Type': 'text/event-stream' } });
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+it('state retention diagnostics reach the workspace and format errors include the safe field-specific reason',async()=>{
+ const codes=['STATE_AUX_RETAINED','STATE_SIDE_SCENE_RETAINED','STATE_STORY_MISSING'];
+ vi.stubGlobal('fetch',async()=>streamResponse(codes.map(code=>'data: '+JSON.stringify({type:'diagnostic',diagnostic:{kind:'generation',stage:'accepted',attempt:0,code,raw:'private-text'}})+'\n\n').join('')+'data: '+JSON.stringify({type:'done',outcome:{event:'完成'}})+'\n\n'));
+ const events=await collect(new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal));
+ expect(events.filter(e=>e.type==='diagnostic').map(e=>e.diagnostic.code)).toEqual(codes);expect(JSON.stringify(events)).not.toContain('private-text');
+ vi.stubGlobal('fetch',async()=>streamResponse('data: '+JSON.stringify({type:'error',code:'STATE_FORMAT_INVALID',reasonCode:'MODEL_STATE_PLAYER_INVALID',detail:'private-text'})+'\n\n'));
+ await expect(collect(new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal))).rejects.toThrow('玩家');
+});
 it('开发诊断的 SSE 只传入白名单元数据，不让原始文本或 Key 进入页面事件',async()=>{
  const diagnostic={kind:'state-json',stage:'rejected',attempt:1,format:'invalid',line:3,column:4,code:'MODEL_STATE_JSON_INVALID',raw:'private-response',key:'synthetic-secret',reasoning:'hidden-thought'};
  vi.stubGlobal('fetch',async()=>streamResponse('data: '+JSON.stringify({type:'diagnostic',diagnostic})+'\n\ndata: '+JSON.stringify({type:'done',outcome:{event:'完成'}})+'\n\n'));

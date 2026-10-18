@@ -30,7 +30,7 @@ export interface TheaterScene {complete?:boolean;slot:number;kind:TheaterKind;ti
 export interface DiceEvent {direction:'negative'|'neutral'|'positive';description:string}
 export interface StateUpdate {status:'updated'|'unchanged'|'retained'|'disabled';received:boolean;storyComplete:boolean;codes:string[]}
 export interface Outcome { stateUpdate?:StateUpdate; mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
-export interface Variant {edited?:boolean; mvuOverride?:MvuOperation[]; suggestions?:string[]; id: string; text: string; status: 'complete' | 'incomplete'; createdAt: string; outcome?: Outcome }
+export interface Variant {generationRequirements?:{stateEnabled:boolean;theaters:TheaterSetting[]}; edited?:boolean; mvuOverride?:MvuOperation[]; suggestions?:string[]; id: string; text: string; status: 'complete' | 'incomplete'; createdAt: string; outcome?: Outcome }
 export interface Turn {inputEdited?:boolean; randomEvent?:RandomEventGate; id: string; input: string; dice?: Dice; variants: Variant[]; selected: number }
 export interface Vector { model: string; values: number[]; text: string }
 export interface Memory {record?:import('./memories').RoundMemory;status?:'pending'|'ready'|'failed';sourceFingerprint?:string;error?:string;indexError?:string;annotation?:string; id: string; text: string; kind: 'event' | 'note' | 'chapter'; createdAt: string; sourceTurn?: string; sourceVariant?: string; vector?: Vector }

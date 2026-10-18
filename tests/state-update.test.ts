@@ -23,7 +23,7 @@ it('repeated completion of the same variant does not apply an affinity delta twi
   const outcome:Outcome={event:'交谈',mvu:[{op:'delta',path:'/characters/guide/affinity',value:2}],stateUpdate:{status:'updated',received:true,storyComplete:true,codes:[]}};
   finishVariant(session,0,variant,outcome);finishVariant(session,0,variant,outcome);
   expect(stateAt(session).characters[0].affinity).toBe(32);
-  expect(stateUpdateLabel(outcome)).toBe('正文已输出，变量校验通过');
+  expect(stateUpdateLabel(outcome)).toBe('正文已输出，有效变量已更新');
   expect(stateUpdateLabel({...outcome,stateUpdate:{...outcome.stateUpdate!,status:'unchanged'}})).toContain('无变化');
   expect(stateUpdateLabel(outcome,true)).toContain('小剧场待补全');
 });

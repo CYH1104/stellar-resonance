@@ -41,7 +41,7 @@ export async function* streamStory({card,state,options,messages,partial='',state
   if(partial)options={...options,dice:undefined};
   const decoder=new StoryDecoder();if(partial)decoder.push(partial);
   let reasoningFilter=new ReasoningFilter();
-  let response=firstResponse,attemptSignal=firstSignal||signal,repairing=stateOnly,repairReason='INVALID_MODEL_STATE';
+  let response=firstResponse,attemptSignal=firstSignal||AbortSignal.any([signal,AbortSignal.timeout(attemptTimeoutMs)]),repairing=stateOnly,repairReason='INVALID_MODEL_STATE';
   if(repairing)decoder.beginStateRepair();
   const maxAttempts=options.singleStateCall?0:MAX_CONTINUATIONS;
   for(let attempt=0;attempt<=maxAttempts;attempt++){
@@ -62,7 +62,8 @@ export async function* streamStory({card,state,options,messages,partial='',state
         for await(const chunk of completionChunks(response,{reasoningFilter,onProgress:stats=>{lastStats=stats;onProgress?.(stats);},signal:attemptSignal})){
           signal.throwIfAborted();attemptSignal.throwIfAborted();
           const visible=decoder.push(joiner?joiner.push(chunk):chunk);if(visible)yield {type:'delta',text:visible};
-          if(decoder.hasCompletionMarker())break;
+          // The application marker can precede companion blocks. Read until the
+          // provider finishes (or the existing deadline/abort), without another call.
         }
       }catch(error){signal.throwIfAborted();readError=attemptSignal.reason?.name==='TimeoutError'?modelError(504,'MODEL_TIMEOUT'):error;}
       finally{const tail=joiner?.finish();if(tail&&!signal.aborted){const visible=decoder.push(tail);if(visible)yield {type:'delta',text:visible};}}
