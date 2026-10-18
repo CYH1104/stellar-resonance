@@ -9,7 +9,7 @@ test('original terminal serves the mounted functional workspace and assets on th
   try{
     const response=await fetch(base+'/terminal');assert.equal(response.status,200);
     const html=await response.text();
-    assert.match(html,/id="academy-loading"/);assert.equal((html.match(/class="academy-loading-panel"/g)||[]).length,7);
+    assert.match(html,/id="academy-loading"/);assert.match(html,/class="academy-loading-ring"/);
     const loaderCss=await fetch(base+'/auth/boot.css');assert.equal(loaderCss.status,200);assert.match(await loaderCss.text(),/infinite/);
     const loaderScript=await(await fetch(base+'/auth/boot.js')).text();assert.match(loaderScript,/academy:ready/);assert.match(loaderScript,/academy-loading/);
     assert.ok(html.includes('academy-home'));assert.ok(html.includes('interstellarTitle'));assert.ok(!html.includes('--terminal-engraving')); assert.ok(html.includes("mount.id='academy-workspace'"));
