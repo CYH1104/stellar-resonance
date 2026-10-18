@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {affinityEdgeStyle as edgeStyle} from '../domain/affinity';
+import {encounteredCharacters} from '../domain/story';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ActorCard from './ActorCard.vue';
 import type { ViewModel } from '../app/useWorkspace';
@@ -9,7 +10,7 @@ function closeOutside(event:MouseEvent){const target=event.target;if(chosen.valu
 onMounted(()=>document.addEventListener('click',closeOutside));
 onUnmounted(()=>document.removeEventListener('click',closeOutside));
 const positions=ref<Record<string,{x:number;y:number}>>({});
-const actors=computed(()=>props.w.state?[props.w.state.player,...props.w.state.characters.filter(a=>a.present||!!a.relationship||!props.w.active?.initial.characters.some(c=>c.id===a.id))]:[]);
+const actors=computed(()=>{const state=props.w.state;if(!state)return [];const met=new Set(props.w.active?encounteredCharacters(props.w.active).map(a=>a.id):[]);return [state.player,...state.characters.filter(a=>a.present||!!a.relationship||met.has(a.id))];});
 const actor=computed(()=>actors.value.find(a=>a.id===chosen.value));
 watch(()=>props.w.active?.id,()=>{positions.value={};chosen.value='';place.value='';description.value='';});
 watch(actors,list=>{list.forEach((a,i)=>{if(!positions.value[a.id]){const angle=(i-1)*Math.PI*2/Math.max(1,list.length-1);positions.value[a.id]=i===0?{x:260,y:160}:{x:260+175*Math.cos(angle),y:160+100*Math.sin(angle)};}});},{immediate:true});
