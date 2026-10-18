@@ -1,3 +1,4 @@
+import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
 import type { WorldState } from './contracts';
 
 export interface JsonObject { [key:string]:Json }
@@ -33,7 +34,7 @@ export function cleanOperations(value:unknown):MvuOperation[]{
     const path=raw.path??raw.to;if(typeof path!=='string')fail();pointer(path);
     const op=raw.op as MvuOperation['op'],out:MvuOperation={op,path};
     if(['move','copy'].includes(op)){if(typeof raw.from!=='string')fail();pointer(raw.from);out.from=raw.from;}
-    if(!['remove','move','copy'].includes(op)){if(!Object.hasOwn(raw,'value'))fail();out.value=cleanJson(raw.value);if(op==='delta'&&typeof out.value!=='number')fail();}
+    if(!['remove','move','copy'].includes(op)){if(!Object.hasOwn(raw,'value'))fail();const value=/^\/characters\/[^/]+\/affinity$/.test(path)&&['replace','add','insert','delta'].includes(op)?affinityNumber(raw.value):raw.value;out.value=cleanJson(value);if(op==='delta'&&typeof out.value!=='number')fail();}
     return out;
   });
 }
@@ -54,7 +55,7 @@ export function patchData(data:Record<string,Json>,updates:unknown):Record<strin
 }
 export function dataFromState(state:WorldState):MvuData{
   const stat_data=cleanJson(clone({player:state.player,characters:Object.fromEntries(state.characters.map(c=>[c.id,c])),custom:state.variables||{}})) as Record<string,Json>;
-  return {stat_data,schema:{type:'object',extensible:false,properties:{player:{type:'object'},characters:{type:'object'},custom:{type:'object',recursiveExtensible:true}}},initialized_lorebooks:{}};
+  return {stat_data,schema:{type:'object',extensible:false,properties:{player:{type:'object'},characters:{type:'object',additionalProperties:{type:'object',properties:{affinity:{...affinitySchema}}}},custom:{type:'object',recursiveExtensible:true}}},initialized_lorebooks:{}};
 }
 export function replacementOperations(data:unknown):MvuOperation[]{
   const clean=cleanJson(data);if(!object(clean)||!object(clean.player)||!object(clean.characters)||!object(clean.custom)||Object.keys(clean).sort().join(',')!=='characters,custom,player')fail();
@@ -66,7 +67,7 @@ export function renderMvuMacros(text:string,data:MvuData):string{
     return typeof value==='string'?value:JSON.stringify(value);
   });
 }
-const dynamic=new Set(['identity','mentalPowerLevel','affinity','present','innerThought','spiritThought']);
+const dynamic=new Set(['identity','mentalPowerLevel','affinity','relationship','present','innerThought','spiritThought']);
 export function applyMvu(state:WorldState,updates:unknown):WorldState{
   const original=dataFromState(state).stat_data,next=patchData(original,updates);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
@@ -75,7 +76,7 @@ export function applyMvu(state:WorldState,updates:unknown):WorldState{
     for(const k of new Set([...Object.keys(before),...Object.keys(after)])){
       if(JSON.stringify(before[k])===JSON.stringify(after[k]))continue;
       if(!dynamic.has(k)||!Object.hasOwn(after,k)||(player&&['innerThought','affinity','present'].includes(k)))fail();
-      const v=after[k];if(k==='affinity'){if(typeof v!=='number'||v< -100||v>100)fail();}
+      const v=after[k];if(k==='affinity'){if(!validAffinity(v))fail();}
       else if(k==='present'){if(typeof v!=='boolean')fail();}
       else {if(typeof v!=='string'||v.length>(k==='mentalPowerLevel'?100:k==='identity'?200:2000))fail();if(k==='spiritThought'&&!before.spiritAnimal)fail();}
     }return clone(after);

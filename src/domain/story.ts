@@ -1,3 +1,4 @@
+import {validAffinity} from './affinity.ts';
 import {unwrapStoryTags} from './storyMarkup.ts';
 import {separateIdentityAbility} from './identityAbility.ts';
 import {cleanWorldbooks,cleanWorldbookIds} from './worldbooks.ts';
@@ -44,12 +45,12 @@ function record(value: unknown): value is Record<string, unknown> { return !!val
 function shortText(value: unknown, max: number, required = false): value is string { return typeof value === 'string' && value.length <= max && (!required || !!value.trim()); }
 function actorPatch(value: unknown, character = false): ActorPatch {
   if (!record(value)) throw new Error('MVU 人物更新格式不正确');
-  const allowed = ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
+  const allowed = ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought', 'spiritAnimal','spiritThought','affinity', 'relationship', 'present', 'energy', 'focus', ...(character ? ['id'] : [])];
   if (Object.keys(value).some(k => !allowed.includes(k))) throw new Error('MVU 人物更新包含未允许的字段');
   const patch: ActorPatch = {};
-  for (const field of ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought'] as const) {
+  for (const field of ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought','relationship'] as const) {
     if (value[field] === undefined) continue;
-    const limit = ['ability','innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field === 'name' ? 80 : 100;
+    const limit = ['ability','innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field==='relationship'?200:field === 'name' ? 80 : 100;
     if (!shortText(value[field], limit, field === 'name'||field==='mentalPowerLevel')) throw new Error(`MVU ${field} 字段不正确`);
     patch[field] = value[field];
   }
@@ -80,9 +81,10 @@ function forumPosts(value: unknown): ForumPost[] {
 export function validateOutcome(value: unknown, state: WorldState): Outcome {
   if (!record(value)) throw new Error('状态更新格式不正确');
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(k => !['mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
+  if (Object.keys(v).some(k => !['stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
+  if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes'].includes(k))||!['updated','unchanged','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
   if(v.mvu!==undefined){out.mvu=cleanOperations(v.mvu);applyMvu(state,out.mvu);}
   if(v.suggestions!==undefined)out.suggestions=cleanSuggestions(v.suggestions);
   if(v.diceEvent!==undefined)out.diceEvent=cleanDiceEvent(v.diceEvent);
@@ -195,6 +197,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
   variant.text=unwrapStoryTags(stripReasoning(variant.text));const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
+  if(validated.characters?.some(actor=>actor.affinity!==undefined&&!validAffinity(actor.affinity)))throw new Error('NPC 好感度必须在 -100 到 200 之间');
   variant.outcome=validated;variant.status='complete';restoreSuggestions(session);
   const turn=session.turns[turnIndex],before=stateAt(session,turnIndex),after=stateAt(session,turnIndex+1);
   const sourceFingerprint=memorySignature({input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent});

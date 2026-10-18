@@ -13,11 +13,11 @@ const base=()=>({presentCharacterIds:['one'],event:'本轮实际交谈',characte
 const patch=ops=>'<UpdateVariable><JSONPatch>'+JSON.stringify(ops)+'</JSONPatch></UpdateVariable>';
 const response=raw=>new Response(JSON.stringify({choices:[{message:{content:raw}}]}),{headers:{'Content-Type':'application/json'}});
 
-test('screen-shot style full actor MVU cannot overwrite immutable data or reject valid snapshot and side scenes',()=>{
+test('screen-shot style full actor MVU rejects the entire variable transaction while preserving valid side scenes',()=>{
   const raw={...base(),mvu:[{op:'add',path:'/characters/one',value:{id:'one',name:'错误改名',spiritAnimal:'错误种类',primaryGender:'男',present:true,affinity:7,identity:'学员',spiritThought:'旧补丁OS'}},{op:'add',path:'/custom/clock',value:2}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'甲',content:String.raw`第一行\\n\\n第二行`}]}]};
   const opts=options({theaterSettings:settings.map(t=>({...t,enabled:t.slot===2}))}),out=normalizeModelState(card,state,raw,opts);
-  const next=applyMvu(state,out.mvu);Object.assign(next.characters[0],out.characters[0]);
-  assert.equal(next.characters[0].name,'甲');assert.equal(next.characters[0].spiritAnimal,'白猫');assert.equal(next.characters[0].affinity,8);assert.equal(next.variables.clock,2);assert.equal(out.theaters[0].messages[0].content,'第一行\n\n第二行');assert.ok(opts.validationWarnings.includes('STATE_MVU_PROJECTED'));
+  const next=out.mvu?applyMvu(state,out.mvu):structuredClone(state);for(const actor of out.characters)Object.assign(next.characters.find(c=>c.id===actor.id),actor);
+  assert.equal(next.characters[0].name,'甲');assert.equal(next.characters[0].spiritAnimal,'白猫');assert.equal(next.characters[0].affinity,5);assert.equal(next.variables.clock,1);assert.equal(out.theaters[0].messages[0].content,'第一行\n\n第二行');assert.ok(opts.validationWarnings.includes('STATE_MVU_REJECTED'));
 });
 test('legacy state maps, exact names, numeric strings and Chinese field aliases normalize without changing raw data',()=>{
   const raw={presentCharacterIds:['甲'],event:'交谈',characters:{one:{好感度:'12',精神体OS:'新的想法',mentalPowerLevel:[]}},player:{spiritThought:'想睡觉'}};const saved=JSON.stringify(raw);
@@ -48,5 +48,5 @@ test('compatible state completes in the original call and records recovered raw 
   assert.equal(calls,0);assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),'正文保留。');assert.equal(events.at(-1).type,'done');assert.equal(events.find(e=>e.type==='format-error').code,'STATE_COMPAT_RECOVERED');
 });
 test('unsafe custom paths remain rejected, known character identity and valid state remain intact',()=>{
-  const out=normalizeModelState(card,state,{...base(),mvu:[{op:'add',path:'/custom/__proto__/polluted',value:true}]},options());assert.equal(out.mvu,undefined);assert.equal({}.polluted,undefined);assert.equal(out.characters[0].affinity,8);
+  const out=normalizeModelState(card,state,{...base(),mvu:[{op:'add',path:'/custom/__proto__/polluted',value:true}]},options());assert.equal(out.mvu,undefined);assert.equal({}.polluted,undefined);assert.equal(out.characters[0].affinity,undefined);assert.ok(!out.characters.some(c=>c.affinity!==undefined));
 });

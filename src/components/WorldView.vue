@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {affinityEdgeStyle as edgeStyle} from '../domain/affinity';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ActorCard from './ActorCard.vue';
 import type { ViewModel } from '../app/useWorkspace';
@@ -14,7 +15,6 @@ watch(()=>props.w.active?.id,()=>{positions.value={};chosen.value='';place.value
 watch(actors,list=>{list.forEach((a,i)=>{if(!positions.value[a.id]){const angle=(i-1)*Math.PI*2/Math.max(1,list.length-1);positions.value[a.id]=i===0?{x:260,y:160}:{x:260+175*Math.cos(angle),y:160+100*Math.sin(angle)};}});},{immediate:true});
 const demoPlaces=[{id:'reception',name:'接待区',area:'样例',px:25,py:30,description:'虚构样例：公共接待设施的介绍。'},{id:'archive',name:'公开资料室',area:'样例',px:70,py:30,description:'虚构样例：用于展示地图的公开说明。'},{id:'platform',name:'观景平台',area:'样例',px:50,py:75,description:'虚构样例：一处站点设施。'}];
 const places=computed(()=>props.w.localService&&props.w.preferences.mode==='server'?props.w.localService.places:demoPlaces);
-function edgeStyle(value=0){const strength=Math.min(100,Math.abs(value))/100;return {stroke:value<0?'var(--color-muted)':'var(--color-accent)',strokeWidth:1+strength*4,opacity:.3+strength*.7,strokeDasharray:value<0?'5 4':'none'};}
 function relationLabel(value?:number){return value===undefined?'\u5173\u7cfb\u672a\u8bb0\u5f55':value>0?'\u53cb\u597d\u503e\u5411':value<0?'\u758f\u8fdc\u503e\u5411':'\u4e2d\u6027';}
 let dragging:string|undefined;let request=0;
 function down(id:string,e:PointerEvent){dragging=id;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId);}

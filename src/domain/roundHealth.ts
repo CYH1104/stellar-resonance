@@ -1,3 +1,4 @@
+import {validAffinity} from './affinity.ts';
 import type {Session,TheaterScene,TheaterSetting,WorldState} from './contracts';
 import {selected,stateAt,validateOutcome} from './story';
 import {cleanTheaters,cleanTheaterScenes} from './theaters';
@@ -22,10 +23,11 @@ export function needsStateRepair(session:Session,index:number,settings?:TheaterS
     if(!v.outcome)return true;
     validateOutcome(v.outcome,stateAt(session,index));
     const state=stateAt(session,index+1),out=v.outcome;
+    if(stateEnabled&&out.stateUpdate?.status==='retained')return true;
     if(stateEnabled&&state.player.spiritAnimal?.trim()&&!provided(out.player?.spiritThought))return true;
     for(const char of stateEnabled?state.characters.filter(a=>a.present):[]){
       const patch=out.characters?.find(a=>a.id===char.id);
-      if(!Number.isFinite(patch?.affinity)||patch!.affinity!< -100||patch!.affinity!>100)return true;
+      if(!out.stateUpdate&& !validAffinity(patch?.affinity))return true;
       if(char.spiritAnimal?.trim()&&!provided(patch?.spiritThought))return true;
     }
     for(const setting of cleanTheaters(settings).filter(s=>s.enabled)){

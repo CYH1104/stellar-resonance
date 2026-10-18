@@ -2,7 +2,7 @@ import {featurePrompts} from './feature-prompts.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {stateProtocol} from './state-protocol.mjs';
 import {narrationRule} from './narration.mjs';
-import {completionChunks,modelError,openCompletion,RESPONSE_END,STATE_CLOSE,STATE_OPEN,StoryDecoder} from './ai.mjs';
+import {completionChunks,modelError,openCompletion,RESPONSE_END,STATE_CLOSE,STATE_OPEN,STATUS_OPEN,STATUS_CLOSE,DONE,StoryDecoder} from './ai.mjs';
 import {ReasoningFilter} from '../src/domain/reasoning.ts';
 import {cleanTheaters} from '../src/domain/theaters.ts';
 
@@ -26,7 +26,7 @@ export class ContinuationJoiner {
 
 export function continuedMessages(messages,partial,playerName){
   if(typeof partial!=='string'||partial.length>400000)throw modelError(400,'INVALID_CONTINUATION');
-  return [...messages,{role:'assistant',content:partial||'(No prose received yet.)'},{role:'user',content:internalPrompt("story-stream.1", {p0:(STATE_OPEN),p1:(STATE_OPEN),p2:(RESPONSE_END),p3:(STATE_CLOSE),p4:(RESPONSE_END),p5:(narrationRule(playerName))})}];
+  return [...messages,{role:'assistant',content:partial||'(No prose received yet.)'},{role:'user',content:internalPrompt("story-stream.1", {p0:(STATUS_OPEN),p1:(STATUS_OPEN),p2:(DONE),p3:(STATUS_CLOSE),p4:(DONE),p5:(narrationRule(playerName))})}];
 }
 
 export function repairedMessages(messages,story,card,state,options={},code='INVALID_MODEL_STATE'){

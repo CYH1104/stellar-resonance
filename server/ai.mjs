@@ -1,3 +1,4 @@
+import {validAffinity} from '../src/domain/affinity.ts';
 import {withTavernContext} from './tavern-macro-engine.mjs';
 import {tracePresets,recordFilteredPreset} from './preset-diagnostics.mjs';
 import {personaDescription} from './participants.mjs';
@@ -28,6 +29,16 @@ export const STATE_OPEN = '<SR_STATE>';
 export const STATE_CLOSE = '</SR_STATE>';
 const MVU_OPEN='<UpdateVariable>';
 export const RESPONSE_END = '<SR_DONE>';
+// 新版英文分块标签：逐块正则捕获，宽松容忍缺失结束标签。
+export const STATUS_OPEN = '<status>';
+export const STATUS_CLOSE = '</status>';
+export const CHOICES_OPEN = '<choices>';
+export const CHOICES_CLOSE = '</choices>';
+export const FORUM_OPEN = '<forum>';
+export const FORUM_CLOSE = '</forum>';
+export const THEATER_OPEN = '<theater';
+export const THEATER_CLOSE = '</theater>';
+export const DONE = '<done>';
 export const modelError = (status, code) => Object.assign(new Error(code), { status, code });
 const text = (value, max, required=false) => typeof value==='string' && value.length<=max && (!required||!!value.trim());
 
@@ -65,7 +76,7 @@ function safeState(card, request) {
     const mentalPowerLevel=previous?.mentalPowerLevel??mentalPowerLevelOf(c);
     const identity=text(previous?.identity,200,true)?previous.identity:identityOf(c);
     const ability=text(previous?.ability,2000,true)?previous.ability:abilityOf(c);
-    return {id:c.id,name:c.name,present:previous?.present===true,...(ability?{ability}:{}),...(identity?{identity}:{}),...(mentalPowerLevel?{mentalPowerLevel}:{}),...(Number.isFinite(previous?.affinity)?{affinity:previous.affinity}:{}),...(c.sex?{secondaryGender:c.sex}:{}),...(c.primaryGender?{primaryGender:c.primaryGender}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(text(previous?.innerThought,2000)?{innerThought:previous.innerThought}:{}),...(text(previous?.spiritThought,2000)?{spiritThought:previous.spiritThought}:{})};
+    return {id:c.id,name:c.name,present:previous?.present===true,...(ability?{ability}:{}),...(identity?{identity}:{}),...(mentalPowerLevel?{mentalPowerLevel}:{}),...(Number.isFinite(previous?.affinity)?{affinity:previous.affinity}:{}),...(text(previous?.relationship,200)?{relationship:previous.relationship}:{}),...(c.sex?{secondaryGender:c.sex}:{}),...(c.primaryGender?{primaryGender:c.primaryGender}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(text(previous?.innerThought,2000)?{innerThought:previous.innerThought}:{}),...(text(previous?.spiritThought,2000)?{spiritThought:previous.spiritThought}:{})};
   });
   const level=request.state.player?.mentalPowerLevel||request.persona.mentalPowerLevel||readPersonaExtra(request.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(text(level,100,true))player.mentalPowerLevel=level;
   for(const character of characters){const previous=request.state.characters.find(a=>a.id===character.id);const level=previous?.mentalPowerLevel||mentalPowerLevelOf(card.characters.find(c=>c.id===character.id));if(text(level,100))character.mentalPowerLevel=level;}
@@ -87,21 +98,21 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   let previousTheaters;try{previousTheaters=request.previousTheaters===undefined?undefined:cleanTheaterScenes(request.previousTheaters);}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const diaryOwners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim()).map(c=>({ownerId:c.id,ownerName:c.name,...(c.id==='player'?{spiritAnimal:c.spiritAnimal}:{})}));
   const theaterPlans=theaterSettings.filter(t=>t.enabled).map(t=>{if(isSpiritDiary(t))return {...t,diaryOwners};if(t.kind!=='fanfic')return t;const char=t.charId?state.characters.find(c=>c.id===t.charId):state.characters.find(c=>c.present);return {...t,...(char?{participantIds:['player',char.id],pairing:determinePairing(request.persona,char)}:{})};});
-  const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATE_OPEN),p1:(STATE_CLOSE),p2:(RESPONSE_END),p3:(STATE_CLOSE)});
-  const dynamicRules=featurePrompts(theaterPlans,request.suggestionsEnabled!==false);
+  const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATUS_OPEN),p1:(STATUS_CLOSE),p2:(DONE),p3:(STATUS_CLOSE)});
+  const dynamicRules=featureContract(theaterPlans,request.suggestionsEnabled!==false);
   const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):'';
   const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8"):'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
   const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'New diary title',mood:'Mood',content:'Today I...\n\nI discovered...'}})+internalPrompt("ai.10"):'';
   const privateCard={world:{},places:[],characters:[]};
-  const promptState={...state,characters:state.characters.map(({id,name,present,affinity,innerThought,spiritThought})=>({id,name,present,affinity,innerThought,spiritThought}))};
+  const promptState={...state,characters:state.characters.map(({id,name,present,affinity,relationship,innerThought,spiritThought})=>({id,name,present,affinity,relationship,innerThought,spiritThought}))};
   const context=featureContext({...(previousTheaters?{previousTheaters}:{}),participants,narrativeViewpoint:narrativeViewpoint(state.player),mvu:dataFromState(promptState),persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),presets:request.promptEntries?[]:request.presets,theaterPlans,forumContext:request.forumContext||[],dice,dicePlan:plan,specialEvent},theaterPlans,request);
-  const mvuRules=request.stateEnabled===false?'':internalPrompt("ai.5", {p0:(STATE_OPEN),p1:(RESPONSE_END)});
+  const mvuRules=request.stateEnabled===false?'':internalPrompt("ai.5", {p0:(STATUS_OPEN),p1:(DONE)});
   const messages=[{role:'system',content:identityRule(participants)+'\n'+rules+diceRules+dynamicRules+diaryExample+selectedEventRules+mvuRules+'\n'+narrationRule(state.player.name)},{role:'system',content:'Private world constraints as data:\n'+JSON.stringify(privateCard)},{role:'system',content:internalPrompt("ai.12")+JSON.stringify(context)}];
   if(request.stateSeparate){messages[0].content=identityRule(participants)+'\n'+internalPrompt('feature.story')+diceRules+selectedEventRules+dynamicRules+diaryExample+'\n'+narrationRule(state.player.name);messages[2].content=internalPrompt('ai.12')+JSON.stringify(featureContext({...context},theaterPlans,{stateEnabled:false}));}
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
-  let entries;try{entries=request.promptEntries?.filter(entry=>{if(request.stateSeparate&&/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|状态输出|格式修复|正则/i.test(entry.content)){recordFilteredPreset(entry);return false;}return true;}).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
+  let entries;try{entries=request.promptEntries?.filter(entry=>{if(request.stateSeparate&&/<UpdateVariable|JSONPatch|SR_STATE|SR_DONE|<\/?(?:status|choices|forum|theater|done)\b|状态输出|格式修复|正则/i.test(entry.content)){recordFilteredPreset(entry);return false;}return true;}).map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   return {messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card};
 }
 
@@ -127,14 +138,14 @@ export function normalizeModelState(card, state, raw,options={}) {
   // The model's full scene roster is authoritative; no client-selected cast is used.
   const characters=card.characters.map(c=>{
     const patch=updates.find(a=>a.id===c.id)||{id:c.id};
-    if(Object.keys(patch).some(k=>!['ability','identity','mentalPowerLevel','id','name','primaryGender','secondaryGender','innerThought','spiritAnimal','spiritThought','affinity','present'].includes(k)))throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
-    if(options.requireDynamicState&&patch.affinity!==undefined&&(!Number.isFinite(patch.affinity)||patch.affinity< -100||patch.affinity>100))throw modelError(502,'CHARACTER_AFFINITY_MISSING');
+    if(Object.keys(patch).some(k=>!['ability','identity','mentalPowerLevel','id','name','primaryGender','secondaryGender','innerThought','spiritAnimal','spiritThought','affinity','relationship','present'].includes(k)))throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
+    if(patch.affinity!==undefined&&!validAffinity(patch.affinity))throw modelError(502,'CHARACTER_AFFINITY_MISSING');
     if(options.requireDynamicState&&present.has(c.id)){
-      if(!Number.isFinite(patch.affinity)||patch.affinity< -100||patch.affinity>100)throw modelError(502,'CHARACTER_AFFINITY_MISSING');
+      if(!validAffinity(patch.affinity))throw modelError(502,'CHARACTER_AFFINITY_MISSING');
       if(spiritAnimalOf(c)&&(!text(patch.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(patch.spiritThought.trim())))throw modelError(502,'CHARACTER_SPIRIT_THOUGHT_MISSING');
     }
     const identity=patch.identity??(present.has(c.id)?state.characters.find(a=>a.id===c.id)?.identity||identityOf(c):undefined);
-    return {id:c.id,present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(patch.mentalPowerLevel!==undefined?{mentalPowerLevel:patch.mentalPowerLevel}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
+    return {id:c.id,present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(patch.mentalPowerLevel!==undefined?{mentalPowerLevel:patch.mentalPowerLevel}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(patch.relationship!==undefined?{relationship:patch.relationship}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
   });
   let player;
   if(raw.mvu!==undefined){const patch={...(raw.player||{})};for(const field of ['identity','spiritThought','mentalPowerLevel'])if(mvuState.player[field]!==state.player[field]){if(patch[field]!==undefined&&patch[field]!==mvuState.player[field])throw modelError(502,'MODEL_STATE_PLAYER_INVALID');patch[field]=mvuState.player[field];}raw={...raw,player:patch};}
@@ -174,57 +185,134 @@ export function normalizeModelState(card, state, raw,options={}) {
   return validateOutcome({event:raw.event,suggestions:raw.suggestions??[],...(raw.mvu!==undefined?{mvu:raw.mvu}:{}),...(diceEvent?{diceEvent}:{}),characters,...(player?{player}:{}),...(raw.forum!==undefined?{forum}:{}),...(raw.theaters!==undefined?{theaters}:{})},state);
 }
 
+/** 分块标签：open/close 成对，key 用于归类；end 标记仅从可见正文剔除。 */
+const BLOCK_TAGS = [
+  { open: /<SR_STATE\s*>/i, close: /<\/SR_STATE\s*>/i, key: 'state' },
+  { open: /<status\s*>/i, close: /<\/status\s*>/i, key: 'status' },
+  { open: /<choices\s*>/i, close: /<\/choices\s*>/i, key: 'choices' },
+  { open: /<forum\s*>/i, close: /<\/forum\s*>/i, key: 'forum' },
+  { open: /<theater\b[^>]*>/i, close: /<\/theater\s*>/i, key: 'theater' },
+  { open: /<UpdateVariable\b[^>]*>/i, close: /<\/UpdateVariable\s*>/i, key: 'mvu' },
+];
+const BLOCK_END = /<\s*(?:SR_DONE|done)\s*\/?\s*>/gi;
+
+function nextTag(text, from) {
+  let best = null;
+  for (const tag of BLOCK_TAGS) {
+    tag.open.lastIndex = 0; let m = tag.open.exec(text.slice(from));if(m)m.index+=from;
+    if (m && (!best || m.index < best.index)) best = { index: m.index, len: m[0].length, opener: true, key: tag.key };
+    tag.close.lastIndex = 0; m = tag.close.exec(text.slice(from));if(m)m.index+=from;
+    if (m && (!best || m.index < best.index)) best = { index: m.index, len: m[0].length, opener: false, key: tag.key };
+  }
+  return best;
+}
+
+/** 宽松地把原始回复切成正文 + 各类块；缺结束标签取到末尾或下一个块为止。 */
+function splitBlocks(raw) {
+  const out = { prose: '', state: [], status: [], choices: [], forum: [], theater: [], mvu: [] };
+  const clean = s => s.replace(BLOCK_END, '');
+  let pos = 0, current = null;
+  const endBlock = at => { if (current) { const body = raw.slice(current.start, at).trim(); if (body) out[current.key].push(clean(body)); current = null; } };
+  while (true) {
+    const t = nextTag(raw, pos);
+    if (!t) {
+      const rest = raw.slice(pos);
+      if (current) { const body = raw.slice(current.start).trim(); if (body) out[current.key].push(clean(body)); }
+      else out.prose += clean(rest);
+      break;
+    }
+    const pre = raw.slice(pos, t.index);
+    if (current) {
+      if (!t.opener && t.key === current.key) { endBlock(t.index); pos = t.index + t.len; }
+      else if (t.opener) { endBlock(t.index); current = { key: t.key, start: t.index + t.len }; pos = t.index + t.len; }
+      else pos = t.index + t.len; // 块内不匹配的结束标签忽略
+    } else {
+      out.prose += clean(pre);
+      if (t.opener) { current = { key: t.key, start: t.index + t.len }; pos = t.index + t.len; }
+      else pos = t.index + t.len; // 游离结束标签忽略
+    }
+  }
+  return out;
+}
+
+function partialTag(text) {
+  const at=text.lastIndexOf('<');if(at<0)return 0;
+  const tail=text.slice(at),match=/^<\s*\/?\s*([\w-]*)(?:\s+[^<>]*)?$/.exec(tail);
+  if(!match)return 0;
+  const name=match[1].toLowerCase();return ['sr_state','sr_done','status','choices','forum','theater','updatevariable','done'].some(tag=>tag.startsWith(name))?tail.length:0;
+}
+
+function parseChoices(content) {
+  let v; try { v = parseStateJson(content).value; } catch { v = undefined; }
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object' && !Array.isArray(v)) { const arr = v.suggestions ?? v.choices ?? v.quickReplies ?? v.quick_replies; return Array.isArray(arr) ? arr : undefined; }
+  const lines = content.split(/\r?\n/).map(s => s.replace(/^\s*[-*•\d.、)]+\s*/, '').trim()).filter(Boolean);
+  return lines.length ? lines.slice(0, 4) : undefined;
+}
+
 /** Streaming protocol decoder. Reserved control text never becomes a public delta. */
 export class StoryDecoder {
-  mvuControl='';pending='';control='';inState=false;emitted=0;raw='';story='';
-  beginStateRepair(){this.mvuControl='';this.pending='';this.control='';this.inState=true;this.raw=this.story;}
+  pending='';inControl=false;controlKey='';emitted=0;raw='';story='';jsonInfo;suppressProse=false;
+  beginStateRepair(){this.pending='';this.inControl=false;this.controlKey='';this.raw=this.story;this.suppressProse=true;}
   push(chunk){
     if(typeof chunk!=='string')throw modelError(502,'INVALID_MODEL_RESPONSE');
-    this.raw+=chunk;if(this.raw.length>400000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');
-    const visible=this.decode(chunk);this.story+=visible;this.emitted+=visible.length;if(this.emitted>200000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');return visible;
+    this.raw+=chunk;for(const block of this.raw.matchAll(/<(SR_STATE|status|UpdateVariable)\b[^>]*>([\s\S]*?)(?:<\/\1\s*>|$)/gi))if(block[2].length>100000)throw modelError(502,'MODEL_STATE_TOO_LARGE');if(this.raw.length>400000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');
+    const visible=this.decode(chunk);if(this.suppressProse)return '';this.story+=visible;this.emitted+=visible.length;if(this.emitted>200000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');return visible;
   }
   decode(chunk){
-    if(this.inState){this.control+=chunk;const rest=this.cleanControl();return rest?this.decode(rest):'';}
-    if(this.pending&&[STATE_OPEN,RESPONSE_END,MVU_OPEN].some(token=>token.startsWith(this.pending))){
-      const combined=this.pending+chunk;
-      if(chunk.startsWith('<')||this.pending.length>=3&&![STATE_OPEN,RESPONSE_END,MVU_OPEN].some(token=>token.startsWith(combined)||combined.startsWith(token)))this.pending='';
-    }
+    if(!this.inControl&&this.pending&&partialTag(this.pending)&&chunk.startsWith('<'))this.pending='';
     this.pending+=chunk;let visible='';
     while(this.pending){
-      const sr=this.pending.indexOf(STATE_OPEN),mvu=this.pending.indexOf(MVU_OPEN),open=sr<0?mvu:mvu<0?sr:Math.min(sr,mvu),done=this.pending.indexOf(RESPONSE_END);
-      const marker=open<0?done:done<0?open:Math.min(open,done);
-      if(marker>=0){
-        let prose=this.pending.slice(0,marker);
-        // A continuation may restart a marker that the previous response cut in half.
-        for(const token of [STATE_OPEN,RESPONSE_END,MVU_OPEN])for(let n=token.length-1;n>=3;n--)if(prose.endsWith(token.slice(0,n))){prose=prose.slice(0,-n);break;}
-        visible+=prose;
-        if(marker===open){this.control=this.pending.slice(marker+(marker===mvu?0:STATE_OPEN.length));this.pending='';this.inState=true;const rest=this.cleanControl();if(rest)visible+=this.decode(rest);break;}
-        this.pending=this.pending.slice(marker+RESPONSE_END.length);continue;
+      if(this.inControl){
+        const tag=BLOCK_TAGS.find(t=>t.key===this.controlKey);tag.close.lastIndex=0;const m=tag.close.exec(this.pending);
+        if(!m){const keep=partialTag(this.pending);this.pending=keep?this.pending.slice(-keep):'';break;}
+        this.pending=this.pending.slice(m.index+m[0].length);this.inControl=false;this.controlKey='';continue;
       }
-      let keep=0;for(const token of [STATE_OPEN,RESPONSE_END,MVU_OPEN])for(let n=1;n<token.length;n++)if(this.pending.endsWith(token.slice(0,n)))keep=Math.max(keep,n);
-      visible+=keep?this.pending.slice(0,-keep):this.pending;this.pending=keep?this.pending.slice(-keep):'';break;
+      const t=nextTag(this.pending,0);
+      if(!t){
+        const keep=partialTag(this.pending);
+        visible+=(keep?this.pending.slice(0,-keep):this.pending).replace(BLOCK_END,'');
+        this.pending=keep?this.pending.slice(-keep):'';break;
+      }
+      visible+=this.pending.slice(0,t.index).replace(BLOCK_END,'');
+      this.pending=this.pending.slice(t.index+t.len);
+      if(t.opener){this.inControl=true;this.controlKey=t.key;}
     }
     return visible;
   }
-  cleanControl(){
-    if(this.control.startsWith(MVU_OPEN)){const close=this.control.indexOf('</UpdateVariable>');if(close<0){if(this.control.length>100000)throw modelError(502,'MODEL_STATE_TOO_LARGE');return;}const end=close+'</UpdateVariable>'.length,rest=this.control.slice(end);this.mvuControl+=this.control.slice(0,end);this.control='';this.inState=false;return rest;}
-    // If a model restarts a truncated JSON block, only its final complete block is used.
-    const restart=this.control.lastIndexOf(STATE_OPEN);if(restart>=0){const prefix=this.control.slice(0,restart);if(prefix.includes(MVU_OPEN))this.mvuControl+=prefix;this.control=this.control.slice(restart+STATE_OPEN.length);}
-    const close=this.control.indexOf(STATE_CLOSE);
-    if(close>=0){const offset=close+STATE_CLOSE.length,tail=this.control.slice(offset),done=tail.indexOf(RESPONSE_END);if(done>0&&RESPONSE_END.startsWith(tail.slice(0,done).trim()))this.control=this.control.slice(0,offset)+tail.slice(done);}
-    if(this.control.length>100000)throw modelError(502,'MODEL_STATE_TOO_LARGE');
-  }
-  hasCompletionMarker(){const close=this.control.indexOf(STATE_CLOSE);return this.inState&&close>=0&&this.control.slice(close+STATE_CLOSE.length).replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/g,'').trim()===RESPONSE_END;}
-  finish(card,state,options){
-    if(!this.inState)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
-    const end=this.control.indexOf(STATE_CLOSE);if(end<0)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
-    let {value:raw,info}=parseStateJson(this.control.slice(0,end));this.jsonInfo=info;
-    let tailText=this.control.slice(end+STATE_CLOSE.length);
-    try{const markup=this.mvuControl+tailText;const ops=parseMvuMessage(markup);if(ops.length)raw={...raw,mvu:ops};if((markup.match(/<UpdateVariable>/g)||[]).length!==(markup.match(/<\/UpdateVariable>/g)||[]).length)throw Error();}catch{if(!options?.singleStateCall)throw modelError(502,'MODEL_STATE_JSON_INVALID');options.validationWarnings?.push('STATE_MVU_SKIPPED');}
-    const outcome=normalizeModelState(card,state,scrubModelData(raw),options);
-    const tail=tailText.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/g,'').trim();
-    if(tail!==RESPONSE_END){if(options?.singleStateCall&&tail==='')options.validationWarnings?.push('STATE_END_MARKER_RECOVERED');else{if(RESPONSE_END.startsWith(tail))throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');throw modelError(502,'INVALID_COMPLETION_MARKER');}}
-    if(!this.story.trim()){if(options?.singleStateCall)options.validationWarnings?.push('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}return outcome;
+  hasCompletionMarker(){return /<\s*(?:SR_DONE|done)\s*\/?\s*>/i.test(this.raw);}
+  finish(card,state,options={}){
+    const single=options.singleStateCall===true,warnings=options.validationWarnings||[];
+    const warn=code=>{if(!warnings.includes(code))warnings.push(code);};
+    const incomplete=new Set(BLOCK_TAGS.filter(tag=>{const opens=[...this.raw.matchAll(new RegExp(tag.open.source,'gi'))],closes=[...this.raw.matchAll(new RegExp(tag.close.source,'gi'))];return opens.length>0&&(opens.at(-1).index>(closes.at(-1)?.index??-1));}).map(tag=>tag.key));
+    if(!single&&incomplete.size)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
+    const blocks=splitBlocks(this.raw);let assembled={},received=false,rejected=false;this.jsonInfo=undefined;
+    const candidates=[...blocks.status,...blocks.state];
+    for(let i=candidates.length-1;i>=0;i--){
+      try{const parsed=parseStateJson(candidates[i]);if(!parsed.value||typeof parsed.value!=='object'||Array.isArray(parsed.value))throw Error();assembled={...parsed.value};this.jsonInfo=parsed.info;received=true;break;}catch{}
+    }
+    if(candidates.length&&!received){if(!single)throw modelError(502,'MODEL_STATE_JSON_INVALID');warn('STATE_STATUS_INVALID');rejected=true;}
+    if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
+    if(blocks.choices.length){const choices=parseChoices(blocks.choices.at(-1));if(choices!==undefined)assembled.suggestions=choices;else warn('STATE_CHOICES_INVALID');}
+    for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i]).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
+    const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}if(theaters.length)assembled.theaters=theaters;
+    let mvu=assembled.mvu,mvuFailed=false;
+    if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
+    else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
+    if(mvu!==undefined&&!mvuFailed){try{applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch{mvuFailed=true;}}
+    if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
+    if(rejected){delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
+    if(!Object.keys(assembled).length&&!single)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
+    if(!this.story.trim()){if(single)warn('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}
+    if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}
+    const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings});
+    if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
+    if(single){
+      if(warnings.some(code=>/STATE_(?:MVU_.*(?:REJECTED|SKIPPED)|FIELD_SKIPPED|STATUS_|UPDATE_MISSING|CHARACTERS_NORMALIZED|UNKNOWN_CHARACTER|ROSTER_)/.test(code)))rejected=true;
+      const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));
+      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings]};
+    }
+    return outcome;
   }
 }
 

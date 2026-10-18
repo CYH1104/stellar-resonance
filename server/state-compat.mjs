@@ -1,3 +1,4 @@
+import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
 import {applyMvu,cleanOperations,pointer} from '../src/domain/mvu.ts';
 import {cleanTheaters,cleanTheaterScenes,determinePairing} from '../src/domain/theaters.ts';
@@ -6,8 +7,8 @@ import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {displayText} from '../src/domain/storyMarkup.ts';
 
 const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
-const dynamic=['ability','identity','mentalPowerLevel','affinity','innerThought','spiritThought'];
-const aliases={好感度:'affinity',精神体OS:'spiritThought',精神体想法:'spiritThought',内心想法:'innerThought',身份:'identity',精神力等级:'mentalPowerLevel',能力:'ability'};
+const dynamic=['ability','identity','mentalPowerLevel','affinity','relationship','innerThought','spiritThought'];
+const aliases={好感度:'affinity',关系:'relationship',精神体OS:'spiritThought',精神体想法:'spiritThought',内心想法:'innerThought',身份:'identity',精神力等级:'mentalPowerLevel',能力:'ability'};
 const numeric=v=>typeof v==='string'&&/^[+-]?\d+(?:\.\d+)?$/.test(v.trim())?Number(v):v;
 const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?false:undefined;
 
@@ -24,19 +25,8 @@ export function compatibleState(raw,card,state,options){
   let mvuState=state;
   if(raw.mvu!==undefined){
     try{mvuState=applyMvu(state,raw.mvu);}catch{
-      warn('STATE_MVU_PROJECTED');
-      let operations=[];try{operations=cleanOperations(raw.mvu);}catch{warn('STATE_MVU_SKIPPED');}
-      for(const op of operations){
-        try{
-          const parts=pointer(op.path),projected=[];
-          const addActor=(base,value)=>{if(!object(value))return;for(const field of [...dynamic.filter(f=>f!=='ability'),'present'])if(Object.hasOwn(value,field))projected.push({op:'add',path:base+'/'+field,value:field==='affinity'?numeric(value[field]):value[field]});};
-          if(['add','replace','insert'].includes(op.op)&&parts[0]==='characters'&&parts.length===2&&known.has(parts[1]))addActor('/characters/'+parts[1],op.value);
-          else if(['add','replace'].includes(op.op)&&parts.length===1&&parts[0]==='characters'&&object(op.value)){for(const [id,value]of Object.entries(op.value))if(known.has(id))addActor('/characters/'+id,value);}
-          else if(['add','replace'].includes(op.op)&&op.path==='/player')addActor('/player',op.value);
-          else projected.push(op);
-          for(const patch of projected)try{mvuState=applyMvu(mvuState,[patch]);}catch{warn('STATE_MVU_FIELD_SKIPPED');}
-        }catch{warn('STATE_MVU_FIELD_SKIPPED');}
-      }
+      warn('STATE_MVU_REJECTED');
+      raw={...raw,mvu:undefined,characters:[],player:undefined,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)};
     }
     // Actor changes are flattened into the canonical snapshot once. Custom
     // variables remain an MVU update; no duplicate delta or immutable overwrite.
@@ -52,7 +42,7 @@ export function compatibleState(raw,card,state,options){
       try{
         const candidate=player?{player:{[field]:v}}:{characters:[{id:before.id,[field]:v}]};
         validateOutcome({event:out.event,...candidate},state);
-        if(field==='affinity'&&(v< -100||v>100))throw Error();
+        if(field==='affinity'&&(!validAffinity(v)))throw Error();
         result[field]=v;if(v!==original||key!==field)warn('STATE_FIELD_NORMALIZED');
       }catch{warn('STATE_FIELD_SKIPPED');}
     }

@@ -6,7 +6,7 @@ export async function* separatedState({source,data,privateBooks,firstResponse,fi
  if(!story.trim())throw modelError(502,'MODEL_STORY_EMPTY');
  const storyForState=(data.continuation?.partial||'')+story,stateSignal=AbortSignal.any([signal,AbortSignal.timeout(180000)]);
  const warnings=[];let primary;
- if(visible.inState&&visible.control.includes(STATE_CLOSE))primary=visible.finish(main.card,main.state,{stateEnabled:false,theaterSettings:main.theaterSettings,persona:data.persona,dice:main.dice,singleStateCall:true,requireDynamicState:true,validationWarnings:warnings});
+ if(/<(?:SR_STATE|status|choices|forum|theater|UpdateVariable)\b/i.test(visible.raw))primary=visible.finish(main.card,main.state,{stateEnabled:false,theaterSettings:main.theaterSettings,persona:data.persona,dice:main.dice,singleStateCall:true,requireDynamicState:true,validationWarnings:warnings});
  else{primary={event:'本轮剧情已输出',suggestions:[]};if(main.theaterSettings.some(t=>t.enabled))warnings.push('STATE_SIDE_SCENE_RETAINED');}
  for(const code of warnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt:0}};
  if(warnings.length&&data.captureFormatErrors)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:visible.raw};
@@ -15,7 +15,7 @@ export async function* separatedState({source,data,privateBooks,firstResponse,fi
  const messages=repairedMessages(built.messages,storyForState,built.card,built.state,options);
  try{const upstream=await openCompletion({connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,messages,signal:stateSignal,fetchImpl});
  for await(const event of streamStory({card:built.card,state:built.state,options,messages:built.messages,partial:storyForState,stateOnly:true,connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,firstResponse:upstream,signal:stateSignal,fetchImpl,onProgress})){
-  if(event.type==='done')yield {type:'done',outcome:{...primary,...(event.outcome.mvu?{mvu:event.outcome.mvu}:{}),characters:event.outcome.characters,...(event.outcome.player?{player:event.outcome.player}:{})}};
+  if(event.type==='done')yield {type:'done',outcome:{...primary,...(event.outcome.mvu?{mvu:event.outcome.mvu}:{}),characters:event.outcome.characters,stateUpdate:event.outcome.stateUpdate,...(event.outcome.player?{player:event.outcome.player}:{})}};
   else if(event.type!=='delta')yield event;
- }}catch(error){signal.throwIfAborted();yield {type:'diagnostic',diagnostic:{kind:'generation',code:'STATE_AUX_RETAINED',stage:'accepted',attempt:0}};yield {type:'done',outcome:primary};}
+ }}catch(error){signal.throwIfAborted();yield {type:'diagnostic',diagnostic:{kind:'generation',code:'STATE_AUX_RETAINED',stage:'accepted',attempt:0}};yield {type:'done',outcome:{...primary,stateUpdate:{status:'retained',received:false,storyComplete:primary.stateUpdate?.storyComplete??true,codes:['STATE_AUX_RETAINED']}}};}
 }

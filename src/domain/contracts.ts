@@ -5,14 +5,14 @@ export type Mode = 'demo' | 'server';
 export type Panel = 'format-errors' | 'story' | 'memory' | 'relations' | 'map' | 'forum' | 'game-settings' | 'theaters' | 'status' | 'settings' | 'presets' | 'saves' | 'worldbooks';
 export interface Persona {ability?:string;spiritName?:string;spiritAppearance?:string;spiritPersonality?:string;spiritAbility?:string;mentalPowerLevel?:string; rawText?:string; name: string; appearance: string; personality: string; background: string; identity?:string;primaryGender?: string; secondaryGender?: string; spiritAnimal?:string; other?:string; pairingPreference?:string }
 export interface ActorState {ability?:string;mentalPowerLevel?:string;
-  id: string; name: string; present: boolean; affinity?: number;
+  id: string; name: string; present: boolean; affinity?: number; relationship?: string;
   identity?:string;primaryGender?: string; secondaryGender?: string; innerThought?: string; spiritAnimal?:string; spiritThought?:string;
   /** Legacy v0.1 fields, retained only for old local saves. */
   energy?: number; focus?: number;
 }
 export interface ActorPatch { ability?:string;mentalPowerLevel?:string;
   name?: string;identity?:string; primaryGender?: string; secondaryGender?: string; innerThought?: string; spiritAnimal?:string; spiritThought?:string;
-  affinity?: number; present?: boolean;
+  affinity?: number; relationship?: string; present?: boolean;
   energy?: number; focus?: number;
 }
 export interface ForumComment { id: string; authorName: string; content: string }
@@ -28,7 +28,8 @@ export interface Pairing {charId:string;category:'BL'|'BG'|'GB'|'待补充';user
 export interface SpiritDiary {ownerId:string;title:string;content:string;date?:string;mood?:string;ownerName?:string;spiritAnimal?:string}
 export interface TheaterScene {complete?:boolean;slot:number;kind:TheaterKind;title:string;content:string;messages?:{speaker:string;content:string}[];participantIds?:string[];pairing?:Pairing;diary?:SpiritDiary}
 export interface DiceEvent {direction:'negative'|'neutral'|'positive';description:string}
-export interface Outcome { mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
+export interface StateUpdate {status:'updated'|'unchanged'|'retained'|'disabled';received:boolean;storyComplete:boolean;codes:string[]}
+export interface Outcome { stateUpdate?:StateUpdate; mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
 export interface Variant { mvuOverride?:MvuOperation[]; suggestions?:string[]; id: string; text: string; status: 'complete' | 'incomplete'; createdAt: string; outcome?: Outcome }
 export interface Turn { randomEvent?:RandomEventGate; id: string; input: string; dice?: Dice; variants: Variant[]; selected: number }
 export interface Vector { model: string; values: number[]; text: string }

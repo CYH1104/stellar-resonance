@@ -23,6 +23,7 @@ const spiritOs=computed(()=>{
       <div class="actor-identities"><dt>身份</dt><dd><template v-if="identityLines(identityFields.identity).length"><span v-for="line in identityLines(identityFields.identity)" :key="line" class="actor-identity-line">【{{line}}】</span></template><template v-else>未提供</template></dd></div>
       <div v-if="identityFields.ability?.trim()"><dt>异能</dt><dd class="actor-ability">{{displayText(identityFields.ability)}}</dd></div>
       <div v-if="!player"><dt>对 user 的好感度</dt><dd>{{actor.affinity??'等待 AI 补全'}}</dd></div>
+      <div v-if="!player && actor.relationship?.trim()"><dt>与 user 的关系</dt><dd>{{displayText(actor.relationship)}}</dd></div>
       <div><dt>精神体</dt><dd>{{actor.spiritAnimal||'未提供'}}</dd></div>
     </dl>
 

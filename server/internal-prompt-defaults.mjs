@@ -1,4 +1,6 @@
+import {affinityRange} from '../src/domain/affinity.ts';
 export const promptDefinitions = [
+ {id:'state-protocol.prose',module:'state-protocol',label:'Prose and enabled companion blocks',template:'Write immersive Chinese prose directly, with real paragraph breaks. Return only enabled companion blocks using their specified tags and end with <done>. No acknowledgments, planning, analysis, thought tags, or code fences. Escape JSON strings once. Preserve prose if a companion block is invalid.',placeholders:[]},
   {
     "id": "ai.1",
     "module": "ai",
@@ -10,23 +12,19 @@ export const promptDefinitions = [
     "id": "ai.2",
     "module": "ai",
     "label": "rules",
-    "template": "Roleplay the world and its NPCs in natural Chinese. Continue the current scene from active worldbooks, the player's persona, history, memories, and current action. Start directly with sensory narration, dialogue, or action; never acknowledge the request, announce a plan, discuss prompts, or address the reader as an assistant. Preserve player agency; do not invent their decisions, speech, or private thoughts. Only active worldbooks supply NPC lore; display cards and maps are not lore prompts. Keep established identities and world rules intact. Mentions, memories, remote messages, and forum posts do not imply physical presence.\nReturn readable prose, then exactly one {{p0}} JSON object {{p1}}, then {{p2}} after {{p3}}. Do not show analysis, checks, thought tags, draft wrappers, or code fences; Slate scene metadata may be retained for layout. Story values remain Chinese. State requirements:\n- presentCharacterIds: complete current physical cast, known IDs only; [] is valid. characters does not replace this list.\n- characters: each present NPC needs id and affinity. affinity is a number in [-100,100], neutral=0; initialize from explicit relationships and this encounter, then change gradually from prior values with concrete interactions. Never invent a shared past.\n- innerThought is brief, displayable NPC characterization, never model reasoning. Do not return the player's innerThought.\n- Known spirits require fresh nonempty spiritThought for every present owner, including player.spiritThought when the player has spiritAnimal. This is the spirit's own internal voice, consistent with its name/personality/abilities, not external actions, narration, or the owner's private thoughts. No unknown/pending placeholders; do not invent spirits.\n- identity: known department/organization and year/office, multiple roles separated by escaped newlines; max 200 characters. ability is separate. Update either only for established facts or changes already enacted in prose.\n- mentalPowerLevel: existing rank string, max 100 characters. Change only when established rules and this scene explicitly support reclassification; no invented ranks, thresholds, or routine recalculation.\n- event: actual main-story summary, 1-500 characters. Thoughts should stay under 80 characters. Omitted fields retain previous values; immutable IDs, names, genders, and spirit species stay fixed. Departed NPCs keep prior state unless a supported change occurred.\nEscape JSON strings once; never put raw paragraph breaks inside JSON strings. Enabled companion sections share this same response. Side content does not become main-story fact.",
+    "template": "Roleplay the world and its NPCs in natural Chinese. Continue the current scene from active worldbooks, the player's persona, history, memories, and current action. Start directly with sensory narration, dialogue, or action; never acknowledge the request, announce a plan, discuss prompts, or address the reader as an assistant. Preserve player agency; do not invent their decisions, speech, or private thoughts. Only active worldbooks supply NPC lore; display cards and maps are not lore prompts. Keep established identities and world rules intact. Mentions, memories, remote messages, and forum posts do not imply physical presence.\nReturn readable prose, then optionally one {{p0}} JSON object {{p1}}, then any enabled side blocks, then {{p2}}. Do not show analysis, checks, thought tags, draft wrappers, or code fences; Slate scene metadata may be retained for layout. Story values remain Chinese. Status block requirements:\n- presentCharacterIds: complete current physical cast, known IDs only; [] is valid. characters does not replace this list.\n- characters: each present NPC needs id; innerThought is optional. affinity and relationship belong to the MVU block, not here.\n- innerThought is brief, displayable NPC characterization, never model reasoning. Do not return the player's innerThought.\n- Known spirits require fresh nonempty spiritThought for every present owner, including player.spiritThought when the player has spiritAnimal. This is the spirit's own internal voice, consistent with its name/personality/abilities, not external actions, narration, or the owner's private thoughts. No unknown/pending placeholders; do not invent spirits.\n- identity: known department/organization and year/office, multiple roles separated by escaped newlines; max 200 characters. ability is separate. Update either only for established facts or changes already enacted in prose.\n- mentalPowerLevel: existing rank string, max 100 characters. Change only when established rules and this scene explicitly support reclassification; no invented ranks, thresholds, or routine recalculation.\n- event: actual main-story summary, 1-500 characters. Thoughts should stay under 80 characters. Omitted fields retain previous values; immutable IDs, names, genders, and spirit species stay fixed. Departed NPCs keep prior state unless a supported change occurred.\nEscape JSON strings once; never put raw paragraph breaks inside JSON strings. Enabled companion sections share this same response. Side content does not become main-story fact.",
     "placeholders": [
       {
         "key": "p0",
-        "expression": "STATE_OPEN"
+        "expression": "STATUS_OPEN"
       },
       {
         "key": "p1",
-        "expression": "STATE_CLOSE"
+        "expression": "STATUS_CLOSE"
       },
       {
         "key": "p2",
-        "expression": "RESPONSE_END"
-      },
-      {
-        "key": "p3",
-        "expression": "STATE_CLOSE"
+        "expression": "DONE"
       }
     ]
   },
@@ -69,15 +67,15 @@ export const promptDefinitions = [
     "id": "ai.5",
     "module": "ai",
     "label": "mvuRules",
-    "template": "MVU: context.mvu.stat_data is the current state. Return character updates only in {{p0}} JSON; never duplicate them in JSONPatch or replace entire character objects. Immutable IDs, names, genders, and spirit species stay fixed. If custom variables actually change, optionally emit <UpdateVariable><JSONPatch>[valid operations]</JSONPatch></UpdateVariable> between prose and state; paths must be under /custom/. Otherwise omit that block. No scripts or analysis. affinity stays in [-100,100]; spiritThought needs a known spirit; rank changes need established rules and enacted facts. Finish the complete response with {{p1}}.",
+    "template": "MVU: context.mvu.stat_data is the current state. affinity (number in " + affinityRange + ") and relationship (a short Chinese phrase) are updated only when this scene supports a change; rank changes need established rules. Change these two fields ONLY through an optional <UpdateVariable> block before {{p0}}: <UpdateVariable><JSONPatch>[{\"op\":\"replace\",\"path\":\"/characters/<known-id>/affinity\",\"value\":12},{\"op\":\"replace\",\"path\":\"/characters/<known-id>/relationship\",\"value\":\"A cautious classmate\"}]</JSONPatch></UpdateVariable>. Do not repeat affinity or relationship inside the status JSON, and do not replace entire character objects. Use delta for a grounded numerical change; never recalculate prior turns or reset missing fields. Return an empty JSONPatch array when neither changes. No scripts or analysis. Finish the complete response with {{p1}}.",
     "placeholders": [
       {
         "key": "p0",
-        "expression": "STATE_OPEN"
+        "expression": "STATUS_OPEN"
       },
       {
         "key": "p1",
-        "expression": "RESPONSE_END"
+        "expression": "DONE"
       }
     ]
   },
@@ -85,7 +83,7 @@ export const promptDefinitions = [
     "id": "state-protocol.1",
     "module": "state-protocol",
     "label": "规则片段 1",
-    "template": "[Output contract; overrides preset packaging] Write immersive Chinese prose directly, with real paragraph breaks and no acknowledgments, planning, analysis, or thought tags. Follow it with exactly one <SR_STATE>JSON object</SR_STATE> and finally <SR_DONE>. No fences. Escape JSON strings once: \\n for a line break, \\\" for a quote. Use only this turn's enabled fields; event summarizes enacted main-story facts. Apply changed mutable character fields once; do not invent lore or duplicate MVU updates.",
+    "template": "[Output contract; overrides preset packaging] Write immersive Chinese prose directly, with real paragraph breaks and no acknowledgments, planning, analysis, or thought tags. After the prose, add only this turn's enabled blocks, each wrapped in its own tag: <status>one JSON object</status> for the main-scene summary and mutable character/player state; <choices> for 1-4 short Chinese next actions; <forum> for a JSON array of new posts; <theater slot=\"N\">one JSON scene object</theater> for each enabled companion theater; <UpdateVariable><JSONPatch>[...]</JSONPatch></UpdateVariable> for affinity/relationship changes only. End with <done>. No fences. Escape JSON strings once: \\n for a line break, \\\" for a quote. A missing closing tag never invalidates the prose; each block is read independently and kept or skipped on its own.",
     "placeholders": []
   },
   {
@@ -123,23 +121,23 @@ export const promptDefinitions = [
     "placeholders": [
       {
         "key": "p0",
-        "expression": "STATE_OPEN"
+        "expression": "STATUS_OPEN"
       },
       {
         "key": "p1",
-        "expression": "STATE_OPEN"
+        "expression": "STATUS_OPEN"
       },
       {
         "key": "p2",
-        "expression": "RESPONSE_END"
+        "expression": "DONE"
       },
       {
         "key": "p3",
-        "expression": "STATE_CLOSE"
+        "expression": "STATUS_CLOSE"
       },
       {
         "key": "p4",
-        "expression": "RESPONSE_END"
+        "expression": "DONE"
       },
       {
         "key": "p5",
@@ -151,7 +149,7 @@ export const promptDefinitions = [
     "id": "story-stream.2",
     "module": "story-stream",
     "label": "characters",
-    "template": "For each physically present known NPC return id and numeric affinity in [-100,100], grounded in prior state and interaction. A known spirit also requires nonempty spiritThought in its own internal voice, consistent with its personality; no external-action narration or placeholders. Optional innerThought is NPC characterization. Keep powers in ability, not identity. identity contains only known affiliations/year/office. Change mentalPowerLevel only when established rules and the fixed prose support it. Never invent facts to repair formatting.",
+    "template": "For each physically present known NPC return id and numeric affinity in " + affinityRange + ", grounded in prior state and interaction. A known spirit also requires nonempty spiritThought in its own internal voice, consistent with its personality; no external-action narration or placeholders. Optional innerThought is NPC characterization. Keep powers in ability, not identity. identity contains only known affiliations/year/office. Change mentalPowerLevel only when established rules and the fixed prose support it. Never invent facts to repair formatting.",
     "placeholders": []
   },
   {
@@ -176,15 +174,15 @@ export const promptDefinitions = [
     "placeholders": [
       {
         "key": "p0",
-        "expression": "STATE_OPEN"
+        "expression": "STATUS_OPEN"
       },
       {
         "key": "p1",
-        "expression": "STATE_CLOSE"
+        "expression": "STATUS_CLOSE"
       },
       {
         "key": "p2",
-        "expression": "RESPONSE_END"
+        "expression": "DONE"
       },
       {
         "key": "p3",
@@ -387,42 +385,42 @@ export const promptDefinitions = [
     "id": "feature.suggestions",
     "module": "feature-prompts",
     "label": "feature.suggestions",
-    "template": "In this same reply return suggestions:[\"choice\"] in SR_STATE: 1-4 distinct Chinese player actions, <=80 characters each, grounded in the main-scene ending. Do not enact choices, import side fiction as fact, show analysis, or repeat the list in prose.",
+    "template": "In this same reply return suggestions in a <choices> block: 1-4 distinct Chinese player actions, <=80 characters each, grounded in the main-scene ending. Do not enact choices, import side fiction as fact, show analysis, or repeat the list in prose.",
     "placeholders": []
   },
   {
     "id": "feature.forum",
     "module": "feature-prompts",
     "label": "feature.forum",
-    "template": "Return forum:[{\"id\":\"unique-this-turn\",\"authorName\":\"public name\",\"topic\":\"topic\",\"content\":\"new in-world post\",\"comments\":[]}]. Write 1-2 posts, <=200 Chinese characters each. Respect privacy and public knowledge; a post does not imply physical presence.",
+    "template": "Return a <forum> block: [{\"id\":\"unique-this-turn\",\"authorName\":\"public name\",\"topic\":\"topic\",\"content\":\"new in-world post\",\"comments\":[]}]. Write 1-2 posts, <=200 Chinese characters each. Respect privacy and public knowledge; a post does not imply physical presence.",
     "placeholders": []
   },
   {
     "id": "feature.group",
     "module": "feature-prompts",
     "label": "feature.group",
-    "template": "Return a theaters item {\"slot\":2,\"kind\":\"group\",\"title\":\"configured title\",\"content\":\"\",\"messages\":[{\"speaker\":\"public name\",\"content\":\"new message\"}]}. Use the planned slot, <=6 fresh messages, distinct from main-story facts.",
+    "template": "Return a <theater slot=\"N\"> block: {\"slot\":2,\"kind\":\"group\",\"title\":\"configured title\",\"content\":\"\",\"messages\":[{\"speaker\":\"public name\",\"content\":\"new message\"}]}. Use the planned slot, <=6 fresh messages, distinct from main-story facts.",
     "placeholders": []
   },
   {
     "id": "feature.fanfic",
     "module": "feature-prompts",
     "label": "feature.fanfic",
-    "template": "Return a theaters item {\"slot\":3,\"kind\":\"fanfic\",\"title\":\"configured title\",\"content\":\"complete side story\",\"participantIds\":[\"player\",\"known-id\"],\"complete\":true}. Use the planned slot/pairing; do not infer pairing from ABO. >=800 Chinese characters with a complete ending. Side fiction does not change main-story state.",
+    "template": "Return a <theater slot=\"N\"> block: {\"slot\":3,\"kind\":\"fanfic\",\"title\":\"configured title\",\"content\":\"complete side story\",\"participantIds\":[\"player\",\"known-id\"],\"complete\":true}. Use the planned slot/pairing; do not infer pairing from ABO. >=800 Chinese characters with a complete ending. Side fiction does not change main-story state.",
     "placeholders": []
   },
   {
     "id": "feature.custom",
     "module": "feature-prompts",
     "label": "feature.custom",
-    "template": "Return a theaters item {\"slot\":4,\"kind\":\"custom\",\"title\":\"configured title\",\"content\":\"new standalone scene\"}. Use its actual slot and instruction. Avoid repeating earlier scenes; do not alter canonical main-story state.",
+    "template": "Return a <theater slot=\"N\"> block: {\"slot\":4,\"kind\":\"custom\",\"title\":\"configured title\",\"content\":\"new standalone scene\"}. Use its actual slot and instruction. Avoid repeating earlier scenes; do not alter canonical main-story state.",
     "placeholders": []
   },
   {
     "id": "feature.diary",
     "module": "feature-prompts",
     "label": "feature.diary",
-    "template": "In a custom item return diary:{\"ownerId\":\"known owner ID\",\"title\":\"entry title\",\"content\":\"complete first-person diary\",\"mood\":\"mood\"}; do not place an object inside content. Choose only diaryOwners. Use the spirit's own voice for >=200 Chinese characters of daily observations, feelings, discoveries, and a closing reflection; not instant OS or an action list.",
+    "template": "In a <theater slot=\"N\"> block return diary:{\"ownerId\":\"known owner ID\",\"title\":\"entry title\",\"content\":\"complete first-person diary\",\"mood\":\"mood\"}; do not place an object inside content. Choose only diaryOwners. Use the spirit's own voice for >=200 Chinese characters of daily observations, feelings, discoveries, and a closing reflection; not instant OS or an action list.",
     "placeholders": []
   },
   {
@@ -436,7 +434,7 @@ export const promptDefinitions = [
     "id": "feature.required",
     "module": "feature-prompts",
     "label": "本轮已开启功能的必需输出",
-    "template": "Enabled output fields for this turn must accompany prose in this same response. Ground them in current characters, time, place, and developments; generate fresh content, not copies. Side fiction never alters canonical main-story facts. Merge these illustrative required fields into the single SR_STATE; replace example values: {{p0}}. Requirements: {{p1}}. End only when prose and enabled sections are complete.",
+    "template": "Enabled output fields for this turn must accompany prose in this same response. Ground them in current characters, time, place, and developments; generate fresh content, not copies. Side fiction never alters canonical main-story facts. Merge these illustrative required fields into the tagged blocks (status/choices/forum/theater); replace example values: {{p0}}. Requirements: {{p1}}. End only when prose and enabled sections are complete.",
     "placeholders": [
       {
         "key": "p0",
@@ -459,7 +457,7 @@ export const promptDefinitions = [
     "id": "state-protocol.example",
     "module": "state-protocol",
     "label": "状态格式示例",
-    "template": "Illustrative format only: write the actual scene in Chinese, then <SR_STATE>{{p0}}</SR_STATE><SR_DONE>. Replace sample text and determine the cast from the real scene; this example does not establish presence or events. Add every enabled side section from the feature contract to the same JSON. No analysis or acknowledgments.",
+    "template": "Illustrative format only: write the actual scene in Chinese, then <status>{{p0}}</status> and finally <done>. Replace sample values; this example does not establish presence or events. Add every enabled side block from the feature contract to the same response. No analysis or acknowledgments.",
     "placeholders": [
       {
         "key": "p0",
