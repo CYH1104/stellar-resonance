@@ -44,7 +44,7 @@ export function needsStateRepair(session:Session,index:number,settings?:TheaterS
     if(!v.outcome)return true;
     validateOutcome(v.outcome,stateAt(session,index));
     const state=stateAt(session,index+1),out=v.outcome;
-    if(stateEnabled&&out.stateUpdate?.status==='retained')return true;
+    if(stateEnabled&&['retained','partial'].includes(out.stateUpdate?.status||''))return true;
     if(out.stateUpdate?.codes.some(code=>['STATE_SIDE_SCENE_RETAINED','STATE_STORY_MISSING',...(stateEnabled?['STATE_AFFINITY_RETAINED','STATE_SPIRIT_THOUGHT_RETAINED','STATE_PLAYER_THOUGHT_RETAINED','STATE_AUX_RETAINED']:[])].includes(code)))return true;
     if(stateEnabled&&state.player.spiritAnimal?.trim()&&!provided(out.player?.spiritThought))return true;
     for(const char of stateEnabled?state.characters.filter(a=>a.present):[]){

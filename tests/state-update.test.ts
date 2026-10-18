@@ -2,6 +2,11 @@ import {it,expect} from 'vitest';
 import {stateUpdateLabel} from '../src/domain/stateUpdate';
 import {newSession,finishVariant,stateAt,backup,parseBackup,defaults} from '../src/domain/story';
 import type {Outcome,Variant} from '../src/domain/contracts';
+it('partial updates remain valid through backup and clearly report saved fields',()=>{
+ const session=newSession('部分更新',{name:'玩家',appearance:'',personality:'',background:''},'');const v:Variant={id:'v',text:'正文',status:'incomplete',createdAt:''};session.turns.push({id:'t',input:'观察',selected:0,variants:[v]});
+ const outcome:Outcome={event:'观察',stateUpdate:{status:'partial',received:true,storyComplete:true,codes:['STATE_FIELD_SKIPPED']}};finishVariant(session,0,v,outcome);
+ expect(stateUpdateLabel(outcome)).toContain('有效字段已保存');expect(parseBackup(backup({version:1,sessions:[session],preferences:defaults()})).sessions[0].turns[0].variants[0].outcome?.stateUpdate?.status).toBe('partial');
+});
 
 it('records validation independently from prose completion and preserves it through backup',()=>{
   const session=newSession('校验',{name:'玩家',appearance:'',personality:'',background:''},'开场');

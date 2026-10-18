@@ -1,6 +1,7 @@
 import {importRegexRules,injectsHtml,type RegexRule} from './regex.ts';
 import type {Preset,Profile} from './contracts';
 import {cleanPromptGroup,importPromptGroups,exportPromptGroups,restoreKnownPromptGroups} from './promptGroups.ts';
+import {detectPresetCompatibility,cleanPresetCompatibility} from './presetCompatibility.ts';
 export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
 export const promptTriggers=[{value:'normal',label:'正常回复'},{value:'continue',label:'续写'},{value:'regenerate',label:'重演／重试'},{value:'swipe',label:'切换生成'},{value:'impersonate',label:'代写玩家'},{value:'quiet',label:'后台生成'}];
 export function newPresetEntries(id:string,name:string):Preset[]{
@@ -28,6 +29,7 @@ export function cleanPreset(p:Preset):Preset{
   if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||p.content.length>50000||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
   if(p.role!==undefined&&!['system','user','assistant'].includes(p.role)||p.position!==undefined&&!['before','after','in-chat'].includes(p.position))throw new Error('预设角色或位置不正确');
   const out:Preset={id:p.id,name:p.name,content:p.content,enabled:p.enabled};
+  if(p.compatibility!==undefined)out.compatibility=cleanPresetCompatibility(p.compatibility);
   if(p.group!==undefined)out.group=cleanPromptGroup(p.group);
   for(const key of ['setId','setName','identifier'] as const)if(p[key]!==undefined){if(typeof p[key]!=='string'||p[key]!.length>200)throw new Error('预设标识不正确');out[key]=p[key];}
   if(p.role)out.role=p.role;if(p.position)out.position=p.position;
@@ -37,7 +39,7 @@ export function cleanPreset(p:Preset):Preset{
   if(p.triggers!==undefined){if(!Array.isArray(p.triggers)||p.triggers.some(n=>!['normal','continue','impersonate','swipe','regenerate','quiet'].includes(n)))throw new Error('预设触发类型不正确');out.triggers=[...p.triggers];}
   return out;
 }
-export function importTavernPreset(text:string,filename='导入预设'){
+export function importTavernPreset(text:string,filename='导入预设',options:{preserveOutputs?:boolean}={}){
   if(new TextEncoder().encode(text).length>5*1024*1024)throw new Error('预设文件最多5MB');
   let raw:any;try{raw=JSON.parse(text.replace(/^\uFEFF/,''));}catch{throw new Error('预设不是有效的 JSON 文件');}
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('不是支持的预设文件');
@@ -71,12 +73,17 @@ export function importTavernPreset(text:string,filename='导入预设'){
     const depth=Number(p.injection_depth??4),safeDepth=Number.isFinite(depth)?Math.max(0,Math.min(10000,Math.trunc(depth))):4;
     if(p.injection_depth!==undefined&&p.injection_depth!==safeDepth)warnings.push('条目“'+(p.name||identifier)+'”的注入深度已转换为支持的范围。');
     const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:safeDepth,order:compactOrder?orderRanks.indexOf(injectionOrder(p)):injectionOrder(p),...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
+    if(p.academy_compatibility!==undefined)item.compatibility=cleanPresetCompatibility(p.academy_compatibility);
     if(importedGroups.has(identifier))item.group=importedGroups.get(identifier);
     if(hasOrder&&!record)item.included=false;return item;
   });
   if(modelRoleCount)warnings.push(`已将 ${modelRoleCount} 条 model 消息角色转换为 assistant；提示词、启停和位置保留。`);
   entries.sort((a,b)=>{const ai=order.findIndex(o=>o.identifier===a.identifier),bi=order.findIndex(o=>o.identifier===b.identifier);return(ai<0?9999:ai)-(bi<0?9999:bi);});
   restoreKnownPromptGroups(entries);
+  detectPresetCompatibility(entries,options.preserveOutputs===true);
+  const closed=entries.filter(p=>p.compatibility?.verdict==='disabled'&&p.compatibility.originalEnabled),review=entries.filter(p=>p.compatibility?.verdict==='review');
+  if(closed.length)warnings.push(`已关闭 ${closed.length} 条重复输出提示词：${closed.map(p=>p.name).join('、')}。原文保留，可在兼容检测中恢复。`);
+  if(review.length)warnings.push(`另有 ${review.length} 条可能涉及自定义输出格式或写作规则，未自动关闭，请在兼容检测中核查。`);
   const parameters:Partial<Profile>={};
   for(const [source,target,min,max] of [['temperature','temperature',0,2],['openai_max_tokens','maxTokens',1,32000],['top_p','topP',0,1],['frequency_penalty','frequencyPenalty',-2,2],['presence_penalty','presencePenalty',-2,2]] as const){if(raw[source]!==undefined){if(typeof raw[source]==='number'&&Number.isFinite(raw[source])&&raw[source]>=min&&raw[source]<=max&&(target!=='maxTokens'||Number.isInteger(raw[source])))parameters[target]=raw[source];else warnings.push(`${source} 超出支持范围，未应用。`);}}
   if(entries.some(p=>p.marker))warnings.push('角色、世界资料和聊天历史占位条目由服务器统一提供；不能借此移除服务器必需设定。');
@@ -94,5 +101,5 @@ export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:R
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
   const ordered=entries.includes(anchor)?entries.filter(p=>p.included!==false):[...entries.filter(p=>p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p.included!==false&&p.position==='after')];
   const grouping=exportPromptGroups(entries);
-  return JSON.stringify({...((grouping||regexRules.length)?{extensions:{...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
+  return JSON.stringify({...((grouping||regexRules.length)?{extensions:{...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.compatibility?{academy_compatibility:{...p.compatibility,...(p.compatibility.verdict==='disabled'&&p.enabled?{restored:true}:{})}}:{}),...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }

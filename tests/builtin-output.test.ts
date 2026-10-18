@@ -19,3 +19,8 @@ it('blocks display HTML injection but retains deletion and prompt-side transform
  expect(applyRegexRules('正文隐藏',rules,{placement:2,scope:'display'}).text).toBe('正文');
  expect(applyRegexRules('正文',rules,{placement:2,scope:'prompt'}).text).toBe('<div>美化</div>');
 });
+it('legacy or truncated platform state is hidden even when stored inside old prose',()=>{
+ for(const tag of ['status','SR_STATE','UpdateVariable'])expect(builtinOutput('正文<'+tag+'>{"affinity":').prose).toBe('正文');
+ expect(builtinOutput('正文<status>{"event":"隐藏"}</status><done>').prose).toBe('正文');
+ expect(builtinOutput('正文<UnknownDisplay>保留未知内容</UnknownDisplay>').prose).toContain('保留未知内容');
+});

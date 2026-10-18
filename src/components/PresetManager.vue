@@ -7,8 +7,12 @@ import {promptFolders} from '../domain/promptGroups';
 import {cleanPreset,pinnedPromptIds} from '../domain/presets';
 import DialogShell from './DialogShell.vue';
 import PresetPromptEditor from './PresetPromptEditor.vue';
+import {compatibilityCategories,restorePresetCompatibility,type CompatibilityCategory} from '../domain/presetCompatibility';
 const props=defineProps<{w:ViewModel}>();
 const importing=ref(false);
+const compatibilityRows=computed(()=>props.w.presetEntries.filter(p=>p.compatibility));
+function categoryLabels(p:Preset){return p.compatibility?.categories.map(c=>compatibilityCategories[c]).join('、');}
+async function restoreCompatibility(category?:CompatibilityCategory){if(props.w.busy)return;restorePresetCompatibility(props.w.presetEntries,category);await props.w.save();}
 const counts=computed(()=>({total:props.w.presetEntries.length,listed:props.w.presetEntries.filter(p=>p.included!==false).length,enabled:props.w.presetEntries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker).length}));
 const query=ref(''),library=ref(''),dragged=ref(''),drafts=ref<Record<string,Preset>>({}),originals=ref<Record<string,Preset>>({}),expanded=ref<string[]>([]),deleting=ref(false);
 const rows=computed(()=>props.w.presetEntries.filter(p=>p.included!==false));
@@ -79,6 +83,8 @@ function removeSet(){props.w.removePresetSet();deleting.value=false;}
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
     <p class="rail-note">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</p>
+    <label class="toggle"><input v-model="w.preferences.preservePresetOutputs" type="checkbox" :disabled="w.busy" />后续导入保留预设自带的状态栏、选项和小剧场（可能重复输出；不恢复外部 HTML 美化）</label>
+    <details v-if="compatibilityRows.length" class="import-report" open><summary>预设兼容检测 · {{compatibilityRows.length}} 条</summary><p class="rail-note">只调整导入时的开关，不删除原文；恢复操作保留原本关闭的条目。</p><div class="actions"><button :disabled="w.busy" @click="restoreCompatibility()">恢复全部自动调整</button><button :disabled="w.busy" @click="restoreCompatibility('choices')">只恢复选项类</button></div><ul><li v-for="p in compatibilityRows" :key="p.id"><strong>{{p.name}}</strong> · {{categoryLabels(p)}} · {{p.compatibility!.verdict==='review'?'待核查（未自动关闭）':p.compatibility!.restored?'已恢复原开关':p.enabled?'用户已开启':p.compatibility!.originalEnabled?'已自动关闭':'原本关闭'}}：{{p.compatibility!.reason}}</li></ul></details>
     
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
     <div class="actions"><button :disabled="w.busy" @click="w.addPresetSet()">新建预设</button><button :disabled="w.busy" @click="w.duplicatePresetSet()">另存为副本</button><button :disabled="w.busy" @click="w.exportPreset()">导出预设</button><button class="danger" :disabled="w.busy" @click="deleting=true">删除预设</button></div>

@@ -3,6 +3,7 @@ import type {Outcome} from './contracts';
 export function stateUpdateLabel(outcome:Outcome|undefined,needsRepair=false):string {
   const update=outcome?.stateUpdate;
   const prose=update?.storyComplete===false?'正文尚未完整':'正文已输出';
+  if(update?.status==='partial')return `${prose}，有效字段已保存，部分字段沿用旧值`;
   if(update?.status==='retained')return `${prose}，部分变量未通过校验，沿用旧值`;
   if(needsRepair)return `${prose}，部分状态或小剧场待补全`;
   if(update?.codes.some(code=>/^(?:STATE_.*(?:RETAINED|MISSING|SKIPPED|INVALID|REJECTED|INCOMPLETE)|MODEL_(?:FANFIC|DIARY)_)/.test(code)))return `${prose}，有效内容已保存，部分状态或小剧场待补全`;

@@ -23,7 +23,7 @@ test('opaque HTML renderers can load only public vendor scripts, never API or ot
   const write=await fetch(base+'/assets/academy-render-jquery.js',{method:'POST',headers:{Origin:'null','Sec-Fetch-Site':'cross-site'}});assert.equal(write.status,403);
 });
 function sides(payload){
-  const context=JSON.parse(payload.messages[2].content.split(':\n')[1]);
+  const data=payload.messages.find(m=>m.content.startsWith('State repair context as data:\n'))||payload.messages[2];const context=JSON.parse(data.content.split(':\n')[1]);
   return {forum:context.theaterPlans.some(t=>t.slot===1)?[{id:'test-post',authorName:'校园同学',content:'今天食堂上新了'}]:[],theaters:context.theaterPlans.filter(t=>t.slot>1).map(t=>({slot:t.slot,kind:t.kind,title:t.title,content:t.kind==='group'?'':t.kind==='fanfic'?'独立番外内容'.repeat(160):'独立番外内容',...(t.kind==='group'?{messages:[{speaker:'同学',content:'群聊独有的问候'}]}:{}),...(t.kind==='fanfic'?{complete:true,participantIds:t.participantIds||['player','pro-02']}:{} )}))};
 }
 function fakeFetch(url,options){
@@ -172,7 +172,7 @@ test('HTTP generation returns AI spirit OS for a configured player spirit and re
     const r=await request(action);r.persona.spiritAnimal='白猫';const count=calls.length;const result=events(await(await post('/api/generate',r)).text());assert.equal(calls.length-count,action==='spirit-ok'?1:4);
     if(action==='spirit-ok'){assert.equal(result.at(-1).type,'done');assert.equal(result.at(-1).outcome.player.spiritThought,'竖起耳朵观察来人。');}
     else{assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,'PLAYER_SPIRIT_THOUGHT_MISSING');assert.ok(!result.some(e=>e.type==='done'));assert.ok(result.some(e=>e.type==='delta'));}
-    assert.ok(calls.at(-1).payload.messages[0].content.includes('including player.spiritThought'));
+    const instructions=calls.at(-1).payload.messages.map(m=>m.content).join('\n');assert.ok(instructions.includes('player.spiritThought')||instructions.includes('"player":{"spiritThought"'));
   }
 });
 
