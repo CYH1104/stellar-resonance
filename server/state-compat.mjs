@@ -1,5 +1,5 @@
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
-import {hasDeltaRoster} from '../src/domain/roster.ts';
+import {hasDeltaRoster,parseRosterClaim,resolveRoster,withPresenceOverrides} from '../src/domain/roster.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
 import {applyMvu,cleanOperations,pointer,explicitPresenceIds} from '../src/domain/mvu.ts';
@@ -61,7 +61,7 @@ export function compatibleState(raw,card,state,options){
   const entries=Array.isArray(raw.characters)?raw.characters:object(raw.characters)?Object.entries(raw.characters).map(([id,v])=>object(v)?{...v,id:v.id??id}:v):[];
   if(raw.characters!==undefined&&!Array.isArray(raw.characters))warn('STATE_CHARACTERS_NORMALIZED');
   let embeddedPlayer={};
-  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const actor=newDynamicActor(value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}if(typeof value?.id==='string'&&value.id!==id){if(actorAliases.has(value.id)&&actorAliases.get(value.id)!==id){actorAliases.delete(value.id);ambiguousAliases.add(value.id);}else if(!ambiguousAliases.has(value.id))actorAliases.set(value.id,id);}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
+  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const declaredHere=deltaRoster&&value?.present===undefined&&[...(raw.present||[]),...(raw.enter||[])].some(ref=>ref===value?.id||ref===value?.name);const actor=newDynamicActor(declaredHere?{...value,present:true}:value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}if(typeof value?.id==='string'&&value.id!==id){if(actorAliases.has(value.id)&&actorAliases.get(value.id)!==id){actorAliases.delete(value.id);ambiguousAliases.add(value.id);}else if(!ambiguousAliases.has(value.id))actorAliases.set(value.id,id);}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
   if(deltaRoster)for(const value of entries){const id=resolve(value);if(id&&typeof value?.present==='boolean'){const patch=patches.get(id)||{id};patch.present=value.present;patches.set(id,patch);}}
   out.characters=[...patches.values()];
   const playerChanges=Object.fromEntries(dynamic.filter(k=>mvuState.player?.[k]!==state.player[k]).map(k=>[k,mvuState.player[k]]));
@@ -133,8 +133,9 @@ export function compatibleState(raw,card,state,options){
       try{const clean=cleanTheaterScenes([scene])[0],hasSpirit=[state.player,...state.characters].some(a=>a.spiritAnimal?.trim());const usable=s=>!theaterRequirementError(s,isSpiritDiary(setting),hasSpirit)&&(s.kind==='group'?s.messages?.some(m=>m.speaker.trim()&&m.content.trim()):s.content.trim());const at=out.theaters.findIndex(s=>s.slot===slot);if(at<0)out.theaters.push(clean);else if(usable(clean)||!usable(out.theaters[at]))out.theaters[at]=clean;}catch{warn('STATE_THEATER_SKIPPED');}
     }
   }
+  const presentIds=deltaRoster?[...resolveRoster(state,withPresenceOverrides(parseRosterClaim(out,out.characters),state,mvuState)).present]:out.presentCharacterIds||[];
   if(options.stateEnabled!==false){
-    for(const id of out.presentCharacterIds||[]){
+    for(const id of presentIds){
       const patch=patches.get(id),before=known.get(id);
       if(before?.affinity===undefined&&patch?.affinity===undefined){
         if(patch)patch.affinity=0;else out.characters.push({id,affinity:0});
@@ -144,7 +145,7 @@ export function compatibleState(raw,card,state,options){
   }
   if(options.requireDynamicState){
     for(const scene of out.theaters||[]){const setting=enabled.find(s=>s.slot===scene.slot);const code=theaterRequirementError(scene,isSpiritDiary(setting),[state.player,...state.characters].some(a=>a.spiritAnimal?.trim()));if(code)warn(code);}
-    if(options.stateEnabled!==false){for(const id of out.presentCharacterIds){const patch=patches.get(id),before=known.get(id);if(!mvuAccepted&&patch?.affinity===undefined)warn('STATE_AFFINITY_RETAINED');if(before?.spiritAnimal&&!patch?.spiritThought)warn('STATE_SPIRIT_THOUGHT_RETAINED');}
+    if(options.stateEnabled!==false){for(const id of presentIds){const patch=patches.get(id),before=known.get(id);if(!mvuAccepted&&patch?.affinity===undefined)warn('STATE_AFFINITY_RETAINED');if(before?.spiritAnimal&&!patch?.spiritThought)warn('STATE_SPIRIT_THOUGHT_RETAINED');}
     if(state.player.spiritAnimal&&!out.player?.spiritThought)warn('STATE_PLAYER_THOUGHT_RETAINED');}
     if(enabled.some(s=>s.slot===1?!out.forum?.length:!out.theaters?.some(t=>t.slot===s.slot)))warn('STATE_SIDE_SCENE_RETAINED');
   }

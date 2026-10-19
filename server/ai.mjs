@@ -356,7 +356,7 @@ export class StoryDecoder {
     for(const row of rosterRows)if(typeof row?.id==='string'&&!rosterActors.has(row.id))rosterActors.set(row.id,row);
     const reviewRequired=new Set([...roster.required].filter(id=>!options.repairPlan||options.repairPlan.affinityIds.includes(id)));
     const requiredIds=[...reviewRequired];
-    const attitudeCandidates=[...new Set([...requiredIds,...rosterRows.map(row=>row?.id).filter(id=>typeof id==='string')])].map(id=>rosterActors.get(id)||{id,present:true});
+    const attitudeCandidates=[...new Set([...requiredIds,...rosterRows.map(row=>row?.id).filter(id=>typeof id==='string')])].map(id=>({...rosterActors.get(id),id,present:roster.present.has(id)}));
     let attitude,attitudeAccepted=false;const affinityReviewedIds=[];
     if(options.stateEnabled!==false){
       if(blocks.attitudes.length&&!incomplete.has('attitudes')){try{attitude=parseStateJson(blocks.attitudes.at(-1)).value;}catch{warn('STATE_ATTITUDE_INVALID');}}
