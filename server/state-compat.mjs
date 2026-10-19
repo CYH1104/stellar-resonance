@@ -118,6 +118,7 @@ export function compatibleState(raw,card,state,options){
         const messages=value.messages??value.content;
         scene.messages=Array.isArray(messages)?messages.filter(object).map(m=>({speaker:m.speaker??m.name??m.authorName,content:typeof (m.content??m.text)==='string'?displayText(m.content??m.text):m.content})).filter(m=>typeof m.speaker==='string'&&m.speaker.length<=80&&typeof m.content==='string'&&m.content.length<=1000).slice(0,24):[];
         if(!scene.messages.length&&scene.content.trim())scene.messages=[{speaker:'群聊',content:scene.content.slice(0,1000)}];
+        if(!scene.messages.some(m=>m.speaker.trim()&&m.content.trim())){warn('STATE_THEATER_SKIPPED');continue;}
       }
       if(scene.kind==='fanfic'){
         const participant=value.participantIds?.[1]??value.pairing?.charId??setting.charId;

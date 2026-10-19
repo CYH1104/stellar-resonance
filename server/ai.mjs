@@ -279,6 +279,18 @@ function partialTag(text) {
 function parseChoices(content) {
   const clean=value=>typeof value==='string'?value.replace(/<\/?(?:选项|option|choice|item)(?=\s|>)[^>]*>/gi,'').replace(/^\s*[-*•\d.、)]+\s*/, '').trim():value;
   const cleanList=value=>Array.isArray(value)?value.map(clean).filter(value=>typeof value==='string'&&value):undefined;
+  // Some providers emit adjacent arrays instead of one array. Require the entire
+  // payload to consist of arrays of strings before accepting this recovery.
+  const arrays=[];let offset=0;
+  while(offset<content.length){
+    while(/\s/.test(content[offset]||'')&&offset<content.length)offset++;
+    if(offset===content.length)break;
+    const match=content.slice(offset).match(/^\[\s*(?:"(?:[^"\\]|\\.)*"\s*(?:,\s*"(?:[^"\\]|\\.)*"\s*)*)?\]/);
+    if(!match){arrays.length=0;break;}
+    try{arrays.push(...JSON.parse(match[0]));}catch{arrays.length=0;break;}
+    offset+=match[0].length;
+  }
+  if(arrays.length)return cleanList(arrays).slice(0,4);
   let v; try { v = parseStateJson(content).value; } catch { v = undefined; }
   if (Array.isArray(v)) return cleanList(v);
   if (v && typeof v === 'object' && !Array.isArray(v)) { const arr = v.suggestions ?? v.choices ?? v.quickReplies ?? v.quick_replies; return cleanList(arr); }
@@ -324,6 +336,8 @@ export class StoryDecoder {
     const warn=code=>{if(!warnings.includes(code))warnings.push(code);};
     const incomplete=new Set(BLOCK_TAGS.filter(tag=>{const opens=[...this.raw.matchAll(new RegExp(tag.open.source,'gi'))],closes=[...this.raw.matchAll(new RegExp(tag.close.source,'gi'))];return opens.length>0&&(opens.at(-1).index>(closes.at(-1)?.index??-1));}).map(tag=>tag.key));
     if(!single&&incomplete.size)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
+    if(single&&incomplete.has('forum'))warn('STATE_FORUM_INCOMPLETE');
+    if(single&&incomplete.has('theater'))warn('STATE_THEATER_INCOMPLETE');
     const blocks=splitBlocks(this.raw);let assembled={},received=false,rejected=false;this.jsonInfo=undefined;
     const candidates=[...blocks.status,...blocks.state];
     for(let i=candidates.length-1;i>=0;i--){
@@ -333,7 +347,8 @@ export class StoryDecoder {
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
     if(blocks.choices.length){const choices=parseChoices(blocks.choices.at(-1));if(choices!==undefined)assembled.suggestions=choices;else warn('STATE_CHOICES_INVALID');}
     for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
-    const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}
+    const theaterEnvelopes=[...this.raw.matchAll(/<theater\b([^>]*)>([\s\S]*?)<\/theater\s*>/gi)].map(m=>({body:m[2].trim(),slot:Number(m[1].match(/\bslot\s*=\s*["']?(\d+)["']?(?=\s|$)/i)?.[1]),used:false}));
+    const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;const envelope=theaterEnvelopes.find(e=>!e.used&&e.body===content.trim());if(envelope)envelope.used=true;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object'){if(value.slot===undefined&&Number.isSafeInteger(envelope?.slot)&&envelope.slot>1){value.slot=envelope.slot;warn('STATE_THEATER_SLOT_RECOVERED');}theaters.push(value);}}catch{warn('STATE_THEATER_INVALID');}}
     if(theaters.length){const mixed=[...(Array.isArray(assembled.theaters)?assembled.theaters:[]),...theaters];assembled.theaters=single?mixed:[...new Map(mixed.map(scene=>[scene?.slot,scene])).values()];}
     // Normalize identity once, before roster validation and MVU registration.
     // Otherwise an alternate ID can register a duplicate despite a unique name match.

@@ -6,6 +6,14 @@ export function builtinOutput(raw:string,streaming=false){
  const plain=(text:string)=>text.replace(/<(script|style|iframe)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,'').replace(/<!doctype[^>]*>/gi,'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/(?:p|div|li|section|tr|h[1-6])\s*>/gi,'\n').replace(/<\/?([a-z_][\w:.-]*)(?:\s[^<>]*|\s*\/?)>/gi,(tag,name)=>/^(?:html|head|body|div|span|p|section|article|table|tbody|thead|tr|td|th|details|summary|li|ul|ol|h[1-6]|b|strong|i|em|content|maintext|story|正文|writing_interlude|glass_status|sidestory)$/i.test(name)?'':tag).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\n{3,}/g,'\n\n').trim();
  let text=stripReasoning(raw).replace(/<(status|SR_STATE|UpdateVariable|choices|forum|theater)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,'').replace(/<\/?(?:SR_DONE|done)\s*\/?>/gi,'');
  if(streaming)text=text.replace(/<[^>]*$/,'').replace(/(?:^|\n)[ \t]*`{1,3}(?:[a-z]*)?$/i,'');
+ // A clearly labelled preset forum appendix is presentation, not main-story
+ // prose or authoritative forum data. Preserve it in a collapsed text card.
+ text=text.replace(/(?:^|\n)[ \t]*\*\*【([^\n】]{1,80}论坛[^\n】]{0,80})】\*\*[^\S\r\n]*\r?\n([\s\S]*?)(?=\n[ \t]*(?:\*{3,}|-{3,}|_{3,})[ \t]*(?:\r?\n|$)|$)/g,(whole,title:string,body:string,offset:number)=>{
+  if(!['帖子ID','作者','内容'].every(label=>body.includes(label)))return whole;
+  if(streaming&&offset+whole.length===text.length)return whole;
+  blocks.push({kind:'collapsed',title:'预设附加论坛',text:plain('**【'+title+'】**\n'+body)});
+  return '\n';
+ });
  // Balanced details blocks; do not consume unrelated text after an unclosed block.
  const tokens=/<\/?details\b[^>]*>/gi;let depth=0,start=0;const ranges:{start:number;end:number;body:string}[]=[];
  for(const match of text.matchAll(tokens)){if(!match[0].startsWith('</')){if(depth++===0)start=match.index!;}else if(depth&&--depth===0)ranges.push({start,end:match.index!+match[0].length,body:text.slice(start,match.index!+match[0].length)});}
