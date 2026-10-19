@@ -31,6 +31,34 @@ beforeEach(()=>{
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function generateAndWait(w:ReturnType<typeof useWorkspace>,...args:Parameters<ReturnType<typeof useWorkspace>['generate']>){await w.generate(...args);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));}
 async function workspace(memoryInterval=1){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
+it('撤回一轮会还原状态、记忆和论坛并恢复用户输入，草稿覆盖需明确确认，刷新后仍保留',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('撤回',{name:'玩家',appearance:'',background:'',personality:''},'');
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield {type:'delta',text:'回复'+r.input};yield {type:'done',outcome:{event:r.input,characters:[{id:'guide',affinity:r.input==='第一条'?35:45}],forum:[{id:'p',authorName:'路人',content:r.input}]}};});
+ await generateAndWait(w,'第一条');await generateAndWait(w,'第二条');const s=w.active.value!,id=s.id,turnId=s.turns[1].id;w.input.value='未发出的草稿';
+ expect(await w.withdraw(1)).toBe(false);expect(s.turns).toHaveLength(2);expect(w.input.value).toBe('未发出的草稿');
+ expect(await w.withdraw(1,'过时草稿',turnId)).toBe(false);expect(await w.withdraw(1,'未发出的草稿','过时消息')).toBe(false);
+ expect(await w.withdraw(1,'未发出的草稿',turnId)).toBe(true);expect(s.turns).toHaveLength(1);expect(w.input.value).toBe('第二条');expect(w.state.value?.characters[0].affinity).toBe(35);expect(w.memories.value).toHaveLength(1);expect(w.forum.value.map(p=>p.content)).toEqual(['第一条']);expect(s.memoryTasks?.find(t=>t.source.sourceTurnId===turnId)?.status).toBe('stale');expect(gen).toHaveBeenCalledTimes(2);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(2);expect(saved?.sessions[0].draftInput).toBe('第二条');
+ vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(saved);vi.mocked(IndexedDbRepository.prototype.readApiCredentials).mockResolvedValue(privateSaved);const reopened=await workspace();reopened.open(id);expect(reopened.input.value).toBe('第二条');expect(reopened.active.value?.turns).toHaveLength(1);
+});
+it('撤回保存失败时恢复原对话和草稿，撤回第一轮时回到初始状态且不自动发送',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('保存失败',{name:'玩家',appearance:'',background:'',personality:''},'');const initial=JSON.stringify(w.state.value);
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'变化',characters:[{id:'guide',affinity:50}]}};});await generateAndWait(w,'原行动');w.input.value='当前草稿';
+ vi.mocked(IndexedDbRepository.prototype.write).mockRejectedValueOnce(new Error('存储失败'));expect(await w.withdraw(0,'当前草稿')).toBe(false);expect(w.active.value?.turns).toHaveLength(1);expect(w.input.value).toBe('当前草稿');expect(w.problem.value).toContain('原对话和草稿已恢复');
+ expect(await w.withdraw(0,'当前草稿')).toBe(true);expect(w.active.value?.turns).toHaveLength(0);expect(JSON.stringify(w.state.value)).toBe(initial);expect(w.input.value).toBe('原行动');expect(gen).toHaveBeenCalledTimes(1);expect(w.memories.value).toEqual([]);expect(w.forum.value).toEqual([]);
+});
+it('撤回时仍在运行的记忆请求不能复活已删除轮次或覆盖 stale 状态',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('迟到记忆',{name:'玩家',appearance:'',background:'',personality:''},'');let release!:()=>void;const wait=new Promise<void>(r=>release=r);
+ vi.mocked(HttpGateway.prototype.memory).mockImplementation(async input=>{await wait;return normalizeMemoryResult({participants:[input.after.player.name],time:'未明确',location:'未明确',userActions:[input.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]},input);});
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'事件'}};});await w.generate('要撤回的行动');await vi.waitFor(()=>expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1));expect(await w.withdraw(0)).toBe(true);release();await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));expect(w.active.value?.turns).toHaveLength(0);expect(w.memories.value).toEqual([]);expect(w.active.value?.memoryTasks?.[0].status).toBe('stale');
+});
+it('补修对照保存到当前稿件，记录实际差异、无变化和失败，续写新稿不继承旧稿对照',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修审计',{name:'玩家',appearance:'',background:'',personality:''},'');const s=w.active.value!,v={id:'audit-v',text:'固定正文',status:'incomplete' as const,createdAt:''};s.turns.push({id:'audit-t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'原事件',characters:[{id:'guide',affinity:35}]});
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'done',outcome:{event:'补全',characters:[{id:'guide',affinity:45}],stateUpdate:{status:'updated',received:true,storyComplete:true,codes:['STATE_FIELD_SKIPPED']}}};});await w.repairState(0);
+ let audit=s.turns[0].variants[0].repairAudit!;expect(audit.variantId).toBe('audit-v');expect(audit.changes).toContainEqual({path:'/characters/guide/affinity',before:35,after:45});expect(audit.codes).toContain('STATE_FIELD_SKIPPED');expect(saved?.sessions[0].turns[0].variants[0].repairAudit).toEqual(audit);
+ await w.repairState(0);audit=s.turns[0].variants[0].repairAudit!;expect(audit.changes).toEqual([]);
+ gen.mockImplementation(async function*(){throw Error('接口失败');});await w.repairState(0);expect(s.turns[0].variants[0].repairAudit).toMatchObject({problem:'接口失败',changes:[]});expect(w.state.value?.characters[0].affinity).toBe(45);
+ gen.mockImplementation(async function*(){yield {type:'delta',text:'续写'};yield {type:'done',outcome:{event:'续写',characters:[{id:'guide',affinity:45}]}};});await generateAndWait(w,undefined,0,true);expect(s.turns[0].variants).toHaveLength(2);expect(s.turns[0].variants[0].repairAudit?.variantId).toBe('audit-v');expect(s.turns[0].variants[1].repairAudit).toBeUndefined();
+});
 it('默认逐轮生成记忆，旧的10轮设置导入后也迁移成1轮',async()=>{
  expect(defaults().memorySummaryInterval).toBe(1);
  const {cleanPreferences}=await import('../src/domain/story');expect(cleanPreferences({...defaults(),memorySummaryInterval:10}).memorySummaryInterval).toBe(1);
