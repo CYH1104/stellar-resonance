@@ -1,6 +1,6 @@
 import {forumInstruction,legacyForumInstruction} from './forumRequirements.ts';
-import {fanficInstruction,legacyFanficInstruction} from './theaterRequirements.ts';
-import {cleanSpiritDiary,isSpiritDiary,diaryInstruction,legacyDiaryInstruction,previousDiaryInstruction} from './spiritDiary.ts';
+import {fanficInstruction,legacyFanficInstruction,previousFanficInstruction} from './theaterRequirements.ts';
+import {cleanSpiritDiary,isSpiritDiary,diaryInstruction,legacyDiaryInstruction,previousDiaryInstruction,lastDiaryInstruction} from './spiritDiary.ts';
 import type {ActorState,Pairing,Persona,Session,TheaterScene,TheaterSetting} from './contracts';
 export const theaterTemplates=[{id:'fanfic',name:'同人文小剧场',kind:'fanfic',instruction:fanficInstruction},{id:'interview',name:'角色访谈',kind:'custom',instruction:'用简短采访呈现角色对一件公开日常小事的回答，不复述主线正文，不泄露秘密设定。'},{id:'spirit',name:'精神体日记',kind:'custom',instruction:diaryInstruction},{id:'off-duty',name:'课后碎片',kind:'custom',instruction:'围绕课后的小事写轻松独立片段，不推进或改变主线事实。'},{id:'custom',name:'自定义',kind:'custom',instruction:''}] as const;
 export const MAX_SIDE_THEATERS=6;
@@ -14,7 +14,7 @@ export function cleanTheaters(value:unknown):TheaterSetting[]{
     if(p.templateId!==undefined&&!theaterTemplates.some(t=>t.id===p.templateId))throw new Error('小剧场模板不正确');
     const diary=isSpiritDiary(p);
     slots.add(p.slot);if(p.slot===1&&p.kind!=='forum'||p.slot===2&&p.kind!=='group'||p.slot>=3&&!['group','fanfic','custom'].includes(p.kind))throw new Error('论坛和群聊的位置不可改为其他类型');
-    return {slot:p.slot,kind:p.kind,enabled:p.enabled,title:p.title.trim(),instruction:p.kind==='forum'&&p.instruction===legacyForumInstruction?forumInstruction:diary&&[legacyDiaryInstruction,previousDiaryInstruction].includes(p.instruction)?diaryInstruction:p.kind==='fanfic'&&p.instruction===legacyFanficInstruction?fanficInstruction:p.instruction,...(p.templateId?{templateId:p.templateId}:diary?{templateId:'spirit' as const}:{}),...(p.charId?{charId:p.charId}:{})};
+    return {slot:p.slot,kind:p.kind,enabled:p.enabled,title:p.title.trim(),instruction:p.kind==='forum'&&p.instruction===legacyForumInstruction?forumInstruction:diary&&[legacyDiaryInstruction,previousDiaryInstruction,lastDiaryInstruction].includes(p.instruction)?diaryInstruction:p.kind==='fanfic'&&[legacyFanficInstruction,previousFanficInstruction].includes(p.instruction)?fanficInstruction:p.instruction,...(p.templateId?{templateId:p.templateId}:diary?{templateId:'spirit' as const}:{}),...(p.charId?{charId:p.charId}:{})};
   }).sort((a,b)=>a.slot-b.slot);
   return legacy?[...cleaned,...defaultTheaters().filter(s=>s.slot>4)]:cleaned;
 }

@@ -1,5 +1,26 @@
 import type {Outcome} from './contracts';
 
+const explanations:Record<string,string>={
+  STATE_MVU_REJECTED:'变量补丁不合法，本轮变量更新未应用',
+  STATE_FORMAT_INVALID:'模型返回的状态结构不合法',
+  MODEL_STATE_JSON_INVALID:'状态 JSON 不完整或格式错误',
+  STATE_FIELD_SKIPPED:'部分状态字段的类型或数值范围不合法，已跳过',
+  STATE_EMPTY_FIELD_RETAINED:'模型返回空字段，已保留旧值',
+  STATE_UNKNOWN_CHARACTER_SKIPPED:'角色 ID 或姓名无法唯一匹配，未应用该角色更新',
+  STATE_ROSTER_RETAINED:'模型未返回在场名单，沿用已有名单或明确的在场更新',
+  STATE_AFFINITY_RETAINED:'本轮未收到有效的好感度更新，保留原值',
+  STATE_SPIRIT_THOUGHT_RETAINED:'在场角色的精神体 OS 缺失，保留原值',
+  STATE_PLAYER_THOUGHT_RETAINED:'玩家精神体 OS 缺失，保留原值',
+  STATE_AUX_RETAINED:'独立状态接口未完成，主正文已保留',
+  STATE_SIDE_SCENE_RETAINED:'本轮部分小剧场缺失或未通过完成校验',
+  STATE_THEATER_SKIPPED:'小剧场结构不合法，未替换已有内容',
+  MODEL_FANFIC_TOO_SHORT:'同人文正文不足 800 字',
+  MODEL_FANFIC_UNFINISHED:'同人文缺少结尾 END 或 complete:true',
+  MODEL_DIARY_TOO_SHORT:'精神体日记正文不足 200 字',
+  MODEL_DIARY_UNFINISHED:'精神体日记缺少结尾署名或故事日期',
+};
+export function stateUpdateDetails(outcome:Outcome|undefined){return [...new Set(outcome?.stateUpdate?.codes||[])].filter(code=>explanations[code]||/(?:INVALID|REJECTED|RETAINED|MISSING|SKIPPED|UNFINISHED|TOO_SHORT)$/.test(code)).map(code=>({code,text:explanations[code]||'该部分输出未通过校验，已有有效内容保留'}));}
+
 export function stateUpdateLabel(outcome:Outcome|undefined,needsRepair=false):string {
   const update=outcome?.stateUpdate;
   const prose=update?.storyComplete===false?'正文尚未完整':'正文已输出';

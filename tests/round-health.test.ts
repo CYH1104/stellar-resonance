@@ -11,7 +11,7 @@ const settings=()=>defaultTheaters().map(s=>({...s,enabled:s.slot<=4,...(s.slot=
 function round(){
  const s=newSession('测试',{name:'玩家',appearance:'',background:'',personality:'',spiritAnimal:'白猫'},'');
  s.initial={player:{id:'player',name:'玩家',present:true,spiritAnimal:'白猫',spiritThought:'旧想法'},characters:[{id:'one',name:'同学',present:false,spiritAnimal:'狐狸',affinity:10,spiritThought:'旧想法'}]};
- const outcome:Outcome={event:'见面',player:{spiritThought:'想去认识狐狸'},characters:[{id:'one',present:true,affinity:12,spiritThought:'看看白猫'}],forum:[{id:'f',authorName:'同学',content:'动态'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'你好'}]},{slot:3,kind:'fanfic',title:'同人文',content:'独立番外'.repeat(200),complete:true,participantIds:['player','one']},{slot:4,kind:'custom',title:'精神体日记',content:'今天我认识了狐狸。'.repeat(40),diary:{ownerId:'player',title:'新朋友',content:'今天我认识了狐狸。'.repeat(40)}}]};
+ const outcome:Outcome={event:'见面',player:{spiritThought:'想去认识狐狸'},characters:[{id:'one',present:true,affinity:12,spiritThought:'看看白猫'}],forum:[{id:'f',authorName:'同学',content:'动态'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'你好'}]},{slot:3,kind:'fanfic',title:'同人文',content:'独立番外'.repeat(200)+'\nEND',complete:true,participantIds:['player','one']},{slot:4,kind:'custom',title:'精神体日记',content:'今天我认识了狐狸。'.repeat(40),diary:{ownerId:'player',signatureName:'白猫',signatureDate:'日期未详',title:'新朋友',content:'今天我认识了狐狸。'.repeat(40)}}]};
  const v={id:'v',text:'正文已完。',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'打招呼',selected:0,variants:[v]});finishVariant(s,0,v,outcome);return s;
 }
 it('完整状态和全部已开启小剧场无需补全；缺项补齐后恢复隐藏',()=>{

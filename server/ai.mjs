@@ -1,4 +1,4 @@
-import {newDynamicActor} from '../src/domain/dynamicActors.ts';
+import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {withTavernContext} from './tavern-macro-engine.mjs';
 import {tracePresets} from './preset-diagnostics.mjs';
@@ -107,7 +107,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   if(request.randomEventInstruction!==undefined&&(typeof request.randomEventInstruction!=='string'||request.randomEventInstruction.length>4000))throw modelError(400,'INVALID_RANDOM_EVENT');
   const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8")+(request.randomEventInstruction?.trim()?'\nEvent creative direction (preserve the script roll, player agency and output protocol):\n'+request.randomEventInstruction.trim():''):'';
   const diaryPlan=theaterPlans.find(t=>isSpiritDiary(t));
-  const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'New diary title',mood:'Mood',content:'Today I...\n\nI discovered...'}})+internalPrompt("ai.10"):'';
+  const diaryExample=diaryPlan&&diaryOwners.length?internalPrompt("ai.9")+JSON.stringify({slot:diaryPlan.slot,kind:'custom',title:diaryPlan.title,content:'',diary:{ownerId:diaryOwners[0].ownerId,title:'New diary title',mood:'Mood',content:'Today I...\n\nI discovered...',signatureName:'Known spirit name',signatureDate:'Known story date or 日期未详'}})+internalPrompt("ai.10"):'';
   const privateCard={world:{},places:[],characters:[]};
   const promptState={...state,characters:state.characters.map(({id,name,present,affinity,relationship,innerThought,spiritThought})=>({id,name,present,affinity,relationship,innerThought,spiritThought}))};
   const context=featureContext({...(previousTheaters?{previousTheaters}:{}),participants,narrativeViewpoint:narrativeViewpoint(state.player),mvu:dataFromState(promptState),persona:request.persona,state:promptState,memories:request.memories.map(stripReasoning),presets:request.promptEntries?[]:request.presets,theaterPlans,forumContext:request.forumContext||[],dice,dicePlan:plan,specialEvent},theaterPlans,request);
@@ -126,7 +126,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(options.stateEnabled!==false&&raw?.mvu){try{expanded=applyMvu(state,raw.mvu);}catch{}}
   const actors=new Map(card.characters.map(c=>[c.id,c]));for(const actor of expanded.characters)if(!actors.has(actor.id))actors.set(actor.id,actor);
   const incoming=options.stateEnabled===false?[]:Array.isArray(raw?.characters)?raw.characters:raw?.characters&&typeof raw.characters==='object'?Object.entries(raw.characters).map(([id,v])=>({...v,id:v?.id??id})):[];
-  for(const value of incoming)if(value&&!actors.has(value.id)){try{const actor=newDynamicActor(value);actors.set(actor.id,actor);}catch{}}
+  for(const value of incoming)if(value&&!resolveActorId(actors.values(),value)){try{const actor=newDynamicActor(value);actors.set(actor.id,actor);}catch{}}
   card={...card,characters:[...actors.values()]};
   if(options.singleStateCall){raw=compatibleState(raw,card,state,options);options={...options,requireDynamicState:false,compatibilityPrepared:true};}
   const allowed=['mvu','presentCharacterIds','player','characters','event','diceEvent','forum','theaters','suggestions'];
@@ -178,10 +178,10 @@ export function normalizeModelState(card, state, raw,options={}) {
         if(!char||scene.participantIds?.[1]!==char.id)throw Error();
         result.pairing=determinePairing(options.persona||{},char);
       }
-      if(options.requireDynamicState){const code=theaterRequirementError(result,isSpiritDiary(setting),[state.player,...state.characters].some(a=>a.spiritAnimal?.trim()));if(code){if(options.singleStateCall&&['MODEL_FANFIC_TOO_SHORT','MODEL_DIARY_TOO_SHORT'].includes(code)){options.validationWarnings?.push(code);}else throw modelError(502,code);}}
+      if(options.requireDynamicState){const code=theaterRequirementError(result,isSpiritDiary(setting),[state.player,...state.characters].some(a=>a.spiritAnimal?.trim()));if(code){if(options.singleStateCall&&['MODEL_FANFIC_TOO_SHORT','MODEL_DIARY_TOO_SHORT','MODEL_DIARY_UNFINISHED'].includes(code)){options.validationWarnings?.push(code);}else throw modelError(502,code);}}
       return result;
     });
-  }catch(error){if(['MODEL_STATE_DIARY_INVALID','MODEL_FANFIC_TOO_SHORT','MODEL_FANFIC_UNFINISHED','MODEL_DIARY_TOO_SHORT'].includes(error.code))throw error;throw modelError(502,'MODEL_STATE_THEATERS_INVALID');}
+  }catch(error){if(['MODEL_STATE_DIARY_INVALID','MODEL_FANFIC_TOO_SHORT','MODEL_FANFIC_UNFINISHED','MODEL_DIARY_TOO_SHORT','MODEL_DIARY_UNFINISHED'].includes(error.code))throw error;throw modelError(502,'MODEL_STATE_THEATERS_INVALID');}
   if(options.requireDynamicState){
     const enabled=cleanTheaters(options.theaterSettings).filter(t=>t.enabled);
     for(const setting of enabled){

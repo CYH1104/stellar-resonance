@@ -186,7 +186,7 @@ export function useWorkspace() {
   });
   function memoryNeedsRepair(m:Memory){const session=active.value,index=session?.turns.findIndex(t=>t.id===m.sourceTurn)??-1;return !!session&&index>=0&&memoryNeedsWork(session,index);}
   const missingVectorCount=computed(()=>!preferences.vectorEnabled?0:memories.value.filter(m=>memoryReady(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile)))).length);
-  function vectorStatus(m:Memory){if(!preferences.vectorEnabled)return '本地关键词检索';if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'等待累计整理';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
+  function vectorStatus(m:Memory){if(!preferences.vectorEnabled)return '本地关键词检索';if(m.kind==='event'&&!memoryReady(m))return m.status==='failed'?'补记失败':'等待逐轮整理';if(m.indexError)return '索引失败';const p=profile(preferences.embeddingProfile);if(vectorCurrent(m,fingerprint(p)))return '已建索引';return m.vector?'索引待更新':preferences.vectorEnabled?'待建索引':'未开启向量';}
   async function encodeMemories(session:Session,items:Memory[],signal:AbortSignal){
     if(!preferences.vectorEnabled)return;const p=copy(profile(preferences.embeddingProfile)),model=fingerprint(p),signature=connectionSignature(p);
     if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存向量 API。');
@@ -201,7 +201,7 @@ export function useWorkspace() {
   async function writeRoundMemory(session:Session,index:number,signal:AbortSignal){
     const request=copy(roundMemoryInput(session,index)),sourceFingerprint=memorySignature(request),p=copy(summaryProfile.value!);
     let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===request.turnId&&m.sourceVariant===request.variantId);
-    if(m?.record&&memoryReady(m)&&m.sourceFingerprint===sourceFingerprint)return;
+    if(m?.record&&memoryReady(m)&&m.sourceFingerprint===sourceFingerprint){if(session.memoryEngine==='candidate'&&!m.source){m.source=sourceFor(session,request);try{await persist();}catch(e){delete m.source;throw e;}}return;}
     if(!m){m={id:uid(),kind:'event',text:'本轮记忆待整理。',createdAt:now(),sourceTurn:request.turnId,sourceVariant:request.variantId};session.memories.push(m);m=session.memories.find(x=>x.id===m!.id)!;}
     const target=m,originalTarget=copy(m);if(!target.record)target.status='pending';delete target.error;await persist();
     try{
@@ -223,10 +223,11 @@ export function useWorkspace() {
     try{await persist();}catch(e){session.memories=originalMemories;throw e;}if(preferences.vectorEnabled)try{await encodeMemories(session,targets,signal);}catch(e){for(const m of targets)m.indexError='索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}
   }
   async function flushMemoryInterval(session:Session,signal:AbortSignal){
-    const interval=Math.max(1,Math.min(20,Math.trunc(preferences.memorySummaryInterval||10)));
-    const pending=session.turns.map((t,i)=>({t,i})).filter(({t,i})=>selected(t)?.text.trim()&&memoryNeedsWork(session,i)).map(({i})=>i);
-    if(pending.length<interval)return;
-    const batch=pending.slice(0,interval),attempt=batch.map(i=>{const r=roundMemoryInput(session,i);return r.turnId+':'+r.variantId+':'+memorySignature(r);}).join('|');
+    // One request per completed round. Failed tasks wait for explicit retry and
+    // must not prevent newer rounds from being summarized and indexed.
+    const index=session.turns.map((_,i)=>i).reverse().find(i=>selected(session.turns[i])?.text.trim()&&memoryNeedsWork(session,i)&&taskFor(session,roundMemoryInput(session,i)).status!=='failed');
+    if(index===undefined)return;
+    const batch=[index],attempt=batch.map(i=>{const r=roundMemoryInput(session,i);return r.turnId+':'+r.variantId+':'+memorySignature(r);}).join('|');
     if(session.memoryBatchAttempt===attempt)return;session.memoryBatchAttempt=attempt;await safePersist();
     await executeMemoryBatch(session,batch,signal);
   }
@@ -240,14 +241,13 @@ export function useWorkspace() {
  if(loading.value)return;memoryQueue.add(session);if(workingMemory.value)return;
  workingMemory.value=true;const current=new AbortController();memoryController=current;
  try{while(memoryQueue.size){const next=memoryQueue.values().next().value!;memoryQueue.delete(next);if(!sessions.value.includes(next))continue;
-  try{for(;;){const previous=next.memoryBatchAttempt;await flushMemoryInterval(next,current.signal);if(previous===next.memoryBatchAttempt)break;current.signal.throwIfAborted();}}
-  catch(e){if(current.signal.aborted)throw e;logRuntime(e,'后台记忆整理');}
+  for(;;){const previous=next.memoryBatchAttempt;try{await flushMemoryInterval(next,current.signal);}catch(e){if(current.signal.aborted)throw e;logRuntime(e,'后台记忆整理');}if(previous===next.memoryBatchAttempt)break;current.signal.throwIfAborted();}
  }}catch(e){if(!current.signal.aborted)logRuntime(e,'后台记忆整理');}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
  }
   async function retryMemory(id?:string){
     const session=active.value;if(!session||busy.value||workingMemory.value)return;if(!ensureApiConfiguration())return;
     workingMemory.value=true;problem.value='';const current=new AbortController();memoryController=current;
-    try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(let start=0;start<indices.length;start+=20){current.signal.throwIfAborted();const batch=indices.slice(start,start+20);await executeMemoryBatch(session,batch,current.signal);}notice.value='记忆已保存。';}
+    try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(const index of indices){current.signal.throwIfAborted();await executeMemoryBatch(session,[index],current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
   async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
@@ -316,7 +316,7 @@ export function useWorkspace() {
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
-      notice.value='正文已保存，记忆任务将在后台按累计轮数整理。';
+      notice.value='正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
     }catch(e){problem.value=message(e);}
     finally{busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';void scheduleMemoryWork(session);}

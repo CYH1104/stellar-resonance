@@ -197,3 +197,14 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 
 #academy-workspace .interactive-html-frame{min-height:40px;max-height:none;resize:none;margin:8px 0;overflow:auto}#academy-workspace .html-source-toggle{font-size:11px;color:var(--color-muted);padding:2px 4px;background:transparent;border:0}#academy-workspace .html-source-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;font-size:12px}
+
+/* Reply numbering and completion evidence. */
+#academy-workspace .academy-reply-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%}
+#academy-workspace .academy-round-number{margin-left:auto;flex-shrink:0;color:var(--color-accent);font:400 14px Georgia,serif;letter-spacing:1.3px;opacity:.48}
+#academy-workspace .history-window-label{margin:0 0 8px;font-size:11px;color:var(--color-muted);opacity:.7}
+#academy-workspace .feature-toggle-state{font-size:10px;opacity:.65;margin-left:4px}
+#academy-workspace .fanfic-end{text-align:center;font:400 15px Georgia,serif;letter-spacing:4px;opacity:.7;margin:24px 0}
+#academy-workspace .companion-incomplete{font-size:11px;line-height:1.7;color:var(--color-muted);padding:10px 0;border-top:1px dashed var(--color-border)}
+#academy-workspace .state-validation-details{font-size:11px;line-height:1.8;color:var(--color-muted);margin:8px 0;text-align:left}
+#academy-workspace .state-validation-details summary{cursor:pointer;text-align:right}
+#academy-workspace .state-validation-details code{font-size:10px;overflow-wrap:anywhere}

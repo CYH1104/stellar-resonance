@@ -7,6 +7,7 @@ import ResizablePanel from './ResizablePanel.vue';
 import GroupChatPhone from './GroupChatPhone.vue';
 import SpiritDiaryView from './SpiritDiaryView.vue';
 import {isSpiritDiary} from '../domain/spiritDiary';
+import {fanficBody,fanficEnding,theaterRequirementError} from '../domain/theaterRequirements';
 import ForumFeed from './ForumFeed.vue';
 const props=defineProps<{w:ViewModel}>();
 const opened=ref<number|null>(props.w.preferences.theaters?.find(t=>t.enabled&&t.slot!==2)?.slot??null);
@@ -23,7 +24,9 @@ const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,pro
         <template v-if="w.theaters.find(t=>t.slot===s.slot&&t.kind===s.kind)">
           <template v-for="scene in w.theaters.filter(t=>t.slot===s.slot&&t.kind===s.kind)" :key="scene.slot">
             <div v-if="scene.messages?.length" class="group-chat"><p v-for="(message,i) in scene.messages" :key="i"><strong>{{message.speaker}}</strong><span>{{displayText(message.content)}}</span></p></div>
-            <p v-if="scene.content" class="theater-prose">{{displayText(scene.content)}}</p>
+            <p v-if="scene.content" class="theater-prose">{{displayText(scene.kind==='fanfic'?fanficBody(scene.content):scene.content)}}</p>
+            <p v-if="scene.kind==='fanfic'&&fanficEnding(scene.content)" class="fanfic-end">END</p>
+            <p v-if="scene.kind==='fanfic'&&theaterRequirementError(scene)" class="companion-incomplete" role="status">{{fanficEnding(scene.content)?'篇幅或完成标记不满足要求，尚未确认完篇。':'未收到结尾 END，尚未确认完篇，可能截断。'}}</p>
           </template>
         </template><p v-else class="empty">等待下一轮剧情完成后生成。</p>
       </template>

@@ -8,14 +8,15 @@ export function featurePrompts(plans,suggestions=true){
 export function featureContract(plans,suggestions=true){
  const required={};if(suggestions)required.suggestions=['A possible next action at the scene ending'];
  if(plans.some(p=>p.slot===1))required.forum=[{id:'unique-this-turn',authorName:'Generic campus alias',type:'Student update',time:'Just now',content:'A casual campus mood or public service reminder, never a scene recap',comments:[]}];
- const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':'New content for this turn',...(p.kind==='group'?{messages:[{speaker:'Public speaker name',content:'A fresh in-world message'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','known-character-id'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'known-spirit-owner-id',title:'New entry title',content:'A complete first-person spirit diary'}}:{})}));
+ const scenes=plans.filter(p=>p.slot>1).map(p=>({slot:p.slot,kind:p.kind,title:p.title,content:p.kind==='group'?'':p.kind==='fanfic'?'Complete standalone story followed by a final line\nEND':'New content for this turn',...(p.kind==='group'?{messages:[{speaker:'Public speaker name',content:'A fresh in-world message'}]}:{}),...(p.kind==='fanfic'?{participantIds:p.participantIds||['player','known-character-id'],complete:true}:{}),...(isSpiritDiary(p)?{diary:{ownerId:p.diaryOwners?.[0]?.ownerId||'known-spirit-owner-id',title:'New entry title',content:'A complete first-person spirit diary',signatureName:'Known spirit name or spirit designation, never the owner name',signatureDate:'Known story date or 日期未详'}}:{})}));
  if(scenes.length)required.theaters=scenes;
  if(!Object.keys(required).length)return '';
+ const completionRules='\nCompletion contract: fanfic content must finish with a standalone END line, only after the story is fully concluded; complete:true alone is insufficient. For spirit diaries, return signatureName and signatureDate only after finishing the entire diary. Use the spirit’s own known name (or known spirit designation), never the owner’s name. Use the story date, or 日期未详 when unknown, never the real-world date. Missing markers mean unconfirmed completion; never fake an ending after a cutoff.';
  const blocks=[];
  if(suggestions)blocks.push('<choices>'+JSON.stringify(required.suggestions)+'</choices>');
  if(required.forum)blocks.push('<forum>'+JSON.stringify(required.forum)+'</forum>');
  for(const scene of scenes)blocks.push('<theater slot="'+scene.slot+'">'+JSON.stringify(scene)+'</theater>');
- return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)})+'\n'+internalPrompt('feature.envelope',{p0:blocks.join('\n')});
+ return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)})+'\n'+internalPrompt('feature.envelope',{p0:blocks.join('\n')})+(plans.some(p=>p.kind==='fanfic'||isSpiritDiary(p))?completionRules:'');
 }
 export function featureContext(context,plans,{stateEnabled=true,suggestionsEnabled=true}={}){
  const out={...context};

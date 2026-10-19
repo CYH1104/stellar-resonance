@@ -13,7 +13,6 @@ onMounted(()=>{container=root.value?.closest<HTMLElement>('.theater-scroll-body'
 
 const expanded = ref<Record<string,boolean>>({});
 const drafts = ref<Record<string,string>>({});
-function source(w:ViewModel,id:string) { w.panel='story'; setTimeout(() => window.dispatchEvent(new CustomEvent('academy:story-turn',{detail:id})),100); }
 async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,drafts.value[key]||'')) drafts.value[key]=''; }
 </script>
 <template>
@@ -27,7 +26,6 @@ async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,draft
         <div class="forum-actions">
           <button :class="{liked:w.active?.forumActivity?.[post.key]?.liked}" :aria-pressed="!!w.active?.forumActivity?.[post.key]?.liked" :disabled="w.busy||w.workingMemory||!!w.workingForumReply" @click="w.toggleForumLike(post.key)">{{ w.active?.forumActivity?.[post.key]?.liked ? ' 已赞' : '♡ 点赞' }}</button>
           <button :aria-expanded="!!expanded[post.key]" @click="expanded[post.key]=!expanded[post.key]">评论 {{ (post.comments?.length||0)+(w.active?.forumActivity?.[post.key]?.replies?.length||0) }}</button>
-          <button @click="source(w,post.turnId)">来源剧情</button>
         </div>
         <section v-if="expanded[post.key]" class="forum-comments" :aria-label="`${post.authorName}动态的评论`">
           <p v-for="comment in post.comments" :key="comment.id"><strong>{{ comment.authorName }}</strong>：{{ displayText(comment.content) }}</p>

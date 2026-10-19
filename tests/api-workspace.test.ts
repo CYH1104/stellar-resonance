@@ -29,29 +29,52 @@ beforeEach(()=>{
 });
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function generateAndWait(w:ReturnType<typeof useWorkspace>,...args:Parameters<ReturnType<typeof useWorkspace>['generate']>){await w.generate(...args);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));}
-async function workspace(memoryInterval=10){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
-it('默认累计10轮之前只有一次主剧情生成，不调用建议、逐轮记忆或批量记忆',async()=>{
- expect(defaults().memorySummaryInterval).toBe(10);const w=await workspace();fill(w);await w.confirmAllApis();await w.create('调用计数',{name:'玩家',appearance:'',personality:'',background:''},'');
+async function workspace(memoryInterval=1){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
+it('默认逐轮生成记忆，旧的10轮设置导入后也迁移成1轮',async()=>{
+ expect(defaults().memorySummaryInterval).toBe(1);
+ const {cleanPreferences}=await import('../src/domain/story');expect(cleanPreferences({...defaults(),memorySummaryInterval:10}).memorySummaryInterval).toBe(1);
+ const w=await workspace(1);fill(w);w.preferences.vectorEnabled=true;await w.confirmAllApis();await w.create('逐轮',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'本轮完整正文'};yield {type:'done',outcome:{event:'推进'}};});
+ await generateAndWait(w,'第一轮');expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1);expect(w.pendingMemoryCount.value).toBe(0);expect(w.memories.value[0].vector?.values).toEqual([1,.5]);
+});
+it('一轮整理失败不能卡住下一轮，失败项保留手动重试且不自动反复付费',async()=>{
+ const w=await workspace(1);fill(w);await w.confirmAllApis();await w.create('失败隔离',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'完整正文'};yield {type:'done',outcome:{event:'推进'}};});
+ vi.mocked(HttpGateway.prototype.memory).mockRejectedValueOnce(new Error('第一轮失败'));
+ await generateAndWait(w,'第一轮');await generateAndWait(w,'第二轮');
+ expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(2);expect(w.pendingMemoryCount.value).toBe(1);expect(w.memories.value.find(m=>m.sourceTurn===w.active.value!.turns[1].id)?.status).toBe('ready');
+});
+it('连续九轮各整理一次，不等待第十轮且不调用批量接口或独立建议接口',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('调用计数',{name:'玩家',appearance:'',personality:'',background:''},'');
  const batch=vi.spyOn(HttpGateway.prototype,'memoryBatch'),utility=vi.spyOn(HttpGateway.prototype,'utility');
  const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'正文。'};yield{type:'done',outcome:{event:'推进',characters:[],suggestions:['观察','询问']}};});
  for(let i=0;i<9;i++)await generateAndWait(w,'行动'+i);
- expect(gen).toHaveBeenCalledTimes(9);expect(gen.mock.calls.every(args=>args[3]===undefined)).toBe(true);expect(batch).not.toHaveBeenCalled();expect(HttpGateway.prototype.memory).not.toHaveBeenCalled();expect(utility).not.toHaveBeenCalled();expect(w.active.value?.suggestions).toEqual(['观察','询问']);expect(saved?.sessions[0].turns).toHaveLength(9);
+ expect(gen).toHaveBeenCalledTimes(9);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(9);expect(batch).not.toHaveBeenCalled();expect(utility).not.toHaveBeenCalled();expect(w.effectiveMemoryCount.value).toBe(9);expect(w.pendingMemoryCount.value).toBe(0);expect(saved?.sessions[0].turns).toHaveLength(9);
 });
-it('达到累计轮数只发一个批量请求，正常后重新累计，不逐轮补调',async()=>{
- const w=await workspace(3);fill(w);await w.confirmAllApis();await w.create('批量',{name:'玩家',appearance:'',personality:'',background:''},'');
- vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'正文。'};yield{type:'done',outcome:{event:'推进',characters:[]}};});
- const record=vi.mocked(HttpGateway.prototype.memory).getMockImplementation()!;const batch=vi.spyOn(HttpGateway.prototype,'memoryBatch').mockImplementation(async(inputs,p,key,signal)=>Promise.all(inputs.map(input=>record(input,p,key,signal))));
- await generateAndWait(w,'一');await generateAndWait(w,'二');expect(batch).not.toHaveBeenCalled();await generateAndWait(w,'三');expect(batch).toHaveBeenCalledTimes(1);expect(batch.mock.calls[0][0].map(r=>r.input)).toEqual(['一','二','三']);expect(HttpGateway.prototype.memory).not.toHaveBeenCalled();expect(w.effectiveMemoryCount.value).toBe(3);expect(w.pendingMemoryCount.value).toBe(0);
- await generateAndWait(w,'四');await generateAndWait(w,'五');expect(batch).toHaveBeenCalledTimes(1);await generateAndWait(w,'六');expect(batch).toHaveBeenCalledTimes(2);expect(w.effectiveMemoryCount.value).toBe(6);
+it('运行中残留的旧累计设置也不能让自动队列继续等批次',async()=>{
+ const w=await workspace(3);fill(w);await w.confirmAllApis();await w.create('旧设置',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'正文。'};yield{type:'done',outcome:{event:'推进'}};});
+ const batch=vi.spyOn(HttpGateway.prototype,'memoryBatch');
+ for(let i=0;i<6;i++){await generateAndWait(w,'行动'+i);expect(w.effectiveMemoryCount.value).toBe(i+1);}
+ expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(6);expect(batch).not.toHaveBeenCalled();
 });
-it('累计整理失败不在后续每轮自动重复同一批次，原文与待整理记录保留',async()=>{
- const w=await workspace(2);fill(w);await w.confirmAllApis();await w.create('失败',{name:'玩家',appearance:'',personality:'',background:''},'');
- vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'保存正文。'};yield{type:'done',outcome:{event:'推进',characters:[]}};});const batch=vi.spyOn(HttpGateway.prototype,'memoryBatch').mockRejectedValue(new Error('批量失败'));
- await generateAndWait(w,'一');await generateAndWait(w,'二');expect(batch).toHaveBeenCalledTimes(1);await generateAndWait(w,'三');expect(batch).toHaveBeenCalledTimes(1);expect(saved?.sessions[0].turns).toHaveLength(3);expect(w.pendingMemoryCount.value).toBe(3);
+it('失败记忆只在手动补记时重试，不阻断后续回合或丢失正文',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('失败',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'保存正文。'};yield{type:'done',outcome:{event:'推进'}};});
+ vi.mocked(HttpGateway.prototype.memory).mockRejectedValueOnce(new Error('失败'));
+ await generateAndWait(w,'一');await generateAndWait(w,'二');await generateAndWait(w,'三');
+ expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(3);expect(w.pendingMemoryCount.value).toBe(1);expect(saved?.sessions[0].turns).toHaveLength(3);
+ await w.retryMemory();expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(4);expect(w.pendingMemoryCount.value).toBe(0);
+});
+it('高轮数仍直接携带最近12轮原文，向量召回的旧记忆不会替换这段历史',async()=>{
+ const w=await workspace();fill(w);w.preferences.vectorEnabled=true;await w.confirmAllApis();await w.create('长对话',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield{type:'delta',text:'原文-'+r.input};yield{type:'done',outcome:{event:'事件-'+r.input}};});
+ for(let i=0;i<15;i++)await generateAndWait(w,'ROUND-'+i);
+ const request=gen.mock.calls[14][0];expect(request.historyStart).toBe(2);expect(request.history).toHaveLength(24);expect(request.history[0].content).toBe('ROUND-2');expect(request.history.at(-1)?.content).toBe('原文-ROUND-13');expect(request.history.map(m=>m.content)).not.toContain('ROUND-1');expect(request.memories.length).toBeGreaterThan(0);expect(request.memories.length).toBeLessThanOrEqual(8);expect(w.pendingMemoryCount.value).toBe(0);expect(w.memories.value.every(m=>!!m.vector)).toBe(true);
 });
 it('随机事件跟随主 API 时不单独准备候选，接受后随主剧情一次生成',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('随机调用',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;vi.spyOn(crypto,'getRandomValues').mockImplementation(a=>{(a as Uint32Array)[0]=0;return a;});
- const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield{type:'delta',text:'正文事件。'};yield{type:'done',outcome:{event:'发生事件',characters:[],diceEvent:{direction:'negative',description:'局部停电'}}};});await generateAndWait(w,'行动');expect(HttpGateway.prototype.randomEvent).not.toHaveBeenCalled();await w.decideRandomEvent(0,true);expect(gen).toHaveBeenCalledTimes(1);expect(gen.mock.calls[0][0].specialEvent?.kind).toBe('突发事件');expect(HttpGateway.prototype.memory).not.toHaveBeenCalled();
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield{type:'delta',text:'正文事件。'};yield{type:'done',outcome:{event:'发生事件',characters:[],diceEvent:{direction:'negative',description:'局部停电'}}};});await generateAndWait(w,'行动');expect(HttpGateway.prototype.randomEvent).not.toHaveBeenCalled();await w.decideRandomEvent(0,true);expect(gen).toHaveBeenCalledTimes(1);expect(gen.mock.calls[0][0].specialEvent?.kind).toBe('突发事件');expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1);
 });
 it('完整回复可以续写，原完整稿保留，失败也不会覆盖原稿',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('续写测试',{name:'玩家',appearance:'',personality:'',background:''},'');
@@ -67,6 +90,13 @@ function fill(w:ReturnType<typeof useWorkspace>,id='main'){
   if(id==='main')fill(w,'embed');
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }
+it('旧摘要指纹仍有效但缺少来源时，单条补记恢复来源，不重复调用文字模型',async()=>{
+ const w=await workspace(1);fill(w);await w.confirmAllApis();await w.create('来源恢复',{name:'玩家',appearance:'',personality:'',background:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'完成正文'};yield {type:'done',outcome:{event:'见面'}};});
+ await generateAndWait(w,'行动');const s=w.active.value!,m=w.memories.value[0];s.memoryEngine='candidate';delete m.source;
+ expect(w.pendingMemoryCount.value).toBe(1);const calls=vi.mocked(HttpGateway.prototype.memory).mock.calls.length;
+ await w.retryMemory(m.id);expect(w.memories.value[0].source).toMatchObject({sourceVariantId:s.turns[0].variants[0].id});expect(w.pendingMemoryCount.value).toBe(0);expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(calls);
+});
 it('从学院重新打开当前存档和切换存档各自恢复输入草稿，不串到新的会话',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('甲',{name:'甲',appearance:'',personality:'',background:''},'');const a=w.sessionId.value;w.input.value='甲的草稿';
  w.open(a);expect(w.input.value).toBe('甲的草稿');await w.create('乙',{name:'乙',appearance:'',personality:'',background:''},'');const b=w.sessionId.value;expect(w.input.value).toBe('');w.input.value='乙的草稿';

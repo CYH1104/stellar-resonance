@@ -1,4 +1,4 @@
-import {newDynamicActor} from '../src/domain/dynamicActors.ts';
+import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
 import {applyMvu,cleanOperations,pointer} from '../src/domain/mvu.ts';
@@ -20,7 +20,8 @@ export function compatibleState(raw,card,state,options){
   if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
   const known=new Map(state.characters.map(c=>[c.id,c]));
-  const resolve=value=>{const key=typeof value==='string'?value:object(value)?value.id??value.name:undefined;if(known.has(key))return key;const matches=[...known.values()].filter(c=>c.name===key);return matches.length===1?matches[0].id:undefined;};
+  const actorAliases=new Map(),ambiguousAliases=new Set();
+  const resolve=value=>resolveActorId(known.values(),value)??(typeof value==='string'?actorAliases.get(value):undefined);
   const out={event:typeof raw.event==='string'&&raw.event.trim()?displayText(raw.event).slice(0,500):'本轮剧情已生成，状态按有效字段更新。'};
   if(out.event!==raw.event)warn('STATE_EVENT_RECOVERED');
   let mvuState=state,mvuAccepted=false;
@@ -57,7 +58,7 @@ export function compatibleState(raw,card,state,options){
   const entries=Array.isArray(raw.characters)?raw.characters:object(raw.characters)?Object.entries(raw.characters).map(([id,v])=>object(v)?{...v,id:v.id??id}:v):[];
   if(raw.characters!==undefined&&!Array.isArray(raw.characters))warn('STATE_CHARACTERS_NORMALIZED');
   let embeddedPlayer={};
-  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const actor=newDynamicActor(value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
+  for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const actor=newDynamicActor(value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}if(typeof value?.id==='string'&&value.id!==id){if(actorAliases.has(value.id)&&actorAliases.get(value.id)!==id){actorAliases.delete(value.id);ambiguousAliases.add(value.id);}else if(!ambiguousAliases.has(value.id))actorAliases.set(value.id,id);}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
   out.characters=[...patches.values()];
   const playerChanges=Object.fromEntries(dynamic.filter(k=>mvuState.player?.[k]!==state.player[k]).map(k=>[k,mvuState.player[k]]));
   const player={...actorFields(playerChanges,state.player,true),...embeddedPlayer,...actorFields(raw.player,state.player,true)};if(Object.keys(player).length)out.player=player;
@@ -70,6 +71,8 @@ export function compatibleState(raw,card,state,options){
     warn('STATE_ROSTER_RETAINED');
     out.presentCharacterIds=[...known.values()].filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
   }
+  // An explicit MVU transition is newer than the accompanying status snapshot.
+  if(mvuAccepted)for(const actor of mvuState.characters){const before=state.characters.find(c=>c.id===actor.id);if(!before||before.present!==actor.present){const present=new Set(out.presentCharacterIds);if(actor.present)present.add(actor.id);else present.delete(actor.id);out.presentCharacterIds=[...present];}}
   if(raw.diceEvent!==undefined)out.diceEvent=raw.diceEvent;
   const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
   if(suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}
@@ -116,7 +119,7 @@ export function compatibleState(raw,card,state,options){
       }
       if(isSpiritDiary(setting)){
         const diary=object(value.diary)?value.diary:object(value.content)?value.content:undefined;
-        if(diary){const owner=diary.ownerId==='player'?state.player:known.get(resolve(diary.ownerId??diary.ownerName));if(owner?.spiritAnimal){scene.diary={ownerId:owner.id,ownerName:owner.name,spiritAnimal:owner.spiritAnimal,title:typeof diary.title==='string'?diary.title:setting.title,content:typeof diary.content==='string'?displayText(diary.content):scene.content,...(typeof diary.mood==='string'?{mood:diary.mood}:{}),...(typeof diary.date==='string'?{date:diary.date}:{})};scene.content=scene.diary.content;}}
+        if(diary){const owner=diary.ownerId==='player'?state.player:known.get(resolve(diary.ownerId??diary.ownerName));if(owner?.spiritAnimal){scene.diary={ownerId:owner.id,ownerName:owner.name,spiritAnimal:owner.spiritAnimal,title:typeof diary.title==='string'?diary.title:setting.title,content:typeof diary.content==='string'?displayText(diary.content):scene.content,...(typeof diary.mood==='string'?{mood:diary.mood}:{}),...(typeof diary.date==='string'?{date:diary.date}:{}),...(typeof diary.signatureName==='string'?{signatureName:diary.signatureName}:{}),...(typeof diary.signatureDate==='string'?{signatureDate:diary.signatureDate}:{})};scene.content=scene.diary.content;}}
         // A plain diary still has readable text; keep it without inventing an owner.
       }
       try{const clean=cleanTheaterScenes([scene])[0],hasSpirit=[state.player,...state.characters].some(a=>a.spiritAnimal?.trim());const usable=s=>!theaterRequirementError(s,isSpiritDiary(setting),hasSpirit)&&(s.kind==='group'?s.messages?.some(m=>m.speaker.trim()&&m.content.trim()):s.content.trim());const at=out.theaters.findIndex(s=>s.slot===slot);if(at<0)out.theaters.push(clean);else if(usable(clean)||!usable(out.theaters[at]))out.theaters[at]=clean;}catch{warn('STATE_THEATER_SKIPPED');}

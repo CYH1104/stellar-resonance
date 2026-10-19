@@ -7,11 +7,11 @@ const card={characters:[{id:'one',name:'甲',spiritAnimal:'白狐'}],world:{gree
 const state={player:{id:'player',name:'玩家',present:true},characters:[{id:'one',name:'甲',spiritAnimal:'白狐',affinity:36,present:false}]};
 const settings=defaultTheaters();settings[2].enabled=true;settings[3].enabled=true;
 const options={requireDynamicState:true,theaterSettings:settings,persona:{name:'玩家'}};
-const valid=()=>({presentCharacterIds:['one'],characters:[{id:'one',affinity:42,spiritThought:'想凑过去闻闻。'}],event:'在门口相遇',forum:[{id:'post',authorName:'路人',content:'今天广场很热闹'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'晚饭吃什么？'}]},{slot:3,kind:'fanfic',title:'同人文',content:'你和甲一起去买饮料。'.repeat(100),complete:true,participantIds:['player','one']},{slot:4,kind:'custom',title:'日记',content:'白狐在窗边晒太阳。'}]});
+const valid=()=>({presentCharacterIds:['one'],characters:[{id:'one',affinity:42,spiritThought:'想凑过去闻闻。'}],event:'在门口相遇',forum:[{id:'post',authorName:'路人',content:'今天广场很热闹'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'晚饭吃什么？'}]},{slot:3,kind:'fanfic',title:'同人文',content:'你和甲一起去买饮料。'.repeat(100)+'\nEND',complete:true,participantIds:['player','one']},{slot:4,kind:'custom',title:'日记',content:'白狐在窗边晒太阳。'}]});
 test('同人文过短或缺少完篇确认会触发明确错误，不能提交为合格小剧场',()=>{
  const short=valid();short.theaters[1].content='文'.repeat(799);assert.throws(()=>normalizeModelState(card,state,short,options),{code:'MODEL_FANFIC_TOO_SHORT'});
  const unfinished=valid();unfinished.theaters[1].content='文'.repeat(800);delete unfinished.theaters[1].complete;assert.throws(()=>normalizeModelState(card,state,unfinished,options),{code:'MODEL_FANFIC_UNFINISHED'});
- unfinished.theaters[1].complete=true;assert.equal(normalizeModelState(card,state,unfinished,options).theaters[1].complete,true);
+ unfinished.theaters[1].complete=true;unfinished.theaters[1].content+='\nEND';assert.equal(normalizeModelState(card,state,unfinished,options).theaters[1].complete,true);
 });
 test('短同人文走已有补修预算，补齐后正文不重写',async()=>{
  const first=valid();first.theaters[1].content='未写完的短片段';const response=s=>new Response(JSON.stringify({choices:[{message:{content:s}}]}),{headers:{'Content-Type':'application/json'}}),events=[];let calls=0;
