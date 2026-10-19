@@ -322,14 +322,14 @@ export class StoryDecoder {
     for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
     const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}
     if(theaters.length){const mixed=[...(Array.isArray(assembled.theaters)?assembled.theaters:[]),...theaters];assembled.theaters=single?mixed:[...new Map(mixed.map(scene=>[scene?.slot,scene])).values()];}
-    let attitude,attitudeAccepted=false;
+    let attitude,attitudeAccepted=false;const affinityReviewedIds=[];
     if(options.stateEnabled!==false){
       if(blocks.attitudes.length&&!incomplete.has('attitudes')){try{attitude=parseStateJson(blocks.attitudes.at(-1)).value;}catch{warn('STATE_ATTITUDE_INVALID');}}
       else if(assembled.affinityChanges!==undefined){attitude={changes:assembled.affinityChanges};delete assembled.affinityChanges;}
       else if(options.variableOnly){try{const raw=parseStateJson(this.raw.replace(/<done>/gi,'').trim()).value;if(Array.isArray(raw?.changes))attitude=raw;}catch{}}
     }
     let mvu=assembled.mvu,mvuFailed=false;
-    if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn);assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
+    if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn,[...(Array.isArray(assembled.characters)?assembled.characters:[]),...(Array.isArray(assembled.presentCharacterIds)?assembled.presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)).map(id=>({id,present:true}))],id=>affinityReviewedIds.push(id));assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
 
     if(attitudeAccepted){
       // A stale absolute score in status must not override a neutral review.
@@ -349,7 +349,7 @@ export class StoryDecoder {
     if(single){
       const partial=warnings.some(code=>/STATE_(?:FIELD_SKIPPED|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_)/.test(code));
       const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));
-      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],retainedPresentIds:[...new Set(retainedPresentIds)]};
+      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],...(attitudeAccepted?{affinityReviewedIds:[...new Set(affinityReviewedIds)]}:{}),retainedPresentIds:[...new Set(retainedPresentIds)]};
     }
     return outcome;
   }

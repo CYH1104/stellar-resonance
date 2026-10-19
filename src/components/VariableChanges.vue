@@ -6,6 +6,10 @@ import {dataFromState,type Json,type MvuOperation} from '../domain/mvu';
 import {stateUpdateDetails} from '../domain/stateUpdate';
 const props=defineProps<{session:Session;index:number}>();
 const variant=computed(()=>selected(props.session.turns[props.index]));
+const affinityReviews=computed(()=>{
+ const before=stateAt(props.session,props.index),after=stateAt(props.session,props.index+1);
+ return (variant.value?.outcome?.stateUpdate?.affinityReviewedIds||[]).map(id=>{const old=before.characters.find(c=>c.id===id),next=after.characters.find(c=>c.id===id);return {id,name:next?.name||old?.name||id,before:old?.affinity??0,after:next?.affinity??old?.affinity??0};});
+});
 const changes=computed(()=>{
  const result:MvuOperation[]=[];
  const before=dataFromState(stateAt(props.session,props.index)).stat_data;
@@ -24,6 +28,7 @@ const output=computed(()=>'<UpdateVariable>\n<JSONPatch>\n'+JSON.stringify(chang
  <details class="variable-change-card">
   <summary>变量变化 · {{variant?.status==='complete'?changes.length+' 项已应用':'等待本轮完成'}}</summary>
   <p>以下为本轮应用后的实际状态差异，包含状态字段和 MVU 更新；不是模型原始命令。</p>
+  <ul v-if="affinityReviews.length"><li v-for="review in affinityReviews" :key="review.id">{{review.name}} · 好感度 {{review.before}} → {{review.after}}（{{review.after===review.before?'本轮无变化':(review.after>review.before?'+':'')+(review.after-review.before)}}）</li></ul>
   <p v-if="variant?.status==='complete'&&!changes.length">本轮没有已应用的变量变化；下方校验说明会区分未收到补丁与更新被拒绝。有效空补丁表示本轮无变化。</p>
   <ul v-if="stateUpdateDetails(variant?.outcome).length"><li v-for="item in stateUpdateDetails(variant?.outcome)" :key="item.code">{{item.text}}</li></ul>
   <p v-if="variant?.outcome?.stateUpdate?.codes?.length">校验记录：{{variant.outcome.stateUpdate.codes.join('、')}}</p>

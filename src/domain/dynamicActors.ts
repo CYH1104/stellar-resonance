@@ -17,7 +17,7 @@ export function newDynamicActor(value:unknown):ActorState{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('新角色格式不正确');
  const v=value as Record<string,unknown>;
  if(!validActorId(v.id)||typeof v.name!=='string'||!v.name.trim()||v.name.length>80)throw Error('新角色需要有效 ID 和姓名');
- const actor:ActorState={id:v.id,name:v.name,present:false};
+ const actor:ActorState={id:v.id,name:v.name,present:false,affinity:0};
  const limits:Record<string,number>={name:80,ability:2000,mentalPowerLevel:100,identity:200,primaryGender:100,secondaryGender:100,relationship:200,innerThought:2000,spiritAnimal:1500,spiritThought:2000};
  for(const [k,x]of Object.entries(v)){
   if(k==='id')continue;

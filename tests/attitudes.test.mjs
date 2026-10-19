@@ -22,7 +22,11 @@ test('neutral judgment preserves values and missing or invalid review is explici
 });
 test('neutral review overrides a stale absolute status score',()=>{
  const d=new StoryDecoder();d.push('<attitudes>{"changes":[{"id":"lin","attitude":"neutral"}]}</attitudes>正文<status>{"event":"问好","presentCharacterIds":["lin"],"characters":[{"id":"lin","affinity":99}]}</status><done>');
- const out=d.finish(card,state,{singleStateCall:true});assert.ok(out.characters.every(c=>c.affinity===undefined));
+ const out=d.finish(card,state,{singleStateCall:true});assert.ok(out.characters.every(c=>c.affinity===undefined));assert.deepEqual(out.stateUpdate.affinityReviewedIds,['lin']);
+});
+test('a new status card always has numeric affinity and omitted present-card judgments are reported',()=>{
+ const d=new StoryDecoder();d.push('<attitudes>{"changes":[]}</attitudes>正文<status>{"event":"登记","presentCharacterIds":["clerk"],"characters":[{"id":"clerk","name":"值班人员","relationship":"接待工作人员"}]}</status><done>');
+ const out=d.finish(card,state,{singleStateCall:true});const actor=out.characters.find(c=>c.id==='clerk');assert.equal(actor.affinity,0);assert.ok(out.stateUpdate.codes.includes('STATE_ATTITUDE_REVIEW_MISSING'));
 });
 test('saved outcomes replay once across repeated reads, variants and rollback',()=>{
  const s=newSession('测试',{name:'玩家',appearance:'',background:'',personality:''},'');s.initial=state;

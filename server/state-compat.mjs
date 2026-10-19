@@ -127,6 +127,15 @@ export function compatibleState(raw,card,state,options){
       try{const clean=cleanTheaterScenes([scene])[0],hasSpirit=[state.player,...state.characters].some(a=>a.spiritAnimal?.trim());const usable=s=>!theaterRequirementError(s,isSpiritDiary(setting),hasSpirit)&&(s.kind==='group'?s.messages?.some(m=>m.speaker.trim()&&m.content.trim()):s.content.trim());const at=out.theaters.findIndex(s=>s.slot===slot);if(at<0)out.theaters.push(clean);else if(usable(clean)||!usable(out.theaters[at]))out.theaters[at]=clean;}catch{warn('STATE_THEATER_SKIPPED');}
     }
   }
+  if(options.stateEnabled!==false){
+    for(const id of out.presentCharacterIds||[]){
+      const patch=patches.get(id),before=known.get(id);
+      if(before?.affinity===undefined&&patch?.affinity===undefined){
+        if(patch)patch.affinity=0;else out.characters.push({id,affinity:0});
+        warn('STATE_AFFINITY_RETAINED');
+      }
+    }
+  }
   if(options.requireDynamicState){
     for(const scene of out.theaters||[]){const setting=enabled.find(s=>s.slot===scene.slot);const code=theaterRequirementError(scene,isSpiritDiary(setting),[state.player,...state.characters].some(a=>a.spiritAnimal?.trim()));if(code)warn(code);}
     if(options.stateEnabled!==false){for(const id of out.presentCharacterIds){const patch=patches.get(id),before=known.get(id);if(!mvuAccepted&&patch?.affinity===undefined)warn('STATE_AFFINITY_RETAINED');if(before?.spiritAnimal&&!patch?.spiritThought)warn('STATE_SPIRIT_THOUGHT_RETAINED');}
