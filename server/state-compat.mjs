@@ -1,4 +1,5 @@
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
+import {hasDeltaRoster} from '../src/domain/roster.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
 import {applyMvu,cleanOperations,pointer,explicitPresenceIds} from '../src/domain/mvu.ts';
@@ -17,10 +18,11 @@ const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?
  * Strict schema validation still applies to each accepted field/section. */
 export function compatibleState(raw,card,state,options){
   if(!object(raw))return raw;
-  if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
+  if(options.stateEnabled===false)raw={...raw,present:undefined,enter:undefined,exit:undefined,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
   const retain=id=>{if(!options.retainedPresentIds?.includes(id))options.retainedPresentIds?.push(id);};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
   const known=new Map(state.characters.map(c=>[c.id,c]));
+  const deltaRoster=hasDeltaRoster(raw);
   const actorAliases=new Map(),ambiguousAliases=new Set();
   const resolve=value=>resolveActorId(known.values(),value)??(typeof value==='string'?actorAliases.get(value):undefined);
   const out={event:typeof raw.event==='string'&&raw.event.trim()?displayText(raw.event).slice(0,500):'本轮剧情已生成，状态按有效字段更新。'};
@@ -60,11 +62,15 @@ export function compatibleState(raw,card,state,options){
   if(raw.characters!==undefined&&!Array.isArray(raw.characters))warn('STATE_CHARACTERS_NORMALIZED');
   let embeddedPlayer={};
   for(const value of entries){if(object(value)&&value.id==='player'){embeddedPlayer={...embeddedPlayer,...actorFields(value,state.player,true)};continue;}let id=resolve(value);if(!id){try{const actor=newDynamicActor(value);id=actor.id;known.set(id,actor);patches.set(id,{...actor});}catch{warn('STATE_UNKNOWN_CHARACTER_SKIPPED');continue;}}if(typeof value?.id==='string'&&value.id!==id){if(actorAliases.has(value.id)&&actorAliases.get(value.id)!==id){actorAliases.delete(value.id);ambiguousAliases.add(value.id);}else if(!ambiguousAliases.has(value.id))actorAliases.set(value.id,id);}patches.set(id,{...patches.get(id),...actorFields(value,known.get(id))});}
+  if(deltaRoster)for(const value of entries){const id=resolve(value);if(id&&typeof value?.present==='boolean'){const patch=patches.get(id)||{id};patch.present=value.present;patches.set(id,patch);}}
   out.characters=[...patches.values()];
   const playerChanges=Object.fromEntries(dynamic.filter(k=>mvuState.player?.[k]!==state.player[k]).map(k=>[k,mvuState.player[k]]));
   const player={...actorFields(playerChanges,state.player,true),...embeddedPlayer,...actorFields(raw.player,state.player,true)};if(Object.keys(player).length)out.player=player;
   const roster=raw.presentCharacterIds;
-  if(Array.isArray(roster)){
+  if(deltaRoster){
+    for(const key of ['present','enter','exit'])if(Array.isArray(raw[key]))out[key]=raw[key].map(resolve).filter(Boolean);
+    if(out.present===undefined&&Array.isArray(raw.presentCharacterIds))out.present=raw.presentCharacterIds.map(resolve).filter(Boolean);
+  } else if(Array.isArray(roster)){
     const ids=roster.map(resolve);if(ids.some(id=>!id))warn('STATE_UNKNOWN_CHARACTER_SKIPPED');
     // An entirely unrecognized roster is not evidence that everybody left.
     if(roster.length&&ids.every(id=>!id)){state.characters.forEach(c=>retain(c.id));warn('STATE_ROSTER_RETAINED');}
@@ -74,7 +80,7 @@ export function compatibleState(raw,card,state,options){
     out.presentCharacterIds=[...known.values()].filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);if(boolean(patch?.present)===undefined)retain(c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
   }
   // An explicit MVU transition is newer than the accompanying status snapshot.
-  if(mvuAccepted)for(const actor of mvuState.characters){const before=state.characters.find(c=>c.id===actor.id);if(!before||before.present!==actor.present||explicitPresent.has(actor.id)||explicitPresent.has('*')){const at=options.retainedPresentIds?.indexOf(actor.id)??-1;if(at>=0)options.retainedPresentIds.splice(at,1);const present=new Set(out.presentCharacterIds);if(actor.present)present.add(actor.id);else present.delete(actor.id);out.presentCharacterIds=[...present];}}
+  if(mvuAccepted&&!deltaRoster)for(const actor of mvuState.characters){const before=state.characters.find(c=>c.id===actor.id);if(!before||before.present!==actor.present||explicitPresent.has(actor.id)||explicitPresent.has('*')){const at=options.retainedPresentIds?.indexOf(actor.id)??-1;if(at>=0)options.retainedPresentIds.splice(at,1);const present=new Set(out.presentCharacterIds);if(actor.present)present.add(actor.id);else present.delete(actor.id);out.presentCharacterIds=[...present];}}
   if(raw.diceEvent!==undefined)out.diceEvent=raw.diceEvent;
   const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
   if(suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}

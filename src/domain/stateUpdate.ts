@@ -2,6 +2,7 @@ import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
   STATE_MVU_REJECTED:'变量补丁不合法，本轮变量更新未应用',
+  STATE_MVU_PARTIAL:'部分变量更新未通过校验，已应用其余有效更新',
   STATE_ATTITUDE_INVALID:'本轮好感判断格式无效，原数值已保留，可手动补全本轮状态',
   STATE_ATTITUDE_REVIEW_MISSING:'部分在场角色漏返回本轮好感判断，已保留原数值，可手动补全',
   STATE_ATTITUDE_ITEM_SKIPPED:'部分角色的好感判断无效或重复，已保留其他有效结果',

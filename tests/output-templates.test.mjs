@@ -24,7 +24,7 @@ test('each enabled companion template is closed, parseable and uses its actual s
 });
 test('state example covers every present character without importing absent actors',()=>{
  const state={player:{id:'player',spiritAnimal:'cat'},characters:[{id:'lin',name:'Lin',present:true},{id:'mei',name:'Mei',present:true,spiritAnimal:'bird'},{id:'absent',name:'Away',present:false}]};
- const example=stateExample({state});assert.deepEqual(example.presentCharacterIds,['lin','mei']);
+ const example=stateExample({state});assert.deepEqual(example.present,['lin','mei']);
  assert.ok(example.characters.every(c=>c.name&&c.attitude==='neutral'&&c.strength==='small'));
  assert.ok(example.characters[1].spiritThought);assert.ok(example.player.spiritThought);
 });
