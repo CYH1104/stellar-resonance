@@ -22,3 +22,12 @@ test('disabling state generation sends neither the protocol nor the dynamic stat
  assert.ok(!messages.some(m=>m.content.includes('Current state JSON')));
  assert.ok(!messages.some(m=>m.content.includes('"stat_data"')));
 });
+test('actual default story request consistently teaches delta rosters and embedded reviews',()=>{
+ const {messages}=buildMessages(card,request);
+ const sent=messages.map(m=>m.content).join('\n');
+ assert.ok(sent.includes('Omission is not departure'));
+ assert.ok(sent.includes('"present":["one"]'));
+ assert.ok(sent.includes('"attitude":"neutral"'));
+ assert.ok(!sent.includes('presentCharacterIds'));
+ assert.ok(!sent.includes('UpdateVariable/Analysis update summary is allowed'));
+});
