@@ -4,13 +4,15 @@ import type {TheaterSetting} from '../domain/contracts';
 import {theaterTemplates} from '../domain/theaters';
 defineProps<{w:ViewModel;embedded?:boolean}>();
 function template(slot:TheaterSetting,id:string){const value=theaterTemplates.find(t=>t.id===id);if(!value)return;slot.kind=value.kind;slot.title=value.name;slot.instruction=value.instruction;slot.templateId=value.id;}
+function add(w:ViewModel){const settings=w.preferences.theaters||=[];const slot=Math.max(2,...settings.map(s=>s.slot))+1;if(!Number.isSafeInteger(slot))return;settings.push({slot,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''});}
 </script>
 <template><section :class="embedded?'subsection':'surface'">
   <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><button class="primary" :disabled="w.busy" @click="w.save()">保存设置</button></header>
   
   
   <p class="hint"><button type="button" @click="w.panel='settings'">前往 API 设置</button></p>
-  <p class="rail-note">论坛独立，最多可开启六个小剧场（含群聊）。各项由你自行开关，新增位置默认关闭。</p>
+  <p class="rail-note">论坛独立，自定义小剧场可按需新增。各项由你自行开关，新增位置默认关闭。</p>
+  <button type="button" :disabled="w.busy" @click="add(w)">新增自定义小剧场</button>
   <p class="rail-note">当前开启 {{w.preferences.theaters?.filter(s=>s.slot>1&&s.enabled).length||0}} 个小剧场；内容较多时，可到预设页按需调整最大输出 Token。</p>
   <div class="theater-settings-grid"><article v-for="s in w.preferences.theaters" :key="s.slot" class="list-entry">
     <header class="panel-heading"><h2>位置 {{s.slot}} · {{s.slot===1?'论坛':s.slot===2?'群聊':'自定义'}}</h2><label class="toggle"><input v-model="s.enabled" type="checkbox" :disabled="w.busy" />开启</label></header>

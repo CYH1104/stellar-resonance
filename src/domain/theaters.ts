@@ -3,19 +3,19 @@ import {fanficInstruction,legacyFanficInstruction,previousFanficInstruction} fro
 import {cleanSpiritDiary,isSpiritDiary,diaryInstruction,legacyDiaryInstruction,previousDiaryInstruction,lastDiaryInstruction} from './spiritDiary.ts';
 import type {ActorState,Pairing,Persona,Session,TheaterScene,TheaterSetting} from './contracts';
 export const theaterTemplates=[{id:'fanfic',name:'同人文小剧场',kind:'fanfic',instruction:fanficInstruction},{id:'interview',name:'角色访谈',kind:'custom',instruction:'用简短采访呈现角色对一件公开日常小事的回答，不复述主线正文，不泄露秘密设定。'},{id:'spirit',name:'精神体日记',kind:'custom',instruction:diaryInstruction},{id:'off-duty',name:'课后碎片',kind:'custom',instruction:'围绕课后的小事写轻松独立片段，不推进或改变主线事实。'},{id:'custom',name:'自定义',kind:'custom',instruction:''}] as const;
-export const MAX_SIDE_THEATERS=6;
-export const MAX_THEATER_SLOT=MAX_SIDE_THEATERS+1; // Forum occupies slot 1 separately.
+export const MAX_THEATER_SLOT=Number.MAX_SAFE_INTEGER;
 export function defaultTheaters():TheaterSetting[]{return [{slot:1,kind:'forum',enabled:true,title:'星际论坛',instruction:forumInstruction},{slot:2,kind:'group',enabled:true,title:'群聊',instruction:'以群聊消息呈现公开日常互动，不复制正文对白，不改变主线在场人物。'},{slot:3,kind:'fanfic',enabled:false,title:'同人文小剧场',instruction:theaterTemplates[0].instruction},{slot:4,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''},...[5,6,7].map(slot=>({slot,kind:'custom' as const,enabled:false,title:'自定义小剧场 '+(slot-1),instruction:''}))];}
 export function cleanTheaters(value:unknown):TheaterSetting[]{
   if(value===undefined)return defaultTheaters();
-  if(!Array.isArray(value)||![4,MAX_THEATER_SLOT].includes(value.length))throw new Error('小剧场设置须包含论坛和最多六个小剧场位置');
-  const legacy=value.length===4,slots=new Set<number>();const cleaned=value.map((p:any)=>{
+  if(!Array.isArray(value)||value.length<2)throw new Error('小剧场设置须包含论坛和群聊');
+  const legacy=value.length===4&&value.every((p:any,i:number)=>p?.slot===i+1),slots=new Set<number>();const cleaned=value.map((p:any)=>{
     if(!p||!Number.isInteger(p.slot)||p.slot<1||p.slot>(legacy?4:MAX_THEATER_SLOT)||slots.has(p.slot)||typeof p.enabled!=='boolean'||!['forum','group','fanfic','custom'].includes(p.kind)||typeof p.title!=='string'||!p.title.trim()||p.title.length>80||typeof p.instruction!=='string'||p.instruction.length>4000||(p.charId!==undefined&&(typeof p.charId!=='string'||p.charId.length>128)))throw new Error('小剧场设置格式不正确');
     if(p.templateId!==undefined&&!theaterTemplates.some(t=>t.id===p.templateId))throw new Error('小剧场模板不正确');
     const diary=isSpiritDiary(p);
     slots.add(p.slot);if(p.slot===1&&p.kind!=='forum'||p.slot===2&&p.kind!=='group'||p.slot>=3&&!['group','fanfic','custom'].includes(p.kind))throw new Error('论坛和群聊的位置不可改为其他类型');
     return {slot:p.slot,kind:p.kind,enabled:p.enabled,title:p.title.trim(),instruction:p.kind==='forum'&&p.instruction===legacyForumInstruction?forumInstruction:diary&&[legacyDiaryInstruction,previousDiaryInstruction,lastDiaryInstruction].includes(p.instruction)?diaryInstruction:p.kind==='fanfic'&&[legacyFanficInstruction,previousFanficInstruction].includes(p.instruction)?fanficInstruction:p.instruction,...(p.templateId?{templateId:p.templateId}:diary?{templateId:'spirit' as const}:{}),...(p.charId?{charId:p.charId}:{})};
   }).sort((a,b)=>a.slot-b.slot);
+  if(!slots.has(1)||!slots.has(2))throw new Error('小剧场设置须包含论坛和群聊');
   return legacy?[...cleaned,...defaultTheaters().filter(s=>s.slot>4)]:cleaned;
 }
 export function determinePairing(persona:Persona,char:ActorState):Pairing{
@@ -33,7 +33,7 @@ export function determinePairing(persona:Persona,char:ActorState):Pairing{
   return result;
 }
 export function cleanTheaterScenes(value:unknown):TheaterScene[]{
-  if(!Array.isArray(value)||value.length>MAX_SIDE_THEATERS)throw new Error('小剧场结果数量不正确');const slots=new Set<number>();
+  if(!Array.isArray(value))throw new Error('小剧场结果数量不正确');const slots=new Set<number>();
   return value.map((p:any)=>{
     if(!p||Object.keys(p).some(k=>!['complete','slot','kind','title','content','messages','participantIds','pairing','diary'].includes(k))||!Number.isInteger(p.slot)||p.slot<2||p.slot>MAX_THEATER_SLOT||slots.has(p.slot)||!['group','fanfic','custom'].includes(p.kind)||typeof p.title!=='string'||p.title.length>80||(p.content===undefined?p.diary===undefined:typeof p.content!=='string'||p.content.length>5000))throw new Error('小剧场结果格式不正确');slots.add(p.slot);
     if(p.complete!==undefined&&(p.kind!=='fanfic'||typeof p.complete!=='boolean'))throw new Error('同人文完成标记不正确');

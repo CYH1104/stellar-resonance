@@ -7,18 +7,22 @@ it('旧四槽设置迁移时保留自定义内容与开关，只补关闭的新�
  const old=defaultTheaters().slice(0,4);old[0].enabled=false;old[3].enabled=true;old[3].instruction='自定义规则';
  const migrated=cleanTheaters(old);expect(migrated.slice(0,4)).toEqual(old);expect(migrated.slice(4).map(s=>[s.slot,s.enabled])).toEqual([[5,false],[6,false],[7,false]]);
  const prefs=defaults();prefs.theaters=old;const restored=parseBackup(backup({version:1,preferences:prefs,sessions:[]}));expect(restored.preferences.theaters).toEqual(migrated);
- expect(()=>cleanTheaters([...old.slice(0,3),{...old[3],slot:7}])).toThrow();
+ expect(cleanTheaters([...old.slice(0,3),{...old[3],slot:7}]).map(s=>s.slot)).toEqual([1,2,3,7]);
 });
-it('六份小剧场可保存回读，超限和重复槽位仍拒绝',()=>{
+it('小剧场结果支持新增位置，重复槽位仍拒绝',()=>{
  const scenes=Array.from({length:6},(_,i)=>({slot:i+2,kind:'custom' as const,title:'片段'+i,content:'独立内容'+i}));
- expect(cleanTheaterScenes(scenes)).toHaveLength(6);expect(()=>cleanTheaterScenes([...scenes,{...scenes[0],slot:8}])).toThrow();expect(()=>cleanTheaterScenes([scenes[0],scenes[0]])).toThrow();
+ expect(cleanTheaterScenes(scenes)).toHaveLength(6);expect(cleanTheaterScenes([...scenes,{...scenes[0],slot:8}])).toHaveLength(7);expect(()=>cleanTheaterScenes([scenes[0],scenes[0]])).toThrow();
  const s=newSession('六剧场',persona,''),v={id:'six',text:'正文',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'主线',theaters:scenes});
  expect(visibleTheaters(parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0]).map(s=>s.slot)).toEqual([2,3,4,5,6,7]);
 });
-it('论坛独立，六个小剧场位置支持关闭，不能插入第七个小剧场',()=>{
+it('论坛独立，玩家新增的小剧场设置可导出回读',()=>{
   expect(cleanTheaters(undefined).filter(t=>t.enabled).map(t=>t.kind)).toEqual(['forum','group']);
   const settings=defaultTheaters();settings[3].enabled=true;expect(cleanTheaters(settings)).toHaveLength(7);
-  expect(()=>cleanTheaters([...settings,{...settings[3],slot:8}])).toThrow();settings[0].kind='custom';expect(()=>cleanTheaters(settings)).toThrow();
+  const expanded=cleanTheaters([...settings,...Array.from({length:8},(_,i)=>({...settings[3],slot:8+i,title:'新增'+i,enabled:true}))]);
+  const prefs=defaults();prefs.theaters=expanded;
+  expect(parseBackup(backup({version:1,preferences:prefs,sessions:[]})).preferences.theaters).toEqual(expanded);
+  expect(()=>cleanTheaters([...settings,{...settings[3],slot:8.5}])).toThrow();
+  settings[0].kind='custom';expect(()=>cleanTheaters(settings)).toThrow();
 });
 it('配对只用明确人设：支持 BL 攻受和 BG／GB，未知性别不按 ABO 猜测',()=>{
   expect(determinePairing(persona,char)).toMatchObject({category:'BL',userRole:'攻'});
