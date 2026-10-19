@@ -2,7 +2,7 @@ import type {Preferences,Profile} from './contracts';
 import {samplingFields} from './presets.ts';
 export const textApiTasks=[
   {key:'story',field:'storyProfile',label:'剧情',hint:'包含正文、全部已开启小剧场和快捷回复；状态默认一起生成。'},
-  {key:'state',field:'stateProfile',label:'状态与格式',hint:'跟随主 API 时与正文一次生成；选择副 API 后，只由副 API 判断 MVU 变化，小剧场和快捷回复仍由剧情接口一次生成。'},
+  {key:'state',field:'stateProfile',label:'变量更新（MVU）',hint:'跟随剧情时一次生成；可增加副 API 并在此单独选择。独立变量 API 读取本轮正文、世界书和当前变量，只输出变量更新，不写剧情；小剧场和快捷回复仍由剧情接口生成。'},
   {key:'summary',field:'summaryProfile',label:'逐轮记忆整理',hint:'每轮正文完成后立即整理记忆，成功后按设置建立向量索引。'},
   {key:'persona',field:'personaProfile',label:'AI 帮我写人设',hint:'新游戏的人设辅助填写。'},
 ] as const;

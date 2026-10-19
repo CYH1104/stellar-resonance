@@ -80,6 +80,20 @@ export function dataFromState(state:WorldState):MvuData{
   const stat_data=cleanJson(clone({player:state.player,characters:Object.fromEntries(state.characters.map(c=>[c.id,c])),custom:state.variables||{}})) as Record<string,Json>;
   return {stat_data,schema:{type:'object',extensible:false,properties:{player:{type:'object'},characters:{type:'object',additionalProperties:{type:'object',properties:{affinity:{...affinitySchema}}}},custom:{type:'object',recursiveExtensible:true}}},initialized_lorebooks:{}};
 }
+/** Register explicit new identities before applying their field updates. Never infer a name from an ID. */
+export function prepareMvuUpdates(state:WorldState,updates:unknown,candidates:unknown=[]):MvuOperation[]{
+  const ops=cleanOperations(updates),known=new Set(state.characters.map(c=>c.id));
+  const registrations:MvuOperation[]=[],registered=new Set<string>();
+  const registrationOps=new Set<MvuOperation>();
+  for(const op of ops){const p=pointer(op.path);if(p[0]==='characters'&&p.length===2&&['insert','add'].includes(op.op)&&!known.has(p[1])){const actor=newDynamicActor(op.value);if(actor.id!==p[1]||registered.has(actor.id))fail();registrations.push({...op,op:'insert',value:cleanJson({...actor,affinity:actor.affinity??0})});registrationOps.add(op);registered.add(actor.id);}}
+  const rows=Array.isArray(candidates)?candidates:object(candidates)?Object.entries(candidates).map(([id,v])=>object(v)?{...v,id:v.id??id}:v):[];
+  for(const row of rows){if(!object(row)||typeof row.id!=='string'||known.has(row.id)||registered.has(row.id))continue;let actor;try{actor=newDynamicActor(row);}catch{continue;}registrations.push({op:'insert',path:'/characters/'+actor.id.replace(/~/g,'~0').replace(/\//g,'~1'),value:cleanJson({...actor,affinity:actor.affinity??0})});registered.add(actor.id);}
+  const pending=ops.filter(op=>!registrationOps.has(op)),initialized=new Set<string>(),initializers:MvuOperation[]=[];
+  for(const op of pending){const p=pointer(op.path);if(p[0]!=='characters'||p.length!==3)continue;const before=state.characters.find(c=>c.id===p[1]);if(!before||Object.hasOwn(before,p[2])||initialized.has(op.path))continue;
+    if(op.op==='delta'&&p[2]==='affinity'){initializers.push({op:'insert',path:op.path,value:0});initialized.add(op.path);}
+  }
+  return [...registrations,...initializers,...pending];
+}
 export function replacementOperations(data:unknown):MvuOperation[]{
   const clean=cleanJson(data);if(!object(clean)||!object(clean.player)||!object(clean.characters)||!object(clean.custom)||Object.keys(clean).sort().join(',')!=='characters,custom,player')fail();
   return ['player','characters','custom'].map(key=>({op:'replace',path:'/'+key,value:clean[key]}));

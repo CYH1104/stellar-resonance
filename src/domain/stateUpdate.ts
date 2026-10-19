@@ -2,6 +2,11 @@ import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
   STATE_MVU_REJECTED:'变量补丁不合法，本轮变量更新未应用',
+  STATE_ATTITUDE_INVALID:'本轮好感判断格式无效，原数值已保留，可手动补全本轮状态',
+  STATE_ATTITUDE_ITEM_SKIPPED:'部分角色的好感判断无效或重复，已保留其他有效结果',
+  STATE_MVU_OUTPUT_MISSING:'本轮未收到好感判断或兼容变量补丁，原数值已保留；可手动补全本轮状态',
+  STATE_MVU_PATH_REJECTED:'补丁目标路径不存在或不允许该操作；新角色须先 insert，数值须先初始化再 delta',
+  STATE_MVU_VALUE_REJECTED:'变量结构、角色资料或数值未通过校验，已保留原值',
   STATE_FORMAT_INVALID:'模型返回的状态结构不合法',
   MODEL_STATE_JSON_INVALID:'状态 JSON 不完整或格式错误',
   STATE_FIELD_SKIPPED:'部分状态字段的类型或数值范围不合法，已跳过',

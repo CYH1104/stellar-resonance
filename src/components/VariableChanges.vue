@@ -3,6 +3,7 @@ import {computed} from 'vue';
 import type {Session} from '../domain/contracts';
 import {selected,stateAt} from '../domain/story';
 import {dataFromState,type Json,type MvuOperation} from '../domain/mvu';
+import {stateUpdateDetails} from '../domain/stateUpdate';
 const props=defineProps<{session:Session;index:number}>();
 const variant=computed(()=>selected(props.session.turns[props.index]));
 const changes=computed(()=>{
@@ -23,7 +24,8 @@ const output=computed(()=>'<UpdateVariable>\n<JSONPatch>\n'+JSON.stringify(chang
  <details class="variable-change-card">
   <summary>变量变化 · {{variant?.status==='complete'?changes.length+' 项已应用':'等待本轮完成'}}</summary>
   <p>以下为本轮应用后的实际状态差异，包含状态字段和 MVU 更新；不是模型原始命令。</p>
-  <p v-if="variant?.status==='complete'&&!changes.length">本轮没有已应用的变量变化。模型可能未提交更新，或更新未通过校验；不会自动增加好感度。</p>
+  <p v-if="variant?.status==='complete'&&!changes.length">本轮没有已应用的变量变化；下方校验说明会区分未收到补丁与更新被拒绝。有效空补丁表示本轮无变化。</p>
+  <ul v-if="stateUpdateDetails(variant?.outcome).length"><li v-for="item in stateUpdateDetails(variant?.outcome)" :key="item.code">{{item.text}}</li></ul>
   <p v-if="variant?.outcome?.stateUpdate?.codes?.length">校验记录：{{variant.outcome.stateUpdate.codes.join('、')}}</p>
   <pre>{{output}}</pre>
  </details>

@@ -45,7 +45,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
   <EmbeddingGuide v-if="w.preferences.vectorEnabled" />
   <section class="api-extra" aria-labelledby="api-task-heading">
     <h2 id="api-task-heading">功能接口选择（默认主 API）</h2><button type="button" :disabled="disabled" @click="w.useMainForAll()">全部使用主 API · 本地记忆检索</button>
-    <p class="rail-note">状态与格式跟随主 API 时，正文、状态与小剧场在一次请求内生成；选择副 API 后，剧情接口仍生成正文、小剧场和快捷回复，副 API 只判断 MVU 状态变化。</p>
+    <p class="rail-note">变量更新跟随剧情 API 时一次生成。需要独立变量模型时，先增加副 API，再在“变量更新（MVU）”中选择；它只读取正文、世界书和当前变量并输出更新，不生成剧情。主接口继续输出正文、小剧场和快捷回复。</p>
     <div class="field-grid">
       <label v-for="task in textApiTasks" :key="task.key">{{task.label}}<select v-model="w.preferences[task.field]" :disabled="disabled"><option :value="w.preferences.mainProfile">{{task.key==='state'?'跟随剧情 API（一次生成）':'主 API · '+main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
       <label>随机事件<select v-model="w.preferences.randomEventProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>

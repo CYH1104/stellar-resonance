@@ -1,3 +1,4 @@
+import {attitudeUpdates} from './attitudes.mjs';
 import {restoreActorFacts} from '../src/domain/actorPolicy.ts';
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
@@ -16,7 +17,7 @@ import {conversationParticipants,identityRule,historyMessage} from './participan
 import {narrationRule,narrativeViewpoint,anchorNarration} from './narration.mjs';
 import {isSpiritDiary} from '../src/domain/spiritDiary.ts';
 import {applyWorldEntries} from './editor-store.mjs';
-import {applyMvu,dataFromState,parseMvuMessage,cleanJson,renderMvuMacros} from '../src/domain/mvu.ts';
+import {applyMvu,dataFromState,prepareMvuUpdates,parseMvuMessage,cleanJson,renderMvuMacros} from '../src/domain/mvu.ts';
 import {readPersonaExtra} from '../src/domain/personaExtras.ts';
 import {cleanSpecialEvent} from '../src/domain/randomEvents.ts';
 import { validateOutcome } from '../src/domain/story.ts';
@@ -206,6 +207,7 @@ export function normalizeModelState(card, state, raw,options={}) {
 
 /** 分块标签：open/close 成对，key 用于归类；end 标记仅从可见正文剔除。 */
 const BLOCK_TAGS = [
+  { open: /<attitudes\s*>/i, close: /<\/attitudes\s*>/i, key: 'attitudes' },
   { open: /<SR_STATE\s*>/i, close: /<\/SR_STATE\s*>/i, key: 'state' },
   { open: /<status\s*>/i, close: /<\/status\s*>/i, key: 'status' },
   { open: /<choices\s*>/i, close: /<\/choices\s*>/i, key: 'choices' },
@@ -228,7 +230,7 @@ function nextTag(text, from) {
 
 /** 宽松地把原始回复切成正文 + 各类块；缺结束标签取到末尾或下一个块为止。 */
 function splitBlocks(raw) {
-  const out = { prose: '', state: [], status: [], choices: [], forum: [], theater: [], mvu: [] };
+  const out = { prose: '', state: [], status: [], choices: [], forum: [], theater: [], mvu: [], attitudes: [] };
   const clean = s => s.replace(BLOCK_END, '');
   let pos = 0, current = null;
   const endBlock = at => { if (current) { const body = raw.slice(current.start, at).trim(); if (body) out[current.key].push(clean(body)); current = null; } };
@@ -258,7 +260,7 @@ function partialTag(text) {
   const at=text.lastIndexOf('<');if(at<0)return 0;
   const tail=text.slice(at),match=/^<\s*\/?\s*([\w-]*)(?:\s+[^<>]*)?$/.exec(tail);
   if(!match)return 0;
-  const name=match[1].toLowerCase();return ['sr_state','sr_done','status','choices','forum','theater','updatevariable','done'].some(tag=>tag.startsWith(name))?tail.length:0;
+  const name=match[1].toLowerCase();return ['attitudes','sr_state','sr_done','status','choices','forum','theater','updatevariable','done'].some(tag=>tag.startsWith(name))?tail.length:0;
 }
 
 function parseChoices(content) {
@@ -320,10 +322,23 @@ export class StoryDecoder {
     for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
     const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}
     if(theaters.length){const mixed=[...(Array.isArray(assembled.theaters)?assembled.theaters:[]),...theaters];assembled.theaters=single?mixed:[...new Map(mixed.map(scene=>[scene?.slot,scene])).values()];}
+    let attitude,attitudeAccepted=false;
+    if(options.stateEnabled!==false){
+      if(blocks.attitudes.length&&!incomplete.has('attitudes')){try{attitude=parseStateJson(blocks.attitudes.at(-1)).value;}catch{warn('STATE_ATTITUDE_INVALID');}}
+      else if(assembled.affinityChanges!==undefined){attitude={changes:assembled.affinityChanges};delete assembled.affinityChanges;}
+      else if(options.variableOnly){try{const raw=parseStateJson(this.raw.replace(/<done>/gi,'').trim()).value;if(Array.isArray(raw?.changes))attitude=raw;}catch{}}
+    }
     let mvu=assembled.mvu,mvuFailed=false;
-    if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
+    if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn);assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
+
+    if(attitudeAccepted){
+      // A stale absolute score in status must not override a neutral review.
+      if(Array.isArray(assembled.characters))assembled.characters=assembled.characters.map(({affinity,relationship,...actor})=>actor);
+    }
+    else if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
     else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
-    if(mvu!==undefined&&!mvuFailed){try{applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch{mvuFailed=true;}}
+    if(mvu!==undefined&&!mvuFailed){try{mvu=prepareMvuUpdates(state,mvu,assembled.characters);applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch(error){warn(error.fieldPath?'STATE_MVU_PATH_REJECTED':'STATE_MVU_VALUE_REJECTED');mvuFailed=true;}}
+    if(options.stateEnabled!==false&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
     if(rejected){retainedPresentIds.push(...state.characters.map(c=>c.id));if(mvuFailed)delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
     if(!Object.keys(assembled).length&&!single)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
