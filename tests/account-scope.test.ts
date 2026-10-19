@@ -19,3 +19,11 @@ it('separates browser saves and credentials by signed-in account while preservin
     expect(accountStorage.getItem('academy:main-session:v1')).toBe('one');expect((await new IndexedDbRepository().read())?.sessions[0].name).toBe('First');
   }finally{delete g.__ACADEMY_ACCOUNT__;vi.unstubAllGlobals();}
 });
+it('data reset advances only the selected account namespace and leaves the prior workspace unreachable by normal reads',async()=>{
+ const g=globalThis as typeof globalThis&{__ACADEMY_ACCOUNT__?:{id:string;email:string;dataVersion?:number}},id=crypto.randomUUID(),storage=new Map<string,string>();
+ vi.stubGlobal('localStorage',{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)});
+ try{g.__ACADEMY_ACCOUNT__={id,email:'one@qq.com'};const old=accountDatabase('workspace');accountStorage.setItem('draft','old');
+ g.__ACADEMY_ACCOUNT__={id,email:'one@qq.com',dataVersion:1};expect(accountDatabase('workspace')).not.toBe(old);expect(accountStorage.getItem('draft')).toBeNull();accountStorage.setItem('draft','new');
+ g.__ACADEMY_ACCOUNT__={id,email:'one@qq.com'};expect(accountStorage.getItem('draft')).toBe('old');
+ }finally{delete g.__ACADEMY_ACCOUNT__;vi.unstubAllGlobals();}
+});

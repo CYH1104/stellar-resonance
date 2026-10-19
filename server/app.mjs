@@ -30,7 +30,7 @@ import {stripReasoning} from '../src/domain/reasoning.ts';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
-export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts'),editorPort=8808}){
+export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts'),invitesRequired=true,editorPort=8808}){
   let external;
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
@@ -40,8 +40,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   const editorStore=card?null:createEditorStore(projectRoot,source);
   const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
   const projectId=createHash('sha256').update(projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
-  const accounts=authRequired?await createAccounts({directory:accountDirectory}):null;
-  const editorGateway=await createEditorGateway({projectRoot,editorPort,protectedAccess:authRequired,secure:external?.protocol==='https:'});
+  const accounts=authRequired?await createAccounts({directory:accountDirectory,requireInvite:invitesRequired}):null;
+  const editorGateway=await createEditorGateway({projectRoot,editorPort,accounts,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true};
   const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
@@ -82,18 +82,23 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
-      const authFiles={'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript'],'/auth/boot.css':['boot.css','text/css']};
+      const authFiles={'/reset':['reset.html','text/html'],'/auth/reset.js':['reset.js','text/javascript'],'/auth/manage.js':['manage.js','text/javascript'],'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript'],'/auth/boot.css':['boot.css','text/css']};
       if(authFiles[path]&&['GET','HEAD'].includes(request.method)){
         if(path==='/login'&&(!accounts||account)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
-        const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(path==='/login'?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(projectRoot,'server/auth-ui',file)));return;
+        const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(['/login','/reset'].includes(path)?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(projectRoot,'server/auth-ui',file)));return;
       }
       if(path==='/editor'||path.startsWith('/editor/')){await editorGateway(request,response,path);return;}
       if(path.startsWith('/api/auth/')){
         if(!accounts)throw modelError(404,'API_NOT_FOUND');
         if(path==='/api/auth/me'&&request.method==='GET'){json(response,200,{user:account});return;}
+        if(path==='/api/auth/policy'&&request.method==='GET'){json(response,200,accounts.registrationPolicy());return;}
+        if(path==='/api/auth/reset/check'&&request.method==='GET'){json(response,200,{ok:accounts.checkReset(new URL(request.url,'http://localhost').searchParams.get('token'))});return;}
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');
         if(Number(request.headers['content-length']||0)>8192)throw modelError(413,'REQUEST_TOO_LARGE');
         const data=await body(request,8192);
+        if(path==='/api/auth/reset/check'){json(response,200,{ok:accounts.checkReset(data.token)});return;}
+        if(path==='/api/auth/reset/apply'){await accounts.applyReset(data,request.socket.remoteAddress||'unknown');for(const [id,value]of sessions)if(!accounts.user(accountTokenOf(request))&&value.accountId===account?.id)sessions.delete(id);setAccountCookie('',0);json(response,200,{ok:true});return;}
+        if(path==='/api/auth/delete'||path==='/api/auth/reset-data'){await accounts.maintain(accountToken,data,path.endsWith('/delete')?'delete':'reset',request.socket.remoteAddress||'unknown');for(const [id,value]of sessions)if(value.accountId===account?.id)sessions.delete(id);setAccountCookie('',0);json(response,200,{ok:true});return;}
         if(path==='/api/auth/register'||path==='/api/auth/login'){
           const result=await accounts.enter(path.endsWith('/register')?'register':'login',data,request.socket.remoteAddress||'unknown');
           accounts.logout(accountToken);setAccountCookie(result.token);json(response,200,{user:result.user});return;
@@ -103,11 +108,12 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       }
       if(accounts&&!account&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path)&&path!=='/favicon.svg'){
         if(path.startsWith('/api/')){json(response,401,{code:'ACCOUNT_REQUIRED'});return;}
-        if(['GET','HEAD'].includes(request.method)&&['/','/index.html','/terminal'].includes(path)){response.writeHead(302,{Location:'/login'});response.end();return;}
+        if(['GET','HEAD'].includes(request.method)&&['/','/index.html','/terminal','/account'].includes(path)){response.writeHead(302,{Location:'/login'});response.end();return;}
         throw modelError(404,'NOT_FOUND');
       }
       if(['GET','HEAD'].includes(request.method)&&['/','/index.html'].includes(path)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
       function accountHtml(html){const info=JSON.stringify(account).replace(/</g,'\\u003c');return html.replace(/\blocalStorage\b/g,'academyStorage').replace(/<head\b[^>]*>/i,match=>match+`<script>window.__ACADEMY_ACCOUNT__=${info};</script><script src="/auth/account.js"></script>`).replace('</body>','<style>.account-tools{position:fixed;z-index:2147480000;right:12px;bottom:8px;display:flex;gap:10px;align-items:center;padding:4px 9px;background:#fffaf2e8;border-radius:4px;font-size:11px;color:#73869a}.account-tools button{border:0;background:transparent;color:inherit;font:inherit;padding:3px 5px;cursor:pointer}.account-tools button:hover{color:#294a68}</style></body>');}
+      if(path==='/account'&&['GET','HEAD'].includes(request.method)){if(!account){response.writeHead(302,{Location:'/login'});response.end();return;}response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Frame-Options':'DENY','Content-Security-Policy':"frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});response.end(accountHtml(await readFile(resolve(projectRoot,'server/auth-ui/manage.html'),'utf8')));return;}
       const editorial=editorStore?await editorStore.read():null;
       const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;setInternalPrompts(editorial?.data.internalPrompts);
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}

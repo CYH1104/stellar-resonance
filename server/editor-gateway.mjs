@@ -9,7 +9,7 @@ export async function editorAccessKey(projectRoot){
   try{return await existing();}catch(e){if(e.code!=='ENOENT')throw e;}
   const key=randomBytes(24).toString('base64url');try{await writeFile(file,key+'\n',{flag:'wx',mode:0o600});return key;}catch(e){if(e.code==='EEXIST')return existing();throw e;}
 }
-export async function createEditorGateway({projectRoot,editorPort,protectedAccess,secure=false}){
+export async function createEditorGateway({projectRoot,editorPort,protectedAccess,secure=false,accounts,gameOrigin}){
   const key=protectedAccess?await editorAccessKey(projectRoot):'',sessions=new Map(),attempts=new Map();
   const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
   const cookie=(res,value,age)=>res.setHeader('Set-Cookie',`academy_editor=${value}; HttpOnly; SameSite=Strict; Path=/editor; Max-Age=${age}${secure?'; Secure':''}`);
@@ -31,6 +31,23 @@ export async function createEditorGateway({projectRoot,editorPort,protectedAcces
       json(res,401,{code:'EDITOR_ACCESS_REQUIRED'});return;
     }
     if(path==='/editor/logout'&&req.method==='POST'){const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith('academy_editor='))?.slice(15);if(token)sessions.delete(hash(token).toString('hex'));cookie(res,'',0);json(res,200,{ok:true});return;}
+    if(path==='/editor/accounts'||path==='/editor/accounts.js'){
+      if(req.method!=='GET'){json(res,405,{code:'GET_REQUIRED'});return;}
+      res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"});res.end(await readFile(resolve(projectRoot,path.endsWith('.js')?'server/auth-ui/admin-accounts.js':'server/auth-ui/admin-accounts.html')));return;
+    }
+    if(path.startsWith('/editor/api/accounts/')){
+      if(!accounts){json(res,503,{code:'ACCOUNTS_UNAVAILABLE'});return;}
+      if(req.method!=='POST'){json(res,405,{code:'POST_REQUIRED'});return;}
+      if(!req.headers['content-type']?.startsWith('application/json')){json(res,415,{code:'JSON_REQUIRED'});return;}
+      let size=0,chunks=[];for await(const part of req){size+=part.length;if(size>8192){json(res,413,{code:'REQUEST_TOO_LARGE'});return;}chunks.push(part);}
+      let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!data||typeof data!=='object'||Array.isArray(data))throw Error();}catch{json(res,400,{code:'INVALID_JSON'});return;}
+      if(path==='/editor/api/accounts/search'){json(res,200,{user:accounts.find(data.email||'')});return;}
+      if(path==='/editor/api/accounts/reset'){const reset=accounts.issueReset(data.email||'');json(res,200,reset?{url:new URL('/reset?token='+reset.token,gameOrigin()).href,expires:reset.expires}:null);return;}
+      if(path==='/editor/api/accounts/invites'){json(res,200,{codes:accounts.generateInvites(data)});return;}
+      if(path==='/editor/api/accounts/stats'){json(res,200,{batches:accounts.inviteStats(data.batch||'')});return;}
+      if(path==='/editor/api/accounts/revoke'){json(res,200,{revoked:accounts.revokeInvite(data.code)});return;}
+      json(res,404,{code:'NOT_FOUND'});return;
+    }
     const tail=path.slice('/editor'.length);if(!['/','/editor.css','/editor.js','/worldbook.js','/api/editor'].includes(tail)){json(res,404,{code:'NOT_FOUND'});return;}
     await new Promise(resolve=>{
       const headers={host:`127.0.0.1:${editorPort}`};for(const name of ['content-type','content-length','x-editor-token'])if(req.headers[name])headers[name]=req.headers[name];if(req.headers.origin)headers.origin=`http://127.0.0.1:${editorPort}`;

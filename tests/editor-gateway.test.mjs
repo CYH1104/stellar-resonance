@@ -9,7 +9,7 @@ test('same-origin admin page requires a separate key, proxies editor writes, syn
   await mkdir(fixture+'/server/private',{recursive:true});await cp(root+'/server/auth-ui',fixture+'/server/auth-ui',{recursive:true});await cp(root+'/server/editor-ui',fixture+'/server/editor-ui',{recursive:true});await cp(root+'/dist',fixture+'/dist',{recursive:true});await cp(root+'/星穹游戏终端 (1).html',fixture+'/星穹游戏终端 (1).html');
   const card=JSON.parse(await readFile(root+'/server/example/feature-demo.json','utf8'));card.characters=[{id:'real',name:'Real',no:'01'}];await writeFile(fixture+'/server/private/extracted-pro.json',JSON.stringify(card));
   editor=createEditorServer({projectRoot:fixture,card,port:0,gameUrl:'http://game.example:8807/terminal'});const editorPort=await editor.start();
-  game=await createLocalServer({projectRoot:fixture,port:0,authRequired:true,editorPort});const base='http://127.0.0.1:'+await game.start();
+  game=await createLocalServer({projectRoot:fixture,port:0,authRequired:true,invitesRequired:false,editorPort});const base='http://127.0.0.1:'+await game.start();
   const post=(path,data,cookie='',headers={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,...headers},body:JSON.stringify(data)});
   const login=await fetch(base+'/editor/');assert.equal(login.status,200);assert.match(await login.text(),/editor-login/);
   assert.equal((await fetch(base+'/editor/api/editor')).status,401);

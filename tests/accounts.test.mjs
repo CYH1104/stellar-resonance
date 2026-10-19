@@ -56,7 +56,7 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     await assert.rejects(createLocalServer({projectRoot:root,host:'0.0.0.0',authRequired:false,publicOrigin:'http://game.example:8807'}),/PUBLIC_SERVER/);
     await assert.rejects(createLocalServer({projectRoot:root,host:'0.0.0.0'}),/PUBLIC_SERVER/);
     const card=JSON.parse(await readFile(resolve(root,'server/example/feature-demo.json'),'utf8'));
-    app=await createLocalServer({projectRoot:root,port:0,host:'0.0.0.0',publicOrigin:'http://game.example:8807',authRequired:true,accountDirectory:directory,card});
+    app=await createLocalServer({projectRoot:root,port:0,host:'0.0.0.0',publicOrigin:'http://game.example:8807',authRequired:true,invitesRequired:false,accountDirectory:directory,card});
     const base='http://127.0.0.1:'+await app.start();
     const post=(path,data,cookie='',headers={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie,...headers},body:JSON.stringify(data)});
     assert.equal((await fetch(base+'/terminal',{redirect:'manual'})).headers.get('location'),'/login');
