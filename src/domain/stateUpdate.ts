@@ -2,7 +2,6 @@ import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
   STATE_MVU_REJECTED:'变量补丁不合法，本轮变量更新未应用',
-  STATE_MVU_PARTIAL:'部分变量更新未通过校验，已应用其余有效更新',
   STATE_ATTITUDE_INVALID:'本轮好感判断格式无效，原数值已保留，可手动补全本轮状态',
   STATE_ATTITUDE_REVIEW_MISSING:'部分在场角色漏返回本轮好感判断，已保留原数值，可手动补全',
   STATE_ATTITUDE_ITEM_SKIPPED:'部分角色的好感判断无效或重复，已保留其他有效结果',
@@ -21,10 +20,6 @@ const explanations:Record<string,string>={
   STATE_AUX_RETAINED:'独立状态接口未完成，主正文已保留',
   STATE_SIDE_SCENE_RETAINED:'本轮部分小剧场缺失或未通过完成校验',
   STATE_THEATER_SKIPPED:'小剧场结构不合法，未替换已有内容',
-  STATE_FORUM_INCOMPLETE:'模型的论坛区块未闭合，返回可能被截断；已保存其余有效内容，可补全缺失模块',
-  STATE_THEATER_INCOMPLETE:'模型的小剧场区块未闭合，返回可能被截断；已保留已有小剧场',
-  STATE_FORUM_INVALID:'论坛 JSON 不完整或格式无效，未覆盖已有动态',
-  STATE_THEATER_INVALID:'小剧场 JSON 不完整或格式无效，未覆盖已有内容',
   MODEL_FANFIC_TOO_SHORT:'同人文正文不足 800 字',
   MODEL_FANFIC_UNFINISHED:'同人文缺少结尾 END 或 complete:true',
   MODEL_DIARY_TOO_SHORT:'精神体日记正文不足 200 字',

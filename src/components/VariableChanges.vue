@@ -6,15 +6,10 @@ import {dataFromState,type Json,type MvuOperation} from '../domain/mvu';
 import {stateUpdateDetails} from '../domain/stateUpdate';
 const props=defineProps<{session:Session;index:number}>();
 const variant=computed(()=>selected(props.session.turns[props.index]));
-const reviewRows=computed(()=>{
- const update=variant.value?.outcome?.stateUpdate,before=stateAt(props.session,props.index),after=stateAt(props.session,props.index+1);
- if(update?.review){
-  return Object.entries(update.review).map(([id,verdict])=>{const old=before.characters.find(c=>c.id===id),next=after.characters.find(c=>c.id===id);return {id,name:next?.name||old?.name||id,verdict,before:old?.affinity,after:next?.affinity};});
- }
- return (update?.affinityReviewedIds||[]).map(id=>{const old=before.characters.find(c=>c.id===id),next=after.characters.find(c=>c.id===id);const changed=(next?.affinity??old?.affinity)!==old?.affinity;return {id,name:next?.name||old?.name||id,verdict:changed?'changed':'unchanged',before:old?.affinity,after:next?.affinity};});
+const affinityReviews=computed(()=>{
+ const before=stateAt(props.session,props.index),after=stateAt(props.session,props.index+1);
+ return (variant.value?.outcome?.stateUpdate?.affinityReviewedIds||[]).map(id=>{const old=before.characters.find(c=>c.id===id),next=after.characters.find(c=>c.id===id);return {id,name:next?.name||old?.name||id,before:old?.affinity??0,after:next?.affinity??old?.affinity??0};});
 });
-const reviewLabel=(verdict:string)=>verdict==='missing'?'缺少判断':verdict==='rejected'?'更新被拒绝':verdict==='changed'?'已更新':'判断不变';
-const reviewNeedsRepair=computed(()=>reviewRows.value.some(row=>row.verdict==='missing'||row.verdict==='rejected'));
 const changes=computed(()=>{
  const result:MvuOperation[]=[];
  const before=dataFromState(stateAt(props.session,props.index)).stat_data;
@@ -33,8 +28,7 @@ const output=computed(()=>'<UpdateVariable>\n<JSONPatch>\n'+JSON.stringify(chang
  <details class="variable-change-card">
   <summary>变量变化 · {{variant?.status==='complete'?changes.length+' 项已应用':'等待本轮完成'}}</summary>
   <p>以下为本轮应用后的实际状态差异，包含状态字段和 MVU 更新；不是模型原始命令。</p>
-  <ul v-if="reviewRows.length" class="review-list"><li v-for="row in reviewRows" :key="row.id" :class="'review-'+row.verdict">{{row.name}} · {{reviewLabel(row.verdict)}}<span v-if="row.verdict==='changed'||row.verdict==='unchanged'">（好感度 {{row.before??'未提供'}} → {{row.after??row.before??'未提供'}}）</span></li></ul>
-  <p v-if="reviewNeedsRepair">缺少判断或被拒绝的角色不会按“未变化”处理；可在本条回复操作中补全本轮状态，不会重写正文。</p>
+  <ul v-if="affinityReviews.length"><li v-for="review in affinityReviews" :key="review.id">{{review.name}} · 好感度 {{review.before}} → {{review.after}}（{{review.after===review.before?'本轮无变化':(review.after>review.before?'+':'')+(review.after-review.before)}}）</li></ul>
   <p v-if="variant?.status==='complete'&&!changes.length">本轮没有已应用的变量变化；下方校验说明会区分未收到补丁与更新被拒绝。有效空补丁表示本轮无变化。</p>
   <ul v-if="stateUpdateDetails(variant?.outcome).length"><li v-for="item in stateUpdateDetails(variant?.outcome)" :key="item.code">{{item.text}}</li></ul>
   <p v-if="variant?.outcome?.stateUpdate?.codes?.length">校验记录：{{variant.outcome.stateUpdate.codes.join('、')}}</p>
@@ -42,5 +36,5 @@ const output=computed(()=>'<UpdateVariable>\n<JSONPatch>\n'+JSON.stringify(chang
  </details>
 </template>
 <style scoped>
-.variable-change-card{margin:16px 0;padding:12px 16px;border:1px solid var(--line,#a6a6a633);border-radius:8px}.variable-change-card summary{cursor:pointer}.variable-change-card p{font-size:12px;opacity:.8}.variable-change-card pre{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.variable-change-card .review-missing,.variable-change-card .review-rejected{color:#b45454}
+.variable-change-card{margin:16px 0;padding:12px 16px;border:1px solid var(--line,#a6a6a633);border-radius:8px}.variable-change-card summary{cursor:pointer}.variable-change-card p{font-size:12px;opacity:.8}.variable-change-card pre{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 </style>

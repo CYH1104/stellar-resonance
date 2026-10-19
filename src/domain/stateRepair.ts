@@ -45,7 +45,6 @@ export function mergeRepairOutcome(previous:Outcome,incoming:Outcome,before:Worl
     const prior=previous.stateUpdate,next=clean.stateUpdate;
     const meta=repairNeedsState(plan)?next||prior:prior||next;
     if(meta)result.stateUpdate={...meta,status:repairNeedsState(plan)?meta.status:prior?.status||'unchanged',received:!!prior?.received||!!next?.received,storyComplete:prior?.storyComplete??meta.storyComplete,codes:[...new Set([...(prior?.codes||[]).filter(c=>!repairCodeApplies(c,plan)),...(next?.codes||[]).filter(c=>repairCodeApplies(c,plan))])],affinityReviewedIds:[...new Set([...(prior?.affinityReviewedIds||[]),...(next?.affinityReviewedIds||[]).filter(id=>plan.affinityIds.includes(id))])]};
-    if(result.stateUpdate){const merged={...(prior?.review||{})};for(const [id,verdict]of Object.entries(next?.review||{}))if(plan.affinityIds.includes(id))merged[id]=verdict;if(Object.keys(merged).length)result.stateUpdate.review=merged;}
     if(result.stateUpdate&&plan.affinityIds.length&&plan.affinityIds.every(id=>result.stateUpdate?.affinityReviewedIds?.includes(id)||validAffinity(clean.characters?.find(c=>c.id===id)?.affinity)&&!clean.stateUpdate?.codes.includes('STATE_AFFINITY_RETAINED')))result.stateUpdate.codes=result.stateUpdate.codes.filter(code=>!/AFFINITY|MVU|ATTITUDE/.test(code));
     if(result.stateUpdate&&repairNeedsState(plan))result.stateUpdate.status=repairNeedsState(missingRepairPlan(result,target,[],true,false))?'partial':'updated';
   }

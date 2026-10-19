@@ -7,7 +7,6 @@ import {type HtmlRenderContext} from '../domain/htmlRendering';
 import {type RegexRule,type RegexContext} from '../domain/regex';
 import {storyBlocks} from '../domain/storyMarkup';
 import {committedRenderText} from '../domain/renderChunks';
-import NarrativeText from './NarrativeText.vue';
 const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext}>();
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);let formattedInput='';
 const cleanText=computed(()=>stripReasoning(props.text));
@@ -26,7 +25,7 @@ const chunks=computed(()=>normalized.value.prose?[{kind:'story',text:normalized.
 <template><div class="story-content">
   <template v-for="(chunk,chunkIndex) in chunks" :key="chunkIndex">
   <template v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
-    <NarrativeText v-if="block.kind==='text'" :text="block.text" />
+    <p v-if="block.kind==='text'" class="narrative">{{block.text}}</p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
       <div v-if="block.scene.sceneNo" class="scene-number">SCENE <span>{{block.scene.sceneNo}}</span></div>
       <h2 v-if="block.scene.title" class="scene-title">{{block.scene.title}}</h2>
@@ -37,8 +36,8 @@ const chunks=computed(()=>normalized.value.prose?[{kind:'story',text:normalized.
     <p v-else class="scene-pending" role="status">正在整理场景信息…</p>
   </template>
   </template>
-  <details v-for="(block,index) in normalized.blocks" :key="'builtin-'+index" class="builtin-output-card"><summary>{{block.title}}</summary><NarrativeText :text="block.text" /></details>
+  <details v-for="(block,index) in normalized.blocks" :key="'builtin-'+index" class="builtin-output-card"><summary>{{block.title}}</summary><p class="narrative">{{block.text}}</p></details>
   <p v-if="regexErrors.length" class="rail-note" role="status">{{regexErrors.join('；')}}</p>
   <p v-if="!chunks.length&&!normalized.blocks.length&&placeholder" class="narrative">{{placeholder}}</p>
 </div></template>
-<style scoped>.builtin-output-card{border:1px solid var(--line,#b8b1a6);border-radius:8px;padding:12px;margin:12px 0}.builtin-output-card>.formatted-narrative{max-height:360px;overflow:auto;white-space:pre-wrap}.builtin-output-card>summary{cursor:pointer}</style>
+<style scoped>.builtin-output-card{border:1px solid var(--line,#b8b1a6);border-radius:8px;padding:12px;margin:12px 0}.builtin-output-card>p{max-height:360px;overflow:auto;white-space:pre-wrap}.builtin-output-card>summary{cursor:pointer}</style>

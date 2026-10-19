@@ -10,7 +10,7 @@ function known(value?:string){const text=displayText(value||'').trim();return !t
 const spiritOs=computed(()=>{
   const value=displayText(props.actor.spiritThought?.trim()||'');
   if(value&&!/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(value))return value;
-  if(!props.player)return '对方精神体未出现';
+  if(!props.player)return props.actor.spiritAnimal?.trim()?'等待 AI 补全本轮精神体 OS':'尚未设定精神体';
   return props.actor.spiritAnimal?.trim()?'等待 AI 随剧情生成':'请先在人设中填写精神体';
 });
 </script>

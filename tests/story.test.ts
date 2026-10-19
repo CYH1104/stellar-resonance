@@ -88,7 +88,7 @@ describe('本地备份边界', () => {
     const s = session(); append(s, 'first', 78);
     const value = { version: 1 as const, sessions: [s], preferences: defaults() };
     const safe = backup(value);
-    expect(() => parseBackup(safe.replace('"version": 2', '"version": 2, "apiKey": "synthetic"'))).toThrow();
+    expect(() => parseBackup(safe.replace('"version": 1', '"version": 1, "apiKey": "synthetic"'))).toThrow();
     expect(() => parseBackup(safe.replace('"sourceTurn": "first"', '"sourceTurn": "missing"'))).toThrow();
     expect(() => parseBackup(safe.replace('"value": 73', '"value": 101'))).toThrow();
   });

@@ -43,7 +43,7 @@ export class HttpGateway implements Gateway {
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
   async *generate(request: GenerateRequest, key: string, signal: AbortSignal, stateApi?:{profile:Profile;key:string}): AsyncIterable<GenerateEvent> {
-    const response=await this.post('generate',{...request,key,stateApi,singleStateCall:true,captureFormatErrors:true,commitGroups:true},signal);
+    const response=await this.post('generate',{...request,key,stateApi,singleStateCall:true,captureFormatErrors:true},signal);
     if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw new Error('服务器应返回 SSE 流式响应');
     const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer='', finished=false;
     try {

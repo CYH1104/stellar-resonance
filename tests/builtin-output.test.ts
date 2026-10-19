@@ -24,11 +24,3 @@ it('legacy or truncated platform state is hidden even when stored inside old pro
  expect(builtinOutput('正文<status>{"event":"隐藏"}</status><done>').prose).toBe('正文');
  expect(builtinOutput('正文<UnknownDisplay>保留未知内容</UnknownDisplay>').prose).toContain('保留未知内容');
 });
-it('preserves a clearly marked preset forum appendix in a collapsed text block',()=>{
- const appendix='**【星穹学院论坛・语言生成指导手册】**\n**帖子ID：001**\n**作者：路人**\n**内容：**\n今天食堂开了吗？';
- const out=builtinOutput('她继续登记。\n***\n'+appendix+'\n***\n之后离开。');
- expect(out.prose).not.toContain('帖子ID');expect(out.prose).toContain('之后离开');
- expect(out.blocks).toEqual([{kind:'collapsed',title:'预设附加论坛',text:appendix}]);
- expect(builtinOutput('正文\n'+appendix,true).prose).toContain('帖子ID');
- expect(builtinOutput('他读到一则论坛消息。\n作者：朋友\n内容：讨论功课。').blocks).toEqual([]);
-});

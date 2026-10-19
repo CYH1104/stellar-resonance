@@ -93,7 +93,7 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
   if (Object.keys(v).some(k => !['stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
-  if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes','retainedPresentIds','affinityReviewedIds','review'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');if(update.retainedPresentIds!==undefined&&(!Array.isArray(update.retainedPresentIds)||update.retainedPresentIds.length>1000||update.retainedPresentIds.some(id=>!validActorId(id))))throw Error('保留名单格式不正确');if(update.affinityReviewedIds!==undefined&&(!Array.isArray(update.affinityReviewedIds)||update.affinityReviewedIds.length>1000||update.affinityReviewedIds.some(id=>!validActorId(id))))throw Error('Invalid affinity review roster');if(update.review!==undefined){const review=update.review;if(!record(review)||Object.keys(review).length>1000||Object.entries(review).some(([id,value])=>!validActorId(id)||!['changed','unchanged','missing','rejected'].includes(String(value))))throw Error('变量判断记录格式不正确');}out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
+  if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes','retainedPresentIds','affinityReviewedIds'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');if(update.retainedPresentIds!==undefined&&(!Array.isArray(update.retainedPresentIds)||update.retainedPresentIds.length>1000||update.retainedPresentIds.some(id=>!validActorId(id))))throw Error('保留名单格式不正确');if(update.affinityReviewedIds!==undefined&&(!Array.isArray(update.affinityReviewedIds)||update.affinityReviewedIds.length>1000||update.affinityReviewedIds.some(id=>!validActorId(id))))throw Error('Invalid affinity review roster');out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
   const mvuState=v.mvu!==undefined?applyMvu(state,cleanOperations(v.mvu)):state;
   if(v.mvu!==undefined)out.mvu=cleanOperations(v.mvu);
   if(v.suggestions!==undefined)out.suggestions=cleanSuggestions(v.suggestions);
@@ -244,7 +244,7 @@ export function keywordScore(text: string, query: string): number {
   return words.reduce((n,w) => n + (text.toLowerCase().includes(w) ? 3 : 0), 0) + chars.reduce((n,c) => n + (text.toLowerCase().includes(c) ? 0.1 : 0), 0);
 }
 export function backup(snapshot: Snapshot): string {
-  return JSON.stringify({ version: 2, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
+  return JSON.stringify({ version: 1, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
 }
 function sanitizeSessions(sessions:Session[]):Session[]{
   if(!Array.isArray(sessions))return sessions;
@@ -268,11 +268,10 @@ function inspect(value: unknown, depth = 0): void {
 export function parseBackup(text: string): Snapshot {
   if (new TextEncoder().encode(text).length > 20*1024*1024) throw new Error('首版备份限制为 20MB');
   const value = JSON.parse(text) as Snapshot; inspect(value);
-  if (!value || ![1,2].includes(value.version) || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
+  if (!value || value.version !== 1 || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
   value.sessions=sanitizeSessions(value.sessions);
   if (value.sessions.length > 100 || !value.preferences.profiles.length || value.preferences.profiles.length > 30) throw new Error('存档最多 100 份，接口档案必须为 1～30 份');
   const ids = new Set<string>();
-  const clampLegacyAffinity=(actor:unknown)=>{if(!record(actor))return;const value=actor.affinity;if(typeof value==='number'&&Number.isFinite(value))actor.affinity=Math.max(-100,Math.min(200,value));};
   for (const s of value.sessions) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
     ids.add(s.id);
@@ -280,7 +279,6 @@ export function parseBackup(text: string): Snapshot {
     if(s.worldbookIds!==undefined)s.worldbookIds=cleanWorldbookIds(s.worldbookIds);
     for (const a of [s.initial.player, ...s.initial.characters]) {
       if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || (a.energy!==undefined&&!bounded(a.energy)) || (a.focus!==undefined&&!bounded(a.focus)) || (a.affinity!==undefined&&!affinityValue(a.affinity)) || typeof a.present !== 'boolean') throw new Error('初始状态不合法');
-      if(a.affinity!==undefined)a.affinity=Math.max(-100,Math.min(200,a.affinity));
       actorPatch({ mentalPowerLevel:a.mentalPowerLevel,name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity,ability:a.ability, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
     }
     if(s.initial.variables!==undefined)cleanJson(s.initial.variables);
@@ -292,7 +290,7 @@ export function parseBackup(text: string): Snapshot {
       if(t.randomEvent&&['preparing','failed','pending'].includes(t.randomEvent.status)&&(t.variants.length||t!==s.turns.at(-1)))throw new Error('待决定的随机事件不能有正文或后续回合');
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
       for(const v of t.variants)if(v?.generationRequirements!==undefined){const requirements=v.generationRequirements;if(!record(requirements)||Object.keys(requirements).some(k=>!['stateEnabled','theaters'].includes(k))||typeof requirements.stateEnabled!=='boolean')throw Error('本轮生成配置不正确');v.generationRequirements={stateEnabled:requirements.stateEnabled,theaters:cleanTheaters(requirements.theaters)};}
-      for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {for(const actor of v.outcome.characters||[])clampLegacyAffinity(actor);const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }
+      for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }
     }
     validateLedgerMetadata(s);
     if(s.hiddenActorCardIds!==undefined&&(!Array.isArray(s.hiddenActorCardIds)||s.hiddenActorCardIds.length>1000||s.hiddenActorCardIds.some(id=>!validActorId(id))))throw new Error('Invalid hidden actor cards');

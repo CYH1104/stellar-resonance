@@ -6,7 +6,7 @@ export interface RepairPlan {roster:boolean;affinityIds:string[];spiritIds:strin
 const supplied=(v:unknown)=>typeof v==='string'&&!!v.trim()&&!/^(?:未知|未提供|待生成|待更新|暂无)[。.!！]?$/.test(v.trim());
 export function missingRepairPlan(out:Outcome|undefined,state:WorldState,settings:TheaterSetting[]=[],stateEnabled=true,suggestionsEnabled=true):RepairPlan {
  const codes=out?.stateUpdate?.codes||[],present=state.characters.filter(c=>c.present),reviewed=new Set(out?.stateUpdate?.affinityReviewedIds||[]);
- const affinityIds=stateEnabled?present.filter(c=>{const verdict=out?.stateUpdate?.review?.[c.id];if(verdict)return verdict==='missing'||verdict==='rejected';return !reviewed.has(c.id)&&!(validAffinity(out?.characters?.find(p=>p.id===c.id)?.affinity)&&!codes.includes('STATE_AFFINITY_RETAINED'));}).map(c=>c.id):[];
+ const affinityIds=stateEnabled?present.filter(c=>!reviewed.has(c.id)&&!(validAffinity(out?.characters?.find(p=>p.id===c.id)?.affinity)&&!codes.includes('STATE_AFFINITY_RETAINED'))).map(c=>c.id):[];
  const spiritIds=stateEnabled?[state.player,...present].filter(c=>c.spiritAnimal?.trim()&&!supplied(c.id==='player'?out?.player?.spiritThought:out?.characters?.find(p=>p.id===c.id)?.spiritThought)).map(c=>c.id):[];
  return {roster:stateEnabled&&(!out?.stateUpdate?.received||codes.includes('STATE_ROSTER_RETAINED')),affinityIds,spiritIds,theaterSlots:settings.filter(s=>s.enabled&&(s.slot===1?!out?.forum?.length:!completeTheater(out?.theaters?.find(t=>t.slot===s.slot),s,state))).map(s=>s.slot),suggestions:suggestionsEnabled&&!out?.suggestions?.length};
 }
