@@ -61,7 +61,7 @@ describe('剧情内论坛的一致性与存档', () => {
     const current = visibleForum(s);
     expect(current.map(p => p.content)).toEqual(['第二稿动态']);
     expect(current[0].variantId).not.toBe(first.id);
-    expect(s.forumActivity?.[current[0].key]).toBeUndefined();
+    expect(s.forumActivity?.[current[0].key]).toMatchObject({liked:false,replies:[]});
     expect(() => replyForum(s, oldKey, '废弃稿件的新评论')).toThrow('当前剧情');
     selectVariant(s, 0, 0);
     expect(s.forumActivity?.[visibleForum(s)[0].key]?.replies[0].text).toBe('我对第一稿的回应');

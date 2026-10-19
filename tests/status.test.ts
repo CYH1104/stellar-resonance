@@ -28,9 +28,9 @@ it('提名、远程论坛和未完成稿不算相遇；切稿、回退按当前�
   s.turns.push({id:'partial',input:'行动',selected:0,variants:[{id:'partial-a',text:'一半',status:'incomplete',createdAt:'',outcome:{event:'未完成',characters:[{id:'two',present:true}]}}]});
   expect(encounteredCharacters(s)).toEqual([]);const html=await render(s);expect(html).toContain('尚未遇到角色');expect(html).not.toContain('未见乙');
 });
-it('身份变化与骰子事件可随备份恢复，回退恢复原身份；旧存档仍可读取',()=>{
+it('身份保持作者设定，骰子事件可随备份恢复和回退；旧存档仍可读取',()=>{
   const s=game();turn(s,'one',{event:'获得任命',player:{identity:'项目助理'},diceEvent:{direction:'positive',description:'获得了实习机会'},characters:[{id:'one',present:true}]});
-  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.identity).toBe('项目助理');expect(restored.turns[0].variants[0].outcome?.diceEvent?.description).toBe('获得了实习机会');expect(encounteredCharacters(restored)).toHaveLength(1);
+  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.identity).toBe('学院新生');expect(restored.turns[0].variants[0].outcome?.diceEvent?.description).toBe('获得了实习机会');expect(encounteredCharacters(restored)).toHaveLength(1);
   const forged=JSON.parse(backup({version:1,sessions:[s],preferences:defaults()}));forged.sessions[0].turns[0].variants[0].outcome.diceEvent.direction='negative';expect(()=>parseBackup(JSON.stringify(forged))).toThrow('骰子事件');
   truncate(restored,0);expect(stateAt(restored).player.identity).toBe('学院新生');expect(encounteredCharacters(restored)).toEqual([]);
 });
@@ -43,12 +43,12 @@ it('精神体 OS 开局等待 AI，每轮展示 AI 更新，回退不保留后�
   truncate(s,0);expect(await render(s)).toContain('等待 AI 随剧情生成');delete s.persona.spiritAnimal;expect(await render(s)).toContain('请先在人设中填写精神体');
 });
 
-it('精神力等级使用回合状态变量，保存、切稿和回退一致，与第二性别合并展示',async()=>{
+it('精神力等级保持作者设定，保存、切稿和回退一致，与第二性别合并展示',async()=>{
  const s=game();s.persona.mentalPowerLevel='A级';s.initial.characters[0].mentalPowerLevel='S级';
  expect(stateAt(s).player.mentalPowerLevel).toBe('A级');
  turn(s,'first',{event:'正式评定',player:{mentalPowerLevel:'S级'},characters:[{id:'one',present:true,mentalPowerLevel:'SS级',affinity:12}]});
- const html=await render(s);expect(html).toContain('SS级');expect(html).toContain('【S级 Beta】');expect(html).not.toContain('<dt>精神力等级</dt>');expect(html).not.toContain('<dt>第二性别</dt>');expect(html).not.toContain('拖动卡片');expect(html).not.toMatch(/第\s*1\s*轮/);
- const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.mentalPowerLevel).toBe('S级');
+ const html=await render(s);expect(html).toContain('S级');expect(html).not.toContain('SS级');expect(html).toContain('【A级 Beta】');expect(html).not.toContain('<dt>精神力等级</dt>');expect(html).not.toContain('<dt>第二性别</dt>');expect(html).not.toContain('拖动卡片');expect(html).not.toMatch(/第\s*1\s*轮/);
+ const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
  const alternate:Variant={id:'alt',text:'没有重新评定',status:'incomplete',createdAt:''};restored.turns[0].variants.push(alternate);finishVariant(restored,0,alternate,{event:'普通交流'});selectVariant(restored,0,1);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
- selectVariant(restored,0,0);expect(stateAt(restored).characters[0].mentalPowerLevel).toBe('SS级');truncate(restored,0);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
+ selectVariant(restored,0,0);expect(stateAt(restored).characters[0].mentalPowerLevel).toBe('S级');truncate(restored,0);expect(stateAt(restored).player.mentalPowerLevel).toBe('A级');
 });

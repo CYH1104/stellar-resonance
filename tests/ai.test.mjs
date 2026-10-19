@@ -123,7 +123,7 @@ test('a closed state block alone cannot prove completion; hidden final marker is
 });
 test('public state failures identify a safe category without revealing model values',()=>{
   const valid={presentCharacterIds:[],event:'事件'};
-  for(const [patch,code]of [[{other:'synthetic-private-payload'},'MODEL_STATE_FIELDS_INVALID'],[{presentCharacterIds:null},'MODEL_STATE_ROSTER_INVALID'],[{event:''},'MODEL_STATE_EVENT_INVALID'],[{player:{identity:123}},'MODEL_STATE_PLAYER_INVALID'],[{characters:[{id:'one',innerThought:123}]},'MODEL_STATE_CHARACTERS_INVALID'],[{forum:[{content:'synthetic-private-payload'}]},'MODEL_STATE_FORUM_INVALID'],[{theaters:[{slot:2,kind:'group'}]},'MODEL_STATE_THEATERS_INVALID']])assert.throws(()=>normalizeModelState(card,state,{...valid,...patch}),error=>error.code===code&&!error.message.includes('synthetic-private-payload'));
+  for(const [patch,code]of [[{other:'synthetic-private-payload'},'MODEL_STATE_FIELDS_INVALID'],[{presentCharacterIds:null},'MODEL_STATE_ROSTER_INVALID'],[{event:''},'MODEL_STATE_EVENT_INVALID'],[{player:{ability:123}},'MODEL_STATE_PLAYER_INVALID'],[{characters:[{id:'one',innerThought:123}]},'MODEL_STATE_CHARACTERS_INVALID'],[{forum:[{content:'synthetic-private-payload'}]},'MODEL_STATE_FORUM_INVALID'],[{theaters:[{slot:2,kind:'group'}]},'MODEL_STATE_THEATERS_INVALID']])assert.throws(()=>normalizeModelState(card,state,{...valid,...patch}),error=>error.code===code&&!error.message.includes('synthetic-private-payload'));
 });
 test('provider reasoning channels, thinking content blocks and tagged content are never emitted',async()=>{
   const response=new Response(JSON.stringify({choices:[{message:{reasoning_content:'separate-secret',reasoning:'another-secret',content:[{type:'thinking',thinking:'block-secret'},{type:'text',thought:true,text:'thought-secret'},{type:'text',text:'<Think_rules>tagged-secret</Think_rules>正文'}]}}]}),{headers:{'Content-Type':'application/json'}});let out='';for await(const part of completionChunks(response))out+=part;assert.equal(out,'正文');
@@ -174,10 +174,10 @@ test('group folders do not enter model messages and a paused folder does not act
  assert.ok(messages.some(m=>m.content==='Active prompt'));assert.ok(!JSON.stringify(messages).includes('Paused prompt'));assert.ok(!JSON.stringify(messages).includes('UI group only'));
 });
 
-test('mental power level reaches story context and can update via validated player and character state patches',()=>{
+test('mental power level reaches story context from author facts and generated patches cannot rewrite it',()=>{
  const request={input:'评定精神力',persona:{name:'玩家',mentalPowerLevel:'A级'},state:{...state,player:{...state.player,mentalPowerLevel:'S级'}},history:[],presets:[],memories:[]};
- const built=buildMessages(card,request);assert.equal(built.state.player.mentalPowerLevel,'S级');assert.ok(built.messages[0].content.includes('no invented ranks'));
- const out=normalizeModelState(card,built.state,{presentCharacterIds:[],event:'重新评定',player:{mentalPowerLevel:'SS级'},characters:[{id:'one',mentalPowerLevel:'A级'}]});assert.equal(out.player.mentalPowerLevel,'SS级');assert.equal(out.characters[0].mentalPowerLevel,'A级');
- for(const value of ['',null,42,'x'.repeat(101)])assert.throws(()=>normalizeModelState(card,built.state,{presentCharacterIds:[],event:'错误更新',player:{mentalPowerLevel:value}}),{code:'MODEL_STATE_PLAYER_INVALID'});
+ const built=buildMessages(card,request);assert.equal(built.state.player.mentalPowerLevel,'A级');assert.ok(built.messages[0].content.includes('no invented ranks'));
+ const out=normalizeModelState(card,built.state,{presentCharacterIds:[],event:'重新评定',player:{mentalPowerLevel:'SS级'},characters:[{id:'one',mentalPowerLevel:'A级'}]});assert.equal(out.player.mentalPowerLevel,undefined);assert.equal(out.characters[0].mentalPowerLevel,undefined);
+ for(const value of ['',null,42,'x'.repeat(101)])assert.equal(normalizeModelState(card,built.state,{presentCharacterIds:[],event:'错误更新',player:{mentalPowerLevel:value}}).player.mentalPowerLevel,undefined);
  assert.equal(normalizeModelState(card,built.state,{presentCharacterIds:[],event:'普通交流'}).player,undefined);
 });

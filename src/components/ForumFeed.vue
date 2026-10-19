@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {displayText} from '../domain/storyMarkup';
+import {forumLikeCount} from '../domain/forumLikes';
 import { computed,ref,watch,nextTick,onMounted,onBeforeUnmount } from 'vue';
 import type { ViewModel } from '../app/useWorkspace';
 const props=defineProps<{w:ViewModel;standalone?:boolean;title?:string}>();
@@ -24,7 +25,7 @@ async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,draft
         <span v-if="post.topic" class="topic-link">#{{ post.topic }}#</span>
         <p class="forum-body">{{ displayText(post.content) }}</p>
         <div class="forum-actions">
-          <button :class="{liked:w.active?.forumActivity?.[post.key]?.liked}" :aria-pressed="!!w.active?.forumActivity?.[post.key]?.liked" :disabled="w.busy||w.workingMemory||!!w.workingForumReply" @click="w.toggleForumLike(post.key)">{{ w.active?.forumActivity?.[post.key]?.liked ? ' 已赞' : '♡ 点赞' }}</button>
+          <button :class="{liked:w.active?.forumActivity?.[post.key]?.liked}" :aria-pressed="!!w.active?.forumActivity?.[post.key]?.liked" :disabled="w.busy||w.workingMemory||!!w.workingForumReply" @click="w.toggleForumLike(post.key)">{{ w.active?.forumActivity?.[post.key]?.liked ? '♥ 已赞' : '♡ 点赞' }} {{w.active?forumLikeCount(w.active,post):0}}</button>
           <button :aria-expanded="!!expanded[post.key]" @click="expanded[post.key]=!expanded[post.key]">评论 {{ (post.comments?.length||0)+(w.active?.forumActivity?.[post.key]?.replies?.length||0) }}</button>
         </div>
         <section v-if="expanded[post.key]" class="forum-comments" :aria-label="`${post.authorName}动态的评论`">

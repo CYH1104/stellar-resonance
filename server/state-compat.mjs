@@ -1,14 +1,14 @@
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {validateOutcome} from '../src/domain/story.ts';
-import {applyMvu,cleanOperations,pointer} from '../src/domain/mvu.ts';
+import {applyMvu,cleanOperations,pointer,explicitPresenceIds} from '../src/domain/mvu.ts';
 import {cleanTheaters,cleanTheaterScenes,determinePairing} from '../src/domain/theaters.ts';
 import {isSpiritDiary} from '../src/domain/spiritDiary.ts';
 import {theaterRequirementError} from '../src/domain/theaterRequirements.ts';
 import {displayText} from '../src/domain/storyMarkup.ts';
 
 const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
-const dynamic=['ability','identity','mentalPowerLevel','affinity','relationship','innerThought','spiritThought'];
+const dynamic=['ability','affinity','relationship','innerThought','spiritThought'];
 const aliases={好感度:'affinity',关系:'relationship',精神体OS:'spiritThought',精神体想法:'spiritThought',内心想法:'innerThought',身份:'identity',精神力等级:'mentalPowerLevel',能力:'ability'};
 const numeric=v=>typeof v==='string'&&/^[+-]?\d+(?:\.\d+)?$/.test(v.trim())?Number(v):v;
 const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?false:undefined;
@@ -18,16 +18,17 @@ const boolean=v=>v===true||v==='true'||v===1?true:v===false||v==='false'||v===0?
 export function compatibleState(raw,card,state,options){
   if(!object(raw))return raw;
   if(options.stateEnabled===false)raw={...raw,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id),characters:[],player:undefined,mvu:undefined};
+  const retain=id=>{if(!options.retainedPresentIds?.includes(id))options.retainedPresentIds?.push(id);};
   const warn=code=>{if(!options.validationWarnings?.includes(code))options.validationWarnings?.push(code);};
   const known=new Map(state.characters.map(c=>[c.id,c]));
   const actorAliases=new Map(),ambiguousAliases=new Set();
   const resolve=value=>resolveActorId(known.values(),value)??(typeof value==='string'?actorAliases.get(value):undefined);
   const out={event:typeof raw.event==='string'&&raw.event.trim()?displayText(raw.event).slice(0,500):'本轮剧情已生成，状态按有效字段更新。'};
   if(out.event!==raw.event)warn('STATE_EVENT_RECOVERED');
-  let mvuState=state,mvuAccepted=false;
+  let mvuState=state,mvuAccepted=false,explicitPresent=new Set();
   if(raw.mvu!==undefined){
-    try{mvuState=applyMvu(state,raw.mvu);mvuAccepted=true;}catch{
-      warn('STATE_MVU_REJECTED');
+    try{mvuState=applyMvu(state,raw.mvu);mvuAccepted=true;explicitPresent=explicitPresenceIds(raw.mvu);}catch{
+      warn('STATE_MVU_REJECTED');state.characters.forEach(c=>retain(c.id));
       raw={...raw,mvu:undefined,characters:[],player:undefined,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)};
     }
     // Actor changes are flattened into the canonical snapshot once. Custom
@@ -66,13 +67,14 @@ export function compatibleState(raw,card,state,options){
   if(Array.isArray(roster)){
     const ids=roster.map(resolve);if(ids.some(id=>!id))warn('STATE_UNKNOWN_CHARACTER_SKIPPED');
     // An entirely unrecognized roster is not evidence that everybody left.
+    if(roster.length&&ids.every(id=>!id)){state.characters.forEach(c=>retain(c.id));warn('STATE_ROSTER_RETAINED');}
     out.presentCharacterIds=roster.length&&ids.every(id=>!id)?state.characters.filter(c=>c.present).map(c=>c.id):[...new Set(ids.filter(Boolean))];
   }else{
     warn('STATE_ROSTER_RETAINED');
-    out.presentCharacterIds=[...known.values()].filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
+    out.presentCharacterIds=[...known.values()].filter(c=>{const patch=entries.find(e=>resolve(e)===c.id);if(boolean(patch?.present)===undefined)retain(c.id);return boolean(patch?.present)??mvuState.characters.find(a=>a.id===c.id)?.present??c.present;}).map(c=>c.id);
   }
   // An explicit MVU transition is newer than the accompanying status snapshot.
-  if(mvuAccepted)for(const actor of mvuState.characters){const before=state.characters.find(c=>c.id===actor.id);if(!before||before.present!==actor.present){const present=new Set(out.presentCharacterIds);if(actor.present)present.add(actor.id);else present.delete(actor.id);out.presentCharacterIds=[...present];}}
+  if(mvuAccepted)for(const actor of mvuState.characters){const before=state.characters.find(c=>c.id===actor.id);if(!before||before.present!==actor.present||explicitPresent.has(actor.id)||explicitPresent.has('*')){const at=options.retainedPresentIds?.indexOf(actor.id)??-1;if(at>=0)options.retainedPresentIds.splice(at,1);const present=new Set(out.presentCharacterIds);if(actor.present)present.add(actor.id);else present.delete(actor.id);out.presentCharacterIds=[...present];}}
   if(raw.diceEvent!==undefined)out.diceEvent=raw.diceEvent;
   const suggestions=raw.suggestions??raw.quickReplies??raw.quick_replies??raw['快捷回复'];
   if(suggestions!==undefined)try{out.suggestions=validateOutcome({event:out.event,suggestions},state).suggestions;}catch{warn('STATE_SUGGESTIONS_SKIPPED');}

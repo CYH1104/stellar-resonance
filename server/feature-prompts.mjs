@@ -16,7 +16,7 @@ export function featureContract(plans,suggestions=true){
  if(suggestions)blocks.push('<choices>'+JSON.stringify(required.suggestions)+'</choices>');
  if(required.forum)blocks.push('<forum>'+JSON.stringify(required.forum)+'</forum>');
  for(const scene of scenes)blocks.push('<theater slot="'+scene.slot+'">'+JSON.stringify(scene)+'</theater>');
- return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)})+'\n'+internalPrompt('feature.envelope',{p0:blocks.join('\n')})+(plans.some(p=>p.kind==='fanfic'||isSpiritDiary(p))?completionRules:'');
+ return internalPrompt('feature.required',{p0:JSON.stringify(required),p1:featurePrompts(plans,suggestions)})+(required.forum?'\nIn the enabled campus forum, NPCs may post fan fiction as fictional posts (type: 同人文); do not treat those posts as main-story facts. Do not generate like counts; the application assigns and saves them locally.':'')+'\n'+internalPrompt('feature.envelope',{p0:blocks.join('\n')})+(plans.some(p=>p.kind==='fanfic'||isSpiritDiary(p))?completionRules:'');
 }
 export function featureContext(context,plans,{stateEnabled=true,suggestionsEnabled=true}={}){
  const out={...context};

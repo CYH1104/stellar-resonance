@@ -13,7 +13,7 @@ test('state-only repair drops preset roles, examples, opening and story history 
  const normal=buildMessages(card,{...request,continuation:undefined});assert.ok(JSON.stringify(continuedMessages(normal.messages,'固定正文','玩家')).includes('PRESET_FORMAT_SENTINEL'));
 });
 test('a skipped actor field yields partial state while valid roster and affinity survive',()=>{
- const d=new StoryDecoder();d.push('正文<status>'+JSON.stringify({presentCharacterIds:['one'],characters:[{id:'one',affinity:22,mentalPowerLevel:[]}],event:'见面'})+'</status><done>');
+ const d=new StoryDecoder();d.push('正文<status>'+JSON.stringify({presentCharacterIds:['one'],characters:[{id:'one',affinity:22,innerThought:[]}],event:'见面'})+'</status><done>');
  const out=d.finish(card,state,{singleStateCall:true,theaterSettings:settings});assert.equal(out.stateUpdate.status,'partial');assert.ok(out.stateUpdate.codes.includes('STATE_FIELD_SKIPPED'));assert.equal(out.characters[0].affinity,22);assert.equal(out.characters[0].present,true);assert.ok(!Object.hasOwn(out.characters[0],'mentalPowerLevel'));
 });
 test('every split of a truncated platform state tag is withheld from public deltas',()=>{

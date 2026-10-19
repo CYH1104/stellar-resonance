@@ -19,7 +19,7 @@ it('旧人设无新字段仍可使用，身份中的异能分离且不把职位�
 });
 it('异能 MVU 独立保存，回退与备份恢复一致，状态栏不再混入身份',async()=>{
  const s=newSession('状态',{...blankPersona(),name:'玩家',identity:'破军系 一年级',ability:'感知'},'');const v={id:'v',text:'正文',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});
- finishVariant(s,0,v,{event:'使用能力',player:{identity:'破军系 一年级，异能「言出法随」'},characters:[{id:'guide',present:true,ability:'空间感知'}]});
+ finishVariant(s,0,v,{event:'使用能力',player:{identity:'破军系 一年级，异能「言出法随」',ability:'言出法随'},characters:[{id:'guide',present:true,ability:'空间感知'}]});
  const state=stateAt(s);expect(state.player.identity).toBe('破军系 一年级');expect(state.player.ability).toBe('言出法随');expect(state.characters[0].ability).toBe('空间感知');
  const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()})).sessions[0];expect(stateAt(restored).player.ability).toBe('言出法随');truncate(restored,0);expect(stateAt(restored).player.ability).toBe('感知');
  const html=await renderToString(createSSRApp(ActorCard,{actor:{id:'player',name:'玩家',present:true,identity:'破军系新生，异能「言出法随」'},player:true}));expect(html).toContain('【破军系新生】');expect(html).toMatch(/<dt[^>]*>异能<\/dt>/);expect(html).toContain('言出法随');expect(html).not.toContain('【破军系新生，异能');

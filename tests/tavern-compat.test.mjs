@@ -26,7 +26,7 @@ test('legacy state maps, exact names, numeric strings and Chinese field aliases 
 test('invalid single fields retain previous values, valid fields and forum posts survive independently',()=>{
   const raw={...base(),characters:[{id:'one',affinity:'not-a-number',identity:'新身份',spiritThought:''},{id:'unknown',affinity:99}],player:{spiritThought:[]},forum:[{id:'valid',authorName:'甲',content:'有效帖子',comments:[{id:'bad',content:3},{id:'ok',authorName:'乙',content:'有效评论'}]},{id:'bad',content:3}]};
   const out=normalizeModelState(card,state,raw,options({theaterSettings:settings.map(t=>({...t,enabled:t.slot===1}))}));
-  assert.equal(out.characters[0].identity,'新身份');assert.equal(out.characters[0].affinity,undefined);assert.equal(out.characters[0].spiritThought,undefined);assert.equal(out.player,undefined);assert.equal(out.forum.length,1);assert.equal(out.forum[0].comments.length,1);
+  assert.equal(out.characters[0].identity,undefined);assert.equal(out.characters[0].affinity,undefined);assert.equal(out.characters[0].spiritThought,undefined);assert.equal(out.player,undefined);assert.equal(out.forum.length,1);assert.equal(out.forum[0].comments.length,1);
 });
 test('missing or entirely unknown roster retains scene, explicit empty roster clears scene',()=>{
   for(const presentCharacterIds of [undefined,['not-a-real-id']]){const out=normalizeModelState(card,state,{...base(),presentCharacterIds},options());assert.ok(out.characters.find(c=>c.id==='one').present);}

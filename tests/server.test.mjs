@@ -163,9 +163,9 @@ test('HTTP dice plan yields visible actual effects; missing or reversed event re
   for(const [action,code]of [['dice-missing','DICE_EVENT_MISSING'],['dice-opposite','DICE_EVENT_MISMATCH']]){const r=await request(action);r.dice={value:1,grade:'大凶',rulesVersion:'d100-v1'};const result=events(await(await post('/api/generate',r)).text());assert.ok(result.some(e=>e.type==='repair'&&e.code===code)||result.some(e=>e.type==='done'));if(!result.some(e=>e.type==='done')){assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,code);}}
   const r=await request();r.dice={value:1,grade:'大吉',rulesVersion:'d100-v1'};const count=calls.length;const response=await post('/api/generate',r);assert.equal(response.status,400);assert.equal((await response.json()).code,'INVALID_DICE');assert.equal(calls.length,count);
 });
-test('player identity initializes from persona and updates independently, player inner thought is filtered',async()=>{
+test('player identity initializes from persona and model overwrites are ignored, player inner thought is filtered',async()=>{
   const g=await(await post('/api/new-game',{persona:{name:'访客',identity:'学院新生'}})).json();assert.equal(g.initial.player.identity,'学院新生');
-  const r=await request('identity');r.persona.identity='学院新生';r.state.player.identity='学院新生';const result=events(await(await post('/api/generate',r)).text());assert.equal(result.at(-1).type,'done');assert.deepEqual(result.at(-1).outcome.player,{identity:'项目助理'});
+  const r=await request('identity');r.persona.identity='学院新生';r.state.player.identity='学院新生';const result=events(await(await post('/api/generate',r)).text());assert.equal(result.at(-1).type,'done');assert.deepEqual(result.at(-1).outcome.player,{});
 });
 test('HTTP generation returns AI spirit OS for a configured player spirit and reports omission explicitly',async()=>{
   for(const action of ['spirit-ok','spirit-missing']){

@@ -1,4 +1,5 @@
 import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
+import {fixedActorFields,restoreActorFacts} from './actorPolicy.ts';
 import {newDynamicActor} from './dynamicActors.ts';
 import type { WorldState } from './contracts';
 
@@ -39,18 +40,39 @@ export function cleanOperations(value:unknown):MvuOperation[]{
     return out;
   });
 }
-export function patchData(data:Record<string,Json>,updates:unknown):Record<string,Json>{
+/** Presence assignments remain explicit even if they equal the pre-turn value. */
+export function explicitPresenceIds(updates:unknown):Set<string>{
+  const ids=new Set<string>();
+  for(const op of cleanOperations(updates)){
+    if(op.op==='test'||op.op==='remove')continue;
+    const path=pointer(op.path);if(path[0]!=='characters')continue;
+    if(path.length===1)ids.add('*');
+    else if(path.length===2||path.length===3&&path[2]==='present')ids.add(path[1]);
+  }
+  return ids;
+}
+export function patchData(data:Record<string,Json>,updates:unknown,lockActorFacts=false):Record<string,Json>{
   const root=cleanJson(data) as Record<string,Json>;
+  const fixedPath=(path:string)=>{const p=pointer(path);return p[0]==='player'?fixedActorFields.includes(p[1] as typeof fixedActorFields[number]):p[0]==='characters'&&object(data.characters)&&Object.hasOwn(data.characters,p[1])&&fixedActorFields.includes(p[2] as typeof fixedActorFields[number]);};
+  const restoreFacts=()=>{
+    if(object(root.player)&&object(data.player))restoreActorFacts(data.player,root.player);
+    if(object(root.characters)&&object(data.characters))for(const [id,actor]of Object.entries(data.characters))if(object(actor)&&object(root.characters[id]))restoreActorFacts(actor,root.characters[id]);
+  };
   function change(path:string,value:Json|undefined,mode:string){const parts=pointer(path),key=parts.pop()!;let parent:Json=root;for(const part of parts){if(!parent||typeof parent!=='object'||!Object.hasOwn(parent,part))fail();parent=(parent as Record<string,Json>)[part];}if(!parent||typeof parent!=='object')fail();
     const exists=Object.hasOwn(parent,key);if(!['add','insert'].includes(mode)&&!exists)fail();
     if(Array.isArray(parent)){if(key==='-'&&['add','insert'].includes(mode)){parent.push(value!);return;}if(!/^(0|[1-9]\d*)$/.test(key))fail();const n=Number(key);if(n>parent.length||(!['add','insert'].includes(mode)&&n===parent.length))fail();if(mode==='remove')parent.splice(n,1);else if(['add','insert'].includes(mode))parent.splice(n,0,value!);else parent[n]=value!;}
     else if(mode==='remove')delete parent[key];else parent[key]=value!;
   }
   for(const op of cleanOperations(updates)){
+    try{
+    if(lockActorFacts&&op.op!=='test'&&fixedPath(op.path))continue;
+    if(lockActorFacts&&op.op==='move'&&fixedPath(op.from!))fail();
     if(op.op==='test'){if(JSON.stringify(readPath(root,op.path))!==JSON.stringify(op.value))fail();continue;}
     if(op.op==='delta'){const old=readPath(root,op.path);if(typeof old!=='number'||!Number.isFinite(old+(op.value as number)))fail();change(op.path,old+(op.value as number),'replace');}
     else if(op.op==='move'||op.op==='copy'){if(op.path.startsWith(op.from!+'/'))fail();const v=clone(readPath(root,op.from!));if(op.op==='move')change(op.from!,undefined,'remove');change(op.path,v,'add');}
     else change(op.path,op.value,op.op);
+    if(lockActorFacts)restoreFacts();
+    }catch(error){if(error instanceof Error)Object.assign(error,{fieldPath:op.path});throw error;}
   }
   const result=cleanJson(root) as Record<string,Json>;if(JSON.stringify(result).length>100000)fail();return result;
 }
@@ -68,9 +90,9 @@ export function renderMvuMacros(text:string,data:MvuData):string{
     return typeof value==='string'?value:JSON.stringify(value);
   });
 }
-const dynamic=new Set(['identity','mentalPowerLevel','affinity','relationship','present','innerThought','spiritThought']);
+const dynamic=new Set(['affinity','relationship','present','innerThought','spiritThought']);
 export function applyMvu(state:WorldState,updates:unknown):WorldState{
-  const original=dataFromState(state).stat_data,next=patchData(original,updates);
+  const original=dataFromState(state).stat_data,next=patchData(original,updates,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
   function actor(before:Record<string,Json>,after:Json,player=false){if(!object(after))fail();

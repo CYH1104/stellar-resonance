@@ -1,3 +1,4 @@
+import {restoreActorFacts} from '../src/domain/actorPolicy.ts';
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
 import {withTavernContext} from './tavern-macro-engine.mjs';
@@ -63,6 +64,12 @@ export function endpoint(baseUrl) {
   return url.href;
 }
 
+function authorState(card,state,persona){
+  const result=JSON.parse(JSON.stringify(state));
+  for(const actor of result.characters){const source=card.characters.find(c=>c.id===actor.id);if(source)restoreActorFacts({...(identityOf(source)!==undefined?{identity:identityOf(source)}:{}),...(mentalPowerLevelOf(source)!==undefined?{mentalPowerLevel:mentalPowerLevelOf(source)}:{})},actor);}
+  if(persona){const level=persona.mentalPowerLevel||readPersonaExtra(persona.other,'精神力等级');restoreActorFacts({...(persona.identity!==undefined?{identity:persona.identity}:{}),...(level?{mentalPowerLevel:level}:{})},result.player);}
+  return result;
+}
 function safeState(card, request) {
   if(!request.persona||!text(request.persona.name,80,true)||!request.state||!Array.isArray(request.state.characters))throw modelError(400,'INVALID_GAME_STATE');
   const player={id:'player',name:request.persona.name,present:true};
@@ -83,7 +90,7 @@ function safeState(card, request) {
   const level=request.state.player?.mentalPowerLevel||request.persona.mentalPowerLevel||readPersonaExtra(request.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(text(level,100,true))player.mentalPowerLevel=level;
   for(const character of characters){const previous=request.state.characters.find(a=>a.id===character.id);const level=previous?.mentalPowerLevel||mentalPowerLevelOf(card.characters.find(c=>c.id===character.id)||{});if(text(level,100))character.mentalPowerLevel=level;}
   let variables;try{variables=cleanJson(request.state.variables||{});}catch{throw modelError(400,'INVALID_GAME_STATE');}if(!variables||Array.isArray(variables)||typeof variables!=='object')throw modelError(400,'INVALID_GAME_STATE');
-  return {player:separateIdentityAbility(player),characters:characters.map(separateIdentityAbility),variables};
+  return authorState(card,{player:separateIdentityAbility(player),characters:characters.map(separateIdentityAbility),variables},request.persona);
 }
 
 export function buildMessages(card,request,privateBooks=[]){
@@ -122,6 +129,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
+  state=authorState(card,state,options.persona);
   let expanded=state;
   if(options.stateEnabled!==false&&raw?.mvu){try{expanded=applyMvu(state,raw.mvu);}catch{}}
   const actors=new Map(card.characters.map(c=>[c.id,c]));for(const actor of expanded.characters)if(!actors.has(actor.id))actors.set(actor.id,actor);
@@ -143,7 +151,7 @@ export function normalizeModelState(card, state, raw,options={}) {
   if(raw.presentCharacterIds.some(id=>!known.has(id)))throw modelError(502,'UNKNOWN_MODEL_CHARACTER');
   let updates=raw.characters||[];
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
-  if(raw.mvu!==undefined){const added=mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id));updates=[...added,...state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','relationship','innerThought','spiritThought','mentalPowerLevel'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;})];for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
+  if(raw.mvu!==undefined){const added=mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id));updates=[...added,...state.characters.map(before=>{const after=mvuState.characters.find(c=>c.id===before.id),patch={...(updates.find(c=>c.id===before.id)||{id:before.id})};for(const field of ['affinity','relationship','innerThought','spiritThought'])if(after[field]!==before[field]){if(patch[field]!==undefined&&patch[field]!==after[field])throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');patch[field]=after[field];}return patch;})];for(const c of state.characters){if(c.present!==mvuState.characters.find(a=>a.id===c.id).present&&raw.presentCharacterIds.includes(c.id)!==mvuState.characters.find(a=>a.id===c.id).present)throw modelError(502,'MODEL_STATE_ROSTER_INVALID');}}
   const present=new Set(raw.presentCharacterIds);
   if(!Array.isArray(updates)||updates.some(c=>!c||!known.has(c.id))||new Set(updates.map(c=>c.id)).size!==updates.length)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');
   // The model's full scene roster is authoritative; no client-selected cast is used.
@@ -155,12 +163,12 @@ export function normalizeModelState(card, state, raw,options={}) {
       if(!validAffinity(patch.affinity))throw modelError(502,'CHARACTER_AFFINITY_MISSING');
       if(spiritAnimalOf(c)&&(!text(patch.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(patch.spiritThought.trim())))throw modelError(502,'CHARACTER_SPIRIT_THOUGHT_MISSING');
     }
-    const identity=patch.identity??(present.has(c.id)?state.characters.find(a=>a.id===c.id)?.identity||identityOf(c):undefined);
-    return {id:c.id,...(!state.characters.some(a=>a.id===c.id)?newDynamicActor({...c,...patch,id:c.id}):{}),present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(patch.mentalPowerLevel!==undefined?{mentalPowerLevel:patch.mentalPowerLevel}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(patch.relationship!==undefined?{relationship:patch.relationship}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
+    const identity=state.characters.find(a=>a.id===c.id)?.identity??identityOf(c);const level=state.characters.find(a=>a.id===c.id)?.mentalPowerLevel??mentalPowerLevelOf(c);
+    return {id:c.id,...(!state.characters.some(a=>a.id===c.id)?newDynamicActor({...c,...patch,id:c.id}):{}),present:present.has(c.id),...(patch.ability!==undefined?{ability:patch.ability}:{}),...(identity!==undefined?{identity}:{}),...(level!==undefined?{mentalPowerLevel:level}:{}),...(patch.affinity!==undefined?{affinity:patch.affinity}:{}),...(patch.relationship!==undefined?{relationship:patch.relationship}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(patch.innerThought!==undefined?{innerThought:patch.innerThought}:{}),...(spiritAnimalOf(c)&&patch.spiritThought!==undefined?{spiritThought:patch.spiritThought}:{})};
   });
   let player;
-  if(raw.mvu!==undefined){const patch={...(raw.player||{})};for(const field of ['identity','spiritThought','mentalPowerLevel'])if(mvuState.player[field]!==state.player[field]){if(patch[field]!==undefined&&patch[field]!==mvuState.player[field])throw modelError(502,'MODEL_STATE_PLAYER_INVALID');patch[field]=mvuState.player[field];}raw={...raw,player:patch};}
-  if(raw.player!==undefined){if(!raw.player||typeof raw.player!=='object'||Array.isArray(raw.player)||Object.keys(raw.player).some(k=>!['ability','mentalPowerLevel','name','identity','primaryGender','secondaryGender','innerThought','spiritAnimal','spiritThought','affinity'].includes(k)))throw modelError(502,'MODEL_STATE_PLAYER_INVALID');player={...(raw.player.ability!==undefined?{ability:raw.player.ability}:{}),...(raw.player.mentalPowerLevel!==undefined?{mentalPowerLevel:raw.player.mentalPowerLevel}:{}),...(raw.player.identity!==undefined?{identity:raw.player.identity}:{}),...(state.player.spiritAnimal&&raw.player.spiritThought!==undefined?{spiritThought:raw.player.spiritThought}:{})};}
+  if(raw.mvu!==undefined){const patch={...(raw.player||{})};for(const field of ['spiritThought'])if(mvuState.player[field]!==state.player[field]){if(patch[field]!==undefined&&patch[field]!==mvuState.player[field])throw modelError(502,'MODEL_STATE_PLAYER_INVALID');patch[field]=mvuState.player[field];}raw={...raw,player:patch};}
+  if(raw.player!==undefined){if(!raw.player||typeof raw.player!=='object'||Array.isArray(raw.player)||Object.keys(raw.player).some(k=>!['ability','mentalPowerLevel','name','identity','primaryGender','secondaryGender','innerThought','spiritAnimal','spiritThought','affinity'].includes(k)))throw modelError(502,'MODEL_STATE_PLAYER_INVALID');player={...(raw.player.ability!==undefined?{ability:raw.player.ability}:{}),...(state.player.spiritAnimal&&raw.player.spiritThought!==undefined?{spiritThought:raw.player.spiritThought}:{})};}
   if(!options.compatibilityPrepared&&text(state.player.spiritAnimal,1500,true)&&(!text(raw.player?.spiritThought,2000,true)||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(raw.player.spiritThought.trim())))throw modelError(502,'PLAYER_SPIRIT_THOUGHT_MISSING');
   let theaters;
   try{
@@ -297,7 +305,7 @@ export class StoryDecoder {
   }
   hasCompletionMarker(){return /<\s*(?:SR_DONE|done)\s*\/?\s*>/i.test(this.raw);}
   finish(card,state,options={}){
-    const single=options.singleStateCall===true,warnings=options.validationWarnings||[];
+    const single=options.singleStateCall===true,warnings=options.validationWarnings||[],retainedPresentIds=[];
     const warn=code=>{if(!warnings.includes(code))warnings.push(code);};
     const incomplete=new Set(BLOCK_TAGS.filter(tag=>{const opens=[...this.raw.matchAll(new RegExp(tag.open.source,'gi'))],closes=[...this.raw.matchAll(new RegExp(tag.close.source,'gi'))];return opens.length>0&&(opens.at(-1).index>(closes.at(-1)?.index??-1));}).map(tag=>tag.key));
     if(!single&&incomplete.size)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
@@ -317,16 +325,16 @@ export class StoryDecoder {
     else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
     if(mvu!==undefined&&!mvuFailed){try{applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch{mvuFailed=true;}}
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
-    if(rejected){if(mvuFailed)delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
+    if(rejected){retainedPresentIds.push(...state.characters.map(c=>c.id));if(mvuFailed)delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
     if(!Object.keys(assembled).length&&!single)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     if(!this.story.trim()){if(single)warn('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}
     if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}
-    const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings});
+    const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings,retainedPresentIds});
     if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     if(single){
       const partial=warnings.some(code=>/STATE_(?:FIELD_SKIPPED|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_)/.test(code));
       const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));
-      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings]};
+      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],retainedPresentIds:[...new Set(retainedPresentIds)]};
     }
     return outcome;
   }

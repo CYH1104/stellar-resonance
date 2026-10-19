@@ -17,15 +17,15 @@ test('精神体设定进入 AI 填表及正文上下文，OS 明确只允许符�
  const {messages}=buildMessages(card,{persona,state:{player:{id:'player',name:'玩家',present:true},characters:[]},input:'打招呼',history:[],memories:[],presets:[]});
  assert(messages[0].content.includes('internal voice'));assert(messages[0].content.includes('not external actions'));assert(messages[0].content.includes('ability is separate'));assert(messages[2].content.includes('嘴硬心软'));assert(messages[2].content.includes('情绪感知'));
  const helper=buildPersonaMessages(card,'帮我补全',persona);assert(helper[0].content.includes('spiritPersonality'));assert.equal(parsePersonaResult(JSON.stringify(persona)).spiritName,'糯米');
- const result=normalizeModelState(card,{player:{id:'player',name:'玩家',present:true},characters:[]},{presentCharacterIds:[],event:'测试',player:{identity:'破军系新生，异能「言出法随」'}});assert.equal(result.player.identity,'破军系新生');assert.equal(result.player.ability,'言出法随');
+ const result=normalizeModelState(card,{player:{id:'player',name:'玩家',present:true},characters:[]},{presentCharacterIds:[],event:'测试',player:{identity:'破军系新生，异能「言出法随」'}});assert.equal(result.player.identity,undefined);assert.equal(result.player.ability,undefined);
 });
-test('char 身份进入初始资料及剧情上下文，支持 MVU 更新，超长或错误类型被拒绝',()=>{
+test('char 身份来自作者资料，模型覆盖及错误类型均忽略而不破坏有效状态',()=>{
  const card={world:{name:'世界'},places:[],characters:[{id:'c',name:'角色',title:'领航者系 · 四年级首席'}]};
  const actor=publicActor(card.characters[0]);assert.equal(actor.identity,'领航者系 四年级首席');
  const request={persona:{name:'玩家'},state:{player:{id:'player',name:'玩家',present:true},characters:[{...actor,identity:'学生会 会长'}]},input:'参加任命',history:[],memories:[],presets:[],theaterSettings:[{slot:1,kind:'forum',enabled:false,title:'论坛',instruction:''},{slot:2,kind:'group',enabled:false,title:'群聊',instruction:''},{slot:3,kind:'fanfic',enabled:false,title:'同人文',instruction:''},{slot:4,kind:'custom',enabled:false,title:'其他',instruction:''}]};
- const built=buildMessages(card,request);assert.equal(built.state.characters[0].identity,'学生会 会长');
- const out=normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'参加任命',characters:[{id:'c',identity:'领航者系 四年级首席\n学生会 会长'}]},{theaterSettings:request.theaterSettings});assert.equal(out.characters[0].identity,'领航者系 四年级首席\n学生会 会长');
- for(const identity of [42,'x'.repeat(201)])assert.throws(()=>normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'错误更新',characters:[{id:'c',identity}]},{theaterSettings:request.theaterSettings}),e=>e.code==='MODEL_STATE_CHARACTERS_INVALID');
+ const built=buildMessages(card,request);assert.equal(built.state.characters[0].identity,'领航者系 四年级首席');
+ const out=normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'参加任命',characters:[{id:'c',identity:'领航者系 四年级首席\n学生会 会长'}]},{theaterSettings:request.theaterSettings});assert.equal(out.characters[0].identity,undefined);assert.equal(out.characters[0].present,true);
+ for(const identity of [42,'x'.repeat(201)])assert.equal(normalizeModelState(card,built.state,{presentCharacterIds:['c'],event:'错误更新',characters:[{id:'c',identity}]},{theaterSettings:request.theaterSettings}).characters[0].present,true);
 });
 
 test('persona helper accepts fenced, wrapped and unescaped multiline JSON without exposing reasoning',()=>{

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {needsStateRepair} from '../domain/roundHealth';
+import StateRepairReport from './StateRepairReport.vue';
 import {computed} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {selected} from '../domain/story';
@@ -13,4 +14,4 @@ function ask(title:string,detail:string,perform:()=>void){emit('ask',title,detai
         <button type="button" v-if="selected(operationTurn)?.text&&w.canContinue" :disabled="w.busy" @click="operationIndex<(w.active?.turns.length||0)-1?ask('从这条回复继续续写？','后续剧情会失效，原完整回复保留为旧稿。',()=>w.generate(undefined,operationIndex,true)):w.generate(undefined,operationIndex,true)">继续续写</button>
         <button type="button" v-if="selected(operationTurn)?.status==='incomplete'&&selected(operationTurn)?.text&&w.canContinue" :disabled="w.busy" title="正文已完整时，只重新生成隐藏状态，不追加正文" @click="w.repairState(operationIndex)">补修状态</button>
         <button type="button" v-if="selected(operationTurn)?.status==='complete'&&operationIndex===(w.active?.turns.length||0)-1&&w.canContinue&&w.active&&needsStateRepair(w.active,operationIndex,w.preferences.theaters,w.preferences.stateEnabled!==false)" :disabled="w.busy" @click="ask('补全本轮状态和小剧场？','会调用剧情接口补全好感度、精神体 OS 和已开启的小剧场；正文、原骰点及已有论坛内容保留。失败时保留原有有效状态。',()=>w.repairState(operationIndex))">补全状态和小剧场</button>
-</template><button type="button" @click="emit('toggleAvatar')">{{showAvatar?'隐藏头像':'显示头像'}}</button><button type="button" @click="emit('toggleVariables')">{{showVariables?'隐藏变量变化':'显示变量变化'}}</button></div></template>
+<StateRepairReport :w="w" :turn-id="operationTurn.id" /></template><button type="button" @click="emit('toggleAvatar')">{{showAvatar?'隐藏头像':'显示头像'}}</button><button type="button" @click="emit('toggleVariables')">{{showVariables?'隐藏变量变化':'显示变量变化'}}</button></div></template>

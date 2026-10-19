@@ -1,3 +1,7 @@
+import {prepareForumLikes} from './forumLikes.ts';
+import {runtimeActorPatch} from './actorPolicy.ts';
+import {projectCharacterFacts} from './characterFacts.ts';
+import {recordReplayIssue,clearReplayIssues} from './stateReplay.ts';
 import {sourceFor,taskFor,textHash,validateLedgerMetadata} from './memoryLedger.ts';
 import {cleanRegexRules} from './regex.ts';
 import {newDynamicActor,validActorId} from './dynamicActors.ts';
@@ -88,23 +92,25 @@ export function validateOutcome(value: unknown, state: WorldState): Outcome {
   if (Object.keys(v).some(k => !['stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
   const out: Outcome = { event: v.event };
-  if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
+  if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['status','received','storyComplete','codes','retainedPresentIds'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');if(update.retainedPresentIds!==undefined&&(!Array.isArray(update.retainedPresentIds)||update.retainedPresentIds.length>1000||update.retainedPresentIds.some(id=>!validActorId(id))))throw Error('保留名单格式不正确');out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
   const mvuState=v.mvu!==undefined?applyMvu(state,cleanOperations(v.mvu)):state;
   if(v.mvu!==undefined)out.mvu=cleanOperations(v.mvu);
   if(v.suggestions!==undefined)out.suggestions=cleanSuggestions(v.suggestions);
   if(v.diceEvent!==undefined)out.diceEvent=cleanDiceEvent(v.diceEvent);
   if (v.player !== undefined) {
-    out.player = actorPatch(v.player);
+    out.player = actorPatch(record(v.player)?runtimeActorPatch(v.player):v.player);
   }
   if (v.characters !== undefined) {
     if (!Array.isArray(v.characters) || v.characters.length > 1000) throw new Error('人物更新格式不正确');
     const actorIds = new Set<string>();
     out.characters = v.characters.map(c => {
+      try{
       if (!record(c) || !validActorId(c.id) || actorIds.has(c.id)) throw new Error('人物更新不合法');
       actorIds.add(c.id);const before=state.characters.find(a=>a.id===c.id),committed=mvuState.characters.find(a=>a.id===c.id);
-      const patch=committed?{id:c.id,...actorPatch(c,true)}:newDynamicActor(c);
+      const patch=committed?{id:c.id,...actorPatch(runtimeActorPatch(c),true)}:newDynamicActor(c);
       for(const field of ['affinity','relationship'] as const)if(committed&&committed[field]!==before?.[field])delete patch[field];
       return patch;
+      }catch(error){if(error instanceof Error&&record(c))Object.assign(error,{actorId:c.id});throw error;}
     });
   }
   if (v.forum !== undefined) out.forum = forumPosts(v.forum);
@@ -120,23 +126,26 @@ export function stateAt(session: Session, before = session.turns.length): WorldS
   if(!state.player.mentalPowerLevel){const level=readPersonaExtra(session.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(level)state.player.mentalPowerLevel=level;}
   if(state.player.identity===undefined&&session.persona.identity)state.player.identity=session.persona.identity;
   if(state.player.spiritAnimal===undefined&&session.persona.spiritAnimal)state.player.spiritAnimal=session.persona.spiritAnimal;
+  state=projectCharacterFacts(session,state);
   for (const turn of session.turns.slice(0, before)) {
     const v = selected(turn); if (v?.status !== 'complete' || !v.outcome) continue;
+    let stage='状态校验';
     try {
       const outcome = validateOutcome(v.outcome, state);
-      assertDiceEventBinding(outcome.diceEvent,turn.dice);
+      stage='骰点绑定';assertDiceEventBinding(outcome.diceEvent,turn.dice);
+      stage='变量应用';
       let candidate=outcome.mvu?applyMvu(state,outcome.mvu):copy(state);
       Object.assign(candidate.player, outcome.player);
       for (const change of outcome.characters || []) { const actor = candidate.characters.find(a => a.id === change.id); if (actor) { const { id: _id, ...patch } = change; Object.assign(actor, patch); } else candidate.characters.push(newDynamicActor(change)); }
-      if(v.mvuOverride)candidate=applyMvu(candidate,v.mvuOverride);
-      state=candidate;
-    } catch { /* Imported invalid patches never mutate the effective state. */ }
+      stage='手动变量应用';if(v.mvuOverride)candidate=applyMvu(candidate,v.mvuOverride);
+      state=candidate;clearReplayIssues(session,turn.id,v.id);
+    } catch(error) { recordReplayIssue(session,turn,v,stage,error); }
   }
   return state;
 }
 export function encounteredCharacters(session:Session,before=session.turns.length){
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
-  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch{}}
+  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch(error){recordReplayIssue(session,turn,v,'已遇到角色',error);}}
   return stateAt(session,before).characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
@@ -163,6 +172,7 @@ function pruneForum(session: Session): void {
 }
 export function likeForum(session: Session, key: string): void {
   if (!visibleForum(session).some(post => post.key === key)) throw new Error('该动态已不属于当前剧情');
+  prepareForumLikes(session);
   const reactions = session.forumActivity ||= {};
   const activity = reactions[key] ||= { liked: false, replies: [] };
   activity.liked = !activity.liked; session.updatedAt = now();
@@ -209,7 +219,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
   variant.text=unwrapStoryTags(stripReasoning(variant.text));const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
   if(validated.characters?.some(actor=>actor.affinity!==undefined&&!validAffinity(actor.affinity)))throw new Error('NPC 好感度必须在 -100 到 200 之间');
-  variant.outcome=validated;variant.status='complete';restoreSuggestions(session);
+  variant.outcome=validated;variant.status='complete';prepareForumLikes(session);restoreSuggestions(session);
   const turn=session.turns[turnIndex],before=stateAt(session,turnIndex),after=stateAt(session,turnIndex+1);
   const sourceFingerprint=memorySignature({input:turn.input,story:variant.text,before,after,event:validated.event,diceEvent:validated.diceEvent});
   const existing=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);
@@ -293,7 +303,7 @@ export function parseBackup(text: string): Snapshot {
     if (s.forumActivity !== undefined) {
       if (!record(s.forumActivity) || Object.keys(s.forumActivity).length > 10000) throw new Error('论坛互动记录不合法');
       for (const activity of Object.values(s.forumActivity)) {
-        if (!record(activity) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true)||(r.kind!==undefined&&r.kind!=='ai')||(r.kind==='ai'&&(!shortText(r.authorName,80,true)||!shortText(r.authorId,128,true)||!shortText(r.replyTo,128,true))))) throw new Error('论坛评论记录不合法');
+        if (!record(activity) || (activity.baseLikes!==undefined&&(!Number.isSafeInteger(activity.baseLikes)||Number(activity.baseLikes)<0||Number(activity.baseLikes)>1e9)) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true)||(r.kind!==undefined&&r.kind!=='ai')||(r.kind==='ai'&&(!shortText(r.authorName,80,true)||!shortText(r.authorId,128,true)||!shortText(r.replyTo,128,true))))) throw new Error('论坛评论记录不合法');
       }
     }
   }
@@ -305,5 +315,5 @@ export function parseBackup(text: string): Snapshot {
   value.preferences.presets.forEach(cleanPreset);
   if(value.preferences.activePreset!==undefined&&typeof value.preferences.activePreset!=='string')throw new Error('预设引用不正确');
   if (value.preferences.shortcuts.some(x=>typeof x!=='string') || !['demo','server'].includes(value.preferences.mode)) throw new Error('偏好格式不正确');
-  value.preferences = cleanPreferences(value.preferences); return value;
+  value.preferences = cleanPreferences(value.preferences);for(const session of value.sessions)prepareForumLikes(session);return value;
 }

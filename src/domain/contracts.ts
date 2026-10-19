@@ -17,7 +17,7 @@ export interface ActorPatch { ability?:string;mentalPowerLevel?:string;
 }
 export interface ForumComment { id: string; authorName: string; content: string }
 export interface ForumPost {type?:string;time?:string; id: string; authorName: string; content: string; topic?: string; comments?: ForumComment[] }
-export interface ForumReaction { liked: boolean; replies: { id: string; text: string; createdAt: string;authorName?:string;authorId?:string;replyTo?:string;kind?:'ai' }[] }
+export interface ForumReaction { baseLikes?:number; liked: boolean; replies: { id: string; text: string; createdAt: string;authorName?:string;authorId?:string;replyTo?:string;kind?:'ai' }[] }
 export interface ForumEntry extends ForumPost { key: string; turnId: string; variantId: string; round: number; createdAt: string }
 export interface WorldState { variables?:Record<string,Json>; player: ActorState; characters: ActorState[] }
 export interface Dice { value: number; grade: string; rulesVersion: 'd100-v1' }
@@ -28,7 +28,7 @@ export interface Pairing {charId:string;category:'BL'|'BG'|'GB'|'待补充';user
 export interface SpiritDiary {ownerId:string;title:string;content:string;date?:string;mood?:string;ownerName?:string;spiritAnimal?:string;signatureName?:string;signatureDate?:string}
 export interface TheaterScene {complete?:boolean;slot:number;kind:TheaterKind;title:string;content:string;messages?:{speaker:string;content:string}[];participantIds?:string[];pairing?:Pairing;diary?:SpiritDiary}
 export interface DiceEvent {direction:'negative'|'neutral'|'positive';description:string}
-export interface StateUpdate {status:'updated'|'unchanged'|'partial'|'retained'|'disabled';received:boolean;storyComplete:boolean;codes:string[]}
+export interface StateUpdate {status:'updated'|'unchanged'|'partial'|'retained'|'disabled';received:boolean;storyComplete:boolean;codes:string[];retainedPresentIds?:string[]}
 export interface Outcome { stateUpdate?:StateUpdate; mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
 export interface Variant {generationRequirements?:{stateEnabled:boolean;theaters:TheaterSetting[]}; edited?:boolean; mvuOverride?:MvuOperation[]; suggestions?:string[]; id: string; text: string; status: 'complete' | 'incomplete'; createdAt: string; outcome?: Outcome }
 export interface Turn {inputEdited?:boolean; randomEvent?:RandomEventGate; id: string; input: string; dice?: Dice; variants: Variant[]; selected: number }

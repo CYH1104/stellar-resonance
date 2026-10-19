@@ -1,4 +1,5 @@
 import {exportApiSettings} from '../src/domain/apiTransfer';
+import {syncCharacterFacts} from '../src/domain/characterFacts';
 import {normalizeMemoryResult} from '../src/domain/memories';
 import {newWorldEntry} from '../src/domain/worldbooks';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
@@ -90,6 +91,25 @@ function fill(w:ReturnType<typeof useWorkspace>,id='main'){
   if(id==='main')fill(w,'embed');
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
 }
+it('补全漏名单时保留本轮已经到场的角色，不回退到本轮开始前的空名单',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修名单',{name:'玩家',appearance:'',personality:'',background:''},'');
+ for(const actor of w.active.value!.initial.characters)actor.present=false;
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'引导员走进房间。'};yield{type:'done',outcome:{event:'引导员到场',characters:[{id:'guide',present:true,affinity:5}]}};});
+ await generateAndWait(w,'等待');expect(w.state.value!.characters.find(c=>c.id==='guide')?.present).toBe(true);
+ gen.mockImplementationOnce(async function*(){yield{type:'done',outcome:{event:'补全',characters:[{id:'guide',present:false}],stateUpdate:{status:'partial',received:true,storyComplete:true,codes:['STATE_ROSTER_RETAINED']}}};});
+ await w.repairState(0);
+ expect(w.problem.value).toBe('');
+ expect(w.state.value!.characters.find(c=>c.id==='guide')).toMatchObject({present:true,affinity:5});
+ expect(w.active.value!.turns[0].variants[0].text).toBe('引导员走进房间。');expect(gen).toHaveBeenCalledTimes(2);
+});
+it('作者资料投影改变时已有摘要保留手动复核，不为历史摘要自动产生额外模型调用',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('作者资料更新',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const s=w.active.value!;s.initial.characters[0].identity='旧设定';
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'delta',text:'完整正文。'};yield{type:'done',outcome:{event:'正常交流'}};});
+ await generateAndWait(w,'第一轮');expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1);const text=w.memories.value[0].text;
+ syncCharacterFacts(s,service.dataset,[{id:'guide',primaryGender:'男',identity:'作者修正后的学生身份'}]);
+ await generateAndWait(w,'第二轮');expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(2);expect(s.memories[0].text).toBe(text);expect(s.memories[0].status).toBe('ready');
+});
 it('旧摘要指纹仍有效但缺少来源时，单条补记恢复来源，不重复调用文字模型',async()=>{
  const w=await workspace(1);fill(w);await w.confirmAllApis();await w.create('来源恢复',{name:'玩家',appearance:'',personality:'',background:''},'');
  vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'完成正文'};yield {type:'done',outcome:{event:'见面'}};});
@@ -386,7 +406,7 @@ it('补修状态未改变记忆事实时不重复整理已保存的记忆',async
 });
 it('补全替换旧的空群聊，并保留本轮已有的有效角色状态',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('修复群聊',{name:'玩家',appearance:'',background:'',personality:''},'');
- const s=w.active.value!,v={id:'v',text:'已经完成的正文。',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});
+ const s=w.active.value!;s.initial.characters[0].identity='学生会 会长';const v={id:'v',text:'已经完成的正文。',status:'incomplete' as const,createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});
  finishVariant(s,0,v,{event:'原事件',characters:[{id:'guide',present:true,affinity:42,identity:'学生会 会长'}],theaters:[{slot:2,kind:'group',title:'群聊',content:'旧说明，没有群聊消息'}]});
  vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield{type:'done',outcome:{event:'补齐',characters:[{id:'guide',present:true}],theaters:[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'新群聊消息'}]}]}};});
  await w.repairState(0);expect(w.problem.value).toBe('');expect(w.theaters.value[0].messages?.[0].content).toBe('新群聊消息');expect(w.state.value?.characters[0].affinity).toBe(42);expect(w.state.value?.characters[0].identity).toBe('学生会 会长');expect(v.text).toBe('已经完成的正文。');
