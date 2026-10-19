@@ -1,9 +1,9 @@
 import {validAffinity} from './affinity.ts';
-import type {Outcome,Session,TheaterScene,TheaterSetting,WorldState} from './contracts';
-import {selected,stateAt,validateOutcome} from './story';
-import {cleanTheaters,cleanTheaterScenes} from './theaters';
-import {isSpiritDiary,cleanSpiritDiary} from './spiritDiary';
-import {theaterRequirementError} from './theaterRequirements';
+import type {Outcome,Session,TheaterScene,TheaterSetting,WorldState} from './contracts.ts';
+import {selected,stateAt,validateOutcome} from './story.ts';
+import {cleanTheaters,cleanTheaterScenes} from './theaters.ts';
+import {isSpiritDiary,cleanSpiritDiary} from './spiritDiary.ts';
+import {theaterRequirementError} from './theaterRequirements.ts';
 const provided=(value:unknown):value is string=>typeof value==='string'&&!!value.trim()&&!/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(value.trim());
 export function completeTheater(scene:TheaterScene|undefined,setting:TheaterSetting,state:WorldState):boolean {
   if(!scene||scene.kind!==setting.kind||scene.slot!==setting.slot)return false;

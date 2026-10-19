@@ -329,7 +329,7 @@ export class StoryDecoder {
       else if(options.variableOnly){try{const raw=parseStateJson(this.raw.replace(/<done>/gi,'').trim()).value;if(Array.isArray(raw?.changes))attitude=raw;}catch{}}
     }
     let mvu=assembled.mvu,mvuFailed=false;
-    if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn,[...(Array.isArray(assembled.characters)?assembled.characters:[]),...(Array.isArray(assembled.presentCharacterIds)?assembled.presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)).map(id=>({id,present:true}))],id=>affinityReviewedIds.push(id));assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
+    if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn,[...(Array.isArray(assembled.characters)?assembled.characters:[]),...(Array.isArray(assembled.presentCharacterIds)?assembled.presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)).map(id=>({id,present:true}))].filter(c=>!options.repairPlan||options.repairPlan.affinityIds.includes(c.id)),id=>affinityReviewedIds.push(id));assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
 
     if(attitudeAccepted){
       // A stale absolute score in status must not override a neutral review.
@@ -338,7 +338,7 @@ export class StoryDecoder {
     else if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
     else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
     if(mvu!==undefined&&!mvuFailed){try{mvu=prepareMvuUpdates(state,mvu,assembled.characters);applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch(error){warn(error.fieldPath?'STATE_MVU_PATH_REJECTED':'STATE_MVU_VALUE_REJECTED');mvuFailed=true;}}
-    if(options.stateEnabled!==false&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
+    if(options.stateEnabled!==false&&(!options.repairPlan||options.repairPlan.affinityIds.length)&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
     if(rejected){retainedPresentIds.push(...state.characters.map(c=>c.id));if(mvuFailed)delete assembled.mvu;delete assembled.characters;delete assembled.player;assembled.presentCharacterIds=state.characters.filter(c=>c.present).map(c=>c.id);}
     if(!Object.keys(assembled).length&&!single)throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
