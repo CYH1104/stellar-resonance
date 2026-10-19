@@ -328,6 +328,17 @@ export class StoryDecoder {
       else if(assembled.affinityChanges!==undefined){attitude={changes:assembled.affinityChanges};delete assembled.affinityChanges;}
       else if(options.variableOnly){try{const raw=parseStateJson(this.raw.replace(/<done>/gi,'').trim()).value;if(Array.isArray(raw?.changes))attitude=raw;}catch{}}
     }
+    // A single per-character status row can carry its own attitude review.
+    // Keep explicit legacy reviews authoritative, fill only omitted identities.
+    if(options.stateEnabled!==false&&Array.isArray(assembled.characters)){
+      const embedded=assembled.characters.filter(c=>c&&['positive','neutral','negative'].includes(c.attitude));
+      if(embedded.length){
+        const changes=Array.isArray(attitude?.changes)?[...attitude.changes]:[];
+        for(const row of embedded)if(!changes.some(c=>c.id===row.id))changes.push(row);
+        attitude={changes};
+      }
+      assembled.characters=assembled.characters.map(({attitude,strength,...actor})=>actor);
+    }
     let mvu=assembled.mvu,mvuFailed=false;
     if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn,[...(Array.isArray(assembled.characters)?assembled.characters:[]),...(Array.isArray(assembled.presentCharacterIds)?assembled.presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)).map(id=>({id,present:true}))].filter(c=>!options.repairPlan||options.repairPlan.affinityIds.includes(c.id)),id=>affinityReviewedIds.push(id));assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
 

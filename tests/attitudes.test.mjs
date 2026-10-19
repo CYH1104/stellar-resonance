@@ -6,6 +6,22 @@ import {applyMvu} from '../src/domain/mvu.ts';
 import {newSession,finishVariant,stateAt,selectVariant,truncate} from '../src/domain/story.ts';
 const state={player:{id:'player',name:'玩家',present:true},characters:[{id:'lin',name:'林',present:true,affinity:10}]};
 const card={world:{name:'世界'},characters:[],places:[]};
+test('one status card carries identity, attitude and thoughts without separate MVU',()=>{
+ const d=new StoryDecoder();d.push('正文<status>'+JSON.stringify({event:'帮助新同学',presentCharacterIds:['new'],characters:[{id:'new',name:'新同学',present:true,attitude:'positive',strength:'small',innerThought:'谢谢帮助'}]})+'</status><done>');
+ const out=d.finish(card,state,{singleStateCall:true});
+ assert.equal(out.characters.find(c=>c.id==='new').affinity,2);
+ assert.equal(out.characters.find(c=>c.id==='new').innerThought,'谢谢帮助');
+ assert.deepEqual(out.stateUpdate.affinityReviewedIds,['new']);
+ assert.ok(!out.stateUpdate.codes.includes('STATE_ATTITUDE_REVIEW_MISSING'));
+ assert.ok(!out.stateUpdate.codes.includes('STATE_UNKNOWN_CHARACTER_SKIPPED'));
+ assert.ok(!out.stateUpdate.codes.includes('STATE_MVU_OUTPUT_MISSING'));
+});
+test('status name reconciles a changed model ID before applying attitude',()=>{
+ const warnings=[],reviewed=[];
+ const ops=attitudeUpdates({changes:[{id:'changed',attitude:'positive'}]},state,c=>warnings.push(c),[{id:'changed',name:'林'},{id:'changed',present:true}],id=>reviewed.push(id));
+ assert.equal(applyMvu(state,ops).characters[0].affinity,12);
+ assert.deepEqual(reviewed,['lin']);assert.deepEqual(warnings,[]);
+});
 test('server calculates fixed deltas, clamps boundaries, registers new NPCs and isolates invalid judgments',()=>{
  const warnings=[];
  const ops=attitudeUpdates({changes:[{id:'lin',attitude:'positive',strength:'small'},{id:'new',name:'新角色',attitude:'negative',strength:'large'},{id:'bad',attitude:'wrong'},{id:'lin',attitude:'positive',strength:'large'}]},state,c=>warnings.push(c));

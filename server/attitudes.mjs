@@ -1,6 +1,10 @@
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {applyMvu} from '../src/domain/mvu.ts';
 
+export const attitudeRules=`AFFINITY REVIEW: Every turn, use context.mvu.stat_data as the authoritative current state. Return one ordinary <status> JSON block containing event, presentCharacterIds and characters. Each present or interacting NPC has ONE character row with id, name, present, attitude and strength, plus supported relationship and innerThought. Example:
+<status>{"event":"Conversation ended","presentCharacterIds":["npc-lin"],"characters":[{"id":"npc-lin","name":"Lin","present":true,"attitude":"positive","strength":"small","relationship":"Getting acquainted","innerThought":"Their help mattered."}]}</status>
+Reuse existing IDs exactly. New NPCs require a unique stable id and name in this same row. Include all present NPCs, including quiet bystanders. Assess each against the current enacted prose, worldbooks and persona. attitude is positive, neutral or negative; strength is small or large. Neutral is valid when no change is supported. Do not fabricate changes to fill a quota. The program computes small changes of 2 or large changes of 5, neutral 0, bounded to [-100,200]; never output affinity numbers, variable paths or JSONPatch. New NPCs start at 0. Omit unknown descriptive facts; preserve existing facts, including author-controlled identity/mentalPowerLevel. Do not infer romance from affinity. Memories, summaries, forum and side fiction are not new enacted events. Keep player state and all enabled side modules in their normal protocol. No separate attitudes or UpdateVariable block is needed for normal story generation. A dedicated reviewer explicitly asked for attitudes may instead return <attitudes>{"changes":[...]}</attitudes>. Do not output private reasoning. Use the configured status opening {{p0}}. All displayed values must be Chinese; examples are illustrative. Finish with {{p1}}.`;
+
 /** The model describes attitude; only the server chooses the numerical increment. */
 export function attitudeUpdates(value,state,warn=()=>{},candidates=[],onReviewed=()=>{}){
  if(!value||!Array.isArray(value.changes)||value.changes.length>200)throw Error('Invalid attitude envelope');
@@ -8,9 +12,11 @@ export function attitudeUpdates(value,state,warn=()=>{},candidates=[],onReviewed
  for(const row of value.changes){
   try{
    if(!row||!['positive','neutral','negative'].includes(row.attitude)||!['small','large'].includes(row.strength??'small'))throw Error();
-   let id=resolveActorId(roster,row),actor=roster.find(c=>c.id===id);
+   const candidateId=resolveActorId(candidates.filter(c=>c?.name),row);
+   const declared=candidates.find(c=>c?.id===row.id&&c.name)||candidates.find(c=>c?.id===candidateId&&c.name);
+   let id=resolveActorId(roster,row)||resolveActorId(roster,declared),actor=roster.find(c=>c.id===id);
    const next=[];
-   if(!actor){const declared=candidates.find(c=>c?.id===row.id);actor=newDynamicActor({...declared,id:row.id,name:row.name||declared?.name,affinity:0,present:row.present===true||declared?.present===true});id=actor.id;next.push({op:'insert',path:'/characters/'+id,value:actor});}
+   if(!actor){const {attitude,strength,...facts}=declared||{};actor=newDynamicActor({...facts,id:declared?.id||row.id,name:row.name||declared?.name,affinity:0,present:row.present===true||declared?.present===true});id=actor.id;next.push({op:'insert',path:'/characters/'+id,value:actor});}
    if(seen.has(id))throw Error();
    const path='/characters/'+id,old=actor.affinity??0;
    if(actor.affinity===undefined)next.push({op:'insert',path:path+'/affinity',value:0});
@@ -22,11 +28,7 @@ export function attitudeUpdates(value,state,warn=()=>{},candidates=[],onReviewed
   }catch{warn('STATE_ATTITUDE_ITEM_SKIPPED');}
  }
  if(value.changes.length&&!seen.size)throw Error('No valid attitude judgments');
- for(const actor of candidates)if(actor?.present&&typeof actor.id==='string'&&!seen.has(resolveActorId(roster,actor)||actor.id))warn('STATE_ATTITUDE_REVIEW_MISSING');
+ for(const actor of candidates){const declaration=candidates.find(c=>c?.id===actor?.id&&c.name);if(actor?.present&&typeof actor.id==='string'&&!seen.has(resolveActorId(roster,declaration||actor)||actor.id))warn('STATE_ATTITUDE_REVIEW_MISSING');}
  return ops;
 }
 
-export const attitudeRules=`AFFINITY REVIEW: context.mvu.stat_data is the current authoritative state. Every turn, assess ALL physically present NPCs as well as every interacting NPC against this turn's enacted prose, active worldbooks and the player persona. Each status card in presentCharacterIds MUST have a corresponding judgment with the SAME stable ID, including first appearances. Quiet bystanders may be neutral; never omit their judgment. For a new NPC include established gender, affiliation, role and spirit facts in the ordinary status declaration when supported by worldbooks/persona/prose; never invent unknown facts or output placeholder descriptions. Output the following compact block FIRST, before narrative, so it is not lost if the response is cut short:
-<attitudes>{"changes":[{"id":"existing-stable-id","attitude":"positive","strength":"small"}]}</attitudes>
-attitude must be positive, neutral or negative; strength must be small or large (neutral may use small). Use neutral for routine encounters with no supported attitude change. Return {"changes":[]} only if no NPC is present or interacting. Do not review the entire inactive roster. Use an existing ID whenever available; match names and aliases before registering a new person. For a genuinely new NPC include a stable id, name and present (boolean). Example: <attitudes>{"changes":[{"id":"npc-new-clerk","name":"New clerk","present":true,"attitude":"neutral","strength":"small"}]}</attitudes>. Use actual Chinese names. The program registers new NPCs at neutral affinity 0, applies small changes of 2 or large changes of 5 with the appropriate sign, and clamps affinity to [-100,200]. Never output numerical affinity, absolute scores, variable paths or JSONPatch in this mode. Existing values are never reset.
-Optionally include relationship as a short Chinese phrase only when an established relationship actually changes; omit it otherwise. Affinity alone does not establish romance or loyalty. Never invent variable systems, change author-controlled identity/mentalPowerLevel, or count summaries, memories, forum posts or side fiction as new enacted events. No private reasoning or Analysis block is required. Keep the ordinary status block for presence and supported in-character thoughts; do not repeat affinity/relationship in it. Preserve enabled story/side modules and their protocol. The attitude block goes before prose and {{p0}}; finish the complete response with {{p1}}. MVU legacy JSONPatch remains accepted only for compatibility with older saved prompts.`;
