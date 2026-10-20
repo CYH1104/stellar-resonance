@@ -106,7 +106,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const result=await accounts.enter(path.endsWith('/register')?'register':'login',data,request.socket.remoteAddress||'unknown');
           accounts.logout(accountToken);setAccountCookie(result.token);json(response,200,{user:result.user});return;
         }
-        if(path==='/api/auth/logout'){accounts.logout(accountToken);setAccountCookie('',0);sessions.delete(token(request));json(response,200,{ok:true});return;}
+        if(path==='/api/auth/logout'){accounts.logout(accountToken);setAccountCookie('',0);const accountExpiry=response.getHeader('Set-Cookie');response.setHeader('Set-Cookie',[accountExpiry,`${cookieName}=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${external?.protocol==='https:'?'; Secure':''}`]);sessions.delete(token(request));json(response,200,{ok:true});return;}
         throw modelError(404,'API_NOT_FOUND');
       }
       if(accounts&&!account&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path)&&path!=='/favicon.svg'){

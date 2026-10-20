@@ -84,7 +84,16 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     const hostStatus=host=>new Promise((resolve,reject)=>get(base+'/api/health',{headers:{Host:host}},r=>{r.resume();resolve(r.statusCode);}).on('error',reject));
     assert.equal(await hostStatus('game.example:8807'),200);
     assert.equal(await hostStatus('foreign.example'),403);
-    assert.equal((await post('/api/auth/logout',{},cookie)).status,200);
+    const logout=await post('/api/auth/logout',{},cookie+'; '+apiCookie);assert.equal(logout.status,200);
+    assert.equal(logout.headers.getSetCookie().length,2);for(const value of logout.headers.getSetCookie())assert.match(value,/Max-Age=0/);
+    assert.equal((await fetch(base+'/api/auth/me',{headers:{Cookie:cookie}})).status,200);
+    assert.equal((await (await fetch(base+'/api/auth/me',{headers:{Cookie:cookie}})).json()).user,null);
+    const returned=await fetch(base+'/terminal',{headers:{Cookie:cookie+'; '+apiCookie},redirect:'manual'});assert.equal(returned.status,302);assert.equal(returned.headers.get('location'),'/login');
+    assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},cookie+'; '+apiCookie)).status,401);
+    assert.equal((await fetch(base+'/api/bootstrap',{headers:{Cookie:secondCookie}})).status,200);
+    const relogin=await post('/api/auth/login',{email:'one@qq.com',password:'synthetic-pass'});assert.equal(relogin.status,200);const freshCookie=relogin.headers.get('set-cookie').split(';')[0];
+    assert.equal((await fetch(base+'/terminal',{headers:{Cookie:freshCookie}})).status,200);
+    assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},freshCookie+'; '+apiCookie)).status,401);
     assert.equal((await fetch(base+'/api/bootstrap',{headers:{Cookie:cookie}})).status,401);
   }finally{if(app){app.server.closeAllConnections();await new Promise(r=>app.server.close(r));}await rm(directory,{recursive:true,force:true});}
 });
