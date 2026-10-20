@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TheaterContent from './TheaterContent.vue';
 import {displayText} from '../domain/storyMarkup';
 import {computed,ref} from 'vue';
 import TheaterScroll from './TheaterScroll.vue';
@@ -23,8 +24,8 @@ const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,pro
       <template v-else><header class="rail-heading"><h3>{{s.title}}</h3></header>
         <template v-if="w.theaters.find(t=>t.slot===s.slot&&t.kind===s.kind)">
           <template v-for="scene in w.theaters.filter(t=>t.slot===s.slot&&t.kind===s.kind)" :key="scene.slot">
-            <div v-if="scene.messages?.length" class="group-chat"><p v-for="(message,i) in scene.messages" :key="i"><strong>{{message.speaker}}</strong><span>{{displayText(message.content)}}</span></p></div>
-            <p v-if="scene.content" class="theater-prose">{{displayText(scene.kind==='fanfic'?fanficBody(scene.content):scene.content)}}</p>
+            <div v-if="scene.messages?.length" class="group-chat"><div v-for="(message,i) in scene.messages" :key="i"><strong>{{message.speaker}}</strong><TheaterContent :text="message.content" /></div></div>
+            <TheaterContent v-if="scene.content" class="theater-prose" :text="scene.kind==='fanfic'?fanficBody(scene.content):scene.content" />
             <p v-if="scene.kind==='fanfic'&&fanficEnding(scene.content)" class="fanfic-end">END</p>
             <p v-if="scene.kind==='fanfic'&&theaterRequirementError(scene)" class="companion-incomplete" role="status">{{fanficEnding(scene.content)?'篇幅或完成标记不满足要求，尚未确认完篇。':'未收到结尾 END，尚未确认完篇，可能截断。'}}</p>
           </template>

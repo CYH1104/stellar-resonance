@@ -33,3 +33,13 @@ it('四窗口以折叠栏展示手机及日记，只保留高度手柄',async()=
 
 
 it('群聊默认收起为悬浮手机SVG，不占右栏卡片',async()=>{const w={preferences:{theaters:[{slot:2,kind:'group',enabled:true,title:'群聊'}]},theaters:[],state:{player:{name:'玩家'}}} as unknown as ViewModel;const html=await renderToString(createSSRApp(FloatingGroupChat,{w}));expect(html).toContain('打开群聊手机');expect(html).toContain('<svg');expect(html).not.toContain('手机群聊');});
+
+it('renders inline CSS in custom theater, group and diary bodies',async()=>{
+ const content='Before\n<div style="background:linear-gradient(145deg,#18181b,#27272a);border-radius:10px;padding:22px"><h3 style="color:#f87171">PJ-001</h3><p>Styled theater</p></div>\nAfter';
+ const settings=defaults();settings.theaters=[{slot:3,kind:'custom',title:'CSS',enabled:true,instruction:''}];
+ const scene={slot:3,kind:'custom',title:'CSS',content} as TheaterScene;
+ const w={preferences:settings,theaters:[scene],forum:[]} as unknown as ViewModel;
+ const outputs=[await renderToString(createSSRApp(TheaterRail,{w})),await renderToString(createSSRApp(GroupChatPhone,{scene:{...scene,kind:'group',messages:[{speaker:'NPC',content}]},title:'Chat',playerName:'Player'})),await renderToString(createSSRApp(SpiritDiaryView,{scene:{...diary,diary:{...diary.diary!,content}},title:'Diary'}))];
+ for(const html of outputs){expect(html).toContain('sandbox="allow-scripts"');expect(html).toContain('linear-gradient(145deg,#18181b,#27272a)');expect(html).toContain('PJ-001');expect(html).toContain('Before');expect(html).toContain('After');}
+ expect(scene.content).toBe(content);
+});
