@@ -1,4 +1,11 @@
 const $=s=>document.querySelector(s),message=$('#message');let user;
+const policySection=document.createElement('section');
+policySection.innerHTML='<hr><h2>允许使用的 API 地址与端口</h2><p>仅允许以下协议、域名和端口发送模型请求。填写接口根地址，例如 https://relay.example:8443，不填写 /v1、密钥或查询参数。HTTPS 默认端口为 443。公网服务空列表会禁止全部模型请求。</p><div id="policy-rows"></div><button id="policy-load" type="button">读取白名单</button><button id="policy-add" type="button">新增条目</button><button id="policy-save" type="button" disabled>保存白名单</button>';
+message.before(policySection);
+function policyRow(value=''){const row=document.createElement('div'),input=document.createElement('input'),remove=document.createElement('button');input.type='url';input.maxLength=500;input.placeholder='https://relay.example:8443';input.value=value;input.setAttribute('aria-label','允许的 API 根地址');remove.type='button';remove.textContent='删除条目';remove.onclick=()=>row.remove();row.append(input,remove);$('#policy-rows').append(row);}
+$('#policy-load').onclick=()=>run($('#policy-load'),async()=>{const policy=await post('relay-policy',{});$('#policy-rows').replaceChildren();policy.origins.forEach(policyRow);$('#policy-save').disabled=false;message.textContent='白名单已读取；修改后请保存。';});
+$('#policy-add').onclick=()=>{if($('#policy-save').disabled){message.textContent='请先读取白名单，避免覆盖已有条目。';return;}if($('#policy-rows').children.length<100)policyRow();};
+$('#policy-save').onclick=()=>run($('#policy-save'),async()=>{const origins=[...$('#policy-rows').querySelectorAll('input')].map(input=>input.value.trim()).filter(Boolean);const policy=await post('relay-policy',{origins});$('#policy-rows').replaceChildren();policy.origins.forEach(policyRow);message.textContent='白名单已保存，对后续请求立即生效。';});
 const relaySection=document.createElement('section');
 relaySection.innerHTML='<hr><h2>用户中转接口记录</h2><p>仅记录接口域名和端口；不保存密钥、路径或请求内容。填写上方邮箱可筛选，留空查看全部。记录表示配置或请求发生，不代表连接成功。最多显示最近 200 条。</p><button id="relays" type="button">查看接口记录</button><pre id="relay-result"></pre>';
 message.before(relaySection);

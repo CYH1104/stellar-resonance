@@ -369,7 +369,7 @@ export function useWorkspace() {
     const comments=[...(selectedPost.comments||[]).map(c=>({authorName:c.authorName,content:c.content})),...activity.replies.slice(0,parent+1).map(r=>({authorName:r.kind==='ai'?r.authorName!:session.persona.name,content:r.text}))].slice(-12);
     const signature=connectionSignature(p),current=new AbortController();forumController=current;workingForumReply.value=keyValue;
     try{
-      const reply=await http.forumReply({userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments,minReplies:5,participantNames:[...new Set([...(selectedPost.comments||[]).map(c=>c.authorName),...activity.replies.filter(r=>r.kind==='ai'&&r.authorName).map(r=>r.authorName!)])].slice(0,100)},p,key(p),current.signal);
+      const reply=await http.forumReply({persona:copy(session.persona),state:copy(state.value),userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments,minReplies:5,participantNames:[...new Set([...(selectedPost.comments||[]).map(c=>c.authorName),...activity.replies.filter(r=>r.kind==='ai'&&r.authorName).map(r=>r.authorName!)])].slice(0,100)},p,key(p),current.signal);
       current.signal.throwIfAborted();if(!sessions.value.some(s=>s.id===session.id)||signature!==connectionSignature(profile(p.id)))throw new Error('存档或接口已改变，本次回复未应用。');
       if(Array.isArray(reply))addForumAIReplies(session,keyValue,replyId,reply);else addForumAIReply(session,keyValue,replyId,reply);await persist();notice.value=Array.isArray(reply)?`角色／NPC 已回复 ${reply.length} 条`:'角色／NPC 已回复你的评论';
     }catch(e){const detail=current.signal.aborted?'AI 回复已停止。':message(e);forumReplyError.value=detail+(/评论已(?:保留|保存)/.test(detail)?'':' 你的评论已保留。');}
