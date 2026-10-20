@@ -5,8 +5,8 @@ import {parseMvuMessage,applyMvu} from '../src/domain/mvu.ts';
 test('mandatory variable summary renders with protocol markers and patch applies once',()=>{
  const prompt=internalPrompt('ai.5',{p0:'<status>',p1:'<done>'});
  assert.ok(prompt.includes('Every turn'));
- assert.ok(prompt.includes('<attitudes>')); 
- assert.ok(prompt.includes('small changes of 2 or large changes of 5')); 
+ assert.ok(prompt.includes('state-output-v1')); 
+ assert.ok(prompt.includes('usually 0.5 or 1')); 
  assert.ok(prompt.includes('<status>'));assert.ok(prompt.includes('<done>'));
  const patch=parseMvuMessage('<UpdateVariable><Analysis>- Affinity: 10 to 13; practical help. Relationship unchanged.</Analysis><JSONPatch>[{"op":"delta","path":"/characters/npc-lin/affinity","value":3}]</JSONPatch></UpdateVariable>');
  const state={player:{id:'player',name:'Player',present:true},characters:[{id:'npc-lin',name:'Lin',present:true,affinity:10}]};

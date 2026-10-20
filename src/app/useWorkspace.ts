@@ -134,7 +134,7 @@ export function useWorkspace() {
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);
   const message=(e:unknown)=> e instanceof Error ? (e.name==='AbortError'?'生成已停止，已收到的内容保留。':e.message) : '操作未完成，请重试。';
   async function boot() {
-    try {const value=await repository.read();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}sessions.value=value.sessions;for(const session of sessions.value)prepareForumLikes(session);Object.assign(preferences,value.preferences);}storageReady=true;notice.value=sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
+    try {const value=await repository.read();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}sessions.value=value.sessions;for(const session of sessions.value)prepareForumLikes(session);Object.assign(preferences,value.preferences);}storageReady=true;notice.value=sessions.value.some(s=>s.affinityMigration?.records.length)?'本地存档已载入；旧版超过 100 的好感度已迁移到新范围，原始状态与补丁保留在导出备份的 affinityMigration 记录中，旧记忆待重整':sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
     catch(e){problem.value=message(e);notice.value='本地存储暂不可用，请勿覆盖旧数据';}
     finally {
       try{const service=await http.bootstrap();if(service){localService.value=service;for(const session of sessions.value)syncCharacterFacts(session,service.dataset,service.characterFacts);preferences.mode='server';await Promise.resolve();authorized.value=true;notice.value='服务器角色卡已载入 · 请在API 设置连接 AI';}}catch{problem.value='本机资料后台不可用；请使用新版 bat 启动。';}
@@ -315,7 +315,9 @@ export function useWorkspace() {
       generationPhase.value='等待模型返回（单次请求最长180秒）…';
       const stateProfile=profile(preferences.stateProfile||p.id);
       const stateApi=preferences.stateEnabled!==false&&preferences.stateProfile&&preferences.stateProfile!==preferences.mainProfile&&stateProfile.id!==p.id?{profile:copy(stateProfile),key:key(stateProfile)}:undefined;
+      const branchBinding=()=>JSON.stringify({sessionId:sessionId.value,persona:session.persona,initial:session.initial,turns:session.turns.map(t=>({id:t.id,input:t.input,selected:t.selected,ids:t.variants.map(v=>v.id)}))});const expectedBinding=branchBinding();
       for await(const event of gateway().generate(request,key(p),controller.signal,stateApi)) {
+        if(branchBinding()!==expectedBinding)throw Error('当前分支已变化，已拒绝迟到的生成结果');
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
         if(event.type==='developer-trace'){if(localService.value?.developerMode){developerTraces.value.unshift(event.trace);developerTraces.value=developerTraces.value.slice(0,40);}}
         else if(event.type==='format-error'){await formatErrors.record(event.raw,event.code,session.id,turn.id);}

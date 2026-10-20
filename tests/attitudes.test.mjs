@@ -26,7 +26,7 @@ test('server calculates fixed deltas, clamps boundaries, registers new NPCs and 
  const warnings=[];
  const ops=attitudeUpdates({changes:[{id:'lin',attitude:'positive',strength:'small'},{id:'new',name:'新角色',attitude:'negative',strength:'large'},{id:'bad',attitude:'wrong'},{id:'lin',attitude:'positive',strength:'large'}]},state,c=>warnings.push(c));
  const after=applyMvu(state,ops);assert.equal(after.characters[0].affinity,12);assert.equal(after.characters[1].affinity,-5);assert.equal(warnings.length,2);
- for(const [old,attitude,expected]of [[199,'positive',200],[-99,'negative',-100]]){const s={...state,characters:[{...state.characters[0],affinity:old}]};assert.equal(applyMvu(s,attitudeUpdates({changes:[{id:'lin',attitude,strength:'large'}]},s)).characters[0].affinity,expected);}
+ for(const [old,attitude,expected]of [[99,'positive',100],[-99,'negative',-100]]){const s={...state,characters:[{...state.characters[0],affinity:old}]};assert.equal(applyMvu(s,attitudeUpdates({changes:[{id:'lin',attitude,strength:'large'}]},s)).characters[0].affinity,expected);}
 });
 test('attitude block split at every character stays hidden and commits once, legacy delta is not also applied',()=>{
  const raw='<attitudes>{"changes":[{"id":"lin","attitude":"positive","strength":"small"}]}</attitudes>正文<UpdateVariable><JSONPatch>[{"op":"delta","path":"/characters/lin/affinity","value":5}]</JSONPatch></UpdateVariable><status>{"event":"交谈","presentCharacterIds":["lin"],"characters":[]}</status><done>';

@@ -35,7 +35,7 @@ export function compatibleState(raw,card,state,options){
     }
     // Actor changes are flattened into the canonical snapshot once. Custom
     // variables remain an MVU update; no duplicate delta or immutable overwrite.
-    if(JSON.stringify(mvuState.variables||{})!==JSON.stringify(state.variables||{}))out.mvu=[{op:'replace',path:'/custom',value:mvuState.variables||{}}];
+    if(JSON.stringify(mvuState.variables||{})!==JSON.stringify(state.variables||{}))out.mvu=options.repairPlan?.customPaths?.length&&raw.mvu.every(op=>options.repairPlan.customPaths.includes(op.path)&&(!op.from||options.repairPlan.customPaths.includes(op.from)))?raw.mvu:[{op:'replace',path:'/custom',value:mvuState.variables||{}}];
   }
   for(const actor of mvuState.characters)if(!known.has(actor.id))known.set(actor.id,actor);
   const patches=new Map(mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id)).map(c=>[c.id,{...c}]));

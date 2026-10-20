@@ -105,7 +105,7 @@ export function renderMvuMacros(text:string,data:MvuData):string{
   });
 }
 const dynamic=new Set(['affinity','relationship','present','innerThought','spiritThought']);
-export function applyMvu(state:WorldState,updates:unknown):WorldState{
+export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldState{
   const original=dataFromState(state).stat_data,next=patchData(original,updates,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
@@ -113,13 +113,13 @@ export function applyMvu(state:WorldState,updates:unknown):WorldState{
     for(const k of new Set([...Object.keys(before),...Object.keys(after)])){
       if(JSON.stringify(before[k])===JSON.stringify(after[k]))continue;
       if(!dynamic.has(k)||!Object.hasOwn(after,k)||(player&&['innerThought','affinity','present'].includes(k)))fail();
-      const v=after[k];if(k==='affinity'){if(!validAffinity(v))fail();}
+      const v=after[k];if(k==='affinity'){if(!(validAffinity(v)||legacy&&typeof v==='number'&&Number.isFinite(v)&&v>=-100&&v<=200))fail();}
       else if(k==='present'){if(typeof v!=='boolean')fail();}
       else {if(typeof v!=='string'||v.length>(k==='mentalPowerLevel'?100:k==='identity'?200:2000))fail();if(k==='spiritThought'&&!before.spiritAnimal)fail();}
     }return clone(after);
   }
   const player=actor(original.player as Record<string,Json>,next.player,true),characters=state.characters.map(c=>actor((original.characters as Record<string,Json>)[c.id] as Record<string,Json>,(next.characters as Record<string,Json>)[c.id]));
-  const additions=Object.entries(next.characters).filter(([id])=>!state.characters.some(c=>c.id===id)).map(([id,value])=>{if(!object(value)||value.id!==id)fail();return newDynamicActor(value);});
+  const additions=Object.entries(next.characters).filter(([id])=>!state.characters.some(c=>c.id===id)).map(([id,value])=>{if(!object(value)||value.id!==id)fail();return newDynamicActor(value,legacy);});
   return {...clone(state),player,characters:[...characters,...additions],variables:next.custom} as unknown as WorldState;
 }
 

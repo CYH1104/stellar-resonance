@@ -7,6 +7,7 @@ import {scopeRepairOutcome,repairCodeApplies,repairNeedsState,missingRepairPlan,
 
 /** Repair deltas are relative to the start of the turn, not applied twice to its result. */
 export function mergeRepairOutcome(previous:Outcome,incoming:Outcome,before:WorldState,effective:WorldState,plan?:RepairPlan):Outcome{
+  if(plan?.roster&&incoming.characters)incoming={...incoming,characters:incoming.characters.map(c=>{if(!effective.characters.some(a=>a.id===c.id))return c;const patch:typeof c={id:c.id,...(c.present!==undefined?{present:c.present}:{})};if(plan.affinityIds.includes(c.id)){if(c.affinity!==undefined)patch.affinity=c.affinity;if(c.relationship!==undefined)patch.relationship=c.relationship;}for(const key of plan.textFields?.[c.id]||[])if(c[key]!==undefined)patch[key]=c[key];if(plan.spiritIds.includes(c.id)&&c.spiritThought)patch.spiritThought=c.spiritThought;return patch;})};
   if(plan)incoming=scopeRepairOutcome(incoming,plan);
   if(plan&&incoming.characters)incoming={...incoming,characters:incoming.characters.map(c=>before.characters.some(a=>a.id===c.id)?c:{...effective.characters.find(a=>a.id===c.id),...c})};
   const clean=validateOutcome(incoming,before),target=copy(effective);
@@ -45,6 +46,7 @@ export function mergeRepairOutcome(previous:Outcome,incoming:Outcome,before:Worl
     const prior=previous.stateUpdate,next=clean.stateUpdate;
     const meta=repairNeedsState(plan)?next||prior:prior||next;
     if(meta)result.stateUpdate={...meta,status:repairNeedsState(plan)?meta.status:prior?.status||'unchanged',received:!!prior?.received||!!next?.received,storyComplete:prior?.storyComplete??meta.storyComplete,codes:[...new Set([...(prior?.codes||[]).filter(c=>!repairCodeApplies(c,plan)),...(next?.codes||[]).filter(c=>repairCodeApplies(c,plan))])],affinityReviewedIds:[...new Set([...(prior?.affinityReviewedIds||[]),...(next?.affinityReviewedIds||[]).filter(id=>plan.affinityIds.includes(id))])]};
+    if(result.stateUpdate)result.stateUpdate.affinityReviews=[...(prior?.affinityReviews||[]).filter(r=>!plan.affinityIds.includes(r.id)),...(next?.affinityReviews||[]).filter(r=>plan.affinityIds.includes(r.id))];
     if(result.stateUpdate&&plan.affinityIds.length&&plan.affinityIds.every(id=>result.stateUpdate?.affinityReviewedIds?.includes(id)||validAffinity(clean.characters?.find(c=>c.id===id)?.affinity)&&!clean.stateUpdate?.codes.includes('STATE_AFFINITY_RETAINED')))result.stateUpdate.codes=result.stateUpdate.codes.filter(code=>!/AFFINITY|MVU|ATTITUDE/.test(code));
     if(result.stateUpdate&&repairNeedsState(plan))result.stateUpdate.status=repairNeedsState(missingRepairPlan(result,target,[],true,false))?'partial':'updated';
   }

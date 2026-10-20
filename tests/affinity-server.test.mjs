@@ -7,24 +7,24 @@ import {newSession,stateAt,finishVariant} from '../src/domain/story.ts';
 import {defaultTheaters} from '../src/domain/theaters.ts';
 const card={characters:[{id:'guide',name:'角色'}],world:{greeting:[]},places:[]};
 function fixture(){const session=newSession('测试',{name:'玩家',appearance:'',personality:'',background:''},'正文');session.initial.characters=session.initial.characters.slice(0,1);return session;}
-test('server accepts both affinity boundaries and the extended positive range',()=>{
- const state=stateAt(fixture());for(const affinity of [-100,150,200]){
+test('server accepts both affinity boundaries within the current bounded range',()=>{
+ const state=stateAt(fixture());for(const affinity of [-100,0,100]){
   const result=normalizeModelState(card,state,{event:'互动',presentCharacterIds:['guide'],characters:[{id:'guide',affinity}]},{requireDynamicState:true,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false}))});assert.equal(result.characters[0].affinity,affinity);
  }
- for(const affinity of [-101,201])assert.throws(()=>normalizeModelState(card,state,{event:'互动',presentCharacterIds:['guide'],characters:[{id:'guide',affinity}]},{requireDynamicState:true,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false}))}));
- assert.match(internalPrompt('ai.5',{p0:'<done>',p1:'<done>'}),/\[-100,200\]/);
+ for(const affinity of [-101,101,200])assert.throws(()=>normalizeModelState(card,state,{event:'互动',presentCharacterIds:['guide'],characters:[{id:'guide',affinity}]},{requireDynamicState:true,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false}))}));
+ assert.match(internalPrompt('ai.5',{p0:'<done>',p1:'<done>'}),/\[-100,100\]/);
 });
 test('every stream split captures numeric-string delta once and preserves prose',()=>{
- const text='正文。<UpdateVariable><JSONPatch>[{"op":"delta","path":"/characters/guide/affinity","value":"170"}]</JSONPatch></UpdateVariable><SR_STATE>{"event":"关系变化","presentCharacterIds":["guide"]}</SR_STATE><SR_DONE>';
+ const text='正文。<UpdateVariable><JSONPatch>[{"op":"delta","path":"/characters/guide/affinity","value":"70"}]</JSONPatch></UpdateVariable><SR_STATE>{"event":"关系变化","presentCharacterIds":["guide"]}</SR_STATE><SR_DONE>';
  for(let i=0;i<=text.length;i++){
-  const s=fixture(),d=new StoryDecoder();const visible=d.push(text.slice(0,i))+d.push(text.slice(i));const outcome=d.finish(card,stateAt(s));const v={id:'v',text:visible,status:'incomplete',createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,outcome);assert.equal(v.text,'正文。');assert.equal(stateAt(s).characters[0].affinity,200);
+  const s=fixture(),d=new StoryDecoder();const visible=d.push(text.slice(0,i))+d.push(text.slice(i));const outcome=d.finish(card,stateAt(s));const v={id:'v',text:visible,status:'incomplete',createdAt:''};s.turns.push({id:'t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,outcome);assert.equal(v.text,'正文。');assert.equal(stateAt(s).characters[0].affinity,100);
  }
 });
 test('compatible fields retain the old affinity on invalid input, with valid prose state intact',()=>{
  const state=stateAt(fixture());
- for(const affinity of ['200','201','']){
+ for(const affinity of ['100','101','']){
   const warnings=[];const result=compatibleState({event:'正文已发生',presentCharacterIds:['guide'],characters:[{id:'guide',affinity}]},card,state,{validationWarnings:warnings});
-  assert.equal(result.event,'正文已发生');assert.equal(result.characters.find(c=>c.id==='guide')?.affinity,affinity==='200'?200:undefined);assert.equal(state.characters[0].affinity,30);
+  assert.equal(result.event,'正文已发生');assert.equal(result.characters.find(c=>c.id==='guide')?.affinity,affinity==='100'?100:undefined);assert.equal(state.characters[0].affinity,30);
  }
 });
 

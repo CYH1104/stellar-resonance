@@ -1,4 +1,6 @@
+import {randomUUID} from 'node:crypto';
 import {attitudeUpdates} from './attitudes.mjs';
+import {adaptStateOutput,normalizeStateFields} from './state-output.mjs';
 import {restoreActorFacts} from '../src/domain/actorPolicy.ts';
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {validAffinity} from '../src/domain/affinity.ts';
@@ -126,7 +128,8 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   if((request.historyStart||0)===0&&text(request.opening,6000,true))messages.push({role:'assistant',content:request.opening});
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
-  return {messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
+  const requestId=request.requestId||randomUUID();
+  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
@@ -314,17 +317,22 @@ export class StoryDecoder {
     const blocks=splitBlocks(this.raw);let assembled={},received=false,rejected=false;this.jsonInfo=undefined;
     const candidates=[...blocks.status,...blocks.state];
     for(let i=candidates.length-1;i>=0;i--){
-      try{const parsed=parseStateJson(candidates[i]);if(!parsed.value||typeof parsed.value!=='object'||Array.isArray(parsed.value))throw Error();assembled={...parsed.value};this.jsonInfo=parsed.info;received=true;break;}catch{}
+      try{const parsed=parseStateJson(candidates[i]);if(!parsed.value||typeof parsed.value!=='object'||Array.isArray(parsed.value))throw Error();assembled={...normalizeStateFields(parsed.value,warn)};this.jsonInfo=parsed.info;received=true;break;}catch{}
     }
     if(candidates.length&&!received){if(!single)throw modelError(502,'MODEL_STATE_JSON_INVALID');warn('STATE_STATUS_INVALID');rejected=true;}
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
+    if(options.stateEnabled===false&&assembled.schemaVersion!==undefined)assembled={event:assembled.event,suggestions:assembled.suggestions};
+    const canonical=assembled.schemaVersion!==undefined;
+    const adapted=canonical?adaptStateOutput(assembled,state,options,warn):undefined;
+    if(canonical&&candidates.length!==1){warn('STATE_PROTOCOL_CONFLICT');adapted.raw={event:assembled.event};adapted.records=[];adapted.reviewed=[];}
+    if(adapted)assembled=adapted.raw;
     if(blocks.choices.length){const choices=parseChoices(blocks.choices.at(-1));if(choices!==undefined)assembled.suggestions=choices;else warn('STATE_CHOICES_INVALID');}
     for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
     const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}
     if(theaters.length){const mixed=[...(Array.isArray(assembled.theaters)?assembled.theaters:[]),...theaters];assembled.theaters=single?mixed:[...new Map(mixed.map(scene=>[scene?.slot,scene])).values()];}
     let attitude,attitudeAccepted=false;const affinityReviewedIds=[];
     if(options.stateEnabled!==false){
-      if(blocks.attitudes.length&&!incomplete.has('attitudes')){try{attitude=parseStateJson(blocks.attitudes.at(-1)).value;}catch{warn('STATE_ATTITUDE_INVALID');}}
+      if(!canonical&&blocks.attitudes.length&&!incomplete.has('attitudes')){try{attitude=parseStateJson(blocks.attitudes.at(-1)).value;}catch{warn('STATE_ATTITUDE_INVALID');}}
       else if(assembled.affinityChanges!==undefined){attitude={changes:assembled.affinityChanges};delete assembled.affinityChanges;}
       else if(options.variableOnly){try{const raw=parseStateJson(this.raw.replace(/<done>/gi,'').trim()).value;if(Array.isArray(raw?.changes))attitude=raw;}catch{}}
     }
@@ -339,7 +347,8 @@ export class StoryDecoder {
       }
       assembled.characters=assembled.characters.map(row=>{if(!row||typeof row!=='object'||Array.isArray(row))return row;const {attitude,strength,...actor}=row;return actor;});
     }
-    let mvu=assembled.mvu,mvuFailed=false;
+    let mvu=assembled.mvu,mvuFailed=canonical&&blocks.mvu.length>0;
+    if(mvuFailed)warn('STATE_PROTOCOL_CONFLICT');
     if(attitude!==undefined){try{mvu=attitudeUpdates(attitude,state,warn,[...(Array.isArray(assembled.characters)?assembled.characters:[]),...(Array.isArray(assembled.presentCharacterIds)?assembled.presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)).map(id=>({id,present:true}))].filter(c=>!options.repairPlan||options.repairPlan.affinityIds.includes(c.id)),id=>affinityReviewedIds.push(id));assembled.mvu=mvu;received=true;attitudeAccepted=true;}catch{warn('STATE_ATTITUDE_INVALID');}}
 
     if(attitudeAccepted){
@@ -347,9 +356,9 @@ export class StoryDecoder {
       if(Array.isArray(assembled.characters))assembled.characters=assembled.characters.map(({affinity,relationship,...actor})=>actor);
     }
     else if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
-    else if(blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
+    else if(!canonical&&blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
     if(mvu!==undefined&&!mvuFailed){try{mvu=prepareMvuUpdates(state,mvu,assembled.characters);applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch(error){warn(error.fieldPath?'STATE_MVU_PATH_REJECTED':'STATE_MVU_VALUE_REJECTED');mvuFailed=true;}}
-    if(options.stateEnabled!==false&&(!options.repairPlan||options.repairPlan.affinityIds.length)&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
+    if(!canonical&&options.stateEnabled!==false&&(!options.repairPlan||options.repairPlan.affinityIds.length)&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
     if(mvuFailed){
       // A rejected patch must not erase separately valid OS, roster or prose.
@@ -365,7 +374,7 @@ export class StoryDecoder {
     if(single){
       const partial=warnings.some(code=>/STATE_(?:FIELD_(?:SKIPPED|CONFLICT)|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_|(?:SPIRIT|PLAYER)_THOUGHT_STALE)/.test(code));
       const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));
-      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],...(attitudeAccepted?{affinityReviewedIds:[...new Set(affinityReviewedIds)]}:{}),retainedPresentIds:[...new Set(retainedPresentIds)]};
+      outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],...(attitudeAccepted?{affinityReviewedIds:[...new Set(affinityReviewedIds)]}:{}),retainedPresentIds:[...new Set(retainedPresentIds)],...(canonical?{requestId:options.requestId||'local-test',affinityReviewedIds:mvuFailed?[]:adapted.reviewed,affinityReviews:mvuFailed?[]:adapted.records}: {})};
     }
     return outcome;
   }

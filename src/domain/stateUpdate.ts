@@ -1,6 +1,11 @@
 import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
+  STATE_REQUEST_MISMATCH:'状态协议版本或请求标识不匹配，未应用这份变量更新',
+  STATE_PROTOCOL_CONFLICT:'出现重复状态或并行变量协议，未重复结算变量',
+  STATE_CUSTOM_REJECTED:'自定义变量事务未通过路径、类型或权限校验，整笔保留原值',
+  STATE_DUPLICATE_CHARACTER:'同一角色重复返回，未应用冲突的角色更新',
+  STATE_AFFINITY_LARGE_INCREASE:'本轮请求的好感增量超过 +3，已记录幅度警告及原始依据',
   STATE_MVU_REJECTED:'变量补丁不合法，本轮变量更新未应用',
   STATE_ATTITUDE_INVALID:'本轮好感判断格式无效，原数值已保留，可手动补全本轮状态',
   STATE_ATTITUDE_REVIEW_MISSING:'部分在场角色漏返回本轮好感判断，已保留原数值，可手动补全',

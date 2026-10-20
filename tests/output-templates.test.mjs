@@ -33,6 +33,6 @@ test('targeted repair provides actual slot template and allows requested status 
  const plan={roster:false,affinityIds:['lin'],spiritIds:[],theaterSlots:[2],suggestions:false};
  const messages=repairedMessages([],'Fixed prose',{world:{},characters:[]},state,{repairPlan:plan,theaterSettings:defaultTheaters()});
  assert.ok(messages[0].content.includes('<theater slot="2">'));
- const data=JSON.parse(messages[1].content);assert.ok(data.output.status.includes('attitude'));
+ const data=JSON.parse(messages[1].content);assert.ok(data.output.status.includes('affinity:{delta,reason}'));
  assert.ok(!messages[0].content.includes('<choices>'));
 });

@@ -1,5 +1,5 @@
 /** Shared by patch validation, model rules and graph rendering. Defaults apply only to new actors. */
-export const affinityRule = Object.freeze({type:'number',min:-100,max:200,default:0});
+export const affinityRule = Object.freeze({type:'number',min:-100,max:100,default:0});
 export const affinityRange = `[${affinityRule.min},${affinityRule.max}]`;
 export const affinitySchema = Object.freeze({type:'number',minimum:affinityRule.min,maximum:affinityRule.max,default:affinityRule.default});
 /** Accept explicit decimal strings from model JSON, never blanks, booleans or display labels. */

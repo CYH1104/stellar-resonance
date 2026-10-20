@@ -4,6 +4,14 @@ import { IndexedDbRepository } from '../src/storage/repository';
 import { defaults, newSession } from '../src/domain/story';
 import {cleanLocalApiCredentials} from '../src/storage/apiCredentials';
 
+it('迟到页面不能覆盖另一页面已保存的状态',async()=>{
+ const name='race-'+crypto.randomUUID(),a=new IndexedDbRepository(name),b=new IndexedDbRepository(name);
+ const original={version:1 as const,sessions:[],preferences:defaults()};await a.write(original);await b.read();
+ const next=structuredClone(original);next.preferences.shortcuts=['新页面的内容'];await a.write(next);
+ await expect(b.write(original)).rejects.toThrow('其他页面修改');
+ expect((await new IndexedDbRepository(name).read())?.preferences.shortcuts).toEqual(['新页面的内容']);
+});
+
 it('IndexedDB 事务完成后，新实例可读取同一份存档', async () => {
   const name = `test-${crypto.randomUUID()}`;
   const first = new IndexedDbRepository(name);
