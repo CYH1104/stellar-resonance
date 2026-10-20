@@ -91,9 +91,24 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     const returned=await fetch(base+'/terminal',{headers:{Cookie:cookie+'; '+apiCookie},redirect:'manual'});assert.equal(returned.status,302);assert.equal(returned.headers.get('location'),'/login');
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},cookie+'; '+apiCookie)).status,401);
     assert.equal((await fetch(base+'/api/bootstrap',{headers:{Cookie:secondCookie}})).status,200);
-    const relogin=await post('/api/auth/login',{email:'one@qq.com',password:'synthetic-pass'});assert.equal(relogin.status,200);const freshCookie=relogin.headers.get('set-cookie').split(';')[0];
+    const relogin=await post('/api/auth/login',{email:'one@qq.com',password:'synthetic-pass',remember:true});assert.equal(relogin.status,200);assert.match(relogin.headers.get('set-cookie'),/Max-Age=2592000/);const freshCookie=relogin.headers.get('set-cookie').split(';')[0];
     assert.equal((await fetch(base+'/terminal',{headers:{Cookie:freshCookie}})).status,200);
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},freshCookie+'; '+apiCookie)).status,401);
     assert.equal((await fetch(base+'/api/bootstrap',{headers:{Cookie:cookie}})).status,401);
+    const temporary=await post('/api/auth/login',{email:'one@qq.com',password:'synthetic-pass',remember:false});assert.equal(temporary.status,200);assert.doesNotMatch(temporary.headers.get('set-cookie'),/Max-Age|Expires/i);
   }finally{if(app){app.server.closeAllConnections();await new Promise(r=>app.server.close(r));}await rm(directory,{recursive:true,force:true});}
 });
+
+ test('remembered login lasts thirty days, legacy lasts seven, and logout still revokes it',async()=>{
+ const directory=await mkdtemp(resolve(tmpdir(),'academy-remember-'));let clock=Date.now();const store=await createAccounts({directory,now:()=>clock});
+ try{
+ const normal=await store.enter('register',{email:'remember@qq.com',password:'synthetic-pass'},'one');
+ const remembered=await store.enter('login',{email:'remember@qq.com',password:'synthetic-pass',remember:true},'two');
+ const temporary=await store.enter('login',{email:'remember@qq.com',password:'synthetic-pass',remember:false},'three');
+ assert.equal(remembered.maxAge,2592000);assert.equal(temporary.maxAge,null);
+ await assert.rejects(store.enter('login',{email:'remember@qq.com',password:'synthetic-pass',remember:'true'},'four'),{code:'INVALID_REMEMBER'});
+ clock+=8*86400000;assert.equal(store.user(normal.token),null);assert.equal(store.user(temporary.token),null);assert.ok(store.user(remembered.token));
+ const revoked=await store.enter('login',{email:'remember@qq.com',password:'synthetic-pass',remember:true},'five');store.logout(revoked.token);assert.equal(store.user(revoked.token),null);
+ clock+=23*86400000;assert.equal(store.user(remembered.token),null);
+ }finally{store.close();await rm(directory,{recursive:true,force:true});}
+ });

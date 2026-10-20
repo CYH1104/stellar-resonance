@@ -82,7 +82,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     try{
       const accountToken=accountTokenOf(request);
       const account=accounts?.user(accountToken);
-      const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${external?.protocol==='https:'?'; Secure':''}`);
+      const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/${age===null?'':`; Max-Age=${age}`}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
       const authFiles={'/reset':['reset.html','text/html'],'/auth/reset.js':['reset.js','text/javascript'],'/auth/manage.js':['manage.js','text/javascript'],'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript'],'/auth/boot.css':['boot.css','text/css']};
@@ -104,7 +104,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/auth/delete'||path==='/api/auth/reset-data'){await accounts.maintain(accountToken,data,path.endsWith('/delete')?'delete':'reset',request.socket.remoteAddress||'unknown');for(const [id,value]of sessions)if(value.accountId===account?.id)sessions.delete(id);setAccountCookie('',0);json(response,200,{ok:true});return;}
         if(path==='/api/auth/register'||path==='/api/auth/login'){
           const result=await accounts.enter(path.endsWith('/register')?'register':'login',data,request.socket.remoteAddress||'unknown');
-          accounts.logout(accountToken);setAccountCookie(result.token);json(response,200,{user:result.user});return;
+          accounts.logout(accountToken);setAccountCookie(result.token,result.maxAge);json(response,200,{user:result.user});return;
         }
         if(path==='/api/auth/logout'){accounts.logout(accountToken);setAccountCookie('',0);const accountExpiry=response.getHeader('Set-Cookie');response.setHeader('Set-Cookie',[accountExpiry,`${cookieName}=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${external?.protocol==='https:'?'; Secure':''}`]);sessions.delete(token(request));json(response,200,{ok:true});return;}
         throw modelError(404,'API_NOT_FOUND');

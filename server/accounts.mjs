@@ -23,7 +23,7 @@ export async function createAccounts({directory,now=Date.now,requireInvite=false
   function credentials(data){const email=typeof data.email==='string'?data.email.trim().toLowerCase():'';const password=data.password;if(email.length>254||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email))throw fail('INVALID_EMAIL');if(typeof password!=='string'||password.length<8||password.length>128)throw fail('INVALID_PASSWORD');return {email,password};}
   function user(token){if(typeof token!=='string'||! /^[a-f0-9]{64}$/.test(token))return null;return publicUser(db.prepare('SELECT u.id,u.email,u.data_version FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>?').get(hash(token),now()));}
   async function enter(kind,data,ip){
-    limit(ip);const {email,password}=credentials(data);if(active>=4)throw fail('AUTH_BUSY',503);active++;
+    limit(ip);if(data.remember!==undefined&&typeof data.remember!=='boolean')throw fail('INVALID_REMEMBER');const {email,password}=credentials(data);if(active>=4)throw fail('AUTH_BUSY',503);active++;
     try{
       let account;
       if(kind==='register'){
@@ -42,8 +42,9 @@ export async function createAccounts({directory,now=Date.now,requireInvite=false
       db.prepare('DELETE FROM sessions WHERE expires<=?').run(now());
       // Keep a bounded set of remembered devices per account.
       db.prepare('DELETE FROM sessions WHERE user_id=? AND token_hash NOT IN (SELECT token_hash FROM sessions WHERE user_id=? ORDER BY expires DESC LIMIT 9)').run(account.id,account.id);
-      const token=randomBytes(32).toString('hex');db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hash(token),account.id,now()+7*86400000);
-      return {user:account,token};
+      const maxAge=data.remember===true?30*86400:7*86400;
+      const token=randomBytes(32).toString('hex');db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hash(token),account.id,now()+maxAge*1000);
+      return {user:account,token,maxAge:data.remember===false?null:maxAge};
     }finally{active--;}
   }
   function generateInvites({count=1,batch='manual',note=''}={}){
