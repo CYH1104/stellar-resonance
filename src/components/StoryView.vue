@@ -22,7 +22,7 @@ const menuPosition=ref<Record<string,string>>({});
 const menuTarget=typeof document!=='undefined'&&document.getElementById('academy-workspace')?'#academy-workspace':'#app';
 watch(()=>props.w.active?.id,()=>{menuOpen.value=false;chosenTurn.value=-1;edit.value=undefined;confirm.value=undefined;});
 const showAvatar=ref((()=>{try{return accountStorage.getItem('academy:chat-avatar-hidden')!=='true';}catch{return true;}})());
-const showVariables=ref((()=>{try{return accountStorage.getItem('academy:chat-variables-hidden')!=='true';}catch{return true;}})());
+const showVariables=ref((()=>{try{return accountStorage.getItem('academy:chat-variables-hidden')==='false';}catch{return false;}})());
 function toggleVariables(){showVariables.value=!showVariables.value;try{accountStorage.setItem('academy:chat-variables-hidden',String(!showVariables.value));}catch{}}
 const avatarUrl=ref('');let avatarRequest=0;
 function toggleAvatar(){showAvatar.value=!showAvatar.value;try{accountStorage.setItem('academy:chat-avatar-hidden',String(!showAvatar.value));}catch{}}
