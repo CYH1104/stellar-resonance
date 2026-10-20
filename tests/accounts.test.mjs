@@ -77,7 +77,8 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     assert.equal((await post('/api/connection',{profileId:'main',apiBaseUrl:'https://relay.example:8443/v1'},cookie+'; '+apiCookie)).status,403);
     assert.equal((await post('/editor/api/accounts/relay-policy',{origins:['https://relay.example:8443']},cookie)).status,401);
     const adminLogin=await post('/editor/login',{key:await editorAccessKey(root)}),admin=adminLogin.headers.get('set-cookie').split(';')[0];
-    assert.equal((await post('/editor/api/accounts/relay-policy',{origins:['https://relay.example:8443']},admin)).status,200);
+    const policySaved=await post('/editor/api/accounts/relay-policy',{origins:['https://relay.example:8443/v1/chat/completions']},admin);assert.equal(policySaved.status,200);const policyValue=await policySaved.json();assert.deepEqual(policyValue.origins,['https://relay.example:8443']);assert.ok(policyValue.officialOrigins.includes('https://api.deepseek.com'));
+    assert.equal((await post('/editor/api/accounts/relay-policy',{origins:['https://relay.example/v1?key=synthetic']},admin)).status,400);
     assert.equal((await post('/api/connection',{profileId:'main',apiBaseUrl:'https://relay.example:8443/v1'},cookie+'; '+apiCookie)).status,200);
     assert.equal((await post('/api/connection',{profileId:'other',apiBaseUrl:'https://relay.example/v1'},cookie+'; '+apiCookie)).status,403);
     const relays=await readRelayRecords(resolve(directory,'accounts.sqlite'));
