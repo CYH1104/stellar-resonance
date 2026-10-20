@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissibleNotice from './DismissibleNotice.vue';
 import {ref} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Session} from '../domain/contracts';
@@ -17,7 +18,7 @@ async function remove(){if(target.value&&await props.w.deleteSession(target.valu
   <DialogShell v-if="target" :title="`删除存档《${target.name}》？`" @close="close">
     <p>{{target.player}} · {{target.rounds}} 轮。将删除这份存档的全部聊天、人物状态、记忆及向量、骰点和小剧场记录。</p>
     <p>此操作无法撤销。需要保留时，请先取消并导出备份。其他存档、模型设置和 API Key 会保留。</p>
-    <p v-if="w.problem" role="alert">{{w.problem}}</p>
+    <DismissibleNotice :message="w.problem" error />
     <div class="actions"><button :disabled="!!w.deletingSessionId" @click="close">取消</button><button class="danger" :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="remove">{{w.deletingSessionId?'正在删除…':'确认删除'}}</button></div>
   </DialogShell>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,onBeforeUnmount,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Profile} from '../domain/contracts';
@@ -18,5 +19,5 @@ async function fetchModels(){
 <template><div class="model-picker">
   <div class="api-model-row"><label>模型<select v-model="p.model" :disabled="disabled||loading"><option value="" disabled>{{models.length?'请选择模型':'请先获取模型'}}</option><option v-if="p.model&&!models.includes(p.model)" :value="p.model">{{p.model}}</option><option v-for="model in models" :key="model" :value="model">{{model}}</option></select></label><div class="actions"><button type="button" :disabled="disabled||loading||!p.apiBaseUrl?.trim()||!w.credentials[p.id]?.trim()" @click="fetchModels">{{loading?'获取中…':'获取模型'}}</button><slot /><button type="button" class="api-manual-toggle" :disabled="disabled||loading" @click="manual=!manual">{{manual?'收起手填':'手动填写'}}</button></div></div>
   <label v-if="manual" class="api-manual-field">手动模型名<input v-model="p.model" maxlength="150" :disabled="disabled||loading" placeholder="服务提供的完整模型名" /></label>
-  <p v-if="error" class="model-list-error" role="alert">{{error}}</p><p v-else-if="hint" class="rail-note" role="status">{{hint}}</p>
+  <DismissibleNotice :message="error" error /><DismissibleNotice v-if="!error" :message="hint" />
 </div></template>

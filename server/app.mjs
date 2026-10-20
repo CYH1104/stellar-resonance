@@ -1,3 +1,5 @@
+import {createTheaterShares} from './theater-shares.mjs';
+import {guardPromptRequest} from './prompt-guard.mjs';
 import {cleanTheaters} from '../src/domain/theaters.ts';
 import {repairNeedsState,validateRepairPlan} from '../src/domain/repairPlan.ts';
 import {bootHead,bootScreen} from './boot-screen.mjs';
@@ -25,7 +27,7 @@ import {developerAllowed,developerTrace} from './developer-mode.mjs';
 import {createAccounts} from './accounts.mjs';
 import {createEditorGateway} from './editor-gateway.mjs';
 import {randomEventMessages,parseRandomEvent} from './random-events.mjs';
-import {forumReplyMessages,parseForumReply} from './forum.mjs';
+import {forumReplyMessages,parseForumReply,forumThreadMessages,parseForumThread} from './forum.mjs';
 import {stripReasoning} from '../src/domain/reasoning.ts';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
@@ -43,6 +45,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   const accounts=authRequired?await createAccounts({directory:accountDirectory,requireInvite:invitesRequired}):null;
   const editorGateway=await createEditorGateway({projectRoot,editorPort,accounts,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true};
+  const theaterShares=createTheaterShares(resolve(projectRoot,'server/private/theater-shares'));
   const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
   const worldName=source.world.greeting?.[0]?.match(/欢迎您，(.+?)第/)?.[1]||'';
@@ -123,6 +126,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
+        if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
+        guardPromptRequest(path,data);
         setTavernContext({user:data.persona?.name||data.before?.player?.name||'',char:source.world.name||'群星共振世界卡',persona:data.persona?personaDescription(data.persona):'',input:data.input||'',history:data.history||[]});
         if(path==='/api/connection'){
           if(!safeString(data.profileId,128)||!data.profileId||!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
@@ -191,11 +196,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const upstream=await openCompletion({connection:selected,key:data.key,profile:{...data.profile,maxTokens:Math.min(data.profile.maxTokens,2000)},messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_RANDOM_EVENT_RESULT');}signal.throwIfAborted();json(response,200,parseRandomEvent(content,data.kind));return;
         }
         if(path==='/api/forum-reply'){
-          const selected=connection(current,data),{speaker,messages}=forumReplyMessages(source,data);
+          const selected=connection(current,data),thread=data.minReplies!==undefined,plan=thread?forumThreadMessages(source,data):forumReplyMessages(source,data),{speaker,messages}=plan;
           const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';
-          for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_FORUM_REPLY_RESULT');}
-          signal.throwIfAborted();json(response,200,parseForumReply(content,speaker));return;
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:thread?{...data.profile,maxTokens:Math.max(data.profile.maxTokens,3000)}:data.profile,messages,signal,fetchImpl});let content='';
+          for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(thread?60000:8000))throw modelError(502,'INVALID_FORUM_REPLY_RESULT');}
+          signal.throwIfAborted();json(response,200,thread?parseForumThread(content,plan):parseForumReply(content,speaker));return;
         }
         if(path==='/api/memory'){
           const selected=connection(current,data),batch=data.rounds!==undefined,{input,inputs,messages}=batch?batchMemoryMessages(data.rounds):memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);

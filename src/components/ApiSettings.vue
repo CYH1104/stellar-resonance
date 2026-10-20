@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissibleNotice from './DismissibleNotice.vue';
 import {parseApiSettings,type ApiTransfer} from '../domain/apiTransfer';
 import DeveloperDiagnostics from './DeveloperDiagnostics.vue';
 import {computed,ref,watch,onBeforeUnmount} from 'vue';
@@ -59,10 +60,10 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
     <label class="toggle"><input v-model="w.preferences.diceEnabled" type="checkbox" :disabled="disabled" />开启随机事件</label>
     <p class="rail-note">开启后按上方概率本地判定；跟随主 API 时，命中后自动随正文一次生成事件，不单独调用候选接口。仅明确选择副 API 时单独生成事件并自动衔接正文，投骰始终在本地完成。</p>
     <label class="toggle"><input v-model="w.preferences.forumReplyEnabled" type="checkbox" :disabled="disabled" />发表论坛评论后，允许角色／NPC 回复我（默认关闭）</label>
-    <p class="rail-note">开启后，每条玩家评论额外调用论坛 AI 回复接口一次，随机由一名 char 或 NPC 回复，可随时停止；关闭时只保存你的评论，不调用 AI。论坛回复不改变主线状态。</p>
+    <p class="rail-note">开启后，每条玩家评论额外调用论坛 AI 回复接口一次，一次生成至少 5 条回复，可由楼主、原评论者及相关或被点名角色参与，可随时停止；关闭时只保存你的评论，不调用 AI。论坛回复不改变主线状态。</p>
   </section>
   <section class="api-extra"><h3>本机保存</h3><label class="toggle"><input :checked="w.rememberApiKeys" type="checkbox" :disabled="disabled" @change="w.setRememberApiKeys(($event.target as HTMLInputElement).checked)" />在此浏览器保存 Key，下次自动恢复</label><button type="button" :disabled="disabled" @click="w.clearApiKeys()">清除本机全部 Key</button></section>
-  <details class="api-extra"><summary>本机诊断与报错{{w.problem||w.apiIssues?.length?'（有待处理项目）':''}}</summary><p class="rail-note">本机后台：{{w.localService?'已连接':'未连接，请使用“启动预览.bat”启动'}}</p><p v-if="w.problem" class="model-list-error" role="alert">{{w.problem}}</p><ul v-if="w.apiIssues?.length" class="plain-list"><li v-for="(issue,i) in w.apiIssues" :key="i">{{issue}}</li></ul><p v-else-if="!w.problem" class="rail-note">当前没有报错。</p><button v-if="w.problem" type="button" @click="w.problem=''">清除报错提示</button><DeveloperDiagnostics /></details>
+  <details class="api-extra"><summary>本机诊断与报错{{w.problem||w.apiIssues?.length?'（有待处理项目）':''}}</summary><p class="rail-note">本机后台：{{w.localService?'已连接':'未连接，请使用“启动预览.bat”启动'}}</p><DismissibleNotice :message="w.problem" error /><ul v-if="w.apiIssues?.length" class="plain-list"><li v-for="(issue,i) in w.apiIssues" :key="i">{{issue}}</li></ul><p v-else-if="!w.problem" class="rail-note">当前没有报错。</p><button v-if="w.problem" type="button" @click="w.problem=''">清除报错提示</button><DeveloperDiagnostics /></details>
   <div class="actions api-ready-actions"><button type="button" class="api-enter-button" :disabled="!w.apiReady||disabled" @click="w.enterStory()">{{w.apiReady?'进入剧情':'请先保存必需的 API'}}</button></div>
   <DialogShell v-if="draft" title="增加副 API" @close="closeDraft"><ApiProfileEditor :w="w" :p="draft" title="副 API" help="填写并保存后，这个接口才会加入副 API 列表。取消不会添加。" :save-profile="saveNew" /><button type="button" :disabled="adding" @click="closeDraft">取消</button></DialogShell>
   <DialogShell v-if="removeOpen&&auxiliary" title="删除副 API" @close="removeOpen=false"><p>删除“{{auxiliary.name}}”？使用它的功能将恢复主 API。</p><div class="actions"><button @click="removeOpen=false">取消</button><button class="danger" :disabled="disabled" @click="remove">删除</button></div></DialogShell>

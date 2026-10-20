@@ -29,7 +29,7 @@ export const uid = () => crypto.randomUUID();
 export const copy = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 export const now = () => new Date().toISOString();
 export function defaults(): Preferences {
-  const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 1600 });
+  const profile = (id: string, name: string, model: string) => ({ id, name, providerId: 'approved-provider', model, temperature: 0.7, maxTokens: 32000 });
   return { preservePresetOutputs:false,regexRules:[],memorySummaryInterval:1,stateEnabled:true,randomEventProbability:30,randomEventInstruction:'',stateProfile:'main',worldbooks:[],defaultWorldbookIds:[],layout:defaultLayout(),suggestionsEnabled:true,randomEventProfile:'main',forumReplyEnabled:false,forumReplyProfile:'main',mode: 'demo', diceEnabled: false, vectorEnabled: false, profiles: [profile('main', '主 API', ''), profile('aux', '副 API 1', ''), profile('embed', '向量 API', '')], mainProfile: 'main', auxiliaryProfile: 'aux', embeddingProfile: 'embed',auxiliaryProfiles:['aux'],storyProfile:'main',summaryProfile:'main',suggestionsProfile:'main',personaProfile:'main', presetParameters:{},presets: [{ id: 'default', name: '基础叙事', content: '使用清晰中文叙事，停在需要玩家选择的地方。', enabled: true }], shortcuts: [],activePreset:'legacy',theaters:cleanTheaters(undefined) };
 }
 export function initialState(name: string): WorldState {
@@ -191,6 +191,16 @@ export function addForumAIReply(session:Session,key:string,replyTo:string,reply:
   if(activity.replies.some(r=>r.kind==='ai'&&r.replyTo===replyTo))return;
   const text=stripReasoning(reply.content).trim();if(!shortText(text,1000,true)||!shortText(reply.authorName,80,true)||!shortText(reply.authorId,128,true)||activity.replies.length>=100)throw new Error('论坛回复格式或数量不正确');
   activity.replies.push({id:uid(),text,createdAt:now(),kind:'ai',authorName:reply.authorName,authorId:reply.authorId,replyTo});session.updatedAt=now();
+}
+/** Validate the whole response before committing any comment; repeated delivery is idempotent. */
+export function addForumAIReplies(session:Session,key:string,replyTo:string,replies:{authorName:string;authorId:string;content:string}[]):void{
+  if(!visibleForum(session).some(post=>post.key===key))throw new Error('该动态已不属于当前剧情');
+  const activity=session.forumActivity?.[key];if(!activity||!activity.replies.some(r=>r.id===replyTo&&r.kind!=='ai'))throw new Error('原评论已不存在');
+  if(activity.replies.some(r=>r.kind==='ai'&&r.replyTo===replyTo))return;
+  if(!Array.isArray(replies)||replies.length<5||replies.length>50||activity.replies.length+replies.length>100)throw new Error('论坛回复数量不正确或该动态评论容量不足，你的评论已保留。');
+  const seen=new Set<string>(),createdAt=now();
+  const staged=replies.map(reply=>{const text=stripReasoning(reply.content).trim();if(!shortText(text,1000,true)||!shortText(reply.authorName,80,true)||!shortText(reply.authorId,128,true))throw new Error('论坛回复格式不正确，你的评论已保留。');const normalized=text.replace(/\s+/gu,'');if(seen.has(normalized))throw new Error('论坛回复包含重复内容，你的评论已保留。');seen.add(normalized);return {id:uid(),text,createdAt,kind:'ai' as const,authorName:reply.authorName,authorId:reply.authorId,replyTo};});
+  activity.replies.push(...staged);session.updatedAt=createdAt;
 }
 function restoreSuggestions(session:Session):void{
   const v=session.turns.length?selected(session.turns.at(-1)!):undefined;

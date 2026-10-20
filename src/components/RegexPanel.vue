@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,ref,onMounted,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {cleanRegexRules,importRegexRules,regexPattern,type RegexRule} from '../domain/regex';
@@ -40,6 +41,6 @@ function position(value:number,checked:boolean){if(!draft.value)return;draft.val
       <p class="rail-note">当前运行用户消息、AI 回复与提示词世界书位置；命令输出、推理字段仅保留配置。</p>
       <div class="actions"><button type="submit" :disabled="w.busy">保存正则</button><button type="button" @click="draft=undefined">取消</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
       <details><summary>测试替换</summary><textarea v-model="sample" rows="3" aria-label="正则测试文本" /><button type="button" :disabled="testing" @click="test">{{testing?'处理中…':'测试'}}</button><HtmlMessageFrame v-if="preview&&hasRenderableHtml(preview)" :content="preview" /><pre v-else>{{preview}}</pre></details>
-    </form><p v-if="error" class="error" role="alert">{{error}}</p>
+    </form><DismissibleNotice :message="error" error />
   </section>
 </div></template>

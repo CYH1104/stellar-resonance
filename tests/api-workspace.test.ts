@@ -355,6 +355,14 @@ it('预设正则随复制和浏览器备份保留，删除预设不删除其他�
   await w.save();expect(saved?.preferences.regexRules).toHaveLength(2);
   w.removePresetSet();expect(w.preferences.regexRules).toHaveLength(1);expect(w.preferences.regexRules?.[0].setId).toBe(original);
 });
+it('新版论坛一次请求五条回复，绑定同一用户评论且重试不重复追加',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('论坛多回复',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const session=w.active.value!,v={id:'batch-v',text:'正文',status:'incomplete' as const,createdAt:''};session.turns.push({id:'batch-t',input:'行动',variants:[v],selected:0});finishVariant(session,0,v,{event:'事件',forum:[{id:'p',authorName:'楼主',content:'训练讨论',comments:[{id:'c',authorName:'路人甲',content:'我也去'}]}]});
+ const key=w.forum.value[0].key,before=JSON.stringify(w.state.value);w.preferences.forumReplyEnabled=true;await nextTick();
+ const replies=Array.from({length:5},(_,i)=>({authorId:'npc'+i,authorName:'公开发言人'+i,content:'不同回应'+i}));const reply=vi.spyOn(HttpGateway.prototype,'forumReply').mockResolvedValue(replies);
+ await w.replyToForum(key,'陆离怎么看？');const list=session.forumActivity![key].replies;expect(list).toHaveLength(6);expect(list.filter(r=>r.kind==='ai').every(r=>r.replyTo===list[0].id)).toBe(true);expect(reply.mock.calls[0][0].minReplies).toBe(5);expect(JSON.stringify(w.state.value)).toBe(before);
+ await w.retryForumReply(key,list[0].id);expect(reply).toHaveBeenCalledTimes(1);expect(list).toHaveLength(6);
+});
 it('论坛AI回复默认关闭不请求，开启后只用指定副API；混合评论可备份且不改变主线状态',async()=>{
   const w=await workspace();fill(w);fill(w,'aux');await w.confirmAllApis();await w.create('论坛',{name:'玩家',appearance:'',personality:'',background:''},'');
   const session=w.active.value!,v={id:'v',text:'正文',status:'incomplete' as const,createdAt:''};session.turns.push({id:'t',input:'行动',variants:[v],selected:0});finishVariant(session,0,v,{event:'事件',forum:[{id:'post',authorName:'路人',content:'食堂上新了'}]});

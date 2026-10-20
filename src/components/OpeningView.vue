@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DismissibleNotice from './DismissibleNotice.vue';
 import type {ViewModel} from '../app/useWorkspace';
 defineProps<{w:ViewModel}>();
 defineEmits<{start:[];continue:[];settings:[];personas:[]}>();
@@ -17,7 +18,7 @@ defineEmits<{start:[];continue:[];settings:[];personas:[]}>();
         <button :disabled="w.loading" @click="$emit('settings')">设置</button>
       </nav>
       <p v-if="!w.loading&&!w.sessions.length" class="opening-note">暂无本机存档，先开启一段新的旅程。</p>
-      <p v-if="w.problem" class="opening-problem" role="alert">{{w.problem}}</p>
+      <DismissibleNotice :message="w.problem" error />
     </div>
   </main>
 </template>
