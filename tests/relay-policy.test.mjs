@@ -25,3 +25,11 @@ test('full API URLs normalize to exact origins and official defaults coexist wit
  await assert.rejects(policy.save(['https://bad.example?key=hidden']),{code:'INVALID_API_ORIGIN'});assert.deepEqual((await policy.read()).origins,[]);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
+
+test('append preserves existing entries, deduplicates concurrent additions, and refuses overflow atomically',async()=>{
+ const directory=await mkdtemp(resolve(tmpdir(),'append-policy-'));
+ try{const policy=createRelayPolicy(resolve(directory,'policy.json'));await policy.save(['https://existing.example/v1','https://existing.example/','https://api.deepseek.com/v1']);assert.deepEqual((await policy.read()).origins,['https://existing.example']);
+ const values=await Promise.all([policy.add(['https://new.example/v1','https://api.deepseek.com']),policy.add(['https://new.example','https://second.example'])]);assert.equal(values[0].added,1);assert.equal(values[1].added,1);assert.deepEqual((await policy.read()).origins,['https://existing.example','https://new.example','https://second.example']);assert.equal((await policy.add(['https://new.example'])).added,0);
+ const full=Array.from({length:100},(_,i)=>'https://relay'+i+'.example');await policy.save(full);await assert.rejects(policy.add(['https://overflow.example']),{code:'API_POLICY_LIMIT'});assert.deepEqual((await policy.read()).origins,full);
+ }finally{await rm(directory,{recursive:true,force:true});}
+});

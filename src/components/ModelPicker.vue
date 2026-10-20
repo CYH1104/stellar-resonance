@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,onBeforeUnmount,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -23,8 +23,15 @@ async function fetchModels(){
 }
 </script>
 <template><div class="model-picker">
-  <label>搜索模型<input v-model="search" type="search" :disabled="disabled||!models.length" placeholder="输入模型名称搜索" /></label>
   <div class="api-model-row"><label>模型<select v-model="p.model" :disabled="disabled||loading||!models.length"><option value="" disabled>{{loading?'正在获取模型…':models.length?'请选择模型':'配置接口后自动获取模型'}}</option><option v-if="p.model&&!filtered.includes(p.model)" :value="p.model">{{p.model}}{{models.includes(p.model)?'（当前选择）':'（已保存，待检测）'}}</option><option v-for="model in filtered" :key="model" :value="model">{{model}}</option></select></label><div class="actions"><button type="button" :disabled="disabled||loading||!ready" @click="fetchModels">{{loading?'获取中…':'刷新模型'}}</button><slot /></div></div>
+  <label class="model-search">搜索模型<input v-model="search" type="search" :disabled="disabled||!models.length" placeholder="输入模型名称搜索" /></label>
   <small v-if="models.length">已检测 {{models.length}} 个模型，搜索匹配 {{filtered.length}} 个。</small>
   <DismissibleNotice :message="error" error />
 </div></template>
+
+<style scoped>
+.model-picker{display:flex;flex-direction:column;gap:12px;}
+.model-picker .api-model-row{margin:0;}
+.model-picker .model-search{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:min(100%,360px);margin:0;}
+.model-search input{box-sizing:border-box;width:100%;min-width:0;}
+</style>

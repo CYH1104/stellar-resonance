@@ -84,6 +84,11 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     const relays=await readRelayRecords(resolve(directory,'accounts.sqlite'));
     assert.equal(relays.length,1);assert.equal(relays[0].email,user.email);assert.equal(relays[0].origin,'https://relay.example:8443');
     assert.equal((await post('/editor/api/accounts/relays',{},cookie+'; '+apiCookie)).status,401);
+    assert.equal((await post('/editor/api/accounts/relay-policy/add-recorded',{email:user.email},cookie)).status,401);
+    await post('/editor/api/accounts/relay-policy',{origins:['https://keep.example']},admin);
+    assert.equal((await post('/editor/api/accounts/relay-policy/add-recorded',{email:user.email,origin:'https://unrecorded.example'},admin)).status,400);
+    const recorded=await post('/editor/api/accounts/relay-policy/add-recorded',{email:user.email,origin:'https://relay.example:8443'},admin);assert.equal(recorded.status,200);const appended=await recorded.json();assert.equal(appended.added,1);assert.deepEqual(appended.origins,['https://keep.example','https://relay.example:8443']);
+    const bulk=await post('/editor/api/accounts/relay-policy/add-recorded',{email:user.email},admin);assert.equal(bulk.status,200);assert.equal((await bulk.json()).added,0);
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},cookie+'; '+apiCookie)).status,200);
     const second=await post('/api/auth/register',{email:'two@qq.com',password:'synthetic-pass'});const secondCookie=second.headers.get('set-cookie').split(';')[0];
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},secondCookie+'; '+apiCookie)).status,401);

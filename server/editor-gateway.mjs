@@ -42,6 +42,12 @@ export async function createEditorGateway({projectRoot,editorPort,protectedAcces
       let size=0,chunks=[];for await(const part of req){size+=part.length;if(size>(path.endsWith('/relay-policy')?65536:8192)){json(res,413,{code:'REQUEST_TOO_LARGE'});return;}chunks.push(part);}
       let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!data||typeof data!=='object'||Array.isArray(data))throw Error();}catch{json(res,400,{code:'INVALID_JSON'});return;}
       if(path==='/editor/api/accounts/relay-policy'){json(res,200,data.origins===undefined?await relayPolicy.read():await relayPolicy.save(data.origins));return;}
+      if(path==='/editor/api/accounts/relay-policy/add-recorded'){
+        const records=accounts.relayRecords({email:data.email||'',limit:200});
+        if(data.origin!==undefined&&(typeof data.origin!=='string'||!records.some(r=>r.origin===data.origin))){json(res,400,{code:'RELAY_RECORD_NOT_FOUND'});return;}
+        const origins=[...new Set(records.filter(r=>data.origin===undefined||r.origin===data.origin).map(r=>r.origin))];
+        json(res,200,await relayPolicy.add(origins));return;
+      }
       if(path==='/editor/api/accounts/relays'){json(res,200,{records:accounts.relayRecords({email:data.email||'',limit:200})});return;}
       if(path==='/editor/api/accounts/search'){json(res,200,{user:accounts.find(data.email||'')});return;}
       if(path==='/editor/api/accounts/reset'){const reset=accounts.issueReset(data.email||'');json(res,200,reset?{url:new URL('/reset?token='+reset.token,gameOrigin()).href,expires:reset.expires}:null);return;}
