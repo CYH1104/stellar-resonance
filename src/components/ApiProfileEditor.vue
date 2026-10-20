@@ -30,9 +30,9 @@ async function save(){
   <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><span class="tag">{{w.connectionReady(p)?'已保存':'未保存更改'}}</span><slot /></div></header>
   <form @submit.prevent="save">
     <div class="api-identity-fields"><label>名称<input v-model="p.name" maxlength="80" :disabled="disabled" /></label><label>URL<input v-model="p.apiBaseUrl" maxlength="2000" placeholder="https://你的服务地址/v1" :disabled="disabled" /></label><label>Key<input v-model="w.credentials[p.id]" type="password" autocomplete="off" :disabled="disabled" /></label></div>
-    <ModelPicker :w="w" :p="p" :disabled="disabled"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'测试连接'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button></ModelPicker>
+    <ModelPicker :w="w" :p="p" :disabled="disabled"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button></template></ModelPicker>
     <p v-if="testing" class="api-test-progress" role="status">正在测试 · {{elapsed}} 秒／最多60秒…</p><DismissibleNotice v-else :message="result" :error="failed" />
-    <div class="actions"><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button><DismissibleNotice :message="saveResult" :error="saveFailed" /></div>
+    <DismissibleNotice :message="saveResult" :error="saveFailed" />
   </form>
   <DialogShell v-if="helpOpen" :title="title+'说明'" @close="helpOpen=false"><p>{{help||(embedding?'向量模型用于长程记忆检索，开启向量检索时才必填。':'主 API 必须填写，默认负责剧情、摘要、建议和人设生成。')}}</p><p>填写名称、服务的基础 URL 和 Key，获取并选择模型后保存；配置接口后自动获取模型，可搜索并选择。</p><p>测试连接会实际调用所选模型一次，可能计费，超时60秒；不加载预设、人设或存档，成功只表示这次小请求可用。</p><p>保存 API 不发起生成请求。Key 按“本机保存”的选项保存在当前浏览器。</p></DialogShell>
 </article></template>

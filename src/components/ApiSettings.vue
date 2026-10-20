@@ -36,7 +36,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
 </script>
 <template>
 <p class="rail-note">服务器仅记录接口域名、端口和使用时间供管理员查看，不记录密钥。</p><section class="api-settings simple-api-settings">
-  <section class="api-extra preset-shortcut"><h3>酒馆预设</h3><p>提示词、条目排序与采样参数在预设管理中设置。</p><button type="button" @click="w.panel='presets'">导入／管理酒馆预设</button></section>
+
   <section class="api-extra"><h3>API 设置导入／导出</h3><div class="actions"><button type="button" :disabled="transferDisabled" @click="filePicker?.click()">导入 API 设置</button><button type="button" :disabled="transferDisabled" @click="w.exportApiConfiguration(includeKeys)">导出 API 设置</button><input ref="filePicker" type="file" accept=".json,application/json" hidden @change="readSettings" /></div><label class="toggle"><input v-model="includeKeys" type="checkbox" :disabled="transferDisabled" />导出时包含 Key（明文，请勿分享）</label></section>
   <ApiProfileEditor v-if="main" :w="w" :p="main" title="主 API" @saved="emit('saved')" />
   <section class="auxiliary-picker"><div class="api-aux-row"><label>副 API<select v-model="selectedAux" :disabled="disabled||!w.auxiliaryProfiles.length"><option v-if="!w.auxiliaryProfiles.length" value="">暂无副 API</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id">{{p.name||'未命名副 API'}}</option></select></label><button type="button" :disabled="disabled||w.preferences.profiles.length>=30" @click="add">增加副 API</button></div>
