@@ -1,4 +1,8 @@
 const $=s=>document.querySelector(s),message=$('#message');let user;
+const relaySection=document.createElement('section');
+relaySection.innerHTML='<hr><h2>用户中转接口记录</h2><p>仅记录接口域名和端口；不保存密钥、路径或请求内容。填写上方邮箱可筛选，留空查看全部。记录表示配置或请求发生，不代表连接成功。最多显示最近 200 条。</p><button id="relays" type="button">查看接口记录</button><pre id="relay-result"></pre>';
+message.before(relaySection);
+$('#relays').onclick=()=>run($('#relays'),async()=>{const {records}=await post('relays',{email:$('#email').value});$('#relay-result').textContent=records.map(r=>`${r.email}\n${r.origin} · 端口 ${r.port}\n首次 ${new Date(r.firstSeen).toLocaleString()}\n最近 ${new Date(r.lastSeen).toLocaleString()} · 观测 ${r.observations} 次 · ${{configured:'配置接口',request:'模型请求',probe:'连接测试',models:'查询模型'}[r.lastKind]||r.lastKind}`).join('\n\n')||'暂无记录（更新后首次配置或请求才开始记录）。';});
 async function post(path,data){const r=await fetch('/editor/api/accounts/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),result=await r.json();if(!r.ok)throw Error(r.status===401?'管理登录已失效，请返回编辑页重新登录。':'操作失败：'+(result.code||r.status));return result;}
 async function run(button,action){button.disabled=true;message.textContent='';try{await action();}catch(e){message.textContent=e.message||'连接失败';}finally{button.disabled=false;}}
 $('#search-form').onsubmit=e=>{e.preventDefault();run(e.submitter||e.currentTarget.querySelector('button'),async()=>{user=(await post('search',{email:$('#email').value})).user;$('#user-info').textContent=user?user.email+' · 注册于 '+new Date(user.registeredAt).toLocaleString():'查无此账号';$('#issue-reset').disabled=!user;$('#reset-url').hidden=true;$('#expires').textContent='';});};

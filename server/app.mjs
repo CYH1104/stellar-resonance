@@ -52,7 +52,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   function session(request){const value=sessions.get(token(request));if(!value||value.expires<=Date.now()||accounts&&value.accountId!==accounts.user(accountTokenOf(request))?.id)throw modelError(401,'LOCAL_SESSION_REQUIRED');return value;}
   function authorize(request,response){try{return session(request);}catch{}if(sessions.size>=512)sessions.clear();const fresh=randomBytes(24).toString('hex');const value={expires:Date.now()+86400000,connections:new Map(),accountId:accounts?.user(accountTokenOf(request))?.id};sessions.set(fresh,value);response.setHeader('Set-Cookie',`${cookieName}=${fresh}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=86400`);return value;}
   async function body(request,maxBytes=2*1024*1024){if(!request.headers['content-type']?.startsWith('application/json'))throw modelError(415,'JSON_REQUIRED');let size=0;const chunks=[];for await(const chunk of request){size+=chunk.length;if(size>maxBytes)throw modelError(413,'REQUEST_TOO_LARGE');chunks.push(chunk);}try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value;}catch{throw modelError(400,'INVALID_JSON');}}
-  function connection(current,data){const selected=current.connections.get(data.profile?.id);if(!selected)throw modelError(412,'MODEL_NOT_CONFIGURED');if(data.profile.apiBaseUrl&&endpoint(data.profile.apiBaseUrl)!==selected.url)throw modelError(412,'MODEL_NOT_CONFIGURED');return selected;}
+  function connection(current,data){const selected=current.connections.get(data.profile?.id);if(!selected)throw modelError(412,'MODEL_NOT_CONFIGURED');if(data.profile.apiBaseUrl&&endpoint(data.profile.apiBaseUrl)!==selected.url)throw modelError(412,'MODEL_NOT_CONFIGURED');accounts?.recordRelay(current.accountId,selected.url,'request');return selected;}
   function createGame(data,source){
     if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
     if(!data.persona||!safeString(data.persona.name,80)||!data.persona.name.trim())throw modelError(400,'PLAYER_NAME_REQUIRED');
@@ -127,12 +127,13 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/connection'){
           if(!safeString(data.profileId,128)||!data.profileId||!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
           const url=endpoint(data.apiBaseUrl);if(current.connections.size>=30&&!current.connections.has(data.profileId))throw modelError(400,'TOO_MANY_CONNECTIONS');
-          current.connections.set(data.profileId,{url});json(response,200,{profileId:data.profileId,origin:new URL(url).origin,registered:true});return;
+          accounts?.recordRelay(current.accountId,url,'configured');current.connections.set(data.profileId,{url});json(response,200,{profileId:data.profileId,origin:new URL(url).origin,registered:true});return;
         }
         if(path==='/api/models'){
           if(!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
+          accounts?.recordRelay(current.accountId,endpoint(data.apiBaseUrl),'models');
           const result=await fetchModelList({apiBaseUrl:data.apiBaseUrl,key:data.key,signal,fetchImpl});
           signal.throwIfAborted();json(response,200,result);return;
         }
@@ -140,6 +141,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(!['text','embedding'].includes(data.kind))throw modelError(400,'INVALID_PROBE');
           if(!safeString(data.profile?.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
           const selected={url:endpoint(data.profile.apiBaseUrl)},controller=new AbortController();response.on('close',()=>controller.abort());
+          accounts?.recordRelay(current.accountId,selected.url,'probe');
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]),started=performance.now();
           if(data.kind==='embedding'){
             const {vectors}=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:['连接测试'],signal,fetchImpl});

@@ -41,6 +41,7 @@ export async function createEditorGateway({projectRoot,editorPort,protectedAcces
       if(!req.headers['content-type']?.startsWith('application/json')){json(res,415,{code:'JSON_REQUIRED'});return;}
       let size=0,chunks=[];for await(const part of req){size+=part.length;if(size>8192){json(res,413,{code:'REQUEST_TOO_LARGE'});return;}chunks.push(part);}
       let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!data||typeof data!=='object'||Array.isArray(data))throw Error();}catch{json(res,400,{code:'INVALID_JSON'});return;}
+      if(path==='/editor/api/accounts/relays'){json(res,200,{records:accounts.relayRecords({email:data.email||'',limit:200})});return;}
       if(path==='/editor/api/accounts/search'){json(res,200,{user:accounts.find(data.email||'')});return;}
       if(path==='/editor/api/accounts/reset'){const reset=accounts.issueReset(data.email||'');json(res,200,reset?{url:new URL('/reset?token='+reset.token,gameOrigin()).href,expires:reset.expires}:null);return;}
       if(path==='/editor/api/accounts/invites'){json(res,200,{codes:accounts.generateInvites(data)});return;}

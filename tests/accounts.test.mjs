@@ -7,6 +7,7 @@ import {get} from 'node:http';
 import {createAccounts} from '../server/accounts.mjs';
 import {createLocalServer} from '../server/app.mjs';
 import {readAccountRecords} from '../server/account-records.mjs';
+import {readRelayRecords} from '../server/relay-records.mjs';
 const root=resolve(import.meta.dirname,'..');
 test('accounts normalize email, hash passwords, persist sessions, reject bad credentials and revoke logout',async()=>{
   const directory=await mkdtemp(resolve(tmpdir(),'academy-accounts-'));let clock=Date.now();let store;
@@ -72,6 +73,10 @@ test('public mode requires accounts and a configured origin; game APIs and HTML 
     const user=(await registration.json()).user;
     const terminal=await fetch(base+'/terminal',{headers:{Cookie:cookie}});assert.equal(terminal.status,200);const html=await terminal.text();assert.ok(html.includes(user.id));assert.match(html,/\/auth\/account.js/);assert.ok(!html.includes('synthetic-pass'));
     const bootstrap=await fetch(base+'/api/bootstrap',{headers:{Cookie:cookie}});assert.equal(bootstrap.status,200);const apiCookie=bootstrap.headers.get('set-cookie').split(';')[0];
+    assert.equal((await post('/api/connection',{profileId:'main',apiBaseUrl:'https://relay.example:8443/v1'},cookie+'; '+apiCookie)).status,200);
+    const relays=await readRelayRecords(resolve(directory,'accounts.sqlite'));
+    assert.equal(relays.length,1);assert.equal(relays[0].email,user.email);assert.equal(relays[0].origin,'https://relay.example:8443');
+    assert.equal((await post('/editor/api/accounts/relays',{},cookie+'; '+apiCookie)).status,401);
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},cookie+'; '+apiCookie)).status,200);
     const second=await post('/api/auth/register',{email:'two@qq.com',password:'synthetic-pass'});const secondCookie=second.headers.get('set-cookie').split(';')[0];
     assert.equal((await post('/api/new-game',{persona:{name:'Tester'}},secondCookie+'; '+apiCookie)).status,401);

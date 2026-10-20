@@ -49,6 +49,7 @@ test('HTTP registration requires invite, editor account operations require admin
  assert.equal((await(await fetch(base+'/api/auth/policy')).json()).inviteRequired,true);assert.equal((await post('/api/auth/register',{email:'http@qq.com',password})).status,400);
  assert.equal((await post('/editor/api/accounts/invites',{count:1,batch:'http'})).status,401);
  const login=await post('/editor/login',{key:await editorAccessKey(root)}),admin=login.headers.get('set-cookie').split(';')[0];
+ const relayResponse=await post('/editor/api/accounts/relays',{},admin);assert.equal(relayResponse.status,200);assert.deepEqual(await relayResponse.json(),{records:[]});
  const codes=(await(await post('/editor/api/accounts/invites',{count:1,batch:'http'},admin)).json()).codes;
  const registration=await post('/api/auth/register',{email:'http@qq.com',password,inviteCode:codes[0]}),cookie=registration.headers.get('set-cookie').split(';')[0];assert.equal(registration.status,200);
  assert.equal((await fetch(base+'/account',{headers:{Cookie:cookie}})).status,200);assert.equal((await post('/editor/api/accounts/search',{email:'http@qq.com'},cookie)).status,401);
