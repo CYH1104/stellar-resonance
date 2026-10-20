@@ -30,7 +30,7 @@ async function save(){
   <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><span class="tag">{{w.connectionReady(p)?'已保存':'未保存更改'}}</span><slot /></div></header>
   <form @submit.prevent="save">
     <div class="api-identity-fields"><label>名称<input v-model="p.name" maxlength="80" :disabled="disabled" /></label><label>URL<input v-model="p.apiBaseUrl" maxlength="2000" placeholder="https://你的服务地址/v1" :disabled="disabled" /></label><label>Key<input v-model="w.credentials[p.id]" type="password" autocomplete="off" :disabled="disabled" /></label></div>
-    <ModelPicker :w="w" :p="p" :disabled="disabled"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button></template></ModelPicker>
+    <ModelPicker :w="w" :p="p" :disabled="disabled" :embedding="embedding"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button></template></ModelPicker>
     <p v-if="testing" class="api-test-progress" role="status">正在测试 · {{elapsed}} 秒／最多60秒…</p><DismissibleNotice v-else :message="result" :error="failed" />
     <DismissibleNotice :message="saveResult" :error="saveFailed" />
   </form>

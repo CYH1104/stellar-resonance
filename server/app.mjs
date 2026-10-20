@@ -138,11 +138,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           await relayPolicy.assert(url);accounts?.recordRelay(current.accountId,url,'configured');current.connections.set(data.profileId,{url});json(response,200,{profileId:data.profileId,origin:new URL(url).origin,registered:true});return;
         }
         if(path==='/api/models'){
-          if(!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
+          if(!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');if(data.kind!==undefined&&data.kind!=='embedding')throw modelError(400,'INVALID_MODEL_KIND');
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
           await relayPolicy.assert(endpoint(data.apiBaseUrl));accounts?.recordRelay(current.accountId,endpoint(data.apiBaseUrl),'models');
-          const result=await fetchModelList({apiBaseUrl:data.apiBaseUrl,key:data.key,signal,fetchImpl});
+          const result=await fetchModelList({apiBaseUrl:data.apiBaseUrl,key:data.key,signal,fetchImpl,kind:data.kind});
           signal.throwIfAborted();json(response,200,result);return;
         }
         if(path==='/api/probe'){

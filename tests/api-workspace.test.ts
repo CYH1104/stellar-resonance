@@ -533,3 +533,9 @@ it('每次生成结束记录独立变量快照，失败也记录且不误报应�
  const frozen=JSON.stringify(completed.variables);gen.mockImplementation(async function*(){throw Error('synthetic failure');});await generateAndWait(w,'失败行动');
  const failed=w.formatErrors.entries.value.find(e=>e.code==='GENERATION_INCOMPLETE')!;expect(failed.variables?.applied).toBe(false);expect(failed.variables?.total).toBe(0);expect(JSON.stringify(completed.variables)).toBe(frozen);expect(gen).toHaveBeenCalledTimes(2);
 });
+
+it('向量模型列表携带用途过滤标记，文字模型列表保留原行为',async()=>{
+ const w=await workspace(),models=vi.spyOn(HttpGateway.prototype,'models').mockResolvedValue(['BAAI/bge-m3']),signal=new AbortController().signal,p=w.preferences.profiles[0];
+ await w.fetchModels(p,signal,'embedding');expect(models.mock.calls[0][3]).toBe('embedding');
+ await w.fetchModels(p,signal);expect(models.mock.calls[1][3]).toBeUndefined();
+});
