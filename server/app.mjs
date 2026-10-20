@@ -61,7 +61,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   async function connection(current,data){const selected=current.connections.get(data.profile?.id);if(!selected)throw modelError(412,'MODEL_NOT_CONFIGURED');if(data.profile.apiBaseUrl&&endpoint(data.profile.apiBaseUrl)!==selected.url)throw modelError(412,'MODEL_NOT_CONFIGURED');await relayPolicy.assert(selected.url);accounts?.recordRelay(current.accountId,selected.url,'request');return selected;}
   function createGame(data,source){
     if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
-    if(!data.persona||!safeString(data.persona.name,80)||!data.persona.name.trim())throw modelError(400,'PLAYER_NAME_REQUIRED');
+    if(!data.persona||!safeString(data.persona.name,Infinity)||!data.persona.name.trim())throw modelError(400,'PLAYER_NAME_REQUIRED');
     try{data={...data,persona:normalizePersona(data.persona)};}catch{throw modelError(400,'INVALID_PERSONA');}
     const player={id:'player',name:data.persona.name.trim(),present:true};
     const level=readPersonaExtra(data.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(level)player.mentalPowerLevel=level;
@@ -69,7 +69,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     if(data.persona.identity)player.identity=data.persona.identity;
     if(data.persona.ability)player.ability=data.persona.ability;
     if(data.persona.mentalPowerLevel)player.mentalPowerLevel=data.persona.mentalPowerLevel;
-    for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],100))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
+    for(const field of ['primaryGender','secondaryGender'])if(data.persona[field]){if(!safeString(data.persona[field],Infinity))throw modelError(400,'INVALID_PERSONA');player[field]=data.persona[field];}
     return {dataset,opening:source.world.greeting.join('\n'),presenceStatus:'awaiting-ai',initial:{player,characters:source.characters.map(publicActor)}};
   }
   server=createServer((request,response)=>withInternalPrompts({},async()=>{

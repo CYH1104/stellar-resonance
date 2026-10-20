@@ -27,9 +27,9 @@ const stored=(await library.list()).find(p=>p.id==='media-test')!;
 expect(await stored.portrait!.text()).toBe('full original');expect(await stored.avatar!.text()).toBe('cropped');expect(stored.useAsHomeImage).toBe(true);await library.remove('media-test');
 });
 
-it('stores private memo separately from model persona and rejects oversized notes',async()=>{
+it('stores private memo separately from model persona and preserves long notes',async()=>{
  const library=new PersonaLibrary(),persona=normalizePersona({...blankPersona(),name:'Memo'}),record={id:'memo-test',name:'Memo',persona,updatedAt:new Date().toISOString(),memo:'仅供玩家阅读'};
  await library.save(record);const saved=(await library.list()).find(p=>p.id===record.id)!;
  expect(saved.memo).toBe(record.memo);expect(saved.persona).not.toHaveProperty('memo');
- await expect(library.save({...record,memo:'x'.repeat(20001)})).rejects.toThrow();await library.remove(record.id);
+ await library.save({...record,memo:'x'.repeat(20001)});expect((await library.list()).find(p=>p.id===record.id)!.memo).toHaveLength(20001);await library.remove(record.id);
 });

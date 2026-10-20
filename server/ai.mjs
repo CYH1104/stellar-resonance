@@ -75,13 +75,13 @@ function authorState(card,state,persona){
   return result;
 }
 function safeState(card, request) {
-  if(!request.persona||!text(request.persona.name,80,true)||!request.state||!Array.isArray(request.state.characters))throw modelError(400,'INVALID_GAME_STATE');
+  if(!request.persona||!text(request.persona.name,Infinity,true)||!request.state||!Array.isArray(request.state.characters))throw modelError(400,'INVALID_GAME_STATE');
   const player={id:'player',name:request.persona.name,present:true};
-  const playerLevel=request.state.player?.mentalPowerLevel??request.persona.mentalPowerLevel;if(text(playerLevel,100,true))player.mentalPowerLevel=playerLevel;
-  for(const field of ['primaryGender','secondaryGender'])if(text(request.persona[field],100))player[field]=request.persona[field];
-  const identity=request.state.player?.identity??request.persona.identity;if(text(identity,200))player.identity=identity;
+  const playerLevel=request.state.player?.mentalPowerLevel??request.persona.mentalPowerLevel;if(text(playerLevel,Infinity,true))player.mentalPowerLevel=playerLevel;
+  for(const field of ['primaryGender','secondaryGender'])if(text(request.persona[field],Infinity))player[field]=request.persona[field];
+  const identity=request.state.player?.identity??request.persona.identity;if(text(identity,Infinity))player.identity=identity;
   if(request.persona.spiritAnimal)player.spiritAnimal=request.persona.spiritAnimal;
-  const ability=request.state.player?.ability??request.persona.ability;if(text(ability,2000))player.ability=ability;
+  const ability=request.state.player?.ability??request.persona.ability;if(text(ability,Infinity))player.ability=ability;
   if(text(request.state.player?.spiritThought,2000))player.spiritThought=request.state.player.spiritThought;
   const characters=card.characters.map(c=>{
     const previous=request.state.characters.find(a=>a.id===c.id);
@@ -91,7 +91,7 @@ function safeState(card, request) {
     return {id:c.id,name:c.name,present:previous?.present===true,...(ability?{ability}:{}),...(identity?{identity}:{}),...(mentalPowerLevel?{mentalPowerLevel}:{}),...(Number.isFinite(previous?.affinity)?{affinity:previous.affinity}:{}),...(text(previous?.relationship,200)?{relationship:previous.relationship}:{}),...(c.sex?{secondaryGender:c.sex}:{}),...(c.primaryGender?{primaryGender:c.primaryGender}:{}),...(spiritAnimalOf(c)?{spiritAnimal:spiritAnimalOf(c)}:{}),...(text(previous?.innerThought,2000)?{innerThought:previous.innerThought}:{}),...(text(previous?.spiritThought,2000)?{spiritThought:previous.spiritThought}:{})};
   });
   for(const value of request.state.characters){if(!characters.some(c=>c.id===value.id)){try{characters.push(newDynamicActor(value));}catch{throw modelError(400,'INVALID_GAME_STATE');}}}
-  const level=request.state.player?.mentalPowerLevel||request.persona.mentalPowerLevel||readPersonaExtra(request.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(text(level,100,true))player.mentalPowerLevel=level;
+  const level=request.state.player?.mentalPowerLevel||request.persona.mentalPowerLevel||readPersonaExtra(request.persona.other,'\u7cbe\u795e\u529b\u7b49\u7ea7');if(text(level,Infinity,true))player.mentalPowerLevel=level;
   for(const character of characters){const previous=request.state.characters.find(a=>a.id===character.id);const level=previous?.mentalPowerLevel||mentalPowerLevelOf(card.characters.find(c=>c.id===character.id)||{});if(text(level,100))character.mentalPowerLevel=level;}
   let variables;try{variables=cleanJson(request.state.variables||{});}catch{throw modelError(400,'INVALID_GAME_STATE');}if(!variables||Array.isArray(variables)||typeof variables!=='object')throw modelError(400,'INVALID_GAME_STATE');
   return authorState(card,{player:separateIdentityAbility(player),characters:characters.map(separateIdentityAbility),variables},request.persona);

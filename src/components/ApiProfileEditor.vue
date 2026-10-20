@@ -34,5 +34,5 @@ async function save(){
     <p v-if="testing" class="api-test-progress" role="status">正在测试 · {{elapsed}} 秒／最多60秒…</p><DismissibleNotice v-else :message="result" :error="failed" />
     <div class="actions"><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button><DismissibleNotice :message="saveResult" :error="saveFailed" /></div>
   </form>
-  <DialogShell v-if="helpOpen" :title="title+'说明'" @close="helpOpen=false"><p>{{help||(embedding?'向量模型用于长程记忆检索，开启向量检索时才必填。':'主 API 必须填写，默认负责剧情、摘要、建议和人设生成。')}}</p><p>填写名称、服务的基础 URL 和 Key，获取并选择模型后保存；获取失败也可手动填写模型名。</p><p>测试连接会实际调用所选模型一次，可能计费，超时60秒；不加载预设、人设或存档，成功只表示这次小请求可用。</p><p>保存 API 不发起生成请求。Key 按“本机保存”的选项保存在当前浏览器。</p></DialogShell>
+  <DialogShell v-if="helpOpen" :title="title+'说明'" @close="helpOpen=false"><p>{{help||(embedding?'向量模型用于长程记忆检索，开启向量检索时才必填。':'主 API 必须填写，默认负责剧情、摘要、建议和人设生成。')}}</p><p>填写名称、服务的基础 URL 和 Key，获取并选择模型后保存；配置接口后自动获取模型，可搜索并选择。</p><p>测试连接会实际调用所选模型一次，可能计费，超时60秒；不加载预设、人设或存档，成功只表示这次小请求可用。</p><p>保存 API 不发起生成请求。Key 按“本机保存”的选项保存在当前浏览器。</p></DialogShell>
 </article></template>
