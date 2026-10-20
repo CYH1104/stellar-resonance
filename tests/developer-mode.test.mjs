@@ -1,6 +1,11 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {resolve} from 'node:path';
 import {developerAllowed,developerTrace} from '../server/developer-mode.mjs';import {createLocalServer} from '../server/app.mjs';import {initialState} from '../src/domain/story.ts';import {defaultTheaters} from '../src/domain/theaters.ts';
+import {stateProtocol} from '../server/state-protocol.mjs';
+test('request trace proves state rules and slot manifest were sent without claiming missing state was received',()=>{
+ const content=stateProtocol({state:initialState('玩家'),theaterSettings:defaultTheaters()}),trace=developerTrace([{role:'system',content}],{stage:'complete',outcome:{event:'正文',stateUpdate:{received:false}}});
+ assert.deepEqual(trace.outputContract,{state:true,slots:[1,2],messageIndex:1});assert.equal(trace.checks.stateReceived,false);assert.ok(!JSON.stringify(trace).includes('affinity:{delta'));
+});
 test('developer metadata is available only to three exact account emails and excludes message content',()=>{
  for(const email of ['1683264627@qq.com','2889463835@qq.com','237474810@qq.com'])assert.equal(developerAllowed({email}),true);
  for(const account of [null,{}, {email:'other@qq.com'},{email:'237474810@qq.com.evil'}])assert.equal(developerAllowed(account),false);

@@ -75,6 +75,16 @@ test('enabled preset, state rules and every enabled theater instruction share on
  const text=JSON.stringify(built.messages);assert.ok(text.includes('state-output-v1'));assert.ok(text.includes('ENABLED_PRESET_MARKER'));assert.ok(!text.includes('DISABLED_PRESET_MARKER'));
  for(const slot of [1,2,3])assert.ok(text.includes('ENABLED_SLOT_'+slot));assert.ok(!text.includes('ENABLED_SLOT_4'));
 });
+test('post-history prose-only preset cannot follow the mandatory contract; assistant prefill stays last',()=>{
+ const built=buildMessages(card,{persona:{name:'玩家'},state:state(),history:[],memories:[],input:'观察',presets:[],promptEntries:[{id:'after',name:'后置',enabled:true,role:'system',position:'after',content:'POST_HISTORY_PROSE_ONLY'},{id:'fill',name:'预填',enabled:true,role:'assistant',position:'after',content:'故事继续：'}],theaterSettings:settings});
+ const after=built.messages.findIndex(m=>m.content==='POST_HISTORY_PROSE_ONLY'),contract=built.messages.findIndex(m=>m.content.includes('[Output contract; state-output-v1;'));
+ assert.ok(contract>after);assert.equal(built.messages.at(-1).content,'故事继续：');
+});
+test('embedded complete companions do not cause the canonical character state to be discarded',()=>{
+ const enabled=defaultTheaters().map(t=>({...t,enabled:t.slot<=2})),p=payload(row(0.5));
+ p.forum=[{id:'f',authorName:'同学',content:'今天食堂营业吗',comments:[]}];p.theaters=[{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'同学',content:'先去排队吧。'}]}];p.choices=['继续排队'];
+ const out=decode(p,state(),'',{...options,theaterSettings:enabled});assert.equal(commit(session(),out).characters[0].affinity,10.5);assert.equal(out.forum.length,1);assert.equal(out.theaters[0].messages.length,1);assert.deepEqual(out.suggestions,['继续排队']);assert.ok(out.stateUpdate.codes.includes('STATE_COMPANION_RELOCATED'));
+});
 test('audit and fractional values survive backup; old-range originals survive migration backup',()=>{
  const s=session();commit(s,decode(payload(row(0.5))));const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()}));assert.equal(stateAt(restored.sessions[0]).characters[0].affinity,10.5);assert.equal(restored.sessions[0].turns[0].variants[0].outcome.stateUpdate.affinityReviews[0].requestedDelta,0.5);
  const old=session();old.initial.characters[0].affinity=175;const migrated=parseBackup(backup({version:1,sessions:[old],preferences:defaults()})).sessions[0];assert.equal(stateAt(migrated).characters[0].affinity,100);assert.equal(migrated.affinityMigration.records[0].value.characters[0].affinity,175);

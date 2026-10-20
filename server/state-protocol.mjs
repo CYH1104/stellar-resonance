@@ -6,4 +6,11 @@ export function stateExample({state,stateEnabled=true}={}){
  return example;
 }
 export function stateProtocol(options={}){return options.stateEnabled===false?internalPrompt('state-protocol.prose')+'\n'+internalPrompt('state-protocol.compatibility'):internalPrompt('state-protocol.1')+'\n'+stateOutputPrompt(options);}
-export function applyStateProtocol(messages,input,featureContract='',options={}){const result=messages.map(m=>({...m})),at=result.findLastIndex(m=>m.role==='user'&&m.content===input);result.splice(at<0?result.length:at,0,{role:'system',content:stateProtocol(options)+(featureContract?'\n'+featureContract:'')});return result;}
+export function applyStateProtocol(messages,input,featureContract='',options={}){
+ const result=messages.map(m=>({...m})),action=result.findLastIndex(m=>m.role==='user'&&m.content===input);
+ // Post-history preset rules must not follow and override the output contract.
+ // Keep a deliberate trailing assistant prefill in its original final position.
+ let at=action<0?result.length:action;
+ if(action>=0&&action<result.length-1){at=result.length;while(at>action+1&&result[at-1].role==='assistant')at--;}
+ result.splice(at,0,{role:'system',content:(featureContract?featureContract+'\n':'')+stateProtocol(options)});return result;
+}

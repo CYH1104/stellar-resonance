@@ -1,6 +1,7 @@
 import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
+  STATE_COMPANION_RELOCATED:'已识别状态块内的论坛或小剧场，并独立保存到对应模块',
   STATE_REQUEST_MISMATCH:'状态协议版本或请求标识不匹配，未应用这份变量更新',
   STATE_PROTOCOL_CONFLICT:'出现重复状态或并行变量协议，未重复结算变量',
   STATE_CUSTOM_REJECTED:'自定义变量事务未通过路径、类型或权限校验，整笔保留原值',

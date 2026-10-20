@@ -129,7 +129,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const requestId=request.requestId||randomUUID();
-  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
+  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,suggestionsEnabled:request.suggestionsEnabled!==false,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
@@ -321,11 +321,18 @@ export class StoryDecoder {
     }
     if(candidates.length&&!received){if(!single)throw modelError(502,'MODEL_STATE_JSON_INVALID');warn('STATE_STATUS_INVALID');rejected=true;}
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
+    // A complete companion payload inside the state object is unambiguous.
+    // Separate it before validating state, so it cannot discard valid actor fields.
+    const embeddedCompanions={};
+    if(assembled.schemaVersion!==undefined)for(const key of ['forum','theaters','choices'])if(Object.hasOwn(assembled,key)){embeddedCompanions[key]=assembled[key];delete assembled[key];warn('STATE_COMPANION_RELOCATED');}
     if(options.stateEnabled===false&&assembled.schemaVersion!==undefined)assembled={event:assembled.event,suggestions:assembled.suggestions};
     const canonical=assembled.schemaVersion!==undefined;
     const adapted=canonical?adaptStateOutput(assembled,state,options,warn):undefined;
     if(canonical&&candidates.length!==1){warn('STATE_PROTOCOL_CONFLICT');adapted.raw={event:assembled.event};adapted.records=[];adapted.reviewed=[];}
     if(adapted)assembled=adapted.raw;
+    if(embeddedCompanions.forum!==undefined)assembled.forum=embeddedCompanions.forum;
+    if(embeddedCompanions.theaters!==undefined)assembled.theaters=embeddedCompanions.theaters;
+    if(embeddedCompanions.choices!==undefined)assembled.suggestions=embeddedCompanions.choices;
     if(blocks.choices.length){const choices=parseChoices(blocks.choices.at(-1));if(choices!==undefined)assembled.suggestions=choices;else warn('STATE_CHOICES_INVALID');}
     for(let i=blocks.forum.length-1;i>=0;i--){try{const value=parseStateJson(blocks.forum[i],{closeOuterContainer:true}).value;const posts=Array.isArray(value)?value:value?.forum??value?.posts;if(Array.isArray(posts)){assembled.forum=posts;break;}}catch{warn('STATE_FORUM_INVALID');}}
     const theaters=[];for(const content of blocks.theater){try{const value=parseStateJson(content,{closeOuterContainer:true}).value;if(Array.isArray(value))theaters.push(...value);else if(value&&typeof value==='object')theaters.push(value);}catch{warn('STATE_THEATER_INVALID');}}
