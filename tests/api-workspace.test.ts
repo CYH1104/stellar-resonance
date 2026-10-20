@@ -524,3 +524,12 @@ it('记忆提交保存失败保留待重试任务，不将未保存记录当作�
  await generateAndWait(w,'观察');expect(w.active.value?.turns[0].variants[0].status).toBe('complete');expect(w.effectiveMemoryCount.value).toBe(0);expect(w.active.value?.memoryTasks?.[0].status).toBe('failed');
  vi.mocked(IndexedDbRepository.prototype.write).mockImplementation(async value=>{saved=JSON.parse(backup(value));});await w.retryMemory();expect(w.effectiveMemoryCount.value).toBe(1);expect(w.active.value?.memoryTasks?.[0].status).toBe('ready');
 });
+
+it('每次生成结束记录独立变量快照，失败也记录且不误报应用',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('日志',{name:'玩家',appearance:'',background:'',personality:''},'');
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'交谈',characters:[{id:'guide',affinity:35}]}};});
+ await generateAndWait(w,'行动');const completed=w.formatErrors.entries.value.find(e=>e.code==='GENERATION_COMPLETE')!;
+ expect(completed.variantId).toBe(w.active.value!.turns[0].variants[0].id);expect(completed.variables?.changes.some(c=>c.path.includes('affinity')&&c.after==='35')).toBe(true);
+ const frozen=JSON.stringify(completed.variables);gen.mockImplementation(async function*(){throw Error('synthetic failure');});await generateAndWait(w,'失败行动');
+ const failed=w.formatErrors.entries.value.find(e=>e.code==='GENERATION_INCOMPLETE')!;expect(failed.variables?.applied).toBe(false);expect(failed.variables?.total).toBe(0);expect(JSON.stringify(completed.variables)).toBe(frozen);expect(gen).toHaveBeenCalledTimes(2);
+});
