@@ -6,7 +6,7 @@ it('主副向量、路由与开关往返，无关资料与 Key 默认不导出',
  const p=defaults();p.stateProfile='aux';p.summaryProfile='aux';p.forumReplyProfile='aux';p.vectorEnabled=true;p.forumReplyEnabled=true;
  Object.assign(p.profiles[0],{apiBaseUrl:'https://synthetic.example/v1',model:'test',topP:0.8});
  const text=exportApiSettings(p,{main:'synthetic-secret'}),result=parseApiSettings(text);
- expect(result.configuration.profiles).toEqual(p.profiles);expect(result.configuration.stateProfile).toBe('aux');expect(result.configuration.summaryProfile).toBe('aux');expect(result.configuration.forumReplyEnabled).toBe(true);
+ expect(result.configuration.profiles).toEqual(p.profiles);expect(result.configuration.stateProfile).toBe('main');expect(result.configuration.summaryProfile).toBe('aux');expect(result.configuration.forumReplyEnabled).toBe(true);
  expect(text).not.toContain('synthetic-secret');expect(text).not.toContain('presets');expect(text).not.toContain('worldbooks');expect(result.keys).toBeUndefined();
  expect(parseApiSettings(exportApiSettings(p,{main:'synthetic-secret'},true)).keys).toEqual({main:'synthetic-secret'});
 });
@@ -15,8 +15,7 @@ it('错误引用、重复接口、恶意地址和非数值参数均拒绝',()=>{
  for(const change of [
   (v:any)=>v.configuration.profiles.push(v.configuration.profiles[0]),
   (v:any)=>v.configuration.summaryProfile='missing',
-  (v:any)=>v.configuration.stateProfile='embed',
-  (v:any)=>v.configuration.mainProfile='embed',
+    (v:any)=>v.configuration.mainProfile='embed',
   (v:any)=>v.configuration.profiles[0].apiBaseUrl='https://user:password@synthetic.example',
   (v:any)=>v.configuration.profiles[0].maxTokens='1600',
   (v:any)=>v.keys={__unknown:'secret'},

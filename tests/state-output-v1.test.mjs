@@ -69,6 +69,12 @@ test('transport completes story, canonical state, forum and chat in the original
 test('actual final prompt contains unique request manifest and v1 fields instead of fixed 2/5 scoring',()=>{
  const request={persona:{name:'玩家'},state:state(),history:[],memories:[],input:'观察',presets:[],theaterSettings:settings};const a=buildMessages(card,request),b=buildMessages(card,request);assert.notEqual(a.requestId,b.requestId);const prompt=a.messages.find(m=>m.content.includes('Manifest:')).content;assert.ok(prompt.includes(a.requestId));assert.ok(prompt.includes('affinity:{delta:number,reason:string}'));assert.ok(!prompt.includes('small changes of 2'));
 });
+test('enabled preset, state rules and every enabled theater instruction share one message bundle',()=>{
+ const theaterSettings=defaultTheaters().map(t=>({...t,enabled:t.slot<=3,instruction:'ENABLED_SLOT_'+t.slot}));
+ const built=buildMessages(card,{persona:{name:'玩家'},state:state(),history:[],memories:[],input:'观察',presets:[],promptEntries:[{id:'on',name:'开启',enabled:true,content:'ENABLED_PRESET_MARKER'},{id:'off',name:'关闭',enabled:false,content:'DISABLED_PRESET_MARKER'}],theaterSettings});
+ const text=JSON.stringify(built.messages);assert.ok(text.includes('state-output-v1'));assert.ok(text.includes('ENABLED_PRESET_MARKER'));assert.ok(!text.includes('DISABLED_PRESET_MARKER'));
+ for(const slot of [1,2,3])assert.ok(text.includes('ENABLED_SLOT_'+slot));assert.ok(!text.includes('ENABLED_SLOT_4'));
+});
 test('audit and fractional values survive backup; old-range originals survive migration backup',()=>{
  const s=session();commit(s,decode(payload(row(0.5))));const restored=parseBackup(backup({version:1,sessions:[s],preferences:defaults()}));assert.equal(stateAt(restored.sessions[0]).characters[0].affinity,10.5);assert.equal(restored.sessions[0].turns[0].variants[0].outcome.stateUpdate.affinityReviews[0].requestedDelta,0.5);
  const old=session();old.initial.characters[0].affinity=175;const migrated=parseBackup(backup({version:1,sessions:[old],preferences:defaults()})).sessions[0];assert.equal(stateAt(migrated).characters[0].affinity,100);assert.equal(migrated.affinityMigration.records[0].value.characters[0].affinity,175);

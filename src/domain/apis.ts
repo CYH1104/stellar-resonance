@@ -1,8 +1,7 @@
 import type {Preferences,Profile} from './contracts';
 import {samplingFields} from './presets.ts';
 export const textApiTasks=[
-  {key:'story',field:'storyProfile',label:'剧情',hint:'包含正文、全部已开启小剧场和快捷回复；状态默认一起生成。'},
-  {key:'state',field:'stateProfile',label:'变量更新（MVU）',hint:'跟随剧情时一次生成；可增加副 API 并在此单独选择。独立变量 API 读取本轮正文、世界书和当前变量，只输出变量更新，不写剧情；小剧场和快捷回复仍由剧情接口生成。'},
+  {key:'story',field:'storyProfile',label:'剧情',hint:'合并发送正文、变量更新、全部已开启小剧场和快捷回复的提示词，统一由剧情模型输出。'},
   {key:'summary',field:'summaryProfile',label:'逐轮记忆整理',hint:'每轮正文完成后立即整理记忆，成功后按设置建立向量索引。'},
   {key:'persona',field:'personaProfile',label:'AI 帮我写人设',hint:'新游戏的人设辅助填写。'},
 ] as const;
@@ -23,7 +22,7 @@ export function migrateApiSettings(p:Preferences):Preferences{
   const routes=Object.fromEntries(textApiTasks.map(task=>{const id=p[task.field]??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(id))throw new Error(`${task.label} API 引用不正确`);return[task.field,id];}));
   const forumReplyProfile=p.forumReplyProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(forumReplyProfile))throw new Error('论坛回复 API 引用不正确');
   const randomEventProfile=p.randomEventProfile??p.mainProfile;if(![p.mainProfile,...auxiliaryProfiles].includes(randomEventProfile))throw new Error('随机事件 API 引用不正确');
-  return {...p,memorySummaryInterval:1,stateEnabled:p.stateEnabled!==false,randomEventProbability:Number.isFinite(p.randomEventProbability)?Math.max(0,Math.min(100,p.randomEventProbability!)):30,vectorEnabled:p.vectorEnabled===true,...routes,suggestionsProfile:p.suggestionsProfile??p.mainProfile,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
+  return {...p,stateProfile:(routes.storyProfile||p.mainProfile) as string,memorySummaryInterval:1,stateEnabled:p.stateEnabled!==false,randomEventProbability:Number.isFinite(p.randomEventProbability)?Math.max(0,Math.min(100,p.randomEventProbability!)):30,vectorEnabled:p.vectorEnabled===true,...routes,suggestionsProfile:p.suggestionsProfile??p.mainProfile,randomEventProfile,forumReplyEnabled:p.forumReplyEnabled===true,forumReplyProfile,profiles,auxiliaryProfiles:[...auxiliaryProfiles],auxiliaryProfile:auxiliaryProfiles[0]||p.mainProfile};
 }
 export function auxiliaryApis(p:Preferences){return(p.auxiliaryProfiles||[]).map(id=>p.profiles.find(profile=>profile.id===id)).filter((profile):profile is Profile=>!!profile);}
 export function taskApi(p:Preferences,task:TextApiTask|'suggestions'){const field=textApiTasks.find(t=>t.key===(task==='suggestions'?'story':task))!.field;return p.profiles.find(profile=>profile.id===(p[field]||p.mainProfile));}

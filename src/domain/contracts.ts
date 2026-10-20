@@ -51,7 +51,7 @@ export type GenerateEvent = {type:'developer-trace';trace:DeveloperTrace} | {typ
 export interface Gateway {
   capabilities: { continue: boolean; keyRequired?: boolean; embeddings?:boolean };
   authorize(invite: string, signal?: AbortSignal): Promise<void>;
-  generate(request: GenerateRequest, key: string, signal: AbortSignal, stateApi?:{profile:Profile;key:string}): AsyncIterable<GenerateEvent>;
+  generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent>;
   memoryBatch(inputs:import('./memories').MemoryRequest[],profile:Profile,key:string,signal:AbortSignal):Promise<import('./memories').RoundMemory[]>;
   memory(input:import('./memories').MemoryRequest,profile:Profile,key:string,signal:AbortSignal):Promise<import('./memories').RoundMemory>;
   utility(task: 'summary' | 'suggestions', texts: string[], profile: Profile, key: string, signal: AbortSignal): Promise<string[]>;
