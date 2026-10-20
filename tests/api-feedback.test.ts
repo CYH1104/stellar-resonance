@@ -33,3 +33,13 @@ it('事件只显示实际生成文本；旧版待选可继续，中断可重试'
   active.turns[0].randomEvent={status:'accepted',proposal:{kind:'奇遇事件',title:'来信',description:'不应展示的候选说明'}};active.turns[0].dice={value:50,grade:'平稳'} as any;active.turns[0].variants=[{id:'v',text:'正文',status:'complete',createdAt:'',outcome:{event:'本轮实际事件',characters:[],suggestions:[],diceEvent:{direction:'negative',description:'收到一封破损的信件'}}}];
   const completed=await renderToString(createSSRApp(StoryView,{w}));expect(completed).toContain('收到一封破损的信件');expect(completed).not.toContain('不应展示的候选说明');
 });
+
+it('renders inline CSS in user messages without requiring a regex preset',async()=>{
+ const active=newSession('CSS',{name:'Tester',appearance:'',personality:'',background:''},'');
+ const input='Test before\n<div style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#f8fafc;padding:24px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,.5)"><div style="display:flex;justify-content:space-between"><h3 style="color:#38bdf8">SC-8842</h3><span>Archive</span></div><p>Styled content</p></div>\nTest after';
+ active.turns.push({id:'css',input,selected:0,variants:[]});
+ const w={active,preferences:defaults(),busy:false,input:''} as unknown as ViewModel;
+ const html=await renderToString(createSSRApp(StoryView,{w}));
+ expect(html).toContain('sandbox="allow-scripts"');expect(html).toContain('linear-gradient(135deg,#0f172a,#1e293b)');expect(html).toContain('Test before');expect(html).toContain('Test after');expect(active.turns[0].input).toBe(input);
+ active.turns[0].input='Plain text only';const plain=await renderToString(createSSRApp(StoryView,{w}));expect(plain).not.toContain('<iframe');expect(plain).toContain('<p>Plain text only</p>');
+});
