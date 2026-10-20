@@ -3075,7 +3075,9 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
                                 '</div>' +
                             '</div>');}
 
+    function sortCharacterCards(cards) { return [...cards].sort((a,b)=>String(a.no||'\uffff').localeCompare(String(b.no||'\uffff'),'en',{numeric:true})); }
     function buildSplash() {
+        SPLASH_CHARACTERS.splice(0,SPLASH_CHARACTERS.length,...sortCharacterCards(SPLASH_CHARACTERS));
         const root = document.createElement('div');
         root.id = '__exp_splash__';
         root.setAttribute('aria-hidden', 'true');
@@ -3503,6 +3505,7 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
         root.__updateCharacterCards = cards => {
             if (!Array.isArray(cards)) return;
             clearTimeout(charDealTimer);clearTimeout(charInfoTimer);clearTimeout(charDrawTimer);
+            cards=sortCharacterCards(cards);
             SPLASH_CHARACTERS.splice(0,SPLASH_CHARACTERS.length,...cards);
             charTrack.innerHTML=cards.map(characterCardHtml).join('');
             charCards.splice(0,charCards.length,...charTrack.querySelectorAll('.spl-chcard'));
@@ -3511,18 +3514,16 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
             charInit();
         };
         function charInit() {
-            /* v4.29.0:改回第一版横向滑动轮播 —— 进入即一横排展开、中间那张默认选中放平,
-               无「牌堆 → 抽出」步骤;拖拽/点击/滚轮/方向键切换照旧。 */
-            if (!charCards.length) return;
-            charFanned = true;
-            charDetail = true;
-            charActive = Math.min(charCards.length - 1, Math.floor((charCards.length - 1) / 2));
+            // Every entry starts folded, without a selected character, at the first card.
+            clearTimeout(charDealTimer);clearTimeout(charInfoTimer);clearTimeout(charDrawTimer);
+            charFanned = false;
+            charDetail = false;
+            charActive = -1;
             charFoldX = null;
-            clearTimeout(charDealTimer);
-            root.classList.add('spl-fanned');
+            root.classList.remove('spl-fanned');
+            charInfoEmptyFill('点击任意一张卡片抽出。');
             charLayout();
             charPlaceStill();
-            charInfoFill(charActive);
         }
         function charRefresh() {
             charCards.forEach((el, i) => { el.style.transitionDelay = '0ms'; charApply(i); });
