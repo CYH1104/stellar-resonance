@@ -29,7 +29,9 @@ export function compatibleState(raw,card,state,options){
   if(raw.mvu!==undefined){
     try{mvuState=applyMvu(state,raw.mvu);mvuAccepted=true;explicitPresent=explicitPresenceIds(raw.mvu);}catch{
       warn('STATE_MVU_REJECTED');state.characters.forEach(c=>retain(c.id));
-      raw={...raw,mvu:undefined,characters:[],player:undefined,presentCharacterIds:state.characters.filter(c=>c.present).map(c=>c.id)};
+      // Reject the dependent patch transaction, not independent status fields.
+      const withoutAffinity=c=>{if(!object(c))return c;return Object.fromEntries(Object.entries(c).filter(([key])=>(aliases[key]||key)!=='affinity'));};
+      raw={...raw,mvu:undefined,characters:Array.isArray(raw.characters)?raw.characters.map(withoutAffinity):object(raw.characters)?Object.fromEntries(Object.entries(raw.characters).map(([id,c])=>[id,withoutAffinity(c)])):raw.characters};
     }
     // Actor changes are flattened into the canonical snapshot once. Custom
     // variables remain an MVU update; no duplicate delta or immutable overwrite.
@@ -39,13 +41,21 @@ export function compatibleState(raw,card,state,options){
   const patches=new Map(mvuState.characters.filter(c=>!state.characters.some(a=>a.id===c.id)).map(c=>[c.id,{...c}]));
   const actorFields=(value,before,player=false)=>{
     const result={};if(!object(value))return result;
+    const seen=new Map(),conflicts=new Set();
+    for(const [key,v]of Object.entries(value)){const field=aliases[key]||key;if(seen.has(field)&&JSON.stringify(seen.get(field))!==JSON.stringify(v))conflicts.add(field);else seen.set(field,v);}
     for(const [key,original]of Object.entries(value)){
       const field=aliases[key]||key;
+      if(conflicts.has(field)){warn('STATE_FIELD_CONFLICT');continue;}
       // An explicit valid MVU change wins over a stale status snapshot.
       const committed=player?mvuState.player:mvuState.characters.find(c=>c.id===before?.id);
       if(mvuAccepted&&['affinity','relationship'].includes(field)&&committed?.[field]!==before?.[field]){result[field]=committed[field];continue;}
-      if(!dynamic.includes(field)||player&&['affinity','innerThought'].includes(field)||field==='spiritThought'&&!before?.spiritAnimal)continue;
+      if(!dynamic.includes(field)||player&&['affinity','innerThought'].includes(field))continue;
       let v=field==='affinity'?numeric(original):original;if(typeof v==='string')v=displayText(v);if(typeof v==='string'&&!v.trim()&&before?.[field]){warn('STATE_EMPTY_FIELD_RETAINED');continue;}
+      if(field==='spiritThought'){
+        if(typeof v!=='string'||!v.trim()||/^(?:未提供|未知|待生成|待更新|暂无)[。.!！]?$/u.test(v.trim())){warn(player?'STATE_PLAYER_THOUGHT_RETAINED':'STATE_SPIRIT_THOUGHT_RETAINED');continue;}
+        const previous=player?state.player:state.characters.find(c=>c.id===before?.id);
+        if(options.requireDynamicState&&previous?.spiritAnimal&&v.trim()===previous.spiritThought?.trim()){warn(player?'STATE_PLAYER_THOUGHT_STALE':'STATE_SPIRIT_THOUGHT_STALE');continue;}
+      }
       try{
         const candidate=player?{player:{[field]:v}}:{characters:[{id:before.id,[field]:v}]};
         validateOutcome({event:out.event,...candidate},{...state,characters:[...known.values()]});
