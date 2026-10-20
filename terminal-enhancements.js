@@ -55,7 +55,8 @@
   q('.chr-timeline').querySelectorAll('.chr-img').forEach(box=>{box.replaceChildren();box.classList.add('chronicle-placeholder');});
 
 
-  const editCards=document.createElement('button');editCards.textContent='\u7f16\u8f91\u89d2\u8272';editCards.onclick=()=>window.open('/editor/','_blank','noopener');q('.academy-card-tools').append(editCards);
+  const cardTools=q('.academy-card-tools'),foldCards=q('#foldCards');
+  if(cardTools&&foldCards)cardTools.replaceChildren(foldCards);
   let cardRevision=window.__ACADEMY_CARD_REVISION__,refreshingCards=false;
   async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
   document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
