@@ -5,13 +5,14 @@ import type {ViewModel} from '../app/useWorkspace';
 import type {Profile} from '../domain/contracts';
 const props=defineProps<{w:ViewModel;p:Profile;disabled?:boolean;embedding?:boolean}>();
 const listId='api-models-'+useId();
+const fetched=ref(false);
 const models=ref<string[]>([]),loading=ref(false),error=ref(''),search=ref('');
 let controller:AbortController|undefined,requestId=0,timer:ReturnType<typeof setTimeout>|undefined;
 const disabled=computed(()=>props.disabled||props.w.busy||props.w.workingMemory||props.w.configuringApis);
 const ready=computed(()=>!!props.p.apiBaseUrl?.trim()&&!!props.w.credentials[props.p.id]?.trim());
 const filtered=computed(()=>models.value.filter(model=>model.toLowerCase().includes(search.value.trim().toLowerCase())));
 watch(()=>[props.p.id,props.p.apiBaseUrl,props.w.credentials[props.p.id],props.embedding],()=>{
-  requestId++;controller?.abort();clearTimeout(timer);models.value=[];error.value='';search.value='';loading.value=false;
+  requestId++;controller?.abort();clearTimeout(timer);models.value=[];fetched.value=false;error.value='';search.value='';loading.value=false;
   if(ready.value)timer=setTimeout(()=>void fetchModels(),600);
 },{immediate:true});
 onBeforeUnmount(()=>{clearTimeout(timer);requestId++;controller?.abort();});
@@ -20,7 +21,7 @@ async function fetchModels(){
   clearTimeout(timer);const id=++requestId;controller?.abort();controller=new AbortController();loading.value=true;error.value='';
   try{const result=await props.w.fetchModels(props.p,controller.signal,props.embedding?'embedding':undefined);if(id!==requestId)return;models.value=[...new Set(result)].sort();if(!props.p.model&&models.value.length)props.p.model=models.value[0];if(!result.length)error.value=props.embedding?'未找到可确认的向量模型，已隐藏其他及无法识别的模型。可手动填写已确认支持 embeddings 的型号。':'未检测到可用模型，可直接填入模型名称，或检查接口后重新获取。';}
   catch(e){if(id!==requestId)return;error.value=e instanceof Error?e.message:'模型获取失败，可直接填入模型名称，或检查接口后重试。';}
-  finally{if(id===requestId)loading.value=false;}
+  finally{if(id===requestId){loading.value=false;fetched.value=true;}}
 }
 </script>
 <template><div class="model-picker">
@@ -31,6 +32,9 @@ async function fetchModels(){
     <label class="model-search">搜索模型<input v-model="search" type="search" :disabled="disabled||!models.length" placeholder="筛选可选模型" /></label>
     <slot name="save" />
   </div>
+  <label v-if="embedding&&models.length" class="embedding-model-options">可选向量模型<select v-model="p.model" :disabled="disabled" aria-label="可选向量模型"><option v-if="p.model&&!filtered.includes(p.model)" :value="p.model">{{p.model}}</option><option v-for="model in filtered" :key="model" :value="model">{{model}}</option></select></label>
+  <p v-if="error" class="rail-note" role="status">{{error}}</p>
+  <small v-else-if="embedding&&!loading&&!fetched&&!ready">请先填写 URL 和 Key，再获取向量模型。</small>
   <small v-if="models.length">已检测 {{models.length}} 个{{embedding?'向量':''}}模型，搜索匹配 {{filtered.length}} 个。点击模型输入框可选择，也可直接输入。</small>
   <DismissibleNotice :message="error" error />
 </div></template>

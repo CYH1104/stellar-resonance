@@ -42,7 +42,7 @@ function sceneFrom(source:string):SceneSlate|undefined{
 /** Recognize a small display vocabulary; model output is never interpreted as executable HTML. */
 export function storyBlocks(source:string,streaming=false):StoryBlock[]{
   const text=unwrapStoryTags(stripReasoning(source),streaming),blocks:StoryBlock[]=[];let offset=0;
-  const append=(value:string)=>{if(value.trim())blocks.push({kind:'text',text:value});};
+  const append=(value:string)=>{if(value.trim())blocks.push({kind:'text',text:value.trim()});};
   const open=/<Slate\s*>/ig;let match:RegExpExecArray|null;
   while((match=open.exec(text))){
     append(text.slice(offset,match.index));

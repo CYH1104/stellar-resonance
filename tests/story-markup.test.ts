@@ -27,11 +27,11 @@ it('多层换行转义统一展示，代码、URL和Windows路径保持原样',(
 });
 it('预设Slate转换为场景卡数据，前后正文顺序及原字符串保留',()=>{
   const source='前文。\n'+slate+'\n后文。',blocks=storyBlocks(source);
-  expect(blocks).toEqual([{kind:'text',text:'前文。\n'},{kind:'slate',scene:{sceneNo:'001',title:'金属与浮尘',englishTitle:'Stardust Path',quote:'新生踏入中立之地的第一步。',location:'盖亚之眼 · 学院正门广场',time:'0578.09.01 · 09:15'}},{kind:'text',text:'\n后文。'}]);expect(source).toContain('<Slate>');
+  expect(blocks).toEqual([{kind:'text',text:'前文。'},{kind:'slate',scene:{sceneNo:'001',title:'金属与浮尘',englishTitle:'Stardust Path',quote:'新生踏入中立之地的第一步。',location:'盖亚之眼 · 学院正门广场',time:'0578.09.01 · 09:15'}},{kind:'text',text:'后文。'}]);expect(source).toContain('<Slate>');
 });
 it('流式接收完整块前显示等待；停止后未闭合或未知结构回退原文字，不吞正文',()=>{
   for(let i=7;i<slate.length;i++)expect(storyBlocks(slate.slice(0,i),true)).toEqual([{kind:'pending'}]);
-  const unfinished=slate.slice(0,slate.indexOf('</Slate>'));expect(storyBlocks(unfinished,false)).toEqual([{kind:'text',text:unfinished}]);
+  const unfinished=slate.slice(0,slate.indexOf('</Slate>'));expect(storyBlocks(unfinished,false)).toEqual([{kind:'text',text:unfinished.trim()}]);
   for(const source of ['<Slate><Unknown>保留文字</Unknown></Slate>','<Slate><Scene_NO>1</Scene_NO><Scene_NO>2</Scene_NO></Slate>','<Slate>不符合格式但不能丢失的剧情</Slate>'])expect(storyBlocks(source)).toEqual([{kind:'text',text:source}]);
 });
 it('支持多个场景块、缺省字段和不区分大小写，不添加模型没给出的信息',()=>{
@@ -58,4 +58,10 @@ it('截图中的 DRAFTINKG 拼写变体及关闭标签不再显示，逐片输�
  const text='<DRAFTINKG><content>完整正文。</content></DRAFTINKG>';
  const html=await renderToString(createSSRApp(StoryContent,{text}));expect(html).toContain('完整正文。');expect(html).not.toContain('DRAFTINKG');
  for(const tag of ['<DRAFTINKG>','</DRAFTINKG>'])for(let i=1;i<tag.length;i++)expect(storyBlocks('正文'+tag.slice(0,i),true)).toEqual([{kind:'text',text:'正文'}]);
+});
+
+it('trims whitespace left around hidden state while preserving paragraph breaks',async()=>{
+ const html=await renderToString(createSSRApp(StoryContent,{text:'\n\nVisible prose.\n\nSecond paragraph.\n\n\n<status>{}</status>\n\n<choices>["Go"]</choices>\n\n'}));
+ expect(html).toContain('Visible prose.\n\nSecond paragraph.</');expect(html).not.toContain('Second paragraph.\n\n\n');
+ expect(storyBlocks('\n\nA\n\nB\n\n')).toEqual([{kind:'text',text:'A\n\nB'}]);
 });

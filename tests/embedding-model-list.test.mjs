@@ -17,3 +17,9 @@ test('only embedding requests are filtered, preserving metadata until classifica
  assert.deepEqual((await fetchModelList({...options,kind:'embedding',fetchImpl:async()=>Response.json({data:[{id:'gpt-4o'}]})})).models,[]);
  await assert.rejects(fetchModelList({...options,kind:'invalid'}),{code:'INVALID_MODEL_KIND'});assert.equal(calls,2);
 });
+
+test('accepts nested model lists and model identifiers without a signal',async()=>{
+ const opts={apiBaseUrl:'https://synthetic.example/v1',key:'synthetic-key',kind:'embedding',fetchImpl:async()=>Response.json({data:{models:[{model:'text-embedding-3-small'},{model:'gpt-4o'}]}})};
+ assert.deepEqual((await fetchModelList(opts)).models,['text-embedding-3-small']);
+ await assert.rejects(fetchModelList({...opts,fetchImpl:async()=>{throw Error('offline');}}),{code:'MODEL_UNREACHABLE'});
+});
