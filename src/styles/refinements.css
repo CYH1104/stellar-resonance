@@ -150,10 +150,10 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 
 .world-entry-drag{cursor:grab;touch-action:none;user-select:none}.worldbook-entry.drop-before{border-top:2px solid var(--color-accent)}.worldbook-entry.drop-after{border-bottom:2px solid var(--color-accent)}.history-page-link{display:block;width:100%;text-align:center;font-size:12px;margin:10px 0;color:var(--color-muted)}
 #academy-workspace .player-message{margin-left:0;margin-right:0;text-align:left}
-#academy-workspace .player-message>header{justify-content:flex-start;align-items:center}
-#academy-workspace .player-message>header .chat-user-avatar{order:1}
+#academy-workspace .player-message>header{justify-content:flex-end;align-items:center}
+#academy-workspace .player-message>header .chat-user-avatar{order:3}
 #academy-workspace .player-message>header strong{order:2}
-#academy-workspace .player-message>header .tag{order:3}
+#academy-workspace .player-message>header .tag{order:1}
 #academy-workspace .player-message>p{text-align:left;margin-left:0;margin-right:0}
 
 #academy-workspace .reply-actions-anchor{display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -208,3 +208,11 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}*::
 #academy-workspace .state-validation-details{font-size:11px;line-height:1.8;color:var(--color-muted);margin:8px 0;text-align:left}
 #academy-workspace .state-validation-details summary{cursor:pointer;text-align:right}
 #academy-workspace .state-validation-details code{font-size:10px;overflow-wrap:anywhere}
+
+/* Dialogue stays distinct from narration in both academy themes. */
+#academy-workspace .story-content{--story-dialogue:#537fa7;--story-emphasis:#355d87;--story-dialogue-emphasis:#35618c}
+body[data-academy-theme=dark] #academy-workspace .story-content{--story-dialogue:#a8c9ec;--story-emphasis:#e3edff;--story-dialogue-emphasis:#c8e1ff}
+#academy-workspace .story-content .story-dialogue{color:var(--story-dialogue)}
+#academy-workspace .story-content strong{font-weight:700;color:var(--story-emphasis)}
+#academy-workspace .story-content strong.story-dialogue{color:var(--story-dialogue-emphasis)}
+#academy-workspace .player-message>header .tag{margin-right:auto}

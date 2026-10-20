@@ -1,5 +1,18 @@
 import {stripReasoning} from './reasoning.ts';
 
+/** Text-only inline styling: never interpret model text as HTML. */
+export function storyInline(text:string){
+ const parts:{text:string;strong:boolean;dialogue:boolean}[]=[],quotes:string[]=[];let strong=false,offset=0;
+ const append=(value:string,dialogue=quotes.length>0)=>{if(value)parts.push({text:value,strong,dialogue});};
+ for(const m of text.matchAll(/\*\*|__|[“”「」『』"]/g)){
+  append(text.slice(offset,m.index));const token=m[0];offset=m.index!+token.length;
+  if(token==='**'||token==='__'){if(strong||text.indexOf(token,offset)>=0)strong=!strong;else append(token);continue;}
+  const end:Record<string,string>={'“':'”','「':'」','『':'』'};
+  if(quotes.at(-1)===token){append(token,true);quotes.pop();}else if(end[token]||token==='"'){quotes.push(end[token]||token);append(token,true);}else append(token);
+ }
+ append(text.slice(offset));return parts;
+}
+
 export interface SceneSlate {sceneNo?:string;title?:string;englishTitle?:string;quote?:string;location?:string;time?:string}
 export type StoryBlock={kind:'text';text:string}|{kind:'slate';scene:SceneSlate}|{kind:'pending'};
 const fields:Record<string,keyof SceneSlate>={scene_no:'sceneNo',scene_title:'title',en_title:'englishTitle',quote:'quote',location:'location',ti:'time'};
