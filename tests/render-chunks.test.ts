@@ -1,5 +1,10 @@
 import {expect,it} from 'vitest';
 import {committedRenderText,renderChunks} from '../src/domain/renderChunks';
+it('keeps prose around local CSS fragments and shares adjacent style and markup',()=>{
+ expect(renderChunks('前文\n<div style="color:skyblue"><span>对话</span></div>\n后文')).toEqual([{kind:'story',text:'前文\n'},{kind:'html',text:'<div style="color:skyblue"><span>对话</span></div>'},{kind:'story',text:'\n后文'}]);
+ expect(renderChunks('<style>.local{color:red}</style>\n<div class="local">内容</div>')).toHaveLength(1);
+ expect(renderChunks('普通正文 <div>未闭合')).toEqual([{kind:'story',text:'普通正文 <div>未闭合'}]);
+});
 it('commits only complete fences and paragraphs during streaming',()=>{
  const first='```html\n<div>已完成</div>\n```\n';
  expect(committedRenderText(first+'```html\n<div>未完',true)).toBe(first);

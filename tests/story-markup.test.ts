@@ -3,6 +3,10 @@ import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {storyBlocks,displayText} from '../src/domain/storyMarkup';
 import StoryContent from '../src/components/StoryContent.vue';
+it('renders a local styled div in an isolated frame while keeping surrounding prose outside',async()=>{
+ const html=await renderToString(createSSRApp(StoryContent,{text:'前面的正文。\n<div style="color:lightblue">局部内容</div>\n后面的正文。'}));
+ expect(html).toContain('<iframe');expect(html).toContain('sandbox="allow-scripts"');expect(html).toContain('color:lightblue');expect(html).toContain('前面的正文。');expect(html).toContain('后面的正文。');
+});
 it('streams visible prose inside unclosed HTML and fences before completion',async()=>{
  for(const text of ['<content>正文正在出现','```html\n<div><p>正文正在出现','<content>正文正在出现<SR_STATE>{"secret":1']){
   const html=await renderToString(createSSRApp(StoryContent,{text,streaming:true}));

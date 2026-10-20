@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import DismissibleNotice from './components/DismissibleNotice.vue';
+import NoticeHost from './components/NoticeHost.vue';
+import {showNotice} from './app/notices';
 import RandomEventControl from './components/RandomEventControl.vue';
 import RegexPanel from './components/RegexPanel.vue';
 import {accountStorage} from './storage/accountScope';
@@ -63,14 +66,9 @@ async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;con
 
 
 const w = reactive(useWorkspace());
-const warningVisible=ref(false);
-watch(()=>w.problem,(value,_previous,cleanup)=>{
-  warningVisible.value=!!value;
-  if(!value)return;
-  const timer=setTimeout(()=>{warningVisible.value=false;},8000);
-  cleanup(()=>clearTimeout(timer));
-},{immediate:true,flush:'sync'});
-
+function campusNotice(event:Event){const value=(event as CustomEvent).detail;if(typeof value?.message==='string')showNotice(value.message.slice(0,2000),value.error===true);}
+onMounted(()=>window.addEventListener('academy:notice',campusNotice));
+onUnmounted(()=>window.removeEventListener('academy:notice',campusNotice));
 const workspaceEl=ref<HTMLElement>();
 const layout=useWorkspaceLayout(w.preferences,workspaceEl,()=>w.panel!=='theaters');
 const disposeMvu=installMvuBridge(w);
@@ -256,6 +254,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
 
 <template>
+  <NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
@@ -303,7 +302,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
       <ResizeHandle v-if="w.active&&!fullPage" class="column-resizer left-resizer" axis="x" label="调整左栏宽度" @resize="dx=>layout.resize('left',dx)" />
       <main class="center-pane">
 
-        <div v-if="w.problem&&warningVisible" class="error-banner" role="alert"><span>{{ w.problem }}</span><span v-if="w.panel==='story'">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</span><button type="button" @click="warningVisible=false">收起提示</button></div>
+
 
         <div class="center-content">
 

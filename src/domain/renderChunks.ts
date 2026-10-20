@@ -1,4 +1,3 @@
-import {hasRenderableHtml} from './htmlRendering';
 /** Commit only closed structural units while streaming. Never run preset regex on a partial unit. */
 export function committedRenderText(source:string,streaming=false):string{
  if(!streaming)return source;
@@ -31,10 +30,41 @@ export function committedRenderText(source:string,streaming=false):string{
  return source.slice(0,safe);
 }
 export interface RenderChunk {kind:'html'|'story';text:string}
+/** Extract balanced local HTML while keeping surrounding prose in the story renderer. */
+function localChunks(source:string):RenderChunk[]{
+ const chunks:RenderChunk[]=[];
+ const startTag=/<(?:div|span|style|section|article|table|details|p|img|svg|button|h[1-6])\b[^>]*>/gi;
+ const tags=/<\/?([a-z][\w:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+ const voids=new Set(['area','br','col','hr','img','input','link','meta','source','wbr']);
+ let cursor=0,match:RegExpExecArray|null;
+ while((match=startTag.exec(source))){
+  const stack:string[]=[];let end=match.index,valid=false;tags.lastIndex=match.index;
+  let token:RegExpExecArray|null;
+  while((token=tags.exec(source))){
+   const name=token[1]!.toLowerCase(),close=token[0].startsWith('</');
+   if(close){if(stack.pop()!==name)break;}
+   else if(!voids.has(name)&&!token[0].endsWith('/>')){
+    if(['style','script','textarea','title'].includes(name)){
+     const closing=new RegExp('</'+name+'\\s*>','ig');closing.lastIndex=tags.lastIndex;const found=closing.exec(source);if(!found)break;tags.lastIndex=closing.lastIndex;
+    }else stack.push(name);
+   }
+   if(!stack.length){end=tags.lastIndex;valid=true;break;}
+  }
+  if(!valid)continue;
+  const before=source.slice(cursor,match.index);
+  if(before.trim())chunks.push({kind:'story',text:before});
+  const previous=chunks.at(-1),html=source.slice(match.index,end);
+  if(!before.trim()&&previous?.kind==='html')previous.text+=before+html;
+  else chunks.push({kind:'html',text:html});
+  cursor=end;startTag.lastIndex=end;
+ }
+ if(source.slice(cursor).trim())chunks.push({kind:'story',text:source.slice(cursor)});
+ return chunks;
+}
 /** Each closed HTML fence owns a stable iframe; later fences do not reload earlier ones. */
 export function renderChunks(source:string,embedded=false):RenderChunk[]{
  const chunks:RenderChunk[]=[];const fence=/```[ \t]*html[^\n]*\r?\n[\s\S]*?^[ \t]*```[ \t]*(?:\r?\n|$)/gim;let start=0;
- const append=(text:string)=>{if(text.trim())chunks.push({kind:hasRenderableHtml(text,embedded)?'html':'story',text});};
+ const append=(text:string)=>{if(!text.trim())return;if(/^\s*(?:<!doctype\s+html|<html\b)/i.test(text))chunks.push({kind:'html',text});else chunks.push(...localChunks(text));};
  for(const match of source.matchAll(fence)){append(source.slice(start,match.index));chunks.push({kind:'html',text:match[0].trimEnd()});start=match.index!+match[0].length;}
  append(source.slice(start));return chunks;
 }

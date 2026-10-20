@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import {computed,ref,watch} from 'vue';
 import StoryInline from './StoryInline.vue';
+import HtmlMessageFrame from './HtmlMessageFrame.vue';
 import {stripReasoning} from '../domain/reasoning';
 import {runRegex} from '../domain/regexRunner';
 import {builtinOutput} from '../domain/builtinOutput';
 import {type HtmlRenderContext} from '../domain/htmlRendering';
 import {type RegexRule,type RegexContext} from '../domain/regex';
 import {storyBlocks} from '../domain/storyMarkup';
-import {committedRenderText} from '../domain/renderChunks';
+import {committedRenderText,renderChunks} from '../domain/renderChunks';
 const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext}>();
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);let formattedInput='';
 const cleanText=computed(()=>stripReasoning(props.text));
@@ -20,12 +21,13 @@ watch(()=>[committed.value,props.streaming,JSON.stringify(props.regexRules),JSON
 },{immediate:true});
 // A worker result belongs to its input prefix, never to subsequently received text.
 const visibleText=computed(()=>formatted.value!==undefined&&cleanText.value.startsWith(formattedInput)?formatted.value+cleanText.value.slice(formattedInput.length):cleanText.value);
-const normalized=computed(()=>builtinOutput(visibleText.value,props.streaming));
-const chunks=computed(()=>normalized.value.prose?[{kind:'story',text:normalized.value.prose}]:[]);
+const normalized=computed(()=>builtinOutput(visibleText.value,props.streaming,true));
+const chunks=computed(()=>renderChunks(normalized.value.prose,true));
 </script>
 <template><div class="story-content">
   <template v-for="(chunk,chunkIndex) in chunks" :key="chunkIndex">
-  <template v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
+  <HtmlMessageFrame v-if="chunk.kind==='html'" :content="chunk.text" :context="htmlContext" :highlighted="highlighted" />
+  <template v-else v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
     <p v-if="block.kind==='text'" class="narrative"><StoryInline :text="block.text" /></p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
       <div v-if="block.scene.sceneNo" class="scene-number">SCENE <span>{{block.scene.sceneNo}}</span></div>
