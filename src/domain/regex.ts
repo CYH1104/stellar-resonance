@@ -6,7 +6,7 @@ export function cleanRegexRules(value:unknown):RegexRule[]{
     if(!r||typeof r!=='object'||typeof r.findRegex!=='string'||r.findRegex.length>10000||typeof r.replaceString!=='string'||r.replaceString.length>100000)throw Error('正则查找或替换内容不正确');
     const placements=Array.isArray(r.placement)?r.placement:String(r.placement??2).split(',');
     const depth=(n:unknown)=>n===null||n===undefined||n===''?null:Number.isInteger(Number(n))&&Number(n)>=-1&&Number(n)<=100000?Number(n):null;
-    return {id:typeof r.id==='string'?r.id:crypto.randomUUID(),...(typeof r.setId==='string'?{setId:r.setId}:{}),scriptName:String(r.scriptName||'未命名正则').slice(0,200),findRegex:r.findRegex,replaceString:r.replaceString,trimStrings:(Array.isArray(r.trimStrings)?r.trimStrings:typeof r.trimStrings==='string'?r.trimStrings.split(/\s+/):[]).filter((s:unknown)=>typeof s==='string'&&s.length).slice(0,100),placement:[...new Set<number>(placements.map(Number).filter((n:number)=>[1,2,3,5,6].includes(n)))],disabled:r.disabled===true,markdownOnly:r.markdownOnly===true,promptOnly:r.promptOnly===true,runOnEdit:r.runOnEdit===true,substituteRegex:[0,1,2].includes(Number(r.substituteRegex))?Number(r.substituteRegex):0,minDepth:depth(r.minDepth),maxDepth:depth(r.maxDepth)};
+    return {id:typeof r.id==='string'?r.id:crypto.randomUUID(),...(typeof r.setId==='string'?{setId:r.setId}:{}),scriptName:String(r.scriptName||'未命名正则').slice(0,200),findRegex:r.findRegex,replaceString:r.replaceString,trimStrings:(Array.isArray(r.trimStrings)?r.trimStrings:typeof r.trimStrings==='string'?r.trimStrings.split(/\s+/):[]).filter((s:unknown)=>typeof s==='string'&&s.length).slice(0,100),placement:[...new Set<number>(placements.map(Number).filter((n:number)=>[1,2,3,5,6,7].includes(n)))],disabled:r.disabled===true,markdownOnly:r.markdownOnly===true,promptOnly:r.promptOnly===true,runOnEdit:r.runOnEdit===true,substituteRegex:[0,1,2].includes(Number(r.substituteRegex))?Number(r.substituteRegex):0,minDepth:depth(r.minDepth),maxDepth:depth(r.maxDepth)};
   });
 }
 export function importRegexRules(raw:any,setId?:string):RegexRule[]{
@@ -29,7 +29,8 @@ function macros(text:string,c:RegexContext,escape=false){return text.replace(/\{
 export function applyRegexRules(text:string,rules:RegexRule[],context:RegexContext){
   const errors:string[]=[];let output=text;
   for(const r of rules){
-    if(context.scope==='display'&&injectsHtml(r))continue;
+    if(context.placement===7&&context.scope!=='display')continue;
+    if(context.scope==='display'&&context.placement!==7&&injectsHtml(r))continue;
     if(r.disabled||!r.placement.includes(context.placement)||context.edited&&!r.runOnEdit)continue;
     if((r.markdownOnly||r.promptOnly)&&!(context.scope==='display'?r.markdownOnly:r.promptOnly))continue;
     if(context.depth!==undefined&&(r.minDepth!==null&&r.minDepth>=-1&&context.depth<r.minDepth||r.maxDepth!==null&&r.maxDepth>=0&&context.depth>r.maxDepth))continue;

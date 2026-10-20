@@ -43,3 +43,12 @@ it('renders inline CSS in custom theater, group and diary bodies',async()=>{
  for(const html of outputs){expect(html).toContain('sandbox="allow-scripts"');expect(html).toContain('linear-gradient(145deg,#18181b,#27272a)');expect(html).toContain('PJ-001');expect(html).toContain('Before');expect(html).toContain('After');}
  expect(scene.content).toBe(content);
 });
+
+it('theater regex can generate HTML only in display scope and preserves source',()=>{
+ const source='[card:Test]';const rule=cleanRegexRules([{findRegex:'/\\[card:(.*?)\\]/g',replaceString:'<div style="color:red">$1</div>',placement:[7],markdownOnly:true}])[0];
+ expect(applyRegexRules(source,[rule],{placement:7,scope:'display'}).text).toBe('<div style="color:red">Test</div>');
+ expect(applyRegexRules(source,[{...rule,promptOnly:true}],{placement:7,scope:'prompt'}).text).toBe(source);
+ expect(source).toBe('[card:Test]');
+});
+
+import {cleanRegexRules,applyRegexRules} from '../src/domain/regex';

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {provideTheaterRegex} from '../app/theaterRegex';
 import TheaterContent from './TheaterContent.vue';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {displayText} from '../domain/storyMarkup';
@@ -6,6 +7,7 @@ import {forumLikeCount} from '../domain/forumLikes';
 import { computed,ref,watch,nextTick,onMounted,onBeforeUnmount } from 'vue';
 import type { ViewModel } from '../app/useWorkspace';
 const props=defineProps<{w:ViewModel;standalone?:boolean;title?:string}>();
+provideTheaterRegex(()=>props.w);
 const root=ref<HTMLElement>(),pageStart=ref(0);const posts=computed(()=>props.w.forum.slice(pageStart.value,pageStart.value+10));
 let container:HTMLElement|undefined,busy=false;function scrollContainers(){const panel=root.value;return [panel?.closest<HTMLElement>('.theater-scroll-body'),panel?.closest<HTMLElement>('.resizable-panel-body'),panel].filter((e):e is HTMLElement=>!!e);}
 async function page(direction:-1|1){if(busy||direction<0&&pageStart.value===0||direction>0&&pageStart.value+10>=props.w.forum.length)return;busy=true;pageStart.value=Math.max(0,Math.min(Math.max(0,props.w.forum.length-10),pageStart.value+direction*10));await nextTick();for(const e of scrollContainers())e.scrollTop=direction>0?2:Math.max(1,e.scrollHeight-e.clientHeight-2);setTimeout(()=>busy=false,160);}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {provideTheaterRegex} from '../app/theaterRegex';
 import TheaterContent from './TheaterContent.vue';
 import {displayText} from '../domain/storyMarkup';
 import {computed,ref} from 'vue';
@@ -11,6 +12,7 @@ import {isSpiritDiary} from '../domain/spiritDiary';
 import {fanficBody,fanficEnding,theaterRequirementError} from '../domain/theaterRequirements';
 import ForumFeed from './ForumFeed.vue';
 const props=defineProps<{w:ViewModel}>();
+provideTheaterRegex(()=>props.w);
 const opened=ref<number|null>(props.w.preferences.theaters?.find(t=>t.enabled&&t.slot!==2)?.slot??null);
 const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,props.w.theaters,props.w.active?.forumActivity]));
 </script>
