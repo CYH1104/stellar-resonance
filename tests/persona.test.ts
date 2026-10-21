@@ -1,6 +1,14 @@
 import {expect,it} from 'vitest';
 import {blankPersona,mergePersonaDraft,normalizePersona} from '../src/domain/persona';
 import {backup,defaults,newSession,parseBackup} from '../src/domain/story';
+import {readPersonaExtra} from '../src/domain/personaExtras';
+it('AI fills missing pheromone even with existing other notes, without replacing player choices',()=>{
+ const current={...blankPersona(),name:'玩家',other:'我的背景补充'};
+ const generated={...blankPersona(),name:'建议',other:'AI其他内容\n信息素：冷杉混雪松'};
+ const merged=mergePersonaDraft(current,generated);expect(readPersonaExtra(merged.other,'信息素')).toBe('冷杉混雪松');expect(merged.other).toContain('我的背景补充');expect(merged.other).not.toContain('AI其他内容');expect(current.other).toBe('我的背景补充');
+ const selected=mergePersonaDraft({...current,other:'备注\n信息素：无'},generated);expect(readPersonaExtra(selected.other,'信息素')).toBe('无');
+ const session=newSession('信息素',merged,'');expect(parseBackup(backup({version:1,sessions:[session],preferences:defaults()})).sessions[0].persona.other).toBe(merged.other);
+});
 it('开始游戏拒绝空白姓名，AI 填写前允许空草稿',()=>{
   expect(()=>newSession('测试',blankPersona(),'')).toThrow('姓名');
   expect(()=>normalizePersona({...blankPersona(),name:'  \n '})).toThrow('姓名');

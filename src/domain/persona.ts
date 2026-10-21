@@ -1,6 +1,6 @@
 import {separateIdentityAbility} from './identityAbility.ts';
 import type { Persona } from './contracts';
-import {readPersonaExtra} from './personaExtras.ts';
+import {readPersonaExtra,writePersonaExtra} from './personaExtras.ts';
 
 export const personaLimits = {ability:Infinity,spiritName:Infinity,spiritAppearance:Infinity,spiritPersonality:Infinity,spiritAbility:Infinity,mentalPowerLevel:Infinity,name:Infinity,identity:Infinity,appearance:Infinity,primaryGender:Infinity,secondaryGender:Infinity,personality:Infinity,background:Infinity,spiritAnimal:Infinity,other:Infinity,pairingPreference:Infinity,rawText:Infinity} as const;
 export function blankPersona():Persona {return {ability:'',spiritName:'',spiritAppearance:'',spiritPersonality:'',spiritAbility:'',mentalPowerLevel:'',name:'',identity:'',appearance:'',primaryGender:'',secondaryGender:'',personality:'',background:'',spiritAnimal:'',other:'',pairingPreference:''};}
@@ -20,7 +20,9 @@ export function normalizePersona(value:unknown,requireName=true):Persona {
 /** Fill blanks only, including when the player edited the form while a request was pending. */
 export function mergePersonaDraft(current:Persona,generated:unknown):Persona {
   const draft=normalizePersona(current,false),suggestion=normalizePersona(generated);
+  const pheromone=readPersonaExtra(draft.other,'信息素').trim()||readPersonaExtra(suggestion.other,'信息素').trim();
   for(const field of Object.keys(personaLimits) as (keyof typeof personaLimits)[])if(!draft[field])draft[field]=suggestion[field]??'';
+  if(pheromone)draft.other=writePersonaExtra(draft.other,'信息素',pheromone);
   return draft;
 }
 

@@ -51,7 +51,7 @@ const text = (value, max, required=false) => typeof value==='string' && value.le
 export function buildPersonaMessages(card,wish,draft){
   if(!text(wish,3000,true))throw modelError(400,'INVALID_PERSONA_WISH');
   let current;try{current=normalizePersona(draft,false);}catch{throw modelError(400,'INVALID_PERSONA');}
-  return [{role:'system',content:internalPrompt("ai.1")},
+  return [{role:'system',content:internalPrompt("ai.1")+'\n信息素填写协议：在 other 字符串中使用独立一行“信息素：具体气味或设定”。已有信息素必须原样保留；未填写时，根据用户愿望、第二性别和世界观补全适合的信息素。Beta 或明确无信息素的人设应遵守世界观，可写“信息素：无”，不要强行添加气味；适用规则不明确则留空。不得覆盖玩家其他设定，不得将信息素写成精神体或异能；不要新增 pheromone 等 JSON 字段。'},
     {role:'system',content:internalPrompt("ai.6")+JSON.stringify({world:card.world})},
     {role:'user',content:JSON.stringify({wish,current})}];
 }
