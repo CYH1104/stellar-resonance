@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useAutoSave} from '../app/useAutoSave';
 import {withoutEmoji} from '../domain/displayText';
 import FileImportButton from './FileImportButton.vue';
 import {computed,ref,watch} from 'vue';
@@ -55,7 +56,7 @@ function edit(p:Preset){
 }
 function fold(id:string){expanded.value=expanded.value.filter(value=>value!==id);}
 function toggle(p:Preset){if(expanded.value.includes(p.id))fold(p.id);else edit(p);}
-function cancel(id:string){fold(id);delete drafts.value[id];delete originals.value[id];}
+async function cancel(id:string){await autoSave.flush();if(autoSave.error.value)return;fold(id);delete drafts.value[id];delete originals.value[id];}
 function expandAll(){ungroupedCollapsed.value=false;for(const folder of folders.value)if(folder.id!=='__ungrouped')patchGroup(folder.id,{collapsed:false});}
 function cleanedDraft(id:string){
   const target=props.w.presetEntries.find(p=>p.id===id),draft=drafts.value[id];
@@ -96,10 +97,11 @@ function newPrompt(){props.w.addPresetEntry();const p=props.w.presetEntries.at(-
 function copyPrompt(p:Preset){if(props.w.busy||p.marker)return;const id=crypto.randomUUID(),q={...JSON.parse(JSON.stringify(p)),id,identifier:id,name:p.name+'（副本）',included:true};props.w.preferences.presets.push(q);edit(q);}
 function toggleAll(enabled:boolean){if(props.w.busy)return;for(const p of rows.value)p.enabled=enabled;}
 function removeSet(){props.w.removePresetSet();deleting.value=false;}
+const autoSave=useAutoSave(()=>drafts.value,async()=>{if(props.w.busy)return false;const changes=Object.keys(drafts.value).filter(id=>JSON.stringify(drafts.value[id])!==JSON.stringify(originals.value[id])).map(cleanedDraft).filter(c=>!!c);if(!changes.length)return true;for(const change of changes)Object.assign(change.target,change.value);props.w.problem='';await props.w.save();if(props.w.problem)throw Error(props.w.problem);for(const change of changes)originals.value[change.target.id]=JSON.parse(JSON.stringify(change.value));return true;});
 </script>
 <template>
   <section class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">
-    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><button class="primary" :disabled="w.busy" @click="saveAll">保存预设</button></div></header>
+    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><span role="status">{{autoSave.error.value||autoSave.status.value||'编辑后自动保存'}}</span><button v-if="autoSave.error.value" :disabled="w.busy" @click="autoSave.retry()">重试保存</button></div></header>
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
     <p class="rail-note">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</p>

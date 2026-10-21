@@ -23,7 +23,7 @@ function template(slot:TheaterSetting,id:string){const value=theaterTemplates.fi
 function add(w:ViewModel){const settings=w.preferences.theaters||=[];const slot=Math.max(2,...settings.map(s=>s.slot))+1;if(!Number.isSafeInteger(slot))return;settings.push({slot,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''});}
 </script>
 <template><section :class="embedded?'subsection':'surface'">
-  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><button class="primary" :disabled="w.busy" @click="w.save()">保存设置</button></header>
+  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><span role="status">{{w.storageStatus==='failed'?'保存失败，请重试':w.storageStatus==='saving'?'保存中…':'自动保存'}}</span></header>
   
   
   <p class="hint"><button type="button" @click="w.panel='settings'">前往 API 设置</button></p>

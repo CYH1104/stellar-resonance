@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useAutoSave} from '../app/useAutoSave';
+import {apiFieldIssues} from '../domain/apis';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -8,7 +10,7 @@ import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel;p:Profile;title:string;embedding?:boolean;help?:string;saveProfile?:(p:Profile)=>Promise<boolean>}>();
 const emit=defineEmits<{saved:[]}>();
 const testing=ref(false),saving=ref(false),helpOpen=ref(false),result=ref(''),failed=ref(false),saveResult=ref(''),saveFailed=ref(false),elapsed=ref(0);
-const disabled=computed(()=>props.w.busy||props.w.workingMemory||props.w.configuringApis||saving.value);
+const disabled=computed(()=>props.w.busy||props.w.workingMemory||props.w.configuringApis);
 let controller:AbortController|undefined,serial=0,timer:ReturnType<typeof setInterval>|undefined;
 function cancel(){serial++;controller?.abort();testing.value=false;clearInterval(timer);}
 watch(()=>[props.p.apiBaseUrl,props.p.model,props.w.credentials[props.p.id]],()=>{cancel();result.value='';saveResult.value='';});
@@ -21,18 +23,19 @@ async function test(){
 }
 function stopTest(){cancel();result.value='已取消测试。';failed.value=false;}
 async function save(){
-  if(disabled.value||testing.value)return;saving.value=true;saveResult.value='';saveFailed.value=false;
+  if(disabled.value||testing.value||saving.value)return;saving.value=true;saveResult.value='';saveFailed.value=false;
   try{const ok=await(props.saveProfile?props.saveProfile(props.p):props.w.connectProfile(props.p));if(ok){saveResult.value=props.w.notice||'API 已保存';emit('saved');}else{saveFailed.value=true;saveResult.value=props.w.problem||'保存失败，请重试。';}}
   catch{saveFailed.value=true;saveResult.value='保存失败，请重试。';}finally{saving.value=false;}
 }
+const autoSave=useAutoSave(()=>[props.p,props.w.credentials[props.p.id]],async()=>{if(apiFieldIssues(props.p,props.w.credentials[props.p.id]||'').length)return false;if(disabled.value||testing.value)return false;const ok=await(props.saveProfile?props.saveProfile(props.p):props.w.connectProfile(props.p));if(!ok)throw Error(props.w.problem||'API 保存失败');emit('saved');return true;},800);
 </script>
 <template><article class="api-card compact-api-card">
-  <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><span class="tag">{{w.connectionReady(p)?'已保存':'未保存更改'}}</span><slot /></div></header>
-  <form @submit.prevent="save">
+  <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><span class="tag">{{autoSave.status.value||(w.connectionReady(p)?'已保存':'等待填写完整')}}</span><slot /></div></header>
+  <form @submit.prevent="autoSave.retry()">
     <div class="api-identity-fields"><label>名称<input v-model="p.name" maxlength="80" :disabled="disabled" /></label><label>URL<input v-model="p.apiBaseUrl" maxlength="2000" placeholder="https://你的服务地址/v1" :disabled="disabled" /></label><label>Key<input v-model="w.credentials[p.id]" type="password" autocomplete="off" :disabled="disabled" /></label></div>
-    <ModelPicker :w="w" :p="p" :disabled="disabled" :embedding="embedding"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button type="submit" class="primary" :disabled="disabled||testing">{{saving?'保存中…':'保存 API'}}</button></template></ModelPicker>
+    <ModelPicker :w="w" :p="p" :disabled="disabled" :embedding="embedding"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button v-if="autoSave.error.value" type="submit" :disabled="disabled||testing">重试保存</button></template></ModelPicker>
     <p v-if="testing" class="api-test-progress" role="status">正在测试 · {{elapsed}} 秒／最多60秒…</p><DismissibleNotice v-else :message="result" :error="failed" />
-    <DismissibleNotice :message="saveResult" :error="saveFailed" />
+    <p v-if="autoSave.error.value" class="rail-note" role="status">{{autoSave.error.value}}</p><DismissibleNotice :message="saveResult" :error="saveFailed" />
   </form>
-  <DialogShell v-if="helpOpen" :title="title+'说明'" @close="helpOpen=false"><p>{{help||(embedding?'向量模型用于长程记忆检索，开启向量检索时才必填。':'主 API 必须填写，默认负责剧情、摘要、建议和人设生成。')}}</p><p>填写名称、服务的基础 URL 和 Key，获取并选择模型后保存；配置接口后自动获取模型，可搜索并选择。</p><p>测试连接会实际调用所选模型一次，可能计费，超时60秒；不加载预设、人设或存档，成功只表示这次小请求可用。</p><p>保存 API 不发起生成请求。Key 按“本机保存”的选项保存在当前浏览器。</p></DialogShell>
+  <DialogShell v-if="helpOpen" :title="title+'说明'" @close="helpOpen=false"><p>{{help||(embedding?'向量模型用于长程记忆检索，开启向量检索时才必填。':'主 API 必须填写，默认负责剧情、摘要、建议和人设生成。')}}</p><p>填写名称、服务的基础 URL 和 Key，获取并选择模型后自动保存；配置接口后自动获取模型，可搜索并选择。</p><p>测试连接会实际调用所选模型一次，可能计费，超时60秒；不加载预设、人设或存档，成功只表示这次小请求可用。</p><p>保存 API 不发起生成请求。Key 按“本机保存”的选项保存在当前浏览器。</p></DialogShell>
 </article></template>

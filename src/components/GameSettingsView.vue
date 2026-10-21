@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useAutoSave} from '../app/useAutoSave';
 import SpiritPersonaFields from './SpiritPersonaFields.vue';
 import {reactive,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -8,6 +9,7 @@ const props=defineProps<{w:ViewModel}>();const shortcut=ref('');
 const persona=reactive(blankPersona());
 watch(()=>props.w.active?.id,()=>{Object.assign(persona,blankPersona(),props.w.active?.persona||{});},{immediate:true});
 function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.push(shortcut.value.trim());shortcut.value='';}}
+const autoSave=useAutoSave(()=>persona,async()=>{if(!persona.name.trim()||!props.w.active||props.w.busy)return false;props.w.problem='';await props.w.savePersona(persona);if(props.w.problem)throw Error(props.w.problem);return true;});
 </script>
 <template><section class="surface game-settings-view">
   <header class="panel-heading"><div><p class="eyebrow">SETTINGS / 设置</p><h1>设置</h1></div></header>
@@ -26,7 +28,7 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
       <label>同人文配对偏好<select v-model="persona.pairingPreference"><option value="">按明确人设判断／暂未指定</option><option value="BL-攻">BL · user 为攻</option><option value="BL-受">BL · user 为受</option><option value="BG">BG</option><option value="GB">GB</option></select></label>
       <label v-if="persona.rawText">原文人设<textarea v-model="persona.rawText" rows="8" maxlength="60000" /></label>
       <label>其他<textarea v-model="persona.other" rows="3" maxlength="3000" /></label>
-      <button type="submit" :disabled="w.busy||!persona.name.trim()">保存玩家人设</button>
+      <span role="status">{{autoSave.error.value||autoSave.status.value||'编辑后自动保存'}}</span>
     </form>
   </section>
 
@@ -36,6 +38,6 @@ function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.p
   <template v-else>
   <section class="subsection"><h2>文本快捷按钮</h2><ul class="plain-list"><li v-for="(s,i) in w.preferences.shortcuts" :key="i"><input v-model="w.preferences.shortcuts[i]" :aria-label="`快捷文字 ${i+1}`" maxlength="500" :disabled="w.busy" /><button :disabled="w.busy" @click="w.preferences.shortcuts.splice(i,1)">删除</button></li></ul><form class="search-row" @submit.prevent="addShortcut"><label>新快捷文字<input v-model="shortcut" maxlength="500" /></label><button type="submit" :disabled="w.busy">添加快捷按钮</button></form></section>
 
-    <button class="primary" :disabled="w.busy" @click="w.save()">保存快捷操作</button>
+    <span role="status">快捷操作修改后自动保存</span>
   </template>
 </section></template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useAutoSave} from '../app/useAutoSave';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,ref,onMounted,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -15,7 +16,7 @@ function closeOutside(e:PointerEvent){if(root.value&&!e.composedPath().includes(
 function escape(e:KeyboardEvent){if(e.key==='Escape')open.value=false;}
 onMounted(()=>{document.addEventListener('pointerdown',closeOutside);document.addEventListener('keydown',escape);});
 onBeforeUnmount(()=>{document.removeEventListener('pointerdown',closeOutside);document.removeEventListener('keydown',escape);});
-function edit(rule:RegexRule){draft.value=JSON.parse(JSON.stringify(rule));error.value='';preview.value='';}
+async function edit(rule:RegexRule){await autoSave.flush();if(autoSave.error.value)return;draft.value=JSON.parse(JSON.stringify(rule));error.value='';preview.value='';autoSave.cancel();}
 function add(){edit(cleanRegexRules([{id:crypto.randomUUID(),setId:props.w.currentPreset,scriptName:'新正则',findRegex:'',replaceString:'',placement:[2],markdownOnly:true}])[0]);}
 async function save(){if(!draft.value||props.w.busy)return;try{regexPattern(draft.value.findRegex);const rule=cleanRegexRules([draft.value])[0],all=props.w.preferences.regexRules||=[],index=all.findIndex(r=>r.id===rule.id&&r.setId===rule.setId);if(index<0)all.push(rule);else all[index]=rule;props.w.problem='';await props.w.save();if(!props.w.problem)draft.value=undefined;else error.value=props.w.problem;}catch(e){error.value=e instanceof Error?e.message:'保存失败';}}
 async function toggle(rule:RegexRule){rule.disabled=!rule.disabled;await props.w.save();}
@@ -24,6 +25,8 @@ async function importFile(event:Event){const input=event.target as HTMLInputElem
 function exportFile(){const url=URL.createObjectURL(new Blob([JSON.stringify(rules.value.map(({setId,...r})=>r),null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='酒馆正则.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function test(){if(!draft.value)return;testing.value=true;error.value='';try{const result=await runRegex(sample.value,[{...draft.value,disabled:false}],{placement:draft.value.placement[0]||2,scope:draft.value.promptOnly&&!draft.value.markdownOnly?'prompt':'display',depth:0,user:props.w.active?.persona.name,char:'星穹学院'});preview.value=result.text;error.value=result.errors.join('；');}finally{testing.value=false;}}
 function position(value:number,checked:boolean){if(!draft.value)return;draft.value.placement=checked?[...new Set([...draft.value.placement,value])]:draft.value.placement.filter(n=>n!==value);}
+const autoSave=useAutoSave(()=>draft.value,async()=>{if(!draft.value?.findRegex||props.w.busy)return false;regexPattern(draft.value.findRegex);const rule=cleanRegexRules([draft.value])[0],all=props.w.preferences.regexRules||=[],index=all.findIndex(r=>r.id===rule.id&&r.setId===rule.setId);if(index<0)all.push(rule);else all[index]=rule;props.w.problem='';await props.w.save();if(props.w.problem)throw Error(props.w.problem);return true;});
+async function closeEditor(){await autoSave.flush();if(autoSave.error.value)return;draft.value=undefined;autoSave.cancel();}
 </script>
 <template><div ref="root" class="regex-toolbar">
   <button type="button" :aria-expanded="open" aria-controls="regex-dropdown" @click="open=!open"><span>16</span>正则</button>
@@ -39,7 +42,7 @@ function position(value:number,checked:boolean){if(!draft.value)return;draft.val
       <div class="actions"><label class="toggle"><input v-model="draft.markdownOnly" type="checkbox" />仅显示</label><label class="toggle"><input v-model="draft.promptOnly" type="checkbox" />仅提示词</label><label class="toggle"><input v-model="draft.runOnEdit" type="checkbox" />编辑时执行</label></div>
       <div class="field-grid"><label>最小深度<input v-model.number="draft.minDepth" type="number" min="-1" placeholder="不限" /></label><label>最大深度<input v-model.number="draft.maxDepth" type="number" min="-1" placeholder="不限" /></label><label>查找中的宏<select v-model.number="draft.substituteRegex"><option :value="0">不替换</option><option :value="1">直接替换</option><option :value="2">转义后替换</option></select></label></div>
       <p class="rail-note">小剧场勾选“小剧场（仅显示）”和“仅显示”，替换结果支持 HTML/CSS，只改变展示，不发送给模型。当前运行用户消息、AI 回复与提示词世界书位置；命令输出、推理字段仅保留配置。</p>
-      <div class="actions"><button type="submit" :disabled="w.busy">保存正则</button><button type="button" @click="draft=undefined">取消</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
+      <div class="actions"><span role="status">{{autoSave.error.value||autoSave.status.value||'编辑后自动保存'}}</span><button type="button" @click="closeEditor">关闭</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
       <details><summary>测试替换</summary><textarea v-model="sample" rows="3" aria-label="正则测试文本" /><button type="button" :disabled="testing" @click="test">{{testing?'处理中…':'测试'}}</button><HtmlMessageFrame v-if="preview&&hasRenderableHtml(preview)" :content="preview" /><pre v-else>{{preview}}</pre></details>
     </form><DismissibleNotice :message="error" error />
   </section>
