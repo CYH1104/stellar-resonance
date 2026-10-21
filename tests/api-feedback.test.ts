@@ -10,7 +10,7 @@ it('文字与向量表单均保留获取模型、测试与保存，说明默认�
   const p=defaults().profiles[0],w={credentials:{},connectionReady:()=>false} as unknown as ViewModel;
   for(const embedding of [false,true]){
     const html=await renderToString(createSSRApp(ApiProfileEditor,{w,p,title:'测试 API',embedding}));
-    expect(html).toContain('连接测试');expect(html).toContain('获取模型');expect(html).toContain('等待填写完整');expect(html).toContain('aria-label="模型列表"');expect(html).toContain('测试 API说明');expect(html).not.toContain('可能计费');expect(html).not.toContain('Temperature');
+    expect(html).toContain('连接测试');expect(html).toContain('获取模型');expect(html).toContain('请完善：');expect(html).toContain('role="combobox"');expect(html).toContain('aria-label="模型列表"');expect(html).not.toContain('class="model-search"');expect(html).toContain('测试 API说明');expect(html).not.toContain('可能计费');expect(html).not.toContain('Temperature');
   }
 });
 it('副接口下拉显示全部选项但只展开一份，新增表单和详细设置默认收起，向量攻略简短',async()=>{

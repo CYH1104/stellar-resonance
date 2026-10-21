@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import SaveStatus from './SaveStatus.vue';
-import {useAutoSave} from '../app/useAutoSave';
-import {apiFieldIssues} from '../domain/apis';
+import {useApiProfileAutoSave} from '../app/useApiProfileAutoSave';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -28,10 +27,10 @@ async function save(){
   try{const ok=await(props.saveProfile?props.saveProfile(props.p):props.w.connectProfile(props.p));if(ok){saveResult.value=props.w.notice||'API 已保存';emit('saved');}else{saveFailed.value=true;saveResult.value=props.w.problem||'保存失败，请重试。';}}
   catch{saveFailed.value=true;saveResult.value='保存失败，请重试。';}finally{saving.value=false;}
 }
-const autoSave=useAutoSave(()=>[props.p,props.w.credentials[props.p.id]],async()=>{if(apiFieldIssues(props.p,props.w.credentials[props.p.id]||'').length)return false;if(disabled.value||testing.value)return false;const ok=await(props.saveProfile?props.saveProfile(props.p):props.w.connectProfile(props.p));if(!ok)throw Error(props.w.problem||'API 保存失败');emit('saved');return true;},800);
+const autoSave=useApiProfileAutoSave(()=>props.p,()=>props.w.credentials[props.p.id]||'',()=>!!(disabled.value||testing.value||props.w.loading),()=>props.w.connectionReady(props.p),async()=>{const ok=await(props.saveProfile?props.saveProfile(props.p):props.w.connectProfile(props.p));if(ok)emit('saved');return ok;},()=>props.w.problem);
 </script>
 <template><article class="api-card compact-api-card">
-  <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><SaveStatus :status="autoSave.status.value||(w.connectionReady(p)?'已保存':'等待填写完整')" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><slot /></div></header>
+  <header class="panel-heading"><div class="api-title"><h3>{{title}}</h3><button type="button" class="api-help" :aria-label="title+'说明'" @click="helpOpen=true">?</button></div><div class="actions"><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><slot /></div></header>
   <form @submit.prevent="autoSave.retry()">
     <div class="api-identity-fields"><label>名称<input v-model="p.name" maxlength="80" :disabled="disabled" /></label><label>URL<input v-model="p.apiBaseUrl" maxlength="2000" placeholder="https://你的服务地址/v1" :disabled="disabled" /></label><label>Key<input v-model="w.credentials[p.id]" type="password" autocomplete="off" :disabled="disabled" /></label></div>
     <ModelPicker :w="w" :p="p" :disabled="disabled" :embedding="embedding"><button type="button" :disabled="disabled||testing" @click="test">{{testing?'测试中…':'连接测试'}}</button><button v-if="testing" type="button" @click="stopTest">取消测试</button><template #save><button v-if="autoSave.error.value" type="submit" :disabled="disabled||testing">重试保存</button></template></ModelPicker>
