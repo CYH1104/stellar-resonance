@@ -12,7 +12,7 @@ function trigger(value:string,checked:boolean){const current=props.draft.trigger
   <label>名称<input v-model="draft.name" maxlength="200" :disabled="w.busy||draft.marker" /></label>
   <label>所属分组<select :value="draft.group?.id||''" :disabled="w.busy" @change="changeGroup(($event.target as HTMLSelectElement).value)"><option value="">未分组</option><option v-for="g in groups||[]" :key="g.id" :value="g.id">{{g.name}}</option></select></label>
   <template v-if="!draft.marker">
-    <label>内容<textarea v-model="draft.content" rows="10" maxlength="50000" :disabled="w.busy" /></label>
+    <label>内容<textarea v-model="draft.content" rows="10" :disabled="w.busy" /></label>
     <details class="prompt-advanced"><summary>高级设置 · 角色、位置、触发时机</summary>
       <div class="field-grid"><label>角色<select v-model="draft.role" :disabled="w.busy"><option value="system">System</option><option value="assistant">AI Assistant</option><option value="user">User</option></select></label><label>位置<select v-model="draft.position" :disabled="w.busy"><option value="before">相对 · 聊天历史前</option><option value="after">相对 · 聊天历史后</option><option value="in-chat">聊天历史内 · 深度注入</option></select></label><template v-if="draft.position==='in-chat'"><label>Depth<input v-model.number="draft.depth" type="number" min="0" max="10000" :disabled="w.busy" /></label><label>Order<input v-model.number="draft.order" type="number" min="0" max="10000" :disabled="w.busy" /></label></template></div>
       

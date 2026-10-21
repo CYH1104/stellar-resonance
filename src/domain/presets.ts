@@ -26,7 +26,7 @@ export const setId=(p:Preset)=>p.setId||'legacy';
 export function presetGroups(list:Preset[]){return [...new Map(list.map(p=>[setId(p),{id:setId(p),name:p.setName||'原有预设'}])).values()];}
 export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
 export function cleanPreset(p:Preset):Preset{
-  if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||p.content.length>50000||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
+  if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
   if(p.role!==undefined&&!['system','user','assistant'].includes(p.role)||p.position!==undefined&&!['before','after','in-chat'].includes(p.position))throw new Error('预设角色或位置不正确');
   const out:Preset={id:p.id,name:p.name,content:p.content,enabled:p.enabled};
   if(p.compatibility!==undefined)out.compatibility=cleanPresetCompatibility(p.compatibility);
@@ -40,7 +40,6 @@ export function cleanPreset(p:Preset):Preset{
   return out;
 }
 export function importTavernPreset(text:string,filename='导入预设',options:{preserveOutputs?:boolean}={}){
-  if(new TextEncoder().encode(text).length>5*1024*1024)throw new Error('预设文件最多5MB');
   let raw:any;try{raw=JSON.parse(text.replace(/^\uFEFF/,''));}catch{throw new Error('预设不是有效的 JSON 文件');}
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('不是支持的预设文件');
   const id=crypto.randomUUID(),name=(typeof raw.name==='string'?raw.name:filename.replace(/\.json$/i,'')).slice(0,180),warnings:string[]=[];

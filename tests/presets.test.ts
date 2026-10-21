@@ -1,6 +1,14 @@
 import {expect,it} from 'vitest';
 import {importTavernPreset,exportTavernPreset} from '../src/domain/presets';
 import {backup,defaults,parseBackup} from '../src/domain/story';
+it('长预设正文不受单条5万字符或文件5MB限制，原文可完整保存和再次导出',()=>{
+ const content='x'.repeat(5*1024*1024+17);
+ const imported=importTavernPreset(JSON.stringify({prompts:[{identifier:'large',name:'长条目',content}]}));
+ expect(imported.entries[0].content).toBe(content);
+ const prefs=defaults();prefs.presets=imported.entries;prefs.activePreset=imported.id;
+ expect(parseBackup(backup({version:1,sessions:[],preferences:prefs})).preferences.presets[0].content).toBe(content);
+ expect(importTavernPreset(exportTavernPreset(imported.entries,prefs.profiles[0])).entries[0].content).toBe(content);
+});
 it('含 model 消息角色的预设可完整导入，转换为 assistant 并保留启停位置和备份',()=>{
   const raw={prompts:[{identifier:'reply',role:'model',content:'模型发言'},{identifier:'disabled',role:'model',content:'保留但停用'},{identifier:'chatHistory',marker:true}],prompt_order:[{character_id:100001,order:[{identifier:'chatHistory',enabled:true},{identifier:'reply',enabled:true},{identifier:'disabled',enabled:false}]}]};
   const result=importTavernPreset(JSON.stringify(raw));

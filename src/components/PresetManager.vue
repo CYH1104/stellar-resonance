@@ -85,7 +85,7 @@ async function saveAll(){if(props.w.busy)return;try{
 function removePrompt(id:string){props.w.removePresetEntry(id);cancel(id);}
 function rename(name:string){if(props.w.busy)return;for(const p of props.w.presetEntries){p.setId=props.w.currentPreset;p.setName=name;}}
 async function readPreset(file:File){if(importing.value||props.w.busy||importReview.value)return;importing.value=true;try{
- if(file.size>5*1024*1024)throw Error('预设文件最多5MB');const text=await file.text();
+ const text=await file.text();
  const preview=importTavernPreset(text,file.name,{preserveOutputs:props.w.preferences.preservePresetOutputs===true});
  const rows=preview.entries.flatMap((entry,index)=>entry.compatibility?[{index,entry}]:[]);
  if(rows.length){importReview.value={text,filename:file.name,rows,disabled:rows.map(r=>r.index)};return;}
