@@ -1,4 +1,5 @@
 import {applyRegexRules} from './regex';
+self.postMessage({type:'ready'});
 self.onmessage=event=>{
  const {text,rules,context}=event.data;let output=text;const errors:string[]=[];
  for(const rule of rules){

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
 import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
 import NoticeHost from './components/NoticeHost.vue';
@@ -9,6 +10,8 @@ import {accountStorage} from './storage/accountScope';
 
 
 import { reactive, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+onMounted(()=>{void preloadRegexWorker();});
+onUnmounted(disposeRegexWorker);
 
 import ResizeHandle from './components/ResizeHandle.vue';
 import {useWorkspaceLayout} from './app/useWorkspaceLayout';
