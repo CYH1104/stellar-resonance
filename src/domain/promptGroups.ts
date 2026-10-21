@@ -39,3 +39,13 @@ export function exportPromptGroups(entries:Preset[]){
  for(const p of entries){if(p.group)groups.set(p.group.id,{...p.group});prompts[p.identifier||p.id]={groupId:p.group?.id||'__ungrouped'};}
  return {version:1,groups:[...groups.values()].sort((a,b)=>a.order-b.order),prompts};
 }
+/** Preserve file order even when a folder's children are interleaved with others. */
+export function orderedPromptFolders(entries:Preset[]){
+ const sections:ReturnType<typeof promptFolders>=[];
+ for(const p of entries){
+  const id=p.group?.id||'__ungrouped',last=sections.at(-1);
+  if(last?.id===id)last.entries.push(p);
+  else sections.push({...promptFolders([p])[0],entries:[p]});
+ }
+ return sections;
+}

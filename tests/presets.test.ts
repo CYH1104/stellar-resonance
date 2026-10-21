@@ -15,10 +15,10 @@ it('含 model 消息角色的预设可完整导入，转换为 assistant 并保�
 const fixture={name:'文件预设',temperature:0.85,openai_max_tokens:2600,top_p:0.92,reverse_proxy:'https://do-not-import.example',proxy_password:'synthetic-secret',extensions:{script:'never execute'},prompts:[{identifier:'late',name:'后置',role:'assistant',content:'后置提示'},{identifier:'unused',name:'未启用',role:'system',content:'不要发送'},{identifier:'main',name:'主提示',role:'system',content:'你好 {{user}}',injection_trigger:['normal']},{identifier:'depth',name:'深度',role:'user',content:'插入历史',injection_position:1,injection_depth:1,injection_order:2},{identifier:'chatHistory',name:'聊天历史',marker:true}],prompt_order:[{character_id:100001,order:[{identifier:'main',enabled:true},{identifier:'depth',enabled:true},{identifier:'chatHistory',enabled:true},{identifier:'late',enabled:true},{identifier:'unused',enabled:false}]}]};
 it('酒馆文件保留排序、启停、角色、深度与字符串触发类型',()=>{
   const value=importTavernPreset(JSON.stringify(fixture));
-  expect(value.entries.map(p=>p.identifier)).toEqual(['main','depth','chatHistory','late','unused']);
+  expect(value.entries.map(p=>p.identifier)).toEqual(['late','unused','main','depth','chatHistory']);
   expect(value.entries.find(p=>p.identifier==='late')).toMatchObject({role:'assistant',position:'after'});
   expect(value.entries.find(p=>p.identifier==='depth')).toMatchObject({position:'in-chat',depth:1,order:2});
-  expect(value.entries[0].triggers).toEqual(['normal']);expect(value.entries.at(-1)?.enabled).toBe(false);
+  expect(value.entries.find(p=>p.identifier==='main')?.triggers).toEqual(['normal']);expect(value.entries.find(p=>p.identifier==='unused')?.enabled).toBe(false);
   expect(value.parameters).toEqual({temperature:0.85,maxTokens:2600,topP:0.92});
 });
 it('导入不保留地址凭据脚本，条目与采样参数可备份恢复',()=>{

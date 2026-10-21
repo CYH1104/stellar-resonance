@@ -78,7 +78,8 @@ export function importTavernPreset(text:string,filename='导入预设',options:{
     if(hasOrder&&!record)item.included=false;return item;
   });
   if(modelRoleCount)warnings.push(`已将 ${modelRoleCount} 条 model 消息角色转换为 assistant；提示词、启停和位置保留。`);
-  entries.sort((a,b)=>{const ai=order.findIndex(o=>o.identifier===a.identifier),bi=order.findIndex(o=>o.identifier===b.identifier);return(ai<0?9999:ai)-(bi<0?9999:bi);});
+  // The file's prompts array is the source order. prompt_order only supplies
+  // enablement, inclusion and history placement, never a display reordering.
   restoreKnownPromptGroups(entries);
   detectPresetCompatibility(entries,options.preserveOutputs===true);
   const closed=entries.filter(p=>p.compatibility?.verdict==='disabled'&&p.compatibility.originalEnabled),review=entries.filter(p=>p.compatibility?.verdict==='review');
@@ -99,7 +100,10 @@ export function importTavernPreset(text:string,filename='导入预设',options:{
 export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:RegexRule[]=[]){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
-  const ordered=entries.includes(anchor)?entries.filter(p=>p.included!==false):[...entries.filter(p=>p.included!==false&&p.position!=='after'),anchor,...entries.filter(p=>p.included!==false&&p.position==='after')];
+  const historyIndex=entries.indexOf(anchor);
+  const beforeHistory=(p:Preset)=>p.position!=='after'&&(p.position!=='in-chat'||historyIndex<0||entries.indexOf(p)<historyIndex);
+  const listed=entries.filter(p=>p.included!==false&&p!==anchor);
+  const ordered=[...listed.filter(beforeHistory),...(anchor.included!==false?[anchor]:[]),...listed.filter(p=>!beforeHistory(p))];
   const grouping=exportPromptGroups(entries);
   return JSON.stringify({...((grouping||regexRules.length)?{extensions:{...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.compatibility?{academy_compatibility:{...p.compatibility,...(p.compatibility.verdict==='disabled'&&p.enabled?{restored:true}:{})}}:{}),...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }

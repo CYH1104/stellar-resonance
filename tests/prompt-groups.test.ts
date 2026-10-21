@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {activePromptEntries,cleanPreset,exportTavernPreset,importTavernPreset} from '../src/domain/presets';
-import {promptFolders} from '../src/domain/promptGroups';
+import {promptFolders,orderedPromptFolders} from '../src/domain/promptGroups';
 import {backup,defaults,parseBackup} from '../src/domain/story';
 const grouping={version:1,groups:[{id:'head',name:'头部越狱',order:0,collapsed:true,enabled:true},{id:'identity',name:'身份',order:1,collapsed:false,enabled:true}],prompts:{a:{groupId:'head'},b:{groupId:'head'},c:{groupId:'identity'}}};
 const fixture=()=>({name:'分组预设',prompts:[{identifier:'a',name:'Gemini 头部',content:'甲',enabled:true},{identifier:'b',name:'Claude 头部',content:'乙',enabled:false},{identifier:'c',name:'身份条目',content:'丙',enabled:true},{identifier:'d',name:'无分组条目',content:'丁',enabled:true}],extensions:{baibaiToolkit:{presetPromptGroups:grouping},script:'synthetic-extension-must-not-run'}});
@@ -41,4 +41,15 @@ it('备份拒绝非法分组结构，不保存扩展附带的任意字段',()=>{
 it('分组显示跟随原条目顺序，不用旧元数据排序把变量组挪到列表末尾',()=>{
  const entries=importTavernPreset(JSON.stringify(fixture())).entries;const reordered=[entries[2],entries[0],entries[1],entries[3]];
  expect(promptFolders(reordered).map(g=>g.name)).toEqual(['身份','头部越狱','未分组']);expect(reordered.map(p=>p.identifier)).toEqual(['c','a','b','d']);
+});
+it('严格保留文件条目顺序，分组交错和前置未分组条目都不被挪动',()=>{
+ const raw=fixture();raw.prompts=[raw.prompts[3],raw.prompts[0],raw.prompts[2],raw.prompts[1]];
+ const imported=importTavernPreset(JSON.stringify({...raw,prompt_order:[{character_id:100001,order:[{identifier:'b',enabled:false},{identifier:'c',enabled:true},{identifier:'a',enabled:true},{identifier:'d',enabled:true}]}]}));
+ const sections=orderedPromptFolders(imported.entries);
+ expect(imported.entries.map(p=>p.identifier)).toEqual(['d','a','c','b']);
+ expect(sections.map(g=>g.id)).toEqual(['__ungrouped','head','identity','head']);
+ expect(sections.flatMap(g=>g.entries.map(p=>p.identifier))).toEqual(['d','a','c','b']);
+ expect(imported.entries.find(p=>p.identifier==='b')?.enabled).toBe(false);
+ const restored=importTavernPreset(exportTavernPreset(imported.entries,defaults().profiles[0]));
+ expect(restored.entries.filter(p=>!p.marker).map(p=>p.identifier)).toEqual(['d','a','c','b']);
 });
