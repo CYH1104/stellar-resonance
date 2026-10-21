@@ -23,7 +23,7 @@ Description=Stellar Resonance game server
 
 [Service]
 Type=simple
-WorkingDirectory=$(unit_quote "$ROOT")
+WorkingDirectory=${ROOT//%/%%}
 ExecStart=$(unit_quote "$NODE") $(unit_quote "$ROOT/server.mjs")
 Environment="HOST=0.0.0.0" "PORT=$APP_PORT" "AUTH_REQUIRED=1"
 Environment=$(unit_quote "PUBLIC_ORIGIN=$ORIGIN")
@@ -40,7 +40,7 @@ Description=Check main and deploy Stellar Resonance updates
 
 [Service]
 Type=oneshot
-WorkingDirectory=$(unit_quote "$ROOT")
+WorkingDirectory=${ROOT//%/%%}
 ExecStart=/bin/bash $(unit_quote "$ROOT/scripts/auto-update-server.sh") $(unit_quote "$ORIGIN")
 TimeoutStartSec=15min
 EOF
@@ -57,6 +57,7 @@ Unit=stellar-resonance-auto-update.service
 [Install]
 WantedBy=timers.target
 EOF
+systemd-analyze --user verify "$unit_dir/stellar-resonance.service" "$unit_dir/stellar-resonance-auto-update.service" "$unit_dir/stellar-resonance-auto-update.timer"
 systemctl --user daemon-reload
 # This also seeds last-deployed-main only after build and health checks pass.
 bash scripts/update-server.sh "$ORIGIN"

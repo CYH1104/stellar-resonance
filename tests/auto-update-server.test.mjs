@@ -40,6 +40,7 @@ test('polling skips both a manual update and another poller holding a lock',{ski
 });
 test('installer creates independent user services and preserves an existing game service',{skip:process.platform!=='linux'},async t=>{
  const f=await fixture(t);await copyFile(new URL('../scripts/install-auto-update.sh',import.meta.url),join(f.root,'scripts/install-auto-update.sh'));
+ await writeFile(join(f.root,'bin/systemd-analyze'),'#!/bin/bash\nexec /usr/bin/systemd-analyze "$@"\n',{mode:0o755});
  await writeFile(join(f.root,'bin/id'),'#!/bin/bash\nif [ "$1" = -u ]; then echo 1000; else echo ubuntu; fi\n',{mode:0o755});
  await writeFile(join(f.root,'bin/loginctl'),'#!/bin/bash\necho yes\n',{mode:0o755});
  await writeFile(join(f.root,'bin/systemctl'),'#!/bin/bash\nif [ "$2" = cat ]; then test -e "$HOME/.config/systemd/user/$3"; else echo "$*" >> "$HOME/systemctl-calls"; fi\n',{mode:0o755});
@@ -49,6 +50,6 @@ test('installer creates independent user services and preserves an existing game
  assert.match(await readFile(join(units,'stellar-resonance-auto-update.timer'),'utf8'),/OnUnitInactiveSec=60s/);
  const game=join(units,'stellar-resonance.service');assert.match(await readFile(game,'utf8'),/AUTH_REQUIRED=1/);
  assert.match(await readFile(join(units,'stellar-resonance-auto-update.service'),'utf8'),/Type=oneshot/);
- await writeFile(game,'existing customized service\n');await run();assert.equal(await readFile(game,'utf8'),'existing customized service\n');
+ const custom=(await readFile(game,'utf8')).replace('RestartSec=5','RestartSec=8');await writeFile(game,custom);await run();assert.equal(await readFile(game,'utf8'),custom);
  assert.match(await readFile(join(f.root,'home/systemctl-calls'),'utf8'),/enable --now stellar-resonance-auto-update.timer/);
 });
