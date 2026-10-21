@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
 import NoticeHost from './components/NoticeHost.vue';
 import {showNotice} from './app/notices';
@@ -254,7 +255,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
 
 <template>
-  <NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div v-if="w.lastSaved||w.storageStatus!=='idle'" class="workspace-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
@@ -360,3 +361,5 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
 </template>
 
+
+<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)} </style>

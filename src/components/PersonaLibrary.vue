@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SaveStatus from './SaveStatus.vue';
 import {useAutoSave} from '../app/useAutoSave';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {accountStorage} from '../storage/accountScope';
@@ -37,5 +38,5 @@ onMounted(async()=>{try{files.value=await repository.list();sessionId.value=prop
 <form id="user-persona-editor" @submit.prevent="save"><PersonaFields v-model="persona" :disabled="busy||w.workingPersona" /><div class="actions persona-import-actions"><button type="button" :disabled="busy" @click="importInput?.click()">导入文件</button><input ref="importInput" hidden type="file" accept=".txt,.md,text/plain,text/markdown" @change="importFile" /></div><label>人设备忘录<AutoTextarea v-model="memo" rows="6" :disabled="busy" placeholder="记录人物细节、创作想法或待办" /><small class="muted">随人设保存到本机档案，不会自动发送给模型。</small></label><PersonaImageEditor v-model:portrait="portrait" v-model:avatar="avatar" :disabled="busy"><template #image-options><label class="toggle persona-home-image"><input v-model="useAsHomeImage" type="checkbox" :disabled="busy" />作为主页图片展示（完整原图）</label></template></PersonaImageEditor></form>
 <details class="persona-assistant"><summary>AI 帮我写人设</summary><label>描述你想扮演的人物<AutoTextarea v-model="wish" rows="3" /></label><button :disabled="!wish.trim()||w.workingPersona||busy" @click="assist">{{w.workingPersona?'正在填写…':'AI 帮我写'}}</button><p class="muted">使用已配置的人设接口，生成后请检查再保存。</p></details>
 <section class="persona-session-binding"><label>绑定会话<select v-model="sessionId" :disabled="busy"><option value="">请选择会话</option><option v-for="s in w.sessions" :key="s.id" :value="s.id">{{s.name}}</option></select></label><div class="actions"><button :disabled="busy||!sessionId||!persona.name.trim()" @click="bind">保存并绑定会话</button><button :disabled="busy||!persona.name.trim()" @click="master">设为主人设</button></div></section>
-</div><footer class="student-file-actions"><span role="status">{{autoSave.error.value||autoSave.status.value||'编辑后自动保存'}}</span><button v-if="autoSave.error.value" class="primary" type="button" @click="autoSave.retry()" :disabled="busy||!persona.name.trim()">{{busy?'正在保存…':selected?'保存选定人设':'保存新人设'}}</button></footer></section>
+</div><footer class="student-file-actions"><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button v-if="autoSave.error.value" class="primary" type="button" @click="autoSave.retry()" :disabled="busy||!persona.name.trim()">{{busy?'正在保存…':selected?'保存选定人设':'保存新人设'}}</button></footer></section>
 </div></template>

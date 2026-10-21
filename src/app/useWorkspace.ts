@@ -93,7 +93,7 @@ export function useWorkspace() {
   function enterStory(){if(!ensureApiConfiguration())return false;if(pendingSessionId.value){const id=pendingSessionId.value;pendingSessionId.value='';open(id);}else panel.value='story';return true;}
   async function useMainForAll(){if(busy.value||workingMemory.value)return;for(const task of textApiTasks)preferences[task.field]=preferences.mainProfile;preferences.suggestionsProfile=preferences.randomEventProfile=preferences.forumReplyProfile=preferences.mainProfile;preferences.vectorEnabled=false;await safePersist();notice.value='全部文字功能使用主 API，记忆采用本地检索。';}
   async function confirmAllApis(){if(configuringApis.value||busy.value)return;const structural=apiConfigurationIssues(preferences,credentials,()=>true);if(structural.length){problem.value=structural[0];return;}configuringApis.value=true;try{for(const p of [...new Map([...requiredApis(preferences),...auxiliaryApis(preferences).filter(apiSelectable)].map(p=>[p.id,p])).values()])if(!await connectProfile(p))return;notice.value='必需的 API 配置已就绪，可以进入游戏。';await safePersist();}finally{configuringApis.value=false;}}
-  const storageStatus=ref<'idle'|'saving'|'saved'|'failed'>('idle');
+  const storageStatus=ref<'idle'|'pending'|'saving'|'saved'|'failed'>('idle');
   const notice=ref('正在读取本地存档…'), problem=ref(''), input=ref(''), lastSaved=ref('');
   function logRuntime(error:unknown,stage='运行错误'){
     if(error instanceof Error&&error.name==='AbortError')return;
@@ -145,7 +145,7 @@ export function useWorkspace() {
     }
   }
   let timer:ReturnType<typeof setTimeout>;
-  const scheduleSave=()=>{if(loading.value)return;clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
+  const scheduleSave=()=>{if(loading.value)return;storageStatus.value='pending';clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
   
   watch(preferences,scheduleSave,{deep:true});
   watch(input,text=>{const session=active.value;if(session){session.draftInput=text;inputDrafts.set(session.id,text);scheduleSave();}});

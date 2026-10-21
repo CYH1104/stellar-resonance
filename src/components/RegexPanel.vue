@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SaveStatus from './SaveStatus.vue';
 import {useAutoSave} from '../app/useAutoSave';
 import DismissibleNotice from './DismissibleNotice.vue';
 import {computed,ref,onMounted,onBeforeUnmount} from 'vue';
@@ -42,7 +43,7 @@ async function closeEditor(){await autoSave.flush();if(autoSave.error.value)retu
       <div class="actions"><label class="toggle"><input v-model="draft.markdownOnly" type="checkbox" />仅显示</label><label class="toggle"><input v-model="draft.promptOnly" type="checkbox" />仅提示词</label><label class="toggle"><input v-model="draft.runOnEdit" type="checkbox" />编辑时执行</label></div>
       <div class="field-grid"><label>最小深度<input v-model.number="draft.minDepth" type="number" min="-1" placeholder="不限" /></label><label>最大深度<input v-model.number="draft.maxDepth" type="number" min="-1" placeholder="不限" /></label><label>查找中的宏<select v-model.number="draft.substituteRegex"><option :value="0">不替换</option><option :value="1">直接替换</option><option :value="2">转义后替换</option></select></label></div>
       <p class="rail-note">小剧场勾选“小剧场（仅显示）”和“仅显示”，替换结果支持 HTML/CSS，只改变展示，不发送给模型。当前运行用户消息、AI 回复与提示词世界书位置；命令输出、推理字段仅保留配置。</p>
-      <div class="actions"><span role="status">{{autoSave.error.value||autoSave.status.value||'编辑后自动保存'}}</span><button type="button" @click="closeEditor">关闭</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
+      <div class="actions"><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button type="button" @click="closeEditor">关闭</button><button type="button" class="danger" :disabled="w.busy" @click="remove">删除正则</button></div>
       <details><summary>测试替换</summary><textarea v-model="sample" rows="3" aria-label="正则测试文本" /><button type="button" :disabled="testing" @click="test">{{testing?'处理中…':'测试'}}</button><HtmlMessageFrame v-if="preview&&hasRenderableHtml(preview)" :content="preview" /><pre v-else>{{preview}}</pre></details>
     </form><DismissibleNotice :message="error" error />
   </section>
