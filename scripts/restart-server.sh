@@ -48,6 +48,11 @@ if [ "$OLD_PID" != 0 ]; then
   fi
 fi
 mkdir -p server/.local
+if command -v systemctl >/dev/null && systemctl --user cat stellar-resonance.service >/dev/null 2>&1; then
+  echo '启动已安装的 systemd 用户服务。'
+  systemctl --user start stellar-resonance.service
+  exit 0
+fi
 HOST=0.0.0.0 PORT="$APP_PORT" PUBLIC_ORIGIN="$ORIGIN" AUTH_REQUIRED=1 \
   nohup node "$ROOT/server.mjs" >> server/.local/deploy.log 2>&1 </dev/null &
 NEW_PID=$!

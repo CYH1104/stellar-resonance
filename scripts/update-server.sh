@@ -100,6 +100,9 @@ for(let attempt=0;attempt<20;attempt++){
 }
 throw Error(`服务启动检查失败：${last}。请查看 server/.local/deploy.log 或 systemd 日志。`);
 ' "$ROOT" "$APP_PORT"
+# HEAD alone is insufficient: installation/build may have failed after reset.
+printf '%s\n' "$TARGET" > server/.local/last-deployed-main.tmp
+mv -- server/.local/last-deployed-main.tmp server/.local/last-deployed-main
 printf '\n更新完成，服务已启动。\n当前部署：'
 git --no-pager log -1 --oneline
 printf '游戏地址：%s/terminal\n管理页面：%s/editor/\n' "${ORIGIN%/}" "${ORIGIN%/}"
