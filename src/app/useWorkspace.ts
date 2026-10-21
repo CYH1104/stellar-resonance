@@ -341,7 +341,12 @@ export function useWorkspace() {
     finally{const logApplied=selected(turn)?.id===variant.id&&variant.status==='complete';const logAfter=logApplied?stateAt(session,index+1):logBefore;void formatErrors.record(done?'本次生成完成。':problem.value||'本次生成未完成。',done?'GENERATION_COMPLETE':'GENERATION_INCOMPLETE',session.id,turn.id,'generation',{variantId:variant.id,round:index+1,variables:variableChangeLog(logBefore,logAfter,logApplied,variant.outcome?.stateUpdate?.affinityReviewedIds,logStateDetails(variant.outcome).map(d=>d.text),variant.outcome?.stateUpdate?.codes)}).catch(()=>{});busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';void scheduleMemoryWork(session);}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
-  async function rewind(count:number){if(!active.value||busy.value)return;try{truncate(active.value,count);await safePersist();notice.value='已恢复对应剧情状态与记忆';}catch(e){problem.value=message(e);}}
+  async function rewind(count:number){
+    const session=active.value;if(!session||busy.value||workingMemory.value||!Number.isInteger(count)||count<0||count>=session.turns.length)return;
+    const previous=copy(session);
+    try{truncate(session,count);await persist();if(repairReport.value?.sessionId===session.id&&!session.turns.some(t=>t.id===repairReport.value?.turnId))repairReport.value=undefined;problem.value='';notice.value='已回溯，相关剧情状态与记忆已恢复';}
+    catch(e){for(const key of Object.keys(session))if(!Object.hasOwn(previous,key))delete (session as unknown as Record<string,unknown>)[key];Object.assign(session,previous);problem.value='回溯未保存，原对话和记录已恢复：'+message(e);}
+  }
   async function withdraw(index:number,expectedDraft?:string,expectedTurnId?:string):Promise<boolean>{
     const session=active.value,turn=session?.turns[index];if(!session||!turn||busy.value)return false;
     if(expectedTurnId!==undefined&&turn.id!==expectedTurnId){problem.value='消息已发生变化，请重新选择撤回。';return false;}

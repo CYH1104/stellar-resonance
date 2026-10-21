@@ -30,7 +30,7 @@ const autoSave=useAutoSave(()=>draft.value,async()=>{if(!draft.value?.findRegex|
 async function closeEditor(){await autoSave.flush();if(autoSave.error.value)return;draft.value=undefined;autoSave.cancel();}
 </script>
 <template><div ref="root" class="regex-toolbar">
-  <button type="button" :aria-expanded="open" aria-controls="regex-dropdown" @click="open=!open"><span>16</span>正则</button>
+  <button type="button" :aria-expanded="open" aria-controls="regex-dropdown" @click="open=!open">正则</button>
   <section v-if="open" id="regex-dropdown" class="regex-dropdown surface" role="dialog" aria-label="正则管理">
     <header><strong>正则 · {{w.presetSets.find(s=>s.id===w.currentPreset)?.name||'当前预设'}}</strong><button type="button" aria-label="关闭正则面板" @click="open=false">×</button></header>
     <div class="actions"><button type="button" :disabled="w.busy" @click="add">新建正则</button><FileImportButton label="导入正则" accept=".json,application/json" :disabled="w.busy" @change="importFile" /><button type="button" @click="exportFile">导出正则</button></div>

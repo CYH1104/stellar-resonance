@@ -539,3 +539,11 @@ it('向量模型列表携带用途过滤标记，文字模型列表保留原行�
  await w.fetchModels(p,signal,'embedding');expect(models.mock.calls[0][3]).toBe('embedding');
  await w.fetchModels(p,signal);expect(models.mock.calls[1][3]).toBeUndefined();
 });
+
+it('回溯保存失败恢复全部记录，成功仅删除目标轮起内容且保留草稿',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('回溯测试',{name:'玩家',appearance:'',background:'',personality:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'变化',characters:[{id:'guide',affinity:40}]}};});
+ await generateAndWait(w,'第一轮');await generateAndWait(w,'第二轮');w.input.value='保留草稿';await nextTick();const prior=JSON.stringify(w.active.value);
+ vi.mocked(IndexedDbRepository.prototype.write).mockRejectedValueOnce(new Error('存储故障'));await w.rewind(1);expect(JSON.stringify(w.active.value)).toBe(prior);expect(w.problem.value).toContain('原对话和记录已恢复');expect(w.input.value).toBe('保留草稿');
+ await w.rewind(1);expect(w.active.value!.turns).toHaveLength(1);expect(w.input.value).toBe('保留草稿');expect(saved!.sessions[0].turns).toHaveLength(1);expect(w.problem.value).toBe('');
+});

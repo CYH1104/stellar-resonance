@@ -4,8 +4,8 @@ import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
 import NoticeHost from './components/NoticeHost.vue';
 import {showNotice} from './app/notices';
-import RandomEventControl from './components/RandomEventControl.vue';
-import RegexPanel from './components/RegexPanel.vue';
+import WorkspaceNavigation from './components/WorkspaceNavigation.vue';
+
 import {accountStorage} from './storage/accountScope';
 
 
@@ -27,7 +27,7 @@ import StoryView from './components/StoryView.vue';
 import FormatErrorsView from './components/FormatErrorsView.vue';
 
 import StatusBar from './components/StatusBar.vue';
-import HiddenActorCards from './components/HiddenActorCards.vue';
+
 
 import FloatingGroupChat from './components/FloatingGroupChat.vue';
 import TheaterRail from './components/TheaterRail.vue';
@@ -231,28 +231,6 @@ function navigate(panel:Panel){library.value=false;if(panel==='game-settings')w.
 
 function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetNewGameDraft();Object.assign(w.newGameDraft.persona,persona);entry.value='new';library.value=false;}
 
-const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
-
-  { id: 'story', label: '剧情', no: '01' },
-
-  { id: 'memory', label: '记忆', no: '02', needsGame: true },
-
-  { id: 'relations', label: '人物关系', no: '03', needsGame: true },
-
-  { id: 'map', label: '地图', no: '04' },
-
-  { id: 'settings', label: '模型设置', no: '07' },
-
-  { id: 'presets', label: '预设管理', no: '08' },
-
-  { id: 'saves', label: '存档与导出', no: '09' },
-
-  { id: 'worldbooks', label: '世界书', no: '10' },
-
-  { id: 'game-settings', label: '小剧场设置', no: '11' }
-
-];
-
 </script>
 
 
@@ -264,39 +242,7 @@ const tabs: { id: Panel; label: string; no: string; needsGame?: boolean }[] = [
 
   <div v-else class="app-shell"><FloatingGroupChat v-if="w.active" :visible="!library&&w.panel==='story'&&w.apiReady" :w="w" />
 
-    <header class="top-shell">
-
-      <div class="app-header">
-
-        <div class="header-actions">
-
-          <button v-if="w.active" @click="layout.reset()">恢复默认布局</button><span v-if="w.active" class="current-journey">{{ w.active.name }}</span>
-
-          <template v-if="embedded"><button :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="start">新建存档</button><button :disabled="w.busy||w.workingMemory||w.workingPersona||w.creatingGame" @click="resume">过往存档</button></template>
-
-          <button :disabled="w.workingPersona || w.creatingGame" @click="opening">{{embedded?'返回学院':'返回开场'}}</button>
-
-        </div>
-
-      </div>
-
-      <nav class="navigation" aria-label="游戏模块">
-
-        <button v-if="w.active" class="mobile-only" :class="{selected:w.panel==='status'}" @click="w.panel='status'">人物状态</button>
-
-        <button v-if="w.active" class="compact-only" :class="{selected:w.panel==='theaters'}" @click="w.panel='theaters'">查看小剧场</button>
-
-        <button v-for="tab in tabs" :key="tab.id" :class="{selected:w.panel===tab.id}" :disabled="w.workingPersona||w.creatingGame" @click="navigate(tab.id)"><span>{{ tab.no }}</span>{{ tab.label }}</button>
-
-        <RandomEventControl :preferences="w.preferences" :disabled="w.busy" />
-
-        <button class="random-event-toggle suggestions-toggle" :aria-pressed="w.preferences.suggestionsEnabled!==false" :disabled="w.busy" @click="w.preferences.suggestionsEnabled=w.preferences.suggestionsEnabled===false"><span>13</span>行动建议<i :class="{enabled:w.preferences.suggestionsEnabled!==false}" aria-hidden="true"></i><span class="feature-toggle-state">{{w.preferences.suggestionsEnabled!==false?'已开启':'已关闭'}}</span></button>
-
-        <button :class="{selected:w.panel==='format-errors'}" @click="navigate('format-errors')"><span>14</span>运行日志</button><button class="random-event-toggle" :aria-pressed="w.hideFloors" @click="w.hideFloors=!w.hideFloors"><span>15</span>自动隐藏楼层<i :class="{enabled:w.hideFloors}" aria-hidden="true"></i></button>
-        <HiddenActorCards :w="w" /><RegexPanel v-if="w.panel==='story'&&w.active" :w="w" />
-      </nav>
-
-    </header>
+    <WorkspaceNavigation :w="w" :embedded="embedded" @navigate="navigate" @start="start" @resume="resume" @home="opening" @reset="layout.reset()" @personas="library=true" />
 
 
 

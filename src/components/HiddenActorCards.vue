@@ -10,7 +10,7 @@ function restore(id:string){if(!props.w.active)return;setActorCardHidden(props.w
 function restoreAll(){for(const c of hidden.value)restore(c.id);}
 </script>
 <template>
- <button :disabled="!w.active" @click="open=true"><span>17</span>隐藏角色卡片<span v-if="hidden.length">（{{hidden.length}}）</span></button>
+ <button :disabled="!w.active" @click="open=true">隐藏角色卡片<span v-if="hidden.length">（{{hidden.length}}）</span></button>
  <DialogShell v-if="open" title="显示被隐藏的角色卡片" @close="open=false">
   <p>选择要重新显示的卡片。隐藏只影响侧边栏显示，角色状态和好感度仍照常更新。</p>
   <p v-if="!hidden.length">没有被隐藏的角色卡片。</p>
