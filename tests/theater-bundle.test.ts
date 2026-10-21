@@ -1,0 +1,5 @@
+import {it,expect} from 'vitest';
+import {theaterBundle,parseTheaterBundle} from '../src/domain/theaterBundle';
+import {cleanRegexRules} from '../src/domain/regex';
+import {defaults,backup,parseBackup} from '../src/domain/story';
+it('bundles only bound regex and keeps binding through backup',()=>{const p=defaults(),s=p.theaters![3];s.regexIds=['bound'];const rules=cleanRegexRules([{id:'bound',findRegex:'x',replaceString:'<div style="color:red">x</div>',placement:[2,7],promptOnly:true,setId:'private'},{id:'unrelated',findRegex:'z',replaceString:'z'}]);const b=theaterBundle(s,rules),restored=parseTheaterBundle(JSON.stringify(b));expect(restored.regexRules).toHaveLength(1);expect(restored.regexRules[0]).toMatchObject({placement:[7],markdownOnly:true,promptOnly:false});expect(restored.regexRules[0]).not.toHaveProperty('setId');expect(parseBackup(backup({version:1,sessions:[],preferences:p})).preferences.theaters![3].regexIds).toEqual(['bound']);expect(()=>parseTheaterBundle('{"version":2}')).toThrow();});

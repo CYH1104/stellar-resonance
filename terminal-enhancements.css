@@ -18,3 +18,6 @@
 /* Character browser exposes only the fold action; administration has its own entry. */
 #__exp_splash__ .academy-card-tools{justify-content:flex-end}
 #__exp_splash__ .academy-card-tools #foldCards{border:0;background:transparent;box-shadow:none;border-radius:0}
+
+/* Compact home header. */
+#__exp_splash__ .spl-top{min-height:32px!important;height:auto!important;padding:6px 18px!important;box-sizing:border-box}#__exp_splash__ .spl-top-r{gap:12px}

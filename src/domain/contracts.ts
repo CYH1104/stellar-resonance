@@ -23,7 +23,7 @@ export interface WorldState { variables?:Record<string,Json>; player: ActorState
 export interface Dice { value: number; grade: string; rulesVersion: 'd100-v1' }
 export type TheaterKind='forum'|'group'|'fanfic'|'custom';
 export type TheaterTemplateId='fanfic'|'interview'|'spirit'|'off-duty'|'custom';
-export interface TheaterSetting {slot:number;enabled:boolean;kind:TheaterKind;title:string;instruction:string;charId?:string;templateId?:TheaterTemplateId}
+export interface TheaterSetting {regexIds?:string[];slot:number;enabled:boolean;kind:TheaterKind;title:string;instruction:string;charId?:string;templateId?:TheaterTemplateId}
 export interface Pairing {charId:string;category:'BL'|'BG'|'GB'|'待补充';userRole:'攻'|'受'|'待补充';reason:string}
 export interface SpiritDiary {ownerId:string;title:string;content:string;date?:string;mood?:string;ownerName?:string;spiritAnimal?:string;signatureName?:string;signatureDate?:string}
 export interface TheaterScene {complete?:boolean;slot:number;kind:TheaterKind;title:string;content:string;messages?:{speaker:string;content:string}[];participantIds?:string[];pairing?:Pairing;diary?:SpiritDiary}

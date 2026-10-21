@@ -27,7 +27,7 @@ async function reply(w:ViewModel,key:string) { if(await w.replyToForum(key,draft
       <article v-for="post in posts" :key="post.key" class="forum-post">
         <header class="forum-author"><span class="forum-avatar" aria-hidden="true">{{ post.authorName.slice(0,1) }}</span><div><strong>{{ post.authorName }}</strong><small v-if="post.type||post.time" class="forum-post-meta">{{[post.type,post.time].filter(Boolean).join(' · ')}}</small></div><span v-if="w.preferences.mode==='demo'" class="tag">演示</span></header>
         <span v-if="post.topic" class="topic-link">#{{ post.topic }}#</span>
-        <TheaterContent class="forum-body" :text="post.content" />
+        <TheaterContent :slot="1" class="forum-body" :text="post.content" />
         <div class="forum-actions">
           <button :class="{liked:w.active?.forumActivity?.[post.key]?.liked}" :aria-pressed="!!w.active?.forumActivity?.[post.key]?.liked" :disabled="w.busy||w.workingMemory||!!w.workingForumReply" @click="w.toggleForumLike(post.key)">{{ w.active?.forumActivity?.[post.key]?.liked ? '♥ 已赞' : '♡ 点赞' }} {{w.active?forumLikeCount(w.active,post):0}}</button>
           <button :aria-expanded="!!expanded[post.key]" @click="expanded[post.key]=!expanded[post.key]">评论 {{ (post.comments?.length||0)+(w.active?.forumActivity?.[post.key]?.replies?.length||0) }}</button>
