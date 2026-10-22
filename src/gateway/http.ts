@@ -1,3 +1,4 @@
+import {modelRequestContext,modelRequestFailure} from './requestFailure';
 import {cleanDiagnostic} from '../domain/diagnostics';
 import {validateMemoryRecord,type MemoryRequest} from '../domain/memories';
 import type { Gateway, GenerateEvent, GenerateRequest, LocalService, Outcome, Persona, Profile, WorldState } from '../domain/contracts';
@@ -40,14 +41,18 @@ export class HttpGateway implements Gateway {
   async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal):Promise<Persona>{const data=await(await this.post('persona',{wish,draft,profile,key},signal)).json();try{return normalizePersona(data.persona);}catch{throw new Error('AI 返回的人设格式不正确，现有表格未修改。');}}
   async place(id:string):Promise<{id:string;name:string;description:string}>{return (await this.post('place',{id})).json();}
   private async post(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const context=modelRequestContext(body,path),started=Date.now();
+    try{
     const response=await fetch(`/api/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal}).catch(error=>{if(signal?.aborted)throw error;throw new Error('无法连接本机后台。请使用“启动预览.bat”启动服务，然后刷新网页。');});
     if(!response.ok){let code='';try{const value=await response.json() as {code?:unknown};if(typeof value.code==='string')code=value.code;}catch{}const personaErrors:Record<string,string>={PLAYER_NAME_REQUIRED:'请填写玩家姓名后再开始。',INVALID_PERSONA:'人设表格的内容或长度不正确，请检查后重试。',INVALID_PERSONA_WISH:'请用不超过3000字描述想玩的人设。',INVALID_PERSONA_RESULT:'AI 返回的人设格式不正确，现有表格未修改，可以重试。',MODEL_LIST_NOT_SUPPORTED:'该服务不支持获取模型列表，请检查接口配置并刷新模型列表。',INVALID_MODEL_LIST:'服务返回的模型列表格式不正确，请检查接口配置并刷新模型列表。',MODEL_LIST_TOO_LARGE:'模型列表过大，请检查接口配置并刷新模型列表。',MODEL_LIST_FAILED:'获取模型列表失败，请检查地址；也可手动填写模型名。'};throw new Error(personaErrors[code]||apiMessages[code]||(response.status===404?'服务器接口尚未接通。':response.status===501?'此模型功能尚未配置。':response.status===401||response.status===403?'本机会话已失效，请刷新页面后重新确认接口。':`接口请求失败（${response.status}），请重试。`));}
     return response;
+    }catch(error){throw modelRequestFailure(error,context,Date.now()-started);}
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
   async *generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent> {
+    const context=modelRequestContext({profile:{...request.profile},key},'generate'),started=Date.now();
     const response=await this.post('generate',{...request,key,singleStateCall:true,captureFormatErrors:true},signal);
-    if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw new Error('服务器应返回 SSE 流式响应');
+    if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw modelRequestFailure(new Error('服务器应返回 SSE 流式响应'),context,Date.now()-started);
     const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer='', finished=false;
     try {
       while(true) {
@@ -73,7 +78,7 @@ export class HttpGateway implements Gateway {
         if(buffer.length>1024*1024) throw new Error('流式分片超过允许大小');
       }
       if(!finished) throw new Error('回复流已中断，保留已收到的内容。');
-    } finally { await reader.cancel().catch(()=>{}); reader.releaseLock(); }
+    } catch(error){throw modelRequestFailure(error,context,Date.now()-started);} finally { await reader.cancel().catch(()=>{}); reader.releaseLock(); }
   }
   async randomEvent(input:{instruction?:string;kind:SpecialEventKind;persona:Persona;input:string;history:{role:'user'|'assistant';content:string}[];presentCharacterIds:string[]},profile:Profile,key:string,signal:AbortSignal):Promise<SpecialEvent>{return cleanSpecialEvent(await(await this.post('random-event',{...input,profile,key},signal)).json());}
   async forumReply(input:{persona?:Persona;state?:WorldState;userName:string;post:{authorName:string;content:string};comments:{authorName:string;content:string}[];minReplies?:5;participantNames?:string[]},profile:Profile,key:string,signal:AbortSignal):Promise<{authorId:string;authorName:string;content:string}|{authorId:string;authorName:string;content:string}[]>{const data=await(await this.post('forum-reply',{...input,profile,key},signal)).json();const valid=(r:any)=>r&&typeof r.authorId==='string'&&typeof r.authorName==='string'&&typeof r.content==='string'&&!!r.content.trim();if(input.minReplies===5){if(!Array.isArray(data?.replies)||data.replies.length<5||data.replies.length>50||!data.replies.every(valid))throw new Error('论坛回复不足5条或格式不正确，你的评论已保留，可重试。');return data.replies;}if(!valid(data))throw new Error('论坛回复格式不正确，你的评论已保留。');return data;}

@@ -1,3 +1,4 @@
+import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {featurePrompts,featureContract} from './feature-prompts.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
 import {stateProtocol} from './state-protocol.mjs';
@@ -42,7 +43,7 @@ export function repairedMessages(messages,story,card,state,options={},code='INVA
 }
 
 /** Initial response plus at most three continuation requests; state is committed once. */
-export async function* streamStory({card,state,options,messages,partial='',stateOnly=false,connection,profile,key,firstResponse,firstSignal,signal,fetchImpl=fetch,attemptTimeoutMs=180000,onProgress}){
+export async function* streamStory({card,state,options,messages,partial='',stateOnly=false,connection,profile,key,firstResponse,firstSignal,signal,fetchImpl=fetch,attemptTimeoutMs=MODEL_REQUEST_TIMEOUT_MS,onProgress}){
   options={...options,validationWarnings:[]};
   if(partial)options={...options,dice:undefined};
   const decoder=new StoryDecoder();if(partial)decoder.push(partial);

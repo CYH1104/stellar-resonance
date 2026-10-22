@@ -1,3 +1,4 @@
+import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {createRelayPolicy} from './relay-policy.mjs';
 import {createTheaterShares} from './theater-shares.mjs';
 import {guardPromptRequest} from './prompt-guard.mjs';
@@ -140,7 +141,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/models'){
           if(!safeString(data.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');if(data.kind!==undefined&&data.kind!=='embedding')throw modelError(400,'INVALID_MODEL_KIND');
           const controller=new AbortController();response.on('close',()=>controller.abort());
-          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           await relayPolicy.assert(endpoint(data.apiBaseUrl));accounts?.recordRelay(current.accountId,endpoint(data.apiBaseUrl),'models');
           const result=await fetchModelList({apiBaseUrl:data.apiBaseUrl,key:data.key,signal,fetchImpl,kind:data.kind});
           signal.throwIfAborted();json(response,200,result);return;
@@ -150,7 +151,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(!safeString(data.profile?.apiBaseUrl,2000))throw modelError(400,'INVALID_MODEL_URL');
           const selected={url:endpoint(data.profile.apiBaseUrl)},controller=new AbortController();response.on('close',()=>controller.abort());
           await relayPolicy.assert(selected.url);accounts?.recordRelay(current.accountId,selected.url,'probe');
-          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]),started=performance.now();
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]),started=performance.now();
           if(data.kind==='embedding'){
             const {vectors}=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:['连接测试'],signal,fetchImpl});
             signal.throwIfAborted();json(response,200,{kind:'embedding',durationMs:Math.round(performance.now()-started),dimensions:vectors[0].length});
@@ -165,7 +166,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/persona'){
           const selected=await connection(current,data),messages=buildPersonaMessages(source,data.wish,data.draft);
           const controller=new AbortController();response.on('close',()=>controller.abort());
-          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(90000)]);
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});
           let content='';for await(const chunk of completionChunks(upstream,{signal})){signal.throwIfAborted();content+=chunk;if(content.length>16000)throw modelError(502,'INVALID_PERSONA_RESULT');}
           signal.throwIfAborted();json(response,200,{persona:parsePersonaResult(content)});return;
@@ -181,7 +182,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const selected=await connection(current,generation),{requestId,messages,state,theaterSettings,dice,card:generationCard,presetDiagnostics,repairLore}=buildMessages(source,{...data,stateSeparate:false},privateBooks);
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
-          const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]);
+          const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const initialMessages=stateOnly?repairedMessages(messages,partial,generationCard,state,{requestId,theaterSettings,persona:data.persona,dice,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,input:data.input,worldInfo:repairLore,repairPlan}):partial?continuedMessages(messages,partial,state.player.name):messages;
           const developerStarted=performance.now();
           const upstream=await openCompletion({connection:selected,key:generation.key,profile:generation.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
@@ -195,24 +196,24 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           return;
         }
         if(path==='/api/random-event'){
-          const selected=await connection(current,data),messages=randomEventMessages(source,data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(90000)]);
+          const selected=await connection(current,data),messages=randomEventMessages(source,data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const upstream=await openCompletion({connection:selected,key:data.key,profile:{...data.profile,maxTokens:Math.min(data.profile.maxTokens,2000)},messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_RANDOM_EVENT_RESULT');}signal.throwIfAborted();json(response,200,parseRandomEvent(content,data.kind));return;
         }
         if(path==='/api/forum-reply'){
           const selected=await connection(current,data),thread=data.minReplies!==undefined,plan=thread?forumThreadMessages(source,data):forumReplyMessages(source,data),{speaker,messages}=plan;
-          const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]);
+          const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const upstream=await openCompletion({connection:selected,key:data.key,profile:thread?{...data.profile,maxTokens:Math.max(data.profile.maxTokens,3000)}:data.profile,messages,signal,fetchImpl});let content='';
           for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(thread?60000:8000))throw modelError(502,'INVALID_FORUM_REPLY_RESULT');}
           signal.throwIfAborted();json(response,200,thread?parseForumThread(content,plan):parseForumReply(content,speaker));return;
         }
         if(path==='/api/memory'){
-          const selected=await connection(current,data),batch=data.rounds!==undefined,{input,inputs,messages}=batch?batchMemoryMessages(data.rounds):memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);
+          const selected=await connection(current,data),batch=data.rounds!==undefined,{input,inputs,messages}=batch?batchMemoryMessages(data.rounds):memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(batch?150000:20000))throw modelError(502,'INVALID_MEMORY_RESULT');}
           signal.throwIfAborted();json(response,200,batch?{records:parseBatchMemoryResult(content,inputs)}:{record:parseMemoryResult(content,input)});return;
         }
         if(path==='/api/utility'){
           if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');
-          const selected=await connection(current,data),signal=AbortSignal.timeout(60000);
+          const selected=await connection(current,data),signal=AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS);
           const instruction=data.task==='summary'?internalPrompt('app.2'):internalPrompt("app.1");
           const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(data.texts)}],signal,fetchImpl});
           let result='';for await(const chunk of completionChunks(upstream,{signal})){result+=chunk;if(result.length>12000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');}
@@ -220,7 +221,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         }
         if(path==='/api/embeddings'){
           const selected=await connection(current,data),controller=new AbortController();response.on('close',()=>controller.abort());
-          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]);
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const result=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:data.texts,signal,fetchImpl});signal.throwIfAborted();json(response,200,result);return;
         }
         throw modelError(404,'API_NOT_FOUND');

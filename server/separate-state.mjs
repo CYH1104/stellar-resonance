@@ -1,3 +1,4 @@
+import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {buildMessages,completionChunks,openCompletion,modelError,StoryDecoder} from './ai.mjs';
 import {streamStory} from './story-stream.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
@@ -7,7 +8,7 @@ export async function* separatedState({source,data,privateBooks,firstResponse,fi
  const main=buildMessages(source,{...data,stateSeparate:true},privateBooks),visible=new StoryDecoder();let story='';
  for await(const chunk of completionChunks(firstResponse,{signal:firstSignal||signal,onProgress})){signal.throwIfAborted();const prose=visible.push(chunk);if(prose){story+=prose;yield {type:'delta',text:prose};}}
  if(!story.trim())throw modelError(502,'MODEL_STORY_EMPTY');
- const storyForState=(data.continuation?.partial||'')+story,stateSignal=AbortSignal.any([signal,AbortSignal.timeout(180000)]);
+ const storyForState=(data.continuation?.partial||'')+story,stateSignal=AbortSignal.any([signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
  const warnings=[];let primary;
  if(/<(?:SR_STATE|status|choices|forum|theater|UpdateVariable|attitudes)\b/i.test(visible.raw))primary=visible.finish(main.card,main.state,{stateEnabled:false,theaterSettings:main.theaterSettings,persona:data.persona,dice:main.dice,singleStateCall:true,requireDynamicState:true,validationWarnings:warnings});
  else{primary={event:'本轮剧情已输出',suggestions:[]};if(main.theaterSettings.some(t=>t.enabled))warnings.push('STATE_SIDE_SCENE_RETAINED');}
