@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import {it,expect} from 'vitest';
 import {blankPersona} from '../src/domain/persona';
-import {PersonaLibrary,personaArchiveEntries,resolvePersonaArchiveFile,type PersonaFile} from '../src/storage/personaLibrary';
+import {PersonaLibrary,personaArchiveEntries,resolvePersonaArchiveFile,personaSourceSessionIds,type PersonaFile} from '../src/storage/personaLibrary';
 const original={...blankPersona(),name:'玩家',background:'原设定'};
 const session={id:'archive-source',persona:original,updatedAt:'2026-10-22T00:00:00Z'};
 it('editing a session fallback keeps one archive after autosaves and reopening',async()=>{
@@ -29,4 +29,11 @@ it('different personas with the same name and explicitly saved copies remain dis
  const other={...session,id:'other',persona:{...original,background:'另一人设'}};
  expect(personaArchiveEntries([file],[other])).toHaveLength(2);
  expect(personaArchiveEntries([file,{...file,id:'explicit-copy'}],[session])).toHaveLength(2);
+});
+it('captures newly bound or newly created sessions against the previous saved persona before editing',()=>{
+ const file:PersonaFile={id:'master',name:original.name,persona:original,updatedAt:session.updatedAt,sourceSessionIds:['old-source']};
+ const same={...session,id:'new-session'},other={...session,id:'different',persona:{...original,background:'不同设定'}};
+ const ids=personaSourceSessionIds(file,[same,other],['explicit-target']);
+ expect(ids).toEqual(['old-source','explicit-target','new-session']);expect(file.sourceSessionIds).toEqual(['old-source']);
+ expect(personaArchiveEntries([{...file,sourceSessionIds:ids,persona:{...original,name:'改名'}}],[same])).toHaveLength(1);
 });

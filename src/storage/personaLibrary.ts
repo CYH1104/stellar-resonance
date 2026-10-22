@@ -4,6 +4,9 @@ import {normalizePersona,personaLimits} from '../domain/persona';
 import {accountDatabase} from './accountScope';
 export interface PersonaFile {avatarAppearance?:AvatarAppearance;id:string;name:string;persona:Persona;updatedAt:string;portrait?:Blob;avatar?:Blob;useAsHomeImage?:boolean;memo?:string;remark?:string;sourceSessionIds?:string[]}
 type PersonaSession={id:string;persona:Persona;updatedAt:string};
+export function personaSourceSessionIds(file:PersonaFile|undefined,sessions:PersonaSession[],known:string[]=[]){
+ return [...new Set([...(file?.sourceSessionIds||[]),...known,...(file?sessions.filter(s=>samePersona(s.persona,file.persona)).map(s=>s.id):[])])];
+}
 export function samePersona(a:Persona,b:Persona){
  const first=normalizePersona(a,false),second=normalizePersona(b,false);
  return (Object.keys(personaLimits) as (keyof typeof personaLimits)[]).every(key=>(first[key]||'')===(second[key]||''));
