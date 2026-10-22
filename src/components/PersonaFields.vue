@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue';
+import {computed,ref,watch} from 'vue';
 import type {Persona} from '../domain/contracts';
 import SpiritPersonaFields from './SpiritPersonaFields.vue';
 import AutoTextarea from './AutoTextarea.vue';
@@ -12,6 +12,7 @@ const pheromone=extra('信息素');
 const spiritLevel=computed({get:()=>model.value.mentalPowerLevel||readPersonaExtra(model.value.other,'精神力等级'),set:(value:string)=>{model.value.mentalPowerLevel=value;model.value.other=writePersonaExtra(model.value.other,'精神力等级','');}});
 const notes=computed({get:()=>personaNotes(model.value.other),set:(value:string)=>{model.value.other=writePersonaNotes(model.value.other,value);}});
 const mode=ref(model.value.rawText?'custom':'form');
+watch(()=>model.value,persona=>{mode.value=persona.rawText?'custom':'form';});
 const freeFields={ability:'异能',appearance:'外貌',personality:'性格',background:'背景',other:'其他设定',pairingPreference:'配对偏好',spiritName:'精神体姓名',spiritAppearance:'精神体外貌',spiritPersonality:'精神体性格',spiritAbility:'精神体能力'} as const;
 const customText=computed({get:()=>[model.value.rawText,...Object.entries(freeFields).map(([key,label])=>model.value[key as keyof typeof freeFields]?label+'：'+model.value[key as keyof typeof freeFields]:'')].filter(Boolean).join('\n\n'),set:(text:string)=>{model.value.rawText=text;for(const key of Object.keys(freeFields) as (keyof typeof freeFields)[])model.value[key]='';}});
 const departments=['领航者 · 星舰指挥与战略系','破军 · 机甲驾驶与近地作战系','织网者 · 信息工程与电子战系','基石 · 后勤与战略支援系','银铃 · 外交与星际文化系'];

@@ -1,8 +1,21 @@
 import 'fake-indexeddb/auto';
 import {it,expect} from 'vitest';
-import {PersonaLibrary,validatePersonaTextFile} from '../src/storage/personaLibrary';
+import {PersonaLibrary,validatePersonaTextFile,personaMediaFile} from '../src/storage/personaLibrary';
 import {blankPersona,normalizePersona} from '../src/domain/persona';
 import {newSession,defaults,backup,parseBackup} from '../src/domain/story';
+it('restores unfinished editor drafts and original images without creating an archive',async()=>{
+ const library=new PersonaLibrary(),before=(await library.list()).length;
+ const draft={id:'',name:'',persona:{...blankPersona(),rawText:'  未填姓名也保留\n'},portrait:new Blob(['original'],{type:'image/png'}),remark:'草稿',updatedAt:new Date().toISOString()};
+ await library.saveDraft(draft);const restored=await new PersonaLibrary().readDraft();
+ expect(restored?.persona.rawText).toBe(draft.persona.rawText);expect(await restored?.portrait?.text()).toBe('original');expect((await library.list()).length).toBe(before);
+});
+it('loads a bound portrait after persona edits and does not use another same-name persona',()=>{
+ const persona={...blankPersona(),name:'同名'},portrait=new Blob(['image']);
+ const linked={id:'linked',name:'原名',persona:{...persona,name:'原名'},portrait,sourceSessionIds:['session'],updatedAt:''};
+ const other={id:'other',name:'同名',persona:{...persona,background:'不同人设'},portrait,updatedAt:''};
+ expect(personaMediaFile([other,linked],{id:'session',persona})).toBe(linked);
+ expect(personaMediaFile([other],{id:'unbound',persona})).toBeUndefined();
+});
 it('only TXT and MD files within the import limit are accepted',()=>{
   expect(()=>validatePersonaTextFile('人设.TXT',1024)).not.toThrow();
   expect(()=>validatePersonaTextFile('人设.md',1024)).not.toThrow();

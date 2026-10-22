@@ -15,7 +15,7 @@ import {cleanSuggestions} from '../domain/suggestions';
 import type {Turn} from '../domain/contracts';
 import {accountStorage} from '../storage/accountScope';
 
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';import StoryActions from './StoryActions.vue';import {PersonaLibrary} from '../storage/personaLibrary';import type { ViewModel } from '../app/useWorkspace';import { selected } from '../domain/story';import DialogShell from './DialogShell.vue';import StoryContent from './StoryContent.vue';
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';import StoryActions from './StoryActions.vue';import {PersonaLibrary,personaMediaFile} from '../storage/personaLibrary';import type { ViewModel } from '../app/useWorkspace';import { selected } from '../domain/story';import DialogShell from './DialogShell.vue';import StoryContent from './StoryContent.vue';
 const props=defineProps<{w:ViewModel}>();
 const regexRules=computed(()=>(props.w.preferences.regexRules||[]).filter(r=>!r.setId||r.setId===props.w.currentPreset));
 const highlightedTurn=ref('');let highlightTimer:ReturnType<typeof setTimeout>|undefined;
@@ -35,8 +35,8 @@ function toggleMenu(index:number,event?:MouseEvent,role:'user'|'assistant'='assi
  void nextTick(()=>{if(!menuOpen.value||chosenTurn.value!==index||menuRole.value!==role)return;const menu=document.querySelector<HTMLElement>(role==='user'?'.user-action-menu':'.reply-action-menu');if(!menu)return;const actual=Math.min(menu.scrollHeight,height),below=rect.bottom+6,top=below+actual<=innerHeight-16?below:rect.top-actual-6;menuPosition.value={...menuPosition.value,top:Math.max(16,Math.min(top,innerHeight-actual-16))+'px'};});
 }
 
-async function loadAvatar(){const persona=props.w.active?.persona;const request=++avatarRequest;if(avatarUrl.value)URL.revokeObjectURL(avatarUrl.value);avatarUrl.value='';avatarAppearance.value=cleanAvatarAppearance();avatarLegacyCrop.value=false;if(!persona)return;try{const files=await new PersonaLibrary().list();if(request!==avatarRequest)return;const file=files.find(f=>f.persona.name===persona.name&&(f.persona.rawText||'')===(persona.rawText||'')&&(f.persona.identity||'')===(persona.identity||''));avatarAppearance.value=cleanAvatarAppearance(file?.avatarAppearance);avatarLegacyCrop.value=!file?.portrait;const blob=file?.portrait||file?.avatar;if(blob)avatarUrl.value=URL.createObjectURL(blob);}catch{}}
-watch(()=>props.w.active?.persona,loadAvatar,{immediate:true,deep:true});
+async function loadAvatar(){const persona=props.w.active?.persona;const request=++avatarRequest;if(avatarUrl.value)URL.revokeObjectURL(avatarUrl.value);avatarUrl.value='';avatarAppearance.value=cleanAvatarAppearance();avatarLegacyCrop.value=false;if(!persona)return;try{const files=await new PersonaLibrary().list();if(request!==avatarRequest)return;const file=props.w.active?personaMediaFile(files,props.w.active):undefined;avatarAppearance.value=cleanAvatarAppearance(file?.avatarAppearance);avatarLegacyCrop.value=!file?.portrait;const blob=file?.portrait||file?.avatar;if(blob)avatarUrl.value=URL.createObjectURL(blob);}catch{}}
+watch(()=>[props.w.active?.id,props.w.active?.persona],loadAvatar,{immediate:true,deep:true});
 onMounted(()=>window.addEventListener('academy:persona-avatar-updated',loadAvatar));
 onBeforeUnmount(()=>{window.removeEventListener('academy:persona-avatar-updated',loadAvatar);avatarRequest++;if(avatarUrl.value)URL.revokeObjectURL(avatarUrl.value);});
 const edit=ref<{index:number;role:'user'|'assistant'|'opening';text:string;sessionId:string;turnId?:string;variantId?:string;original:string}>();
