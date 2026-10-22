@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {runLogGroups} from '../src/domain/runLogGroups';
+import {runLogGroups,copyableRunLog} from '../src/domain/runLogGroups';
 import type {FormatErrorRecord} from '../src/storage/formatErrors';
 const row=(id:string,sessionId:string,turnId:string,code:string,at:string,kind:FormatErrorRecord['kind']='runtime'):FormatErrorRecord=>({id,sessionId,turnId,code,at,kind,raw:id});
 it('combines generation, compatibility and delayed errors across dates in the original round',()=>{
@@ -14,4 +14,10 @@ it('keeps sessions and rounds separate while retaining retries',()=>{
 it('retains deleted-turn metadata and never merges unidentified records',()=>{
  const groups=runLogGroups([{...row('a','removed','old','error','1'),round:9},row('b','','','error','2'),row('c','','','error','3')],[]);
  expect(groups).toHaveLength(3);expect(groups.find(g=>g.turnId==='old')?.round).toBe(9);
+});
+it('copies all records of one round including source identifiers and variable snapshots',()=>{
+ const entries=[{...row('done','s','t','GENERATION_COMPLETE','2','generation'),round:2,variantId:'v',variables:{applied:true,total:0,changes:[],reviews:[],details:[],codes:[]}},row('error','s','t','后台记忆整理','3')];
+ const text=copyableRunLog(runLogGroups(entries,[])[0]);
+ for(const value of ['第 2 轮','会话 s','楼层 t','稿件 v','GENERATION_COMPLETE','后台记忆整理','变量变化','"applied": true'])expect(text).toContain(value);
+ expect(text.indexOf('GENERATION_COMPLETE')).toBeLessThan(text.indexOf('后台记忆整理'));
 });
