@@ -1,8 +1,25 @@
 import {cleanAvatarAppearance,type AvatarAppearance} from '../domain/avatarAppearance';
 import type {Persona} from '../domain/contracts';
-import {normalizePersona} from '../domain/persona';
+import {normalizePersona,personaLimits} from '../domain/persona';
 import {accountDatabase} from './accountScope';
-export interface PersonaFile {avatarAppearance?:AvatarAppearance;id:string;name:string;persona:Persona;updatedAt:string;portrait?:Blob;avatar?:Blob;useAsHomeImage?:boolean;memo?:string}
+export interface PersonaFile {avatarAppearance?:AvatarAppearance;id:string;name:string;persona:Persona;updatedAt:string;portrait?:Blob;avatar?:Blob;useAsHomeImage?:boolean;memo?:string;sourceSessionIds?:string[]}
+type PersonaSession={id:string;persona:Persona;updatedAt:string};
+export function samePersona(a:Persona,b:Persona){
+ const first=normalizePersona(a,false),second=normalizePersona(b,false);
+ return (Object.keys(personaLimits) as (keyof typeof personaLimits)[]).every(key=>(first[key]||'')===(second[key]||''));
+}
+/** A session is a fallback for an unsaved archive, not a second archive after editing. */
+export function personaArchiveEntries(files:PersonaFile[],sessions:PersonaSession[]):PersonaFile[]{
+ const linked=new Set(files.flatMap(f=>f.sourceSessionIds||[])),result=[...files];
+ for(const session of sessions){
+  if(linked.has(session.id)||result.some(f=>samePersona(f.persona,session.persona)))continue;
+  result.push({id:'session/'+session.id,name:session.persona.name,persona:session.persona,updatedAt:session.updatedAt});
+ }
+ return result;
+}
+export function resolvePersonaArchiveFile(file:PersonaFile,files:PersonaFile[]){
+ return files.find(f=>f.id===file.id)||(file.id.startsWith('session/')?files.find(f=>f.sourceSessionIds?.includes(file.id.slice(8))||samePersona(f.persona,file.persona)):undefined)||file;
+}
 export function validatePersonaTextFile(name:string,size:number){if(!/\.(txt|md)$/i.test(name))throw Error('只能导入 .txt 或 .md 人设文件。');if(size>256*1024)throw Error('文件不能超过 256KB。');}
 export class PersonaLibrary {
   private db?:Promise<IDBDatabase>;
