@@ -2,7 +2,7 @@ import {cleanAvatarAppearance,type AvatarAppearance} from '../domain/avatarAppea
 import type {Persona} from '../domain/contracts';
 import {normalizePersona,personaLimits} from '../domain/persona';
 import {accountDatabase} from './accountScope';
-export interface PersonaFile {avatarAppearance?:AvatarAppearance;id:string;name:string;persona:Persona;updatedAt:string;portrait?:Blob;avatar?:Blob;useAsHomeImage?:boolean;memo?:string;sourceSessionIds?:string[]}
+export interface PersonaFile {avatarAppearance?:AvatarAppearance;id:string;name:string;persona:Persona;updatedAt:string;portrait?:Blob;avatar?:Blob;useAsHomeImage?:boolean;memo?:string;remark?:string;sourceSessionIds?:string[]}
 type PersonaSession={id:string;persona:Persona;updatedAt:string};
 export function samePersona(a:Persona,b:Persona){
  const first=normalizePersona(a,false),second=normalizePersona(b,false);

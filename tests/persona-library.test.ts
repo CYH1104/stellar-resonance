@@ -33,3 +33,11 @@ it('stores private memo separately from model persona and preserves long notes',
  expect(saved.memo).toBe(record.memo);expect(saved.persona).not.toHaveProperty('memo');
  await library.save({...record,memo:'x'.repeat(20001)});expect((await library.list()).find(p=>p.id===record.id)!.memo).toHaveLength(20001);await library.remove(record.id);
 });
+
+it('keeps distinguishing remarks outside persona data and preserves them on edits',async()=>{
+ const library=new PersonaLibrary(),persona=normalizePersona({...blankPersona(),name:'同名玩家'}),record={id:'remark-test',name:persona.name,persona,updatedAt:new Date().toISOString(),remark:'校外人员版'};
+ try{await library.save(record);const saved=(await library.list()).find(p=>p.id===record.id)!;
+ expect(saved.remark).toBe('校外人员版');expect(saved.persona).not.toHaveProperty('remark');expect(JSON.stringify(saved.persona)).not.toContain('校外人员版');
+ await library.save({...saved,remark:''});expect((await library.list()).find(p=>p.id===record.id)!.remark).toBe('');
+ }finally{await library.remove(record.id);}
+});
