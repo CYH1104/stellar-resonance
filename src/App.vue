@@ -133,7 +133,7 @@ watch(()=>w.newGameDraft.persona,persona=>{if(!w.active&&persona.name.trim())set
 
 watch(()=>w.loading,loading=>{if(!loading&&!w.active){try{if(accountStorage.getItem(masterPersonaKey))return;}catch{}const recent=[...w.sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))[0];if(recent)setMasterPersona(recent.persona);}});
 
-const fullPage=computed(()=>library.value||!['story','theaters','status'].includes(w.panel));
+const fullPage=computed(()=>library.value||!['story','theaters'].includes(w.panel));
 
 const embedded=!!document.getElementById('academy-workspace');
 

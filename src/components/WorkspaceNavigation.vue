@@ -8,7 +8,7 @@ import RegexPanel from './RegexPanel.vue';
 const props=defineProps<{w:ViewModel;embedded:boolean}>();
 const emit=defineEmits<{navigate:[panel:Panel];start:[];resume:[];home:[];reset:[];personas:[]}>();
 const root=ref<HTMLElement>(),group=ref('');
-const primary:{id:Panel;label:string}[]=[{id:'status',label:'人物状态'},{id:'theaters',label:'小剧场'},{id:'story',label:'剧情'},{id:'memory',label:'记忆'},{id:'relations',label:'人物关系'},{id:'map',label:'地图'}];
+const primary:{id:Panel;label:string}[]=[{id:'story',label:'剧情'},{id:'status',label:'人物状态'},{id:'theaters',label:'小剧场'},{id:'memory',label:'记忆'},{id:'relations',label:'人物关系'},{id:'map',label:'地图'}];
 const config:{id:Panel;label:string}[]=[{id:'settings',label:'API 设置'},{id:'presets',label:'预设管理'},{id:'worldbooks',label:'世界书'},{id:'game-settings',label:'小剧场设置'}];
 const blocked=computed(()=>props.w.workingPersona||props.w.creatingGame);
 function close(){group.value='';}
