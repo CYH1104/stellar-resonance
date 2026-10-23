@@ -30,7 +30,7 @@ export interface TheaterScene {complete?:boolean;slot:number;kind:TheaterKind;ti
 export interface DiceEvent {direction:'negative'|'neutral'|'positive';description:string}
 export interface AffinityReview {id:string;before:number;requestedDelta:number;appliedDelta:number;after:number;reason:string;bounded:boolean}
 export interface StateUpdate {requestId?:string;affinityReviews?:AffinityReview[];affinityReviewedIds?:string[];status:'updated'|'unchanged'|'partial'|'retained'|'disabled';received:boolean;storyComplete:boolean;codes:string[];retainedPresentIds?:string[]}
-export interface Outcome {terminal?:import('./terminalMain').TerminalMainBatch; stateUpdate?:StateUpdate; mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
+export interface Outcome {openingScene?:import('./storyScene').SceneSnapshot;terminal?:import('./terminalMain').TerminalMainBatch; stateUpdate?:StateUpdate; mvu?:MvuOperation[]; player?: ActorPatch; characters?: (ActorPatch & { id: string })[]; event: string;diceEvent?:DiceEvent; forum?: ForumPost[];theaters?:TheaterScene[];suggestions?:string[] }
 export interface Variant {repairAudit?:import('./repairAudit').RepairAudit;generationRequirements?:{stateEnabled:boolean;theaters:TheaterSetting[]}; edited?:boolean; mvuOverride?:MvuOperation[]; suggestions?:string[]; id: string; text: string; status: 'complete' | 'incomplete'; createdAt: string; outcome?: Outcome }
 export interface Turn {inputEdited?:boolean; randomEvent?:RandomEventGate; id: string; input: string; dice?: Dice; variants: Variant[]; selected: number }
 export interface Vector { model: string; values: number[]; text: string }

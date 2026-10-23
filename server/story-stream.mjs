@@ -78,7 +78,8 @@ export async function* streamStory({card,state,options,messages,partial='',state
     signal.throwIfAborted();
     // A preset may return only comments. Retry once with an explicit visible-story request.
     if(readError?.code==='MODEL_NO_VISIBLE_CONTENT'&&attempt===0&&maxAttempts>0&&!decoder.raw.trim()){reasoningFilter=new ReasoningFilter();continue;}
-    if(['MODEL_RESPONSE_TOO_LARGE','MODEL_STATE_TOO_LARGE','INVALID_MODEL_PROFILE','MODEL_KEY_REQUIRED','MODEL_REASONING_UNCLOSED','MODEL_REASONING_ONLY','MODEL_NO_VISIBLE_CONTENT','MODEL_EMPTY_RESPONSE'].includes(readError?.code))throw readError;
+    if(readError)yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code:readError.code,attempt,stage:'rejected'}};
+    if(['MODEL_OUTPUT_LIMIT','MODEL_REFUSAL','MODEL_RESPONSE_TOO_LARGE','MODEL_STATE_TOO_LARGE','INVALID_MODEL_PROFILE','MODEL_KEY_REQUIRED','MODEL_REASONING_UNCLOSED','MODEL_REASONING_ONLY','MODEL_NO_VISIBLE_CONTENT','MODEL_EMPTY_RESPONSE'].includes(readError?.code))throw readError;
     if(readError&&!decoder.raw.trim())throw readError;
     try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(options.captureFormatErrors&&options.validationWarnings.length)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:decoder.raw};if(decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt}};yield {type:'done',outcome};return;}
     catch(error){

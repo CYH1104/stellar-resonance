@@ -1,3 +1,4 @@
+import {ensureTerminalCodes} from './terminalCodeRegistry';
 import {terminalMainContext,applyTerminalBatch} from '../domain/terminalMain';
 import {saveOnLeave} from './saveOnLeave';
 import {terminalRecall} from '../domain/terminalLedger';
@@ -172,7 +173,7 @@ export function useWorkspace() {
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     if(!ensureApiConfiguration())return;
     creatingGame.value=true;
-    try{const session=newSession(name,persona,opening);session.memoryEngine='candidate';session.worldbookIds=[...(preferences.defaultWorldbookIds||[])];if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.memoryEngine='candidate';session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}rememberInput();sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
+    try{const session=newSession(name,persona,opening);session.memoryEngine='candidate';session.worldbookIds=[...(preferences.defaultWorldbookIds||[])];if(localService.value){const game=await http.newGame(copy(persona));session.initial=game.initial;session.memoryEngine='candidate';session.opening=opening.trim()||game.opening;session.sourceDataset=game.dataset;}ensureTerminalCodes(session);rememberInput();sessions.value.unshift(session);sessionId.value=session.id;panel.value='story';input.value='';problem.value='';await safePersist();}catch(e){problem.value=message(e);}finally{creatingGame.value=false;}
   }
   function open(id:string) {if(busy.value)return;if(!ensureApiConfiguration()){pendingSessionId.value=id;return;}rememberInput();pendingSessionId.value='';sessionId.value=id;panel.value='story';input.value=inputDrafts.get(id)??active.value?.draftInput??'';problem.value='';}
   function home() {if(busy.value)return;rememberInput();pendingSessionId.value='';sessionId.value='';panel.value='story';input.value='';}
@@ -313,6 +314,7 @@ export function useWorkspace() {
     if(turnIndex===undefined){if(pendingRandomEvent.value){problem.value='请先决定或跳过当前随机事件，再发送下一轮行动。';return;}const content=(text??input.value).trim();if(!content){problem.value='请先输入本轮行动';return;}if(content.length>16000){problem.value='单条输入超过首版长度限制';return;}const kind=preferences.diceEnabled?drawSpecialEvent(preferences.randomEventProbability??30):undefined;session.turns.push({id:uid(),input:content,randomEvent:kind?{status:'preparing',kind}:{status:'none'},variants:[],selected:0});index=session.turns.length-1;input.value='';}
     else{index=turnIndex;if(!session.turns[index])return;if(continuePartial&&!selected(session.turns[index])?.text){problem.value='当前没有需要续写的正文。';return;}truncate(session,index+1);}
     const turn=session.turns[index];session.suggestions=[];if(turn.randomEvent?.status==='preparing'||turn.randomEvent?.status==='failed'){if(!await prepareRandomEvent(session,index))return;}if(turn.randomEvent?.status==='pending'){turn.randomEvent={status:'accepted',proposal:turn.randomEvent.proposal};turn.dice=rollDice();}if(continuePartial&&!stateOnly&&selected(turn)?.status==='complete'){turn.variants.push({...copy(selected(turn)!),id:uid(),status:'incomplete'});turn.selected=turn.variants.length-1;}const firstAttempt=turn.variants.length===0;const partial=continuePartial?selected(turn)?.text||'':'';if(!continuePartial){turn.variants.push({id:uid(),text:'',status:'incomplete',createdAt:now()});turn.selected=turn.variants.length-1;}const variant=turn.variants[turn.selected];if(variant.repairAudit?.variantId!==variant.id)delete variant.repairAudit;const previousOutcome=stateOnly&&variant.status==='complete'?copy(variant.outcome):undefined;const repairBefore=stateOnly?stateAt(session,index+1):undefined;if(stateOnly)repairReport.value=undefined;if(!previousOutcome)delete variant.outcome;
+    if(!stateOnly)ensureTerminalCodes(session,index);
     const logBefore=copy(repairBefore||stateAt(session,index));
     const generationType=continuePartial?'continue':firstAttempt?'normal':'regenerate';continuationAttempt.value=0;repairingState.value=stateOnly;
     busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false, checkpoint=Date.now();await safePersist();

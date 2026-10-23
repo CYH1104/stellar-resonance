@@ -1,3 +1,4 @@
+import {cleanSceneSnapshot} from '../src/domain/storyScene.ts';
 import {isTerminalCodePath,validTerminalCode} from '../src/domain/terminalCodeVariables.ts';
 import {terminalMainPrompt} from './terminal-main.mjs';
 import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
@@ -329,6 +330,7 @@ export class StoryDecoder {
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
     // A complete companion payload inside the state object is unambiguous.
     // Separate it before validating state, so it cannot discard valid actor fields.
+    const openingSceneRaw=assembled.openingScene;delete assembled.openingScene;
     const terminalRaw=assembled.terminal;delete assembled.terminal;
     let sceneOnly=[];
     if(options.stateEnabled===false){
@@ -398,6 +400,7 @@ export class StoryDecoder {
     if(!this.story.trim()){if(single)warn('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}
     if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}
     const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings,retainedPresentIds});
+    if(openingSceneRaw!==undefined){try{outcome.openingScene=cleanSceneSnapshot(openingSceneRaw);}catch{warn('STATE_OPENING_SCENE_INVALID');}}
     if(sceneOnly.length)outcome.mvu=sceneOnly;
     if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     if(terminalRaw!==undefined){try{outcome.terminal=cleanTerminalBatch(terminalRaw,[...state.characters,...outcome.characters||[]],options.terminalContext);}catch{warn('STATE_TERMINAL_RETAINED');}}else if(options.terminalContext)warn('STATE_TERMINAL_MISSING');
@@ -413,10 +416,11 @@ export class StoryDecoder {
 export async function* completionChunks(response,{reasoningFilter=new ReasoningFilter(),onProgress=()=>{},signal}={}) {
   if(!response.body)throw modelError(502,'INVALID_MODEL_RESPONSE');
   const stats={contentChars:0,visibleChars:0,reasoningChars:0,finishReason:''};
-  let hasVisible=false;
+  let hasVisible=false,refused=false;
   const contentText=content=>typeof content==='string'?content:Array.isArray(content)?content.filter(p=>p&&p.thought!==true&&['text','output_text',undefined].includes(p.type)&&typeof p.text==='string').map(p=>p.text).join(''):undefined;
   const accept=choice=>{
     const part=choice?.delta||choice?.message||{};
+    refused ||= typeof part.refusal==='string'&&!!part.refusal.trim();
     const hidden=part.reasoning_content??part.reasoning??part.thinking;
     if(typeof hidden==='string')stats.reasoningChars+=hidden.length;
     const content=contentText(part.content);
@@ -428,7 +432,7 @@ export async function* completionChunks(response,{reasoningFilter=new ReasoningF
   const finish=()=>{
     const tail=reasoningFilter.finish();stats.visibleChars+=tail.length;hasVisible||=!!tail.trim();
     onProgress({...stats});
-    if(!hasVisible)throw modelError(502,reasoningFilter.unclosed?'MODEL_REASONING_UNCLOSED':stats.reasoningChars?'MODEL_REASONING_ONLY':stats.contentChars?'MODEL_NO_VISIBLE_CONTENT':'MODEL_EMPTY_RESPONSE');
+    if(!hasVisible)throw modelError(502,refused||stats.finishReason==='content_filter'?'MODEL_REFUSAL':stats.finishReason==='length'?'MODEL_OUTPUT_LIMIT':reasoningFilter.unclosed?'MODEL_REASONING_UNCLOSED':stats.reasoningChars?'MODEL_REASONING_ONLY':stats.contentChars?'MODEL_NO_VISIBLE_CONTENT':'MODEL_EMPTY_RESPONSE');
     return tail;
   };
   // An abort must also interrupt a stalled response body, not only the initial fetch.
@@ -467,6 +471,6 @@ export async function openCompletion({connection,key,profile,messages,signal,fet
   let response;
   try{response=await fetchImpl(connection.url,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model:profile.model,messages,temperature:profile.temperature,max_tokens:profile.maxTokens,...sampling,stream:true})});}
   catch(error){if(signal.reason?.name==='TimeoutError')throw modelError(504,'MODEL_TIMEOUT');if(signal.aborted)throw error;throw modelError(502,'MODEL_UNREACHABLE');}
-  if(!response.ok){await response.body?.cancel().catch(()=>{});throw modelError(502,response.status===401||response.status===403?'UPSTREAM_AUTH':response.status===429?'UPSTREAM_RATE_LIMIT':'UPSTREAM_REJECTED');}
+  if(!response.ok){await response.body?.cancel().catch(()=>{});throw Object.assign(modelError(502,response.status===401||response.status===403?'UPSTREAM_AUTH':response.status===429?'UPSTREAM_RATE_LIMIT':'UPSTREAM_REJECTED'),{upstreamStatus:response.status});}
   return response;
 }

@@ -1,3 +1,4 @@
+import {cleanSceneSnapshot} from './storyScene.ts';
 import {cleanCharacterImages} from './characterImages.ts';
 import {cleanTerminalBatch} from './terminalMain.ts';
 import {terminalNoteVisible} from './terminalLedger.ts';
@@ -94,9 +95,9 @@ function forumPosts(value: unknown): ForumPost[] {
 export function validateOutcome(value: unknown, state: WorldState,legacy=false): Outcome {
   if (!record(value)) throw new Error('状态更新格式不正确');
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(k => !['terminal','stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
+  if (Object.keys(v).some(k => !['openingScene','terminal','stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
   if (typeof v.event !== 'string' || !v.event.trim() || v.event.length > 500) throw new Error('事件说明不正确');
-  const out: Outcome = { event: v.event };
+  const out: Outcome = { event: v.event };if(v.openingScene!==undefined)out.openingScene=cleanSceneSnapshot(v.openingScene);
   if(v.stateUpdate!==undefined){const update=v.stateUpdate;if(!record(update)||Object.keys(update).some(k=>!['requestId','affinityReviews','status','received','storyComplete','codes','retainedPresentIds','affinityReviewedIds'].includes(k))||!['updated','unchanged','partial','retained','disabled'].includes(String(update.status))||typeof update.received!=='boolean'||typeof update.storyComplete!=='boolean'||!Array.isArray(update.codes)||update.codes.length>100||update.codes.some(c=>typeof c!=='string'||!/^[-A-Z0-9_]{1,100}$/.test(c)))throw Error('变量更新结果格式不正确');if(update.retainedPresentIds!==undefined&&(!Array.isArray(update.retainedPresentIds)||update.retainedPresentIds.length>1000||update.retainedPresentIds.some(id=>!validActorId(id))))throw Error('保留名单格式不正确');if(update.affinityReviewedIds!==undefined&&(!Array.isArray(update.affinityReviewedIds)||update.affinityReviewedIds.length>1000||update.affinityReviewedIds.some(id=>!validActorId(id))))throw Error('Invalid affinity review roster');if(update.requestId!==undefined&&(!shortText(update.requestId,128,true)))throw Error('Invalid state request');if(update.affinityReviews!==undefined){if(!Array.isArray(update.affinityReviews)||update.affinityReviews.length>1000)throw Error('Invalid affinity audit');const ids=new Set();for(const a of update.affinityReviews){if(!record(a)||!validActorId(a.id)||ids.has(a.id)||Object.keys(a).some(k=>!['id','before','requestedDelta','appliedDelta','after','reason','bounded'].includes(k))||!['before','requestedDelta','appliedDelta','after'].every(k=>typeof a[k]==='number'&&Number.isFinite(a[k]))||!shortText(a.reason,300,true)||typeof a.bounded!=='boolean'||Math.abs(Number(a.after)-Number(a.before)-Number(a.appliedDelta))>1e-6)throw Error('Invalid affinity audit');ids.add(a.id);}}out.stateUpdate=copy(update) as unknown as Outcome['stateUpdate'];}
   const mvuState=v.mvu!==undefined?applyMvu(state,cleanOperations(v.mvu),legacy):state;
   if(v.mvu!==undefined)out.mvu=cleanOperations(v.mvu);
@@ -304,7 +305,7 @@ const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'acces
 function inspect(value: unknown, depth = 0, path = ''): void {
   if (depth > 18) throw new Error('备份结构过深');
   if (!value || typeof value !== 'object') return;
-  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
+  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
   for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
 export function parseBackup(text: string): Snapshot {

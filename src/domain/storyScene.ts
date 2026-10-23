@@ -20,3 +20,11 @@ export function terminalStoryClock(state?:WorldState,prose=''){
  if(!day&&numeric){const d=new Date(Date.UTC(+numeric[1],+numeric[2]-1,+numeric[3]));if(d.getUTCFullYear()===+numeric[1]&&d.getUTCMonth()===+numeric[2]-1&&d.getUTCDate()===+numeric[3])day=d.getUTCDay()||7;}
  return {time,label:date||prose.match(/第[一二三四五六七八九十百\d]+[日天]|星期[一二三四五六日天]|周[一二三四五六日天]/)?.[0]||'剧情日期待明确',day,location:scene.地点};
 }
+
+export interface SceneSnapshot {日期:string;时间:string;地点:string;星期?:string}
+export function cleanSceneSnapshot(value:unknown):SceneSnapshot{
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('开场场景格式不正确');
+ const v=value as Record<string,unknown>;if(Object.keys(v).some(k=>!['日期','时间','地点','星期'].includes(k))||Object.keys(scenePaths).some(k=>!validSceneValue(scenePaths[k as keyof typeof scenePaths],v[k]))||v.星期!==undefined&&(typeof v.星期!=='string'||!/^$|^星期[一二三四五六日天]$/.test(v.星期)))throw Error('开场场景格式不正确');
+ return {...Object.fromEntries(Object.keys(scenePaths).map(k=>[k,v[k]])),...(v.星期!==undefined?{星期:v.星期}:{})} as SceneSnapshot;
+}
+export function sceneSnapshotLabel(scene:SceneSnapshot){const numeric=scene.日期.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?$/);let weekday=scene.星期||'';if(!weekday&&numeric){const d=new Date(Date.UTC(+numeric[1],+numeric[2]-1,+numeric[3]));if(d.getUTCFullYear()===+numeric[1]&&d.getUTCMonth()===+numeric[2]-1&&d.getUTCDate()===+numeric[3])weekday='星期'+'日一二三四五六'[d.getUTCDay()];}return [scene.日期,weekday,scene.时间,scene.地点].filter(Boolean).join(' · ')||'时间地点待明确';}

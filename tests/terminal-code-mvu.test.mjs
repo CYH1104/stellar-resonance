@@ -17,5 +17,5 @@ test('canonical output binds only an actually narrated code, with per-ID schema'
  assert.ok(outputManifest(state).customVariableSchema[path]);
  const good=adaptStateOutput(raw,state,{requestId:'codes',prose:'卫锋说：我的终端码是12345678901。'},()=>{});assert.equal(terminalCodeBindings(applyMvu(state,good.raw.mvu)).teacher,'12345678901');
  const warnings=[],bad=adaptStateOutput(raw,state,{requestId:'codes',prose:'卫锋拒绝给出号码。'},code=>warnings.push(code));assert.equal(bad.raw.mvu,undefined);assert.ok(warnings.includes('STATE_CUSTOM_REJECTED'));
- const prompt=terminalCodePrompt([],state.characters,false).content;assert.match(prompt,/custom\/终端码/);assert.match(prompt,/同一个UpdateVariable/);assert.match(prompt,/不使用服务器随机号/);
+ const prompt=terminalCodePrompt([],state.characters,false).content;assert.match(prompt,/custom\/终端码/);assert.match(prompt,/同一个UpdateVariable/);assert.match(prompt,/角色本人始终知道/);
 });
