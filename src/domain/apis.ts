@@ -3,6 +3,7 @@ import {samplingFields} from './presets.ts';
 export const textApiTasks=[
   {key:'story',field:'storyProfile',label:'剧情',hint:'合并发送正文、变量更新、全部已开启小剧场和快捷回复的提示词，统一由剧情模型输出。'},
   {key:'summary',field:'summaryProfile',label:'逐轮记忆整理',hint:'每轮正文完成后立即整理记忆，成功后按设置建立向量索引。'},
+  {key:'terminal',field:'terminalProfile',label:'终端 API',hint:'私聊、群聊、好友申请、剧情群资料、课程提取和国王游戏使用的接口。'},
   {key:'persona',field:'personaProfile',label:'AI 帮我写人设',hint:'新游戏的人设辅助填写。'},
 ] as const;
 export type TextApiTask=typeof textApiTasks[number]['key'];

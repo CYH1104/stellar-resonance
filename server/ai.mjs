@@ -1,3 +1,5 @@
+import {terminalMainPrompt} from './terminal-main.mjs';
+import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
 import {playerIdentityContext} from './player-identity.mjs';
 import {randomUUID} from 'node:crypto';
 import {attitudeUpdates} from './attitudes.mjs';
@@ -113,7 +115,8 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   const diaryOwners=[state.player,...state.characters].filter(c=>c.spiritAnimal?.trim()).map(c=>({ownerId:c.id,ownerName:c.name,...(c.id==='player'?{spiritAnimal:c.spiritAnimal}:{})}));
   const theaterPlans=theaterSettings.filter(t=>t.enabled).map(t=>{if(isSpiritDiary(t))return {...t,diaryOwners};if(t.kind!=='fanfic')return t;const char=t.charId?state.characters.find(c=>c.id===t.charId):state.characters.find(c=>c.present);return {...t,...(char?{participantIds:['player',char.id],pairing:determinePairing(request.persona,char)}:{})};});
   const rules=request.stateEnabled===false?internalPrompt('feature.story'):internalPrompt("ai.2", {p0:(STATUS_OPEN),p1:(STATUS_CLOSE),p2:(DONE),p3:(STATUS_CLOSE)});
-  const dynamicRules=featureContract(theaterPlans,request.suggestionsEnabled!==false);
+  const terminalRules=terminalMainPrompt(request.terminalContext,state);
+  const dynamicRules=featureContract(theaterPlans,request.suggestionsEnabled!==false)+terminalRules;
   const diceRules=dice?internalPrompt("ai.4", {p0:(dice.value),p1:(dice.grade),p2:(plan.direction),p3:(plan.requirement),p4:(plan.direction)}):'';
   if(request.randomEventInstruction!==undefined&&(typeof request.randomEventInstruction!=='string'||request.randomEventInstruction.length>4000))throw modelError(400,'INVALID_RANDOM_EVENT');
   const selectedEventRules=specialEvent?'\nPlayer-approved event candidate with script-assigned roll: '+JSON.stringify(specialEvent)+internalPrompt("ai.8")+(request.randomEventInstruction?.trim()?'\nEvent creative direction (preserve the script roll, player agency and output protocol):\n'+request.randomEventInstruction.trim():''):'';
@@ -130,7 +133,7 @@ function buildMessagesWithinContext(card, request, privateBooks=[]) {
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripReasoning)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const requestId=request.requestId||randomUUID();
-  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,suggestionsEnabled:request.suggestionsEnabled!==false,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
+  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false)+terminalRules,{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,suggestionsEnabled:request.suggestionsEnabled!==false,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {
@@ -324,6 +327,7 @@ export class StoryDecoder {
     if(incomplete.has('status')||incomplete.has('state')){warn('STATE_STATUS_INCOMPLETE');rejected=true;assembled={};}
     // A complete companion payload inside the state object is unambiguous.
     // Separate it before validating state, so it cannot discard valid actor fields.
+    const terminalRaw=assembled.terminal;delete assembled.terminal;
     const embeddedCompanions={};
     if(assembled.schemaVersion!==undefined)for(const key of ['forum','theaters','choices'])if(Object.hasOwn(assembled,key)){embeddedCompanions[key]=assembled[key];delete assembled[key];warn('STATE_COMPANION_RELOCATED');}
     if(options.stateEnabled===false&&assembled.schemaVersion!==undefined)assembled={event:assembled.event,suggestions:assembled.suggestions};
@@ -379,8 +383,9 @@ export class StoryDecoder {
     if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}
     const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings,retainedPresentIds});
     if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
+    if(terminalRaw!==undefined){try{outcome.terminal=cleanTerminalBatch(terminalRaw,[...state.characters,...outcome.characters||[]],options.terminalContext);}catch{warn('STATE_TERMINAL_RETAINED');}}else if(options.terminalContext)warn('STATE_TERMINAL_MISSING');
     if(single){
-      const partial=warnings.some(code=>/STATE_(?:FIELD_(?:SKIPPED|CONFLICT)|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_|(?:SPIRIT|PLAYER)_THOUGHT_STALE)/.test(code));
+      const partial=warnings.some(code=>/STATE_(?:TERMINAL_|FIELD_(?:SKIPPED|CONFLICT)|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_|(?:SPIRIT|PLAYER)_THOUGHT_STALE)/.test(code));
       const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));
       outcome.stateUpdate={status:options.stateEnabled===false?'disabled':rejected?'retained':partial?'partial':changed?'updated':'unchanged',received,storyComplete:this.hasCompletionMarker()&&!incomplete.size,codes:[...warnings],...(attitudeAccepted?{affinityReviewedIds:[...new Set(affinityReviewedIds)]}:{}),retainedPresentIds:[...new Set(retainedPresentIds)],...(canonical?{requestId:options.requestId||'local-test',affinityReviewedIds:mvuFailed?[]:adapted.reviewed,affinityReviews:mvuFailed?[]:adapted.records}: {})};
     }

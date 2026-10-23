@@ -20,6 +20,8 @@ const explanations:Record<string,string>={
   STATE_FIELD_CONFLICT:'同一变量的标准字段与别名值冲突，已保留该字段原值，其他有效字段继续应用',
   STATE_EMPTY_FIELD_RETAINED:'模型返回空字段，已保留旧值',
   STATE_UNKNOWN_CHARACTER_SKIPPED:'角色 ID 或姓名无法唯一匹配，未应用该角色更新',
+  STATE_TERMINAL_MISSING:'本轮未返回自动通讯，原有聊天记录已保留，下一轮正文会继续同步',
+  STATE_TERMINAL_RETAINED:'本轮自动通讯格式不完整，原有聊天记录已保留，下一轮正文会继续同步',
   STATE_ROSTER_RETAINED:'模型未返回在场名单，沿用已有名单或明确的在场更新',
   STATE_AFFINITY_RETAINED:'本轮未收到有效的好感度更新，保留原值',
   STATE_SPIRIT_THOUGHT_RETAINED:'在场角色的精神体 OS 缺失，保留原值',

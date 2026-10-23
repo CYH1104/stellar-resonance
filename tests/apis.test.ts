@@ -4,15 +4,16 @@ import {apiConfigurationIssues,migrateApiSettings,requiredApis,taskApi,textApiTa
 import type {Preferences,Profile} from '../src/domain/contracts';
 const fill=(p:Profile)=>Object.assign(p,{apiBaseUrl:'https://synthetic.example/v1',model:'model-'+p.id});
 const keys=(p:Preferences)=>Object.fromEntries(p.profiles.map(p=>[p.id,'synthetic-key']));
+it('终端API独立选择并随备份保存，不能选择向量接口',()=>{const p=defaults();p.terminalProfile='aux';expect(taskApi(p,'terminal')?.id).toBe('aux');expect(requiredApis(p).some(p=>p.id==='aux')).toBe(true);const restored=parseBackup(backup({version:1,sessions:[],preferences:p}));expect(restored.preferences.terminalProfile).toBe('aux');p.terminalProfile='embed';expect(()=>migrateApiSettings(p)).toThrow('终端 API');});
 it('文字功能默认主 API，本地检索不要求副 API 或向量 API',()=>{
-  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['main','main','main']);
+  const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['main','main','main','main']);
   expect(requiredApis(p).map(p=>p.id)).toEqual(['main']);expect(apiConfigurationIssues(p,{main:'synthetic-key',embed:'synthetic-key'},()=>true)).toEqual([]);
 });
 it('每项功能独立指定主或副 API，重排副 API 不改变任务选择',()=>{
   const p=defaults();p.profiles.push({...p.profiles[1],id:'aux2'});p.auxiliaryProfiles!.push('aux2');
   p.storyProfile='aux2';p.summaryProfile='aux';p.suggestionsProfile='main';p.personaProfile='aux2';
-  expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['aux2','aux','aux2']);
-  p.auxiliaryProfiles!.reverse();expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['aux2','aux','aux2']);
+  expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['aux2','aux','main','aux2']);
+  p.auxiliaryProfiles!.reverse();expect(textApiTasks.map(t=>taskApi(p,t.key)?.id)).toEqual(['aux2','aux','main','aux2']);
 });
 it('未选用的副 API 草稿不阻拦，只检查主 API、被选用接口和开启的向量',()=>{
   const p=defaults();fill(p.profiles[0]);fill(p.profiles[2]);p.profiles[1].apiBaseUrl='https://draft.example/v1';const credentials={main:'synthetic-key',embed:'synthetic-key'};
@@ -46,7 +47,7 @@ it('旧版共用主模型的向量配置复制为独立档案',()=>{
 it('备份保留每个功能的选择并拒绝坏引用，不包含 Key',()=>{
   const p=defaults();p.storyProfile='aux';p.summaryProfile='main';p.suggestionsProfile='aux';p.personaProfile='aux';Object.assign(p.profiles[0],{key:'synthetic-secret-key'});
   const text=backup({version:1,sessions:[],preferences:p});expect(text).not.toContain('synthetic-secret-key');const restored=parseBackup(text).preferences;
-  expect(textApiTasks.map(t=>restored[t.field])).toEqual(['aux','main','aux']);
+  expect(textApiTasks.map(t=>restored[t.field])).toEqual(['aux','main','main','aux']);
   for(const task of textApiTasks){const invalid=JSON.parse(text);invalid.preferences[task.field]='embed';expect(()=>parseBackup(JSON.stringify(invalid))).toThrow('API 引用');}
   const invalid=JSON.parse(text);invalid.preferences.auxiliaryProfiles=['missing'];expect(()=>parseBackup(JSON.stringify(invalid))).toThrow('副 API');
 });

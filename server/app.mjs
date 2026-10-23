@@ -1,3 +1,5 @@
+import {createTerminalCodes,terminalCodePrompt} from './terminal-codes.mjs';
+import {terminalPlan,parseTerminalResult,terminalActors} from './personal-terminal.mjs';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {createRelayPolicy} from './relay-policy.mjs';
 import {createTheaterShares} from './theater-shares.mjs';
@@ -31,7 +33,7 @@ import {createEditorGateway} from './editor-gateway.mjs';
 import {randomEventMessages,parseRandomEvent} from './random-events.mjs';
 import {forumReplyMessages,parseForumReply,forumThreadMessages,parseForumThread} from './forum.mjs';
 import {stripReasoning} from '../src/domain/reasoning.ts';
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
 export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts'),invitesRequired=true,editorPort=8808}){
@@ -49,6 +51,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   fetchImpl=relayPolicy.guard(fetchImpl);
   const editorGateway=await createEditorGateway({projectRoot,editorPort,accounts,relayPolicy,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true};
+  const terminalCodes=createTerminalCodes(resolve(projectRoot,'server/private/terminal-codes.key'));
   const theaterShares=createTheaterShares(resolve(projectRoot,'server/private/theater-shares'));
   const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
@@ -131,6 +134,13 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
+        if(path==='/api/terminal-code'){
+          const actors=terminalActors(source,data.state),entries=await terminalCodes(current.accountId,data.sessionId,actors);
+          if(data.self===true){json(response,200,{code:entries[0].code});return;}
+          if(typeof data.code!=='string'||!/^8\d{10}$/.test(data.code))throw modelError(400,'INVALID_TERMINAL_CODE');
+          const entry=entries.find(e=>e.code===data.code&&e.id!=='player'),actor=actors.find(c=>c.id===entry?.id);
+          if(!actor)throw modelError(404,'TERMINAL_CODE_NOT_FOUND');json(response,200,{id:actor.id,name:actor.name,identity:identityOf(actor)||'',code:entry.code});return;
+        }
         guardPromptRequest(path,data);
         setTavernContext({user:data.persona?.name||data.before?.player?.name||'',char:source.world.name||'群星共振世界卡',persona:data.persona?personaDescription(data.persona):'',input:data.input||'',history:data.history||[]});
         if(path==='/api/connection'){
@@ -162,6 +172,21 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
             json(response,200,{kind:'text',durationMs:Math.round(performance.now()-started),visibleChars});
           }return;
         }
+        if(path==='/api/personal-terminal'){
+          const plan=terminalPlan(source,data),selected=await connection(current,data);
+          const controller=new AbortController();response.on('close',()=>controller.abort());
+          const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
+          const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:6000},key:data.key,messages:plan.messages,signal,fetchImpl});
+          let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+          signal.throwIfAborted();const result=parseTerminalResult(content,plan);
+          if(plan.task==='react'){
+            const review=terminalPlan(source,{...data,task:'review',input:data.input,context:{command:data.input,result}});
+            const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl});
+            let checked='';for await(const part of completionChunks(upstream,{signal})){checked+=part;if(checked.length>4000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+            signal.throwIfAborted();parseTerminalResult(checked,review);
+          }
+          json(response,200,result);return;
+        }
         if(path==='/api/new-game'){json(response,200,createGame(data,source));return;}
         if(path==='/api/persona'){
           const selected=await connection(current,data),messages=buildPersonaMessages(source,data.wish,data.draft);
@@ -180,6 +205,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(repairPlan){data.stateEnabled=data.stateEnabled!==false&&repairNeedsState(repairPlan);data.suggestionsEnabled=repairPlan.suggestions;data.theaterSettings=cleanTheaters(data.theaterSettings).map(s=>({...s,enabled:s.enabled&&repairPlan.theaterSlots.includes(s.slot)}));}
           const generation=data;
           const selected=await connection(current,generation),{requestId,messages,state,theaterSettings,dice,card:generationCard,presetDiagnostics,repairLore}=buildMessages(source,{...data,stateSeparate:false},privateBooks);
+          if(/终端|通讯|联系|号码|手机号/.test(data.input||'')&&data.sessionId)messages.splice(1,0,terminalCodePrompt(await terminalCodes(current.accountId,data.sessionId,terminalActors(source,data.state))));
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
@@ -190,7 +216,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'request',model:generation.profile.model,stateAuxiliary:false,presets:presetDiagnostics,profile:generation.profile})})}\n\n`);
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
           const validationCodes=[];const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
-          try{for await(const event of streamStory({card:generationCard,state,options:{requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
+          try{for await(const event of streamStory({card:generationCard,state,options:{requestId,terminalContext:stateOnly?undefined:data.terminalContext,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
           catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
           finally{clearInterval(heartbeat);}
           return;

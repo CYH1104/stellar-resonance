@@ -1,7 +1,7 @@
 import type {Preferences,Profile} from './contracts';
 import {apiFieldIssues,migrateApiSettings} from './apis';
 
-const routeFields=['stateProfile','mainProfile','auxiliaryProfile','embeddingProfile','storyProfile','summaryProfile','suggestionsProfile','personaProfile','randomEventProfile','forumReplyProfile'] as const;
+const routeFields=['stateProfile','mainProfile','auxiliaryProfile','embeddingProfile','storyProfile','summaryProfile','suggestionsProfile','personaProfile','terminalProfile','randomEventProfile','forumReplyProfile'] as const;
 const flags=['vectorEnabled','diceEnabled','forumReplyEnabled'] as const;
 const profileFields=['id','name','providerId','model','apiBaseUrl','temperature','maxTokens','topP','frequencyPenalty','presencePenalty'] as const;
 export type ApiConfiguration=Pick<Preferences,typeof routeFields[number]|typeof flags[number]|'profiles'|'auxiliaryProfiles'>;

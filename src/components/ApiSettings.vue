@@ -53,6 +53,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
       <label>随机事件<select v-model="w.preferences.randomEventProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
       <label>论坛 AI 回复<select v-model="w.preferences.forumReplyProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
     </div>
+    <p class="rail-note">自动群聊、角色主动私聊和课表随正文由主 API 一起生成。玩家在终端内回复、申请好友和进行国王游戏时，使用此处的终端 API；可选择主 API 或单独配置的副 API。</p>
     <p v-if="w.storyProfile" class="rail-note">剧情：{{w.storyProfile.model||'未选模型'}} · 最大输出 {{w.storyProfile.maxTokens}} Token（在“预设”中修改）。</p>
     <label class="toggle"><input v-model="w.preferences.stateEnabled" type="checkbox" :disabled="disabled" />生成人物状态栏更新</label>
     <p class="rail-note">记忆逐轮整理：每轮正文完成后立即生成一条记忆，不再等待累计轮数。启用向量后，摘要成功保存即建立索引；失败可在记忆页重试，后续回合仍会继续整理。</p>
