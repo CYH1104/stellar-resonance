@@ -62,7 +62,7 @@ function actorPatch(value: unknown, character = false,legacy=false): ActorPatch 
   const patch: ActorPatch = {};
   for (const field of ['ability','mentalPowerLevel','identity','name', 'primaryGender', 'secondaryGender', 'innerThought','spiritAnimal','spiritThought','relationship'] as const) {
     if (value[field] === undefined) continue;
-    const limit = ['ability','innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'?200:field==='relationship'?200:field === 'name' ? 80 : 100;
+    const limit = ['ability','innerThought','spiritThought'].includes(field) ? 2000 : field==='spiritAnimal'?1500:field==='identity'&&!character?Infinity:field==='identity'?200:field==='relationship'?200:field === 'name' ? 80 : 100;
     if (!shortText(value[field], limit, field === 'name'||field==='mentalPowerLevel')) throw new Error(`MVU ${field} 字段不正确`);
     patch[field] = value[field];
   }

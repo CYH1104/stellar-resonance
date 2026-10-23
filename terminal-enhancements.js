@@ -59,7 +59,7 @@
   const cardTools=q('.academy-card-tools'),foldCards=q('#foldCards');
   if(cardTools&&foldCards)cardTools.replaceChildren(foldCards);
   let cardRevision=window.__ACADEMY_CARD_REVISION__,refreshingCards=false;
-  async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
+  async function refreshCards(){if(refreshingCards||document.hidden)return;refreshingCards=true;try{const response=await fetch('/api/character-cards',{cache:'no-store'});if(!response.ok)return;const data=await response.json();if(data.revision!==cardRevision&&Array.isArray(data.characters)&&root.__updateCharacterCards){root.__updateCharacterCards(data.characters);window.dispatchEvent(new CustomEvent("academy:character-card-defaults",{detail:data.characters.map(({id,img})=>({id,img:img||""}))}));cardRevision=data.revision;}}catch{}finally{refreshingCards=false;}}
   document.addEventListener('click',event=>{if(event.target.closest('[data-sact="chars"],[data-module="chars"]'))void refreshCards();},true);
   window.addEventListener('focus',()=>void refreshCards());
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCards();});

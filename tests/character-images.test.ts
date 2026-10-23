@@ -27,3 +27,16 @@ it('rejects executable URLs, credentials, unknown cards and invalid crop coordin
  for(const patch of [{no:'99'},{scale:0},{x:Infinity},{y:101}])expect(()=>cleanCharacterImages({actor:{no:'01',url:'',scale:1,x:0,y:0,...patch}})).toThrow();
  expect(imageUrl('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
 });
+
+it('uses server card image defaults and restores them after a local-only override',async()=>{
+ const storage=new Map<string,string>();const previous=globalThis.localStorage;Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v)}});
+ try{const {saveLocalCharacterImage}=await import('../src/app/localCharacterImages');const w={localService:{majorCharacters:[{id:'server-image',name:'秦凛',img:'https://example.test/server-default.webp'}]},preferences:{}} as unknown as ViewModel;
+ expect(await renderToString(createSSRApp(CharacterAvatar,{w,id:'server-image'}))).toContain('server-default.webp');
+ saveLocalCharacterImage('server-image',{no:'01',url:'https://example.test/local.webp',scale:2,x:0,y:0});expect(await renderToString(createSSRApp(CharacterAvatar,{w,id:'server-image'}))).toContain('local.webp');expect(w.preferences.characterImages).toBeUndefined();expect([...storage.values()].join('')).toContain('local.webp');
+ saveLocalCharacterImage('server-image',{no:'01',url:'',scale:1,x:0,y:0});expect(await renderToString(createSSRApp(CharacterAvatar,{w,id:'server-image'}))).toContain('server-default.webp');
+ }finally{Object.defineProperty(globalThis,'localStorage',{configurable:true,value:previous});}
+});
+it('saves and reimports a persona with a long identity without losing its text',()=>{
+ const identity='这是玩家的人设身份。'.repeat(100);const session=newSession('长身份',{name:'玩家',identity,appearance:'',personality:'',background:''},'');session.initial.player.identity=identity;
+ const restored=parseBackup(backup({version:1,preferences:defaults(),sessions:[session]}));expect(restored.sessions[0].initial.player.identity).toBe(identity);expect(restored.sessions[0].persona.identity).toBe(identity);
+});

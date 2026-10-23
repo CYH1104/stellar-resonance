@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
+import {localCharacterImage,localImageRevision} from './app/localCharacterImages';
 import {majorCharacter} from './domain/characterImages';
 import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
@@ -231,7 +232,10 @@ watch(()=>[w.active?.id,w.creatingGame] as const,([id,creating])=>{if(!id||creat
 
 watch(()=>w.loading,loading=>{if(!loading&&pendingNavigation){const detail=pendingNavigation;pendingNavigation=undefined;terminalNavigate(new CustomEvent('academy:navigate',{detail}));}});
 
-watch(()=>[w.preferences.characterImages,w.localService],()=>{const images=(w.localService?.majorCharacters||w.localService?.characters||[]).map(a=>{const card=majorCharacter(a.name);return card?{no:card.no,url:w.preferences.characterImages?.[a.id]?.url||card.url}:undefined;}).filter(Boolean);window.dispatchEvent(new CustomEvent('academy:character-images',{detail:images}));},{deep:true,immediate:true});
+function refreshCardDefaults(event:Event){const cards=(event as CustomEvent).detail;if(!Array.isArray(cards)||!w.localService?.majorCharacters)return;w.localService.majorCharacters=w.localService.majorCharacters.map(a=>({...a,img:cards.find(c=>c.id===a.id)?.img||''}));}
+onMounted(()=>window.addEventListener('academy:character-card-defaults',refreshCardDefaults));
+onUnmounted(()=>window.removeEventListener('academy:character-card-defaults',refreshCardDefaults));
+watch(()=>[w.preferences.characterImages,w.localService,localImageRevision.value],()=>{const images=(w.localService?.majorCharacters||w.localService?.characters||[]).map(a=>{const card=majorCharacter(a.name);return card?{no:card.no,url:(localCharacterImage(a.id)||w.preferences.characterImages?.[a.id])?.url||(a as {img?:string}).img||card.url}:undefined;}).filter(Boolean);window.dispatchEvent(new CustomEvent('academy:character-images',{detail:images}));},{deep:true,immediate:true});
 onMounted(()=>{window.addEventListener('academy:navigate',terminalNavigate);window.addEventListener('academy:insert',insertCampusText);window.addEventListener('academy:campus-access',campusAccess);window.dispatchEvent(new Event('academy:ready'));void restorePersonaMedia();});
 
 onUnmounted(()=>{window.removeEventListener('academy:navigate',terminalNavigate);window.removeEventListener('academy:insert',insertCampusText);window.removeEventListener('academy:campus-access',campusAccess);});
