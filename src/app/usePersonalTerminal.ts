@@ -1,3 +1,4 @@
+import {terminalAvatarImage} from './terminalAvatarImage';
 import {terminalCodeBindings} from '../domain/terminalCodeVariables';
 import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
@@ -95,7 +96,7 @@ export function usePersonalTerminal(w:ViewModel){
  await commit(t=>{const current=t.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!,entry=current.interactions?.find(i=>i.id===interaction!.id);if(!entry||entry.status!=='pending')return;entry.replies=result.replies;entry.status='ready';});
  }
  const gameInteract=()=>run(()=>interact());const retryGameInteract=()=>run(()=>interact(true));const playerReply=(refused=false)=>run(()=>interact(false,refused?'refuse':'complete'));
- const uploadAvatar=(file:File)=>run(async()=>{if(!/^image\/(png|jpeg|webp)$/.test(file.type)||file.size>5*1024*1024)throw Error('请选择5MB以内的PNG、JPEG或WebP图片。');const bitmap=await createImageBitmap(file);try{const canvas=document.createElement('canvas');const scale=Math.min(1,400/Math.max(bitmap.width,bitmap.height));canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);await commit(t=>{t.avatar=canvas.toDataURL('image/webp',.85);t.avatarView={scale:1,x:0,y:0};});}finally{bitmap.close();}});
+ const uploadAvatar=(file:File)=>run(async()=>{const avatar=await terminalAvatarImage(file);await commit(t=>{t.avatar=avatar;t.avatarView={scale:1,x:0,y:0};});});
  const storyClock=computed(()=>terminalStoryClock(w.state,[...(w.active?.turns||[]).slice(-6).reverse().filter(t=>t.variants[t.selected]?.status==='complete').map(t=>t.variants[t.selected]?.text||''),w.active?.opening||''].join('\n')));
  const clock=storyClock;
  const storySources=computed(()=>{const sources:StoryGroupSource[]=[];for(const [index,turn] of (w.active?.turns||[]).entries()){const v=turn.variants[turn.selected];if(v?.status!=='complete')continue;for(const scene of v.outcome?.theaters||[])if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({anchor:terminalAnchor(w.active!,index+1),key:turn.id+':'+v.id+':'+scene.slot,slot:scene.slot,title:scene.title||'剧情群聊',at:v.createdAt,messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});}if(!sources.length)for(const scene of w.theaters)if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({key:'opening:'+scene.slot+':'+scene.title,slot:scene.slot,title:scene.title||'剧情群聊',at:w.active?.createdAt||'',messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});return sources;});
