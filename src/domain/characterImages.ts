@@ -1,4 +1,4 @@
-import {characterImageCatalog} from './characterImageCatalog';
+import {characterImageCatalog} from './characterImageCatalog.ts';
 export interface CharacterImage {no:string;url:string;scale:number;x:number;y:number}
 export function majorCharacter(name:string){return characterImageCatalog.find(c=>c.name===name.replace(/\s/g,''));}
 export function imageUrl(value:string){

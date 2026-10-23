@@ -1,4 +1,4 @@
-import {cleanCharacterImages} from './characterImages';
+import {cleanCharacterImages} from './characterImages.ts';
 import {cleanTerminalBatch} from './terminalMain.ts';
 import {terminalNoteVisible} from './terminalLedger.ts';
 import {validateTerminal} from './personalTerminal.ts';
