@@ -1,3 +1,4 @@
+import {openGenerationStream,responseMetadata} from './generationResponse';
 const upstreamStatusLabel=(v:{upstreamStatus?:unknown})=>Number.isInteger(v.upstreamStatus)&&Number(v.upstreamStatus)>=100&&Number(v.upstreamStatus)<=599?' 上游 HTTP 状态：'+v.upstreamStatus+'。':'';
 import {modelRequestContext,modelRequestFailure} from './requestFailure';
 import {cleanDiagnostic} from '../domain/diagnostics';
@@ -45,7 +46,8 @@ export class HttpGateway implements Gateway {
   private async post(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
     const context=modelRequestContext(body,path),started=Date.now();
     try{
-    const response=await fetch(`/api/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal}).catch(error=>{if(signal?.aborted)throw error;throw new Error('无法连接本机后台。请使用“启动预览.bat”启动服务，然后刷新网页。');});
+    const response=await fetch(`/api/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'manual',signal}).catch(error=>{if(signal?.aborted)throw error;throw new Error('无法连接本机后台。请使用“启动预览.bat”启动服务，然后刷新网页。');});
+    if(response.type==='opaqueredirect'||response.redirected||response.status>=300&&response.status<400){void response.body?.cancel().catch(()=>{});throw new Error('生成或配置接口发生重定向，请检查登录会话和服务器API路由。'+responseMetadata(response));}
     if(!response.ok){let code='',detail='';try{const value=await response.json() as {code?:unknown;upstreamStatus?:unknown};detail=upstreamStatusLabel(value);if(typeof value.code==='string')code=value.code;}catch{}const personaErrors:Record<string,string>={PLAYER_NAME_REQUIRED:'请填写玩家姓名后再开始。',INVALID_PERSONA:'人设表格的内容或长度不正确，请检查后重试。',INVALID_PERSONA_WISH:'请用不超过3000字描述想玩的人设。',INVALID_PERSONA_RESULT:'AI 返回的人设格式不正确，现有表格未修改，可以重试。',MODEL_LIST_NOT_SUPPORTED:'该服务不支持获取模型列表，请检查接口配置并刷新模型列表。',INVALID_MODEL_LIST:'服务返回的模型列表格式不正确，请检查接口配置并刷新模型列表。',MODEL_LIST_TOO_LARGE:'模型列表过大，请检查接口配置并刷新模型列表。',MODEL_LIST_FAILED:'获取模型列表失败，请检查地址；也可手动填写模型名。'};throw new Error((personaErrors[code]||apiMessages[code]||(response.status===404?'服务器接口尚未接通。':response.status===501?'此模型功能尚未配置。':response.status===401||response.status===403?'本机会话已失效，请刷新页面后重新确认接口。':`接口请求失败（${response.status}），请重试。`))+detail);}
     return response;
     }catch(error){throw modelRequestFailure(error,context,Date.now()-started);}
@@ -54,11 +56,12 @@ export class HttpGateway implements Gateway {
   async *generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent> {
     const context=modelRequestContext({profile:{...request.profile},key},'generate'),started=Date.now();
     const response=await this.post('generate',{...request,key,singleStateCall:true,captureFormatErrors:true},signal);
-    if(!response.headers.get('Content-Type')?.includes('text/event-stream') || !response.body) throw modelRequestFailure(new Error('服务器应返回 SSE 流式响应'),context,Date.now()-started);
-    const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer='', finished=false;
+    const {reader,prefix,decoder}=await openGenerationStream(response,code=>Object.hasOwn(apiMessages,code)?apiMessages[code]:undefined).catch(error=>{throw modelRequestFailure(error,context,Date.now()-started);});
+    let buffer=prefix.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n'), finished=false;
     try {
       while(true) {
-        const next=await reader.read(); buffer += decoder.decode(next.value,{stream:!next.done}); buffer=buffer.replace(/\r\n/g,'\n');
+        const next=buffer.includes('\n\n')?{done:false,value:undefined}:await reader.read(); buffer += decoder.decode(next.value,{stream:!next.done}); buffer=buffer.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
+        if(next.done&&buffer.trim())buffer+='\n\n';
         let end: number;
         while((end=buffer.indexOf('\n\n'))>=0) {
           const block=buffer.slice(0,end); buffer=buffer.slice(end+2);
