@@ -1,3 +1,4 @@
+import {normalizeProtocolKeys} from '../src/domain/protocolKeys.ts';
 import {terminalCodePath,terminalCodeIds,terminalCodeBindings,isTerminalCodePath} from '../src/domain/terminalCodeVariables.ts';
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {dataFromState,applyMvu,readPath,pointer} from '../src/domain/mvu.ts';
@@ -9,6 +10,7 @@ const textFields=['relationship','innerThought','spiritThought'];
 const aliases={好感度:'affinity',关系:'relationship',内心想法:'innerThought',精神体OS:'spiritThought',精神体想法:'spiritThought'};
 export function normalizeStateFields(value,warn){
  if(!object(value))return value;
+ value=normalizeProtocolKeys(value,['schemaVersion','requestId','event','presentCharacterIds','characters','player','customUpdates','suggestions','diceEvent','openingScene','terminal','mvu','forum','theaters','choices','id','name','affinity','relationship','innerThought','spiritThought','present','spiritAnimal','identity','mentalPowerLevel','primaryGender','secondaryGender','ability'],warn);
  const grouped=new Map();for(const [key,v]of Object.entries(value)){const normalized=aliases[key.trim()]||key.trim();if(grouped.has(normalized)&&JSON.stringify(grouped.get(normalized))!==JSON.stringify(v)){grouped.set(normalized,undefined);warn('STATE_FIELD_CONFLICT');}else if(!grouped.has(normalized))grouped.set(normalized,v);if(normalized!==key)warn('STATE_FIELD_NORMALIZED');}
  return Object.fromEntries([...grouped].filter(([,v])=>v!==undefined));
 }
@@ -29,6 +31,7 @@ export function adaptStateOutput(raw,state,options,warn){
  const rows=Array.isArray(raw.characters)?raw.characters:[];
  for(const row of rows){const id=resolveActorId(roster,row)||row?.id?.trim();if(seen.has(id))blocked.add(id);seen.add(id);}
  const field=(value,old,key)=>{
+  value=normalizeProtocolKeys(value,['action','value','reason'],warn);
   if(!object(value)||Object.keys(value).some(k=>!['action','value','reason'].includes(k))){warn('STATE_FIELD_SKIPPED');return;}
   if(value.action==='set'&&Object.keys(value).every(k=>['action','value'].includes(k))&&typeof value.value==='string'&&value.value.trim()&&value.value.length<=(key==='relationship'?200:2000))return value.value;
   if(value.action==='keep'&&Object.keys(value).length===1&&typeof old==='string'&&old.trim()&&!/^(未知|未提供|待生成|待更新|暂无)$/.test(old.trim()))return old;
@@ -72,8 +75,9 @@ export function adaptStateOutput(raw,state,options,warn){
  }else warn('STATE_ROSTER_RETAINED');
  const required=new Set([...(state.characters.filter(c=>c.present).map(c=>c.id)),...(out.presentCharacterIds||[])]);
  if(!options.repairPlan)for(const id of required){if(!reviewed.includes(id))warn('STATE_ATTITUDE_REVIEW_MISSING');}
- if(state.player.spiritAnimal&&(!options.repairPlan||options.repairPlan.spiritIds.includes('player'))){const v=field(raw.player?.spiritThought,state.player.spiritThought,'spiritThought');if(v!==undefined)out.player={spiritThought:v};}
- if(raw.player&&Object.keys(raw.player).some(k=>k!=='spiritThought'))warn('STATE_FIELD_SKIPPED');
+ const player=normalizeStateFields(raw.player,warn);
+ if(state.player.spiritAnimal&&(!options.repairPlan||options.repairPlan.spiritIds.includes('player'))){const v=field(player?.spiritThought,state.player.spiritThought,'spiritThought');if(v!==undefined)out.player={spiritThought:v};}
+ if(player&&Object.keys(player).some(k=>k!=='spiritThought'))warn('STATE_FIELD_SKIPPED');
  const custom=raw.customUpdates;
  if(custom!==undefined){
   try{

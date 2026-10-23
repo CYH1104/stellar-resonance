@@ -16,6 +16,7 @@ const explanations:Record<string,string>={
   STATE_MVU_VALUE_REJECTED:'变量结构、角色资料或数值未通过校验，已保留原值',
   STATE_FORMAT_INVALID:'模型返回的状态结构不合法',
   MODEL_STATE_JSON_INVALID:'状态 JSON 不完整或格式错误',
+  STATE_FIELD_NORMALIZED:'已规范输出字段名中的空白、别名或不可见字符，正文内容未改动',
   STATE_FIELD_SKIPPED:'部分状态字段的类型或数值范围不合法，已跳过',
   STATE_FIELD_CONFLICT:'同一变量的标准字段与别名值冲突，已保留该字段原值，其他有效字段继续应用',
   STATE_EMPTY_FIELD_RETAINED:'模型返回空字段，已保留旧值',
