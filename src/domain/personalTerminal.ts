@@ -3,7 +3,10 @@ export interface TerminalMessage {id:string;sender:string;text:string;at:string;
 export interface TerminalFriend {anchor?:TerminalAnchor;declinedRound?:number;source?:string;id:string;status:'pending'|'accepted'|'declined';reply:string;note:string;requestReason?:string;direction?:'incoming'|'outgoing';code?:string;at?:string}
 export interface TerminalConversation {id:string;title:string;members:string[];group:boolean;announcement:string;messages:TerminalMessage[];unread:number;ownerId?:string;adminIds?:string[];origin?:'manual'|'story'|'default';storyKey?:string;joined?:boolean;managementReady?:boolean;anchor?:TerminalAnchor}
 export interface TerminalGroupAction {by:string;kind:'set-admin'|'rename'|'announcement'|'remove-member';memberId?:string;enabled?:boolean;text?:string}
-export function groupOwner(c:TerminalConversation){return c.ownerId??(c.origin==='story'?'':'player');}
+export function groupOwner(c:TerminalConversation){const id=c.ownerId??(c.origin==='manual'?'player':'');return id==='player'?c.joined!==false?id:'':c.members.includes(id)?id:'';}
+/** Legacy group members omit player; presentation must include them exactly once while joined. */
+export function groupMemberIds(c:TerminalConversation){const ids=[...new Set(c.members.filter(id=>id&&id!=='player'))];if(c.group&&c.joined!==false)ids.unshift('player');const owner=groupOwner(c),rank=(id:string)=>id===owner?0:c.adminIds?.includes(id)?1:2;return ids.sort((a,b)=>rank(a)-rank(b));}
+export function groupManagementReady(c:TerminalConversation){return c.managementReady===true&&!!groupOwner(c);}
 export function groupCanManage(c:TerminalConversation,id='player'){return c.group&&c.joined!==false&&!!groupOwner(c)&&(groupOwner(c)===id||!!c.adminIds?.includes(id));}
 export function applyGroupAction(c:TerminalConversation,a:TerminalGroupAction){
  if(!groupCanManage(c,a.by)||!['player',...c.members].includes(a.by))throw Error('该成员没有群管理权限。');

@@ -7,7 +7,7 @@ import CharacterImageEditor from './CharacterImageEditor.vue';
 import {majorCharacter} from '../domain/characterImages';
 import SaveStatus from './SaveStatus.vue';
 import AutoTextarea from './AutoTextarea.vue';
-import {targetActors,groupOwner} from '../domain/personalTerminal';
+import {targetActors,groupOwner,groupMemberIds} from '../domain/personalTerminal';
 import {messagePage,terminalMessageVisible} from '../domain/terminalLedger';
 import TerminalIcon from './TerminalIcon.vue';
 const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
@@ -26,6 +26,7 @@ const chatSearch=ref(''),searchMessages=ref(false);
 watch(chatSearch,()=>u.historyPage=0);
 const conversations=computed(()=>u.visibleConversations.filter(c=>c.joined!==false&&c.title.includes(u.search)&&(u.conversationFilter==='all'||(u.conversationFilter==='group'?c.group:!c.group))));
 const messageTime=(at:string)=>/^\d{1,2}:\d{2}$/.test(at)?at:/^\d{4}-/.test(at)?new Date(at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'';
+const members=computed(()=>u.conversation?groupMemberIds(u.conversation):[]);
 const groupRole=(id:string)=>u.conversation&&groupOwner(u.conversation)===id?'群主':u.conversation?.adminIds?.includes(id)?'管理员':'成员';
 function member(id:string){if(id==='player'){u.go('account');return;}if(u.friends.some(f=>f.id===id))profile(id);else{u.go('add');}}
 const shownCourses=computed(()=>u.t.courses.filter(c=>u.week||!u.storyClock.day||c.day===u.storyClock.day).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time)));
@@ -59,7 +60,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <button v-for="c in conversations" :key="c.id" class="pt-row" type="button" @click="u.openConversation(c.id)"><span class="pt-avatar"><CharacterAvatar :w="w" :id="c.members[0]||''" :group="c.group"/></span><div><strong>{{c.title}}</strong><small>{{c.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m)).at(-1)?.text||'暂无消息'}}</small><small v-if="c.origin==='story'">剧情群聊</small></div><time>{{messageTime(c.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m)).at(-1)?.at||'')}}</time><em v-if="c.unread">{{c.unread}}</em><span>›</span></button>
   </template>
   <template v-else-if="u.page==='chat'&&u.conversation">
-   <div class="pt-chat-identity"><span class="pt-avatar"><CharacterAvatar :w="w" :id="u.conversation.members[0]||''" :group="u.conversation.group"/></span><div><strong>{{u.conversation.title}}</strong><small>{{u.conversation.group?`${u.conversation.members.length+1}位成员 · ${groupRole('player')}`:'私聊'}}</small></div><button type="button" @click="u.conversation.group?groupInfo():profile(u.conversation.members[0])">{{u.conversation.group?'群资料':'好友资料'}} ›</button></div>
+   <div class="pt-chat-identity"><span class="pt-avatar"><CharacterAvatar :w="w" :id="u.conversation.members[0]||''" :group="u.conversation.group"/></span><div><strong>{{u.conversation.title}}</strong><small>{{u.conversation.group?`${members.length}位成员 · ${groupRole('player')}`:'私聊'}}</small></div><button type="button" @click="u.conversation.group?groupInfo():profile(u.conversation.members[0])">{{u.conversation.group?'群资料':'好友资料'}} ›</button></div>
    <input v-if="searchMessages" v-model="chatSearch" aria-label="搜索聊天记录" placeholder="搜索本群聊天记录">
    <p v-if="u.conversation.announcement" class="pt-announcement">群公告：{{u.conversation.announcement}}</p>
    <div class="pt-pagination" v-if="searchedMessages.length>20"><button type="button" :disabled="(u.historyPage+1)*20>=searchedMessages.length" @click="u.historyPage++">更早记录</button><small>第 {{u.historyPage+1}} 页 · 共 {{searchedMessages.length}} 条</small><button type="button" :disabled="u.historyPage===0" @click="u.historyPage--">较新记录</button></div>
@@ -93,10 +94,9 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
   <template v-else-if="u.page==='group-info'&&u.conversation">
    <h2>{{u.conversation.title}}</h2><p class="pt-announcement">群主：{{groupOwner(u.conversation)?u.name(groupOwner(u.conversation)):'待剧情确认'}} · 你是{{groupRole('player')}}</p>
    <button v-if="u.conversation.origin==='story'" type="button" :disabled="u.working" @click="u.refreshGroup">{{u.conversation.managementReady?'根据剧情重新核对群资料':'AI 读取剧情并确定群资料'}}</button>
-   <h3>群成员 · {{u.conversation.members.length+1}}</h3><div class="pt-members"><button v-for="id in ['player',...u.conversation.members]" :key="id" type="button" @click="member(id)"><span class="pt-avatar"><img v-if="id==='player'&&u.t.avatar" :src="u.t.avatar" :style="u.avatarStyle" alt="我的头像"><CharacterAvatar v-else :w="w" :id="id"/></span>{{u.name(id)}}<small>{{groupRole(id)}}</small></button><button v-if="u.canManage" type="button" @click="u.picked=[];u.go('invite-group')">＋ 邀请</button></div>
+   <h3>群成员 · {{members.length}}</h3><div class="pt-members"><button v-for="id in members" :data-member-id="id" :data-role="groupRole(id)" :key="id" type="button" @click="member(id)"><span class="pt-avatar"><img v-if="id==='player'&&u.t.avatar" :src="u.t.avatar" :style="u.avatarStyle" alt="我的头像"><CharacterAvatar v-else :w="w" :id="id"/></span>{{u.name(id)}}<small>{{groupRole(id)}}</small></button><button v-if="u.canManage" type="button" @click="u.picked=[];u.go('invite-group')">＋ 邀请</button></div>
    <template v-if="u.canManage"><h3>成员管理</h3><div v-for="id in u.conversation.members.filter(id=>id!==groupOwner(u.conversation!)&&(u.isOwner||!u.conversation?.adminIds?.includes(id)))" :key="'remove:'+id" class="pt-row"><strong>{{u.name(id)}}</strong><button type="button" :disabled="u.working" @click="u.removeMember(id)">移出群聊</button></div></template>
-   <template v-if="u.isOwner"><h3>设置群管理员</h3><label v-for="id in u.conversation.members" :key="id" class="pt-row"><strong>{{u.name(id)}}</strong><input type="checkbox" :aria-label="'设置'+u.name(id)+'为管理员'" :checked="u.conversation.adminIds?.includes(id)||false" :disabled="u.working" @change="u.setAdmin(id,($event.target as HTMLInputElement).checked)"></label></template>
-   <p v-else class="pt-rule">只有群主可以任免管理员。你可以在群聊中向群主提出请求，由角色根据人设与关系决定。</p>
+   <template v-if="u.isOwner"><h3>设置群管理员</h3><label v-for="id in members.filter(id=>id!==groupOwner(u.conversation!))" :key="id" class="pt-row"><strong>{{u.name(id)}}</strong><input type="checkbox" :aria-label="'设置'+u.name(id)+'为管理员'" :checked="u.conversation.adminIds?.includes(id)||false" :disabled="u.working" @change="u.setAdmin(id,($event.target as HTMLInputElement).checked)"></label></template>
    <label>群名称<input v-model="u.title" maxlength="60" :readonly="!u.canManage"></label><label>群公告<textarea v-model="u.note" rows="3" maxlength="1000" :readonly="!u.canManage"/></label><button v-if="u.canManage" type="button" class="pt-primary" :disabled="u.working" @click="u.editGroup">保存群资料</button>
    <button type="button" @click="searchMessages=true;chatSearch='';u.go('chat')">查找聊天记录</button><button type="button" class="pt-gold" @click="u.picked=u.conversation.members.filter(id=>u.friends.some(f=>f.id===id));u.title=u.conversation.title;u.go('new-room')">发起国王游戏（仅邀请好友）</button><button v-if="!u.isOwner" type="button" class="pt-link" :disabled="u.working" @click="u.leaveGroup">退出此群聊</button>
   </template>
