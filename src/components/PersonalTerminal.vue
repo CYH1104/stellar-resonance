@@ -2,10 +2,11 @@
 import {computed,reactive,ref,nextTick,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
+import SaveStatus from './SaveStatus.vue';
 import {targetActors,groupOwner} from '../domain/personalTerminal';
 import {messagePage,terminalMessageVisible} from '../domain/terminalLedger';
 import TerminalIcon from './TerminalIcon.vue';
-const props=defineProps<{w:ViewModel}>();defineEmits<{close:[]}>();
+const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
 const u=reactive(usePersonalTerminal(props.w));
 const feed=ref<HTMLElement>();
 const titles:Record<string,string>={home:'个人终端',messages:'通讯',chat:'通讯',friends:'好友',add:'添加好友',profile:'好友资料','new-group':'发起群聊','invite-room':'邀请游戏好友','invite-group':'邀请好友','group-info':'群资料',courses:'课程表',course:'课程详情',apps:'应用',games:'游戏室','new-room':'创建房间',room:'国王游戏',king:'国王游戏',history:'游戏记录',account:'我的',legacy:'剧情群聊'};
@@ -34,7 +35,8 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
 </script>
 <template>
 <section class="pt" aria-label="个人终端">
- <header class="pt-header"><button type="button" :aria-label="u.page==='home'?'返回桌面':'返回上一页'" @click="back">‹</button><div><strong>{{currentTitle}}</strong><small>STELLAR OS</small></div><span>{{u.clock.time}}</span><button type="button" aria-label="关闭个人终端" @click="$emit('close')">×</button></header>
+ <header class="pt-header" title="拖动顶栏移动终端" @pointerdown="$emit('drag-start',$event)" @pointermove="$emit('drag-move',$event)" @pointerup="$emit('drag-end')" @pointercancel="$emit('drag-end')" @lostpointercapture="$emit('drag-end')"><button type="button" :aria-label="u.page==='home'?'返回桌面':'返回上一页'" @click="back">‹</button><div><strong>{{currentTitle}}</strong><small>STELLAR OS</small></div><span>{{u.clock.time}}</span><button type="button" aria-label="关闭个人终端" @click="$emit('close')">×</button></header>
+ <div class="pt-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError"/><button v-if="w.storageStatus==='failed'" type="button" @click="w.save()">重试保存</button></div>
  <div v-if="u.working" class="pt-progress" role="status">正在等待角色回应… <button type="button" disabled>请稍候</button></div>
  <div v-if="u.error" class="pt-error" role="alert">{{u.error}}<button type="button" aria-label="收起终端提示" @click="u.error=''">×</button></div>
  <main class="pt-screen" :class="{'pt-home-screen':u.page==='home'}" :aria-busy="u.working">
@@ -120,10 +122,14 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
 #academy-workspace .pt-home-screen{background:linear-gradient(#07132018,#0713209c 45%,#071320c4),url('/assets/terminal-academy-night.webp') center/cover}
 #academy-workspace .pt-clock{min-height:180px;padding-top:12px;text-shadow:0 2px 12px #000}
 #academy-workspace .pt-clock>small:last-of-type{display:block;letter-spacing:1px;margin-top:5px}
-#academy-workspace .pt .pt-own{width:64px;height:64px;right:3px;top:10px;overflow:hidden;border-radius:50%!important}
-#academy-workspace .pt-own svg{width:32px;height:32px}
-#academy-workspace .pt-avatar{width:52px;height:52px}
-#academy-workspace .pt-message .pt-avatar{width:44px;height:44px}
+#academy-workspace .pt .pt-own{width:88px;height:88px;right:3px;top:10px;overflow:hidden;border-radius:50%!important;padding:0!important;flex-shrink:0}
+#academy-workspace .pt-own svg{width:46px;height:46px}
+#academy-workspace .pt-avatar{width:60px;height:60px;flex-shrink:0}
+#academy-workspace .pt-message .pt-avatar{width:52px;height:52px}
+#academy-workspace .pt .profile-avatar{width:112px;height:112px}
+#academy-workspace .pt-header{touch-action:none;user-select:none;cursor:move}
+#academy-workspace .pt-save-status{display:flex;align-items:center;gap:6px;padding:0 12px;flex-shrink:0}
+#academy-workspace .pt-clock{padding-right:94px}
 #academy-workspace .pt-message>div{max-width:calc(100% - 53px)}
 #academy-workspace .pt .profile-avatar{width:112px;height:112px;border-radius:50%;margin:8px auto}
 #academy-workspace .pt-my-profile{padding:18px 6px}

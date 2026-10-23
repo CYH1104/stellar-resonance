@@ -1,4 +1,5 @@
 import {terminalMainContext,applyTerminalBatch} from '../domain/terminalMain';
+import {saveOnLeave} from './saveOnLeave';
 import {terminalRecall} from '../domain/terminalLedger';
 import {variableChangeLog} from '../domain/variableChangeLog';
 import {stateUpdateDetails as logStateDetails} from '../domain/stateUpdate';
@@ -19,7 +20,7 @@ import {useWorldbooks,mergeWorldbookBackup,sessionLore} from './useWorldbooks';
 import {activeCommitments,buildRecallQuery,memoryContext,memoryReady,memorySignature,memoryState,memoryText,normalizeMemoryResult,vectorCurrent,visibleSourceStillMatches,type MemoryRequest} from '../domain/memories';
 import {syncCharacterFacts} from '../domain/characterFacts';
 import {defaultJourneyName} from '../domain/journeyName';
-import { computed, reactive, ref, watch, type UnwrapNestedRefs } from 'vue';
+import { computed, reactive, ref, watch, nextTick, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant } from '../domain/contracts';
 import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
@@ -128,12 +129,18 @@ export function useWorkspace() {
   }
   async function setRememberApiKeys(remember:boolean){rememberApiKeys.value=remember;apiStorageReady=true;try{await persist();notice.value=remember?'已启用在此浏览器保存 Key。':'已删除本机保存的 Key；当前页面仍可使用，重新打开后需填写。';}catch{}}
   async function clearApiKeys(){for(const id of Object.keys(credentials))delete credentials[id];for(const id of Object.keys(approved))delete approved[id];apiStorageReady=true;try{await persist();notice.value='已清除本机保存和当前页面中的全部 API Key。';}catch{}}
+  const storageError=ref('');let timer:ReturnType<typeof setTimeout>|undefined;let saveRevision=0;
   async function persist() {
+   await nextTick();
+   const revision=++saveRevision;
+   clearTimeout(timer);timer=undefined;
+   try{
     if(deletionTask)await deletionTask;
     if(!storageReady){storageStatus.value='failed';problem.value='无法读取旧存档，已阻止覆盖。请导出当前内容并检查浏览器存储权限。';throw new Error(problem.value);}
-    const value=snapshot(),privateValue=credentialsSnapshot(); storageStatus.value='saving';notice.value='正在保存…';
+    const value=snapshot(),privateValue=credentialsSnapshot(); storageStatus.value='saving';storageError.value='';notice.value='正在保存…';
     const task=writes.catch(()=>{}).then(async()=>{await repository.write(value);if(apiStorageReady)await repository.writeApiCredentials(privateValue);}); writes=task;
-    try {await task;storageStatus.value='saved';lastSaved.value=now();notice.value='已保存在本机';} catch(e) {storageStatus.value='failed';problem.value=message(e);notice.value='未保存，请导出备份';throw e;}
+    await task;lastSaved.value=now();if(revision===saveRevision){storageStatus.value='saved';storageError.value='';notice.value='已保存在本机';}
+   }catch(e){if(revision===saveRevision){storageStatus.value='failed';storageError.value=message(e);problem.value=storageError.value;notice.value='未保存，请导出备份';}throw e;}
   }
   const safePersist=()=>persist().catch(()=>{});
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);
@@ -147,12 +154,14 @@ export function useWorkspace() {
       loading.value=false;if(apiReady.value)notice.value='已恢复本机 API 配置，可以继续游戏。';
     }
   }
-  let timer:ReturnType<typeof setTimeout>;
-  const scheduleSave=()=>{if(loading.value)return;storageStatus.value='pending';clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
+  const scheduleSave=()=>{if(loading.value)return;saveRevision++;storageStatus.value='pending';clearTimeout(timer);timer=setTimeout(()=>{void safePersist();},500);};
   
   watch(preferences,scheduleSave,{deep:true});
   watch(input,text=>{const session=active.value;if(session){session.draftInput=text;inputDrafts.set(session.id,text);scheduleSave();}});
   watch([credentials,approved],scheduleSave,{deep:true});
+  // Terminal state and other session edits also need saving without another story request.
+  watch(()=>sessions.value.map(s=>[s.id,s.name,s.persona,s.terminal,s.draftInput]),scheduleSave,{deep:true});
+  saveOnLeave(()=>{if((timer!==undefined||busy.value||terminalBusy.value)&&!loading.value){clearTimeout(timer);timer=undefined;void safePersist();}});
   watch(()=>preferences.mode,()=>{authorized.value=preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
   watch(credentials,()=>{for(const id of Object.keys(approved)){const p=preferences.profiles.find(profile=>profile.id===id);if(!p||approved[id]!==connectionSignature(p))delete approved[id];}});
   watch([apiReady,panel],()=>{if(active.value&&panel.value==='story'&&!apiReady.value&&!loading.value){panel.value='settings';problem.value=apiIssues.value[0]||'请完成 API 配置后继续。';}});
@@ -431,7 +440,7 @@ export function useWorkspace() {
   function duplicatePresetSet(){if(busy.value)return;const sourcePreset=currentPreset.value;const rules=copy((preferences.regexRules||[]).filter(r=>r.setId===sourcePreset));const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;(preferences.regexRules||=[]).push(...rules.map(r=>({...r,id:uid(),setId:id})));preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {terminalBusy,repairReport,replayWarnings,reviseMemoryRecord,migrationPreview,activateMemoryLedger,useLegacyMemory,restoreMemoryRevision,useMainForAll,storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,worldbookRuntimeDiagnostics,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,withdraw,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {storageError,terminalBusy,repairReport,replayWarnings,reviseMemoryRecord,migrationPreview,activateMemoryLedger,useLegacyMemory,restoreMemoryRevision,useMainForAll,storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,worldbookRuntimeDiagnostics,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,withdraw,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

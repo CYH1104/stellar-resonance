@@ -236,7 +236,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <div v-if="w.lastSaved||w.storageStatus!=='idle'" class="workspace-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div v-if="w.lastSaved||w.storageStatus!=='idle'" class="workspace-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 

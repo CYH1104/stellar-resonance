@@ -7,7 +7,7 @@ import {effectScope,nextTick} from 'vue';
 import {useWorkspace} from '../src/app/useWorkspace';
 import {IndexedDbRepository} from '../src/storage/repository';
 import {HttpGateway} from '../src/gateway/http';
-import {backup,defaults,initialState,newSession,finishVariant} from '../src/domain/story';
+import {backup,parseBackup,defaults,initialState,newSession,finishVariant} from '../src/domain/story';
 import type {LocalService,Snapshot} from '../src/domain/contracts';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
@@ -31,6 +31,37 @@ beforeEach(()=>{
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function generateAndWait(w:ReturnType<typeof useWorkspace>,...args:Parameters<ReturnType<typeof useWorkspace>['generate']>){await w.generate(...args);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));}
 async function workspace(memoryInterval=1){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
+it('automatically saves direct story and terminal changes without a new generation',async()=>{
+ const w=await workspace();
+ const session=newSession('自动保存',{name:'玩家',appearance:'',background:'',personality:''},'');
+ w.sessions.value.push(session);await nextTick();await vi.advanceTimersByTimeAsync(501);
+ const active=w.sessions.value[0];active.name='修改后的存档';
+ active.terminal={version:1,avatar:'',friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[],bio:'新的简介'};
+ await nextTick();expect(w.storageStatus.value).toBe('pending');await vi.advanceTimersByTimeAsync(501);
+ expect(saved?.sessions[0].name).toBe('修改后的存档');expect(saved?.sessions[0].terminal?.bio).toBe('新的简介');
+ expect(w.storageStatus.value).toBe('saved');expect(w.lastSaved.value).not.toBe('');
+});
+it('reports save validation failures and retries after fixing the terminal state',async()=>{
+ const w=await workspace();w.sessions.value.push(newSession('自动保存',{name:'玩家',appearance:'',background:'',personality:''},''));
+ await nextTick();await vi.advanceTimersByTimeAsync(501);
+ vi.mocked(IndexedDbRepository.prototype.write).mockImplementationOnce(async value=>{saved=parseBackup(backup(value));});
+ w.sessions.value[0].terminal={version:1,avatar:'',friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[],bio:'x'.repeat(161)};
+ await nextTick();await vi.advanceTimersByTimeAsync(501);
+ expect(w.storageStatus.value).toBe('failed');expect(w.storageError.value).toContain('终端资料');
+ w.sessions.value[0].terminal!.bio='修正';await w.save();
+ expect(w.storageError.value).toBe('');expect(w.storageStatus.value).toBe('saved');
+});
+it('keeps newer edits pending when an older save finishes',async()=>{
+ const w=await workspace();w.sessions.value.push(newSession('开始',{name:'玩家',appearance:'',background:'',personality:''},''));
+ await nextTick();await vi.advanceTimersByTimeAsync(501);
+ let release!:()=>void,started!:()=>void;
+ const gate=new Promise<void>(resolve=>release=resolve),entered=new Promise<void>(resolve=>started=resolve);
+ vi.mocked(IndexedDbRepository.prototype.write).mockImplementationOnce(async value=>{started();await gate;saved=JSON.parse(backup(value));});
+ w.sessions.value[0].name='旧内容';const first=w.save();await entered;
+ w.sessions.value[0].name='最新内容';await nextTick();release();await first;
+ expect(w.storageStatus.value).toBe('pending');await vi.advanceTimersByTimeAsync(501);
+ expect(saved?.sessions[0].name).toBe('最新内容');expect(w.storageStatus.value).toBe('saved');
+});
 it('撤回一轮会还原状态、记忆和论坛并恢复用户输入，草稿覆盖需明确确认，刷新后仍保留',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('撤回',{name:'玩家',appearance:'',background:'',personality:''},'');
  const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){yield {type:'delta',text:'回复'+r.input};yield {type:'done',outcome:{event:r.input,characters:[{id:'guide',affinity:r.input==='第一条'?35:45}],forum:[{id:'p',authorName:'路人',content:r.input}]}};});
