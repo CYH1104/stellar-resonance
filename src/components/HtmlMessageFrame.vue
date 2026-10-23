@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {computed,onMounted,onBeforeUnmount,ref,shallowRef,watch} from 'vue';
 import {htmlRenderDocument,readHtmlTheme,type HtmlRenderContext,type HtmlRenderTheme} from '../domain/htmlRendering';
-const props=defineProps<{content:string;context?:HtmlRenderContext;highlighted?:boolean}>();
+const props=defineProps<{content:string;context?:HtmlRenderContext;highlighted?:boolean;preserveLineBreaks?:boolean}>();
 const frame=ref<HTMLIFrameElement>(),height=ref(180),errors=ref<string[]>([]),raw=ref(false);
 const channel='academy-html-'+crypto.randomUUID();
 const theme=ref<HtmlRenderTheme>({color:'#20242a',background:'#fffaf3',scheme:'light'});let observer:MutationObserver|undefined;
 const initialContext=shallowRef<HtmlRenderContext>(JSON.parse(JSON.stringify(props.context||{})));
-const document=computed(()=>htmlRenderDocument(props.content,channel,initialContext.value,props.highlighted,typeof location==='undefined'?'':location.origin,theme.value));
+const document=computed(()=>htmlRenderDocument(props.content,channel,initialContext.value,props.highlighted,typeof location==='undefined'?'':location.origin,theme.value,props.preserveLineBreaks));
 function syncContext(){frame.value?.contentWindow?.postMessage({channel,kind:'context',context:JSON.parse(JSON.stringify(props.context||{}))},'*');}
 function updateTheme(){if(!frame.value?.parentElement)return;const next=readHtmlTheme(frame.value.parentElement);if(JSON.stringify(next)!==JSON.stringify(theme.value))theme.value=next;}
 function message(event:MessageEvent){

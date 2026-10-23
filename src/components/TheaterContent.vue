@@ -15,4 +15,6 @@ watch(()=>[source.value,settings?.value] as const,([text,config],_,cleanup)=>{
  void runRegex(text,config.rules.filter(r=>theaterRuleEnabled(config.bindings||[],props.slot,r.id)),config.context,controller.signal).then(result=>{if(!controller.signal.aborted){formatted.value=result.text;errors.value=result.errors;}}).catch(()=>{});
 },{immediate:true,deep:true});
 </script>
-<template><div class="theater-rendered-content"><StoryContent v-if="hasRenderableHtml(visible,true)" :text="visible" /><p v-else>{{visible}}</p><p v-if="errors.length" class="rail-note" role="status">{{errors.join('；')}}</p></div></template>
+<template><div class="theater-rendered-content"><StoryContent v-if="hasRenderableHtml(visible,true)" :text="visible" preserve-line-breaks /><p v-else>{{visible}}</p><p v-if="errors.length" class="rail-note" role="status">{{errors.join('；')}}</p></div></template>
+
+<style scoped>.theater-rendered-content>p{white-space:pre-wrap;overflow-wrap:anywhere}</style>

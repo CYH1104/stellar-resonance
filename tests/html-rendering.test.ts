@@ -22,3 +22,9 @@ it('escapes injected variable data and keeps bridge read-only',()=>{
  const rendered=htmlRenderDocument('<div>内容</div>','unique',{variables:{text:'</script><script>bad()</script>'}});
  expect(rendered).toContain('\\u003c/script>');expect(rendered).not.toContain('</script><script>bad()');expect(rendered).toContain('window.getVariables');expect(rendered).not.toContain('window.replaceVariables');expect(rendered).not.toContain('localStorage');
 });
+
+it('opts theater HTML into newline preservation without changing source, scripts or other HTML frames',()=>{
+ const source=JSON.parse(JSON.stringify('<div style="color:#c8c0b8">第一段。\n\n「第二段。」</div><script>const text="\\n";</script>'));
+ const normal=htmlRenderDocument(source,'normal');const theater=htmlRenderDocument(source,'theater',{},false,'',undefined,true);
+ expect(normal).not.toContain('body{white-space:pre-line}');expect(theater).toContain('body{white-space:pre-line}');expect(theater).toContain(source);expect(theater).not.toContain('<br>');
+});
