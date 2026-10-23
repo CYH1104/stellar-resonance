@@ -5,7 +5,6 @@ import {usePersonalTerminal} from '../app/usePersonalTerminal';
 import CharacterAvatar from './CharacterAvatar.vue';
 import CharacterImageEditor from './CharacterImageEditor.vue';
 import {majorCharacter} from '../domain/characterImages';
-import SaveStatus from './SaveStatus.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import {targetActors,groupOwner,groupMemberIds} from '../domain/personalTerminal';
 import {messagePage,terminalMessageVisible} from '../domain/terminalLedger';
@@ -44,7 +43,6 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
 <template>
 <section class="pt" aria-label="个人终端"><div v-if="imageCharacter" class="pt-image-dialog" role="dialog" aria-modal="true" aria-label="编辑角色头像" @keydown.esc="imageCharacter=''"><button type="button" class="pt-image-close" aria-label="关闭头像编辑" autofocus @click="imageCharacter=''">关闭 ×</button><CharacterImageEditor :key="imageCharacter" :w="w" :id="imageCharacter"/></div>
  <header class="pt-header" title="拖动顶栏移动终端" @pointerdown="$emit('drag-start',$event)" @pointermove="$emit('drag-move',$event)" @pointerup="$emit('drag-end')" @pointercancel="$emit('drag-end')" @lostpointercapture="$emit('drag-end')"><button type="button" :aria-label="u.page==='home'?'返回桌面':'返回上一页'" @click="back">‹</button><div><strong>{{currentTitle}}</strong><small>STELLAR OS</small></div><span>{{u.clock.time}}</span><button type="button" aria-label="关闭个人终端" @click="$emit('close')">×</button></header>
- <div class="pt-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError"/><button type="button" :disabled="w.storageStatus==='saving'" @click="w.save()">立即保存</button></div>
  <div v-if="u.working" class="pt-progress" role="status">正在等待角色回应… <button type="button" disabled>请稍候</button></div>
  <div v-if="u.error" class="pt-error" role="alert">{{u.error}}<button type="button" aria-label="收起终端提示" @click="u.error=''">×</button></div>
  <main class="pt-screen" :class="{'pt-home-screen':u.page==='home'}" :aria-busy="u.working">
