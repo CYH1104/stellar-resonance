@@ -1,8 +1,13 @@
 import 'fake-indexeddb/auto';
-import {it,expect} from 'vitest';
+import {it,expect,vi} from 'vitest';
 import {PersonaLibrary,validatePersonaTextFile,personaMediaFile} from '../src/storage/personaLibrary';
 import {blankPersona,normalizePersona} from '../src/domain/persona';
 import {newSession,defaults,backup,parseBackup} from '../src/domain/story';
+it('reopens the persona database after an initial connection failure',async()=>{
+ const library=new PersonaLibrary();
+ const spy=vi.spyOn(indexedDB,'open').mockImplementationOnce(()=>{throw Error('storage temporarily unavailable');});
+ try{await expect(library.list()).rejects.toThrow('storage temporarily unavailable');expect(Array.isArray(await library.list())).toBe(true);}finally{spy.mockRestore();}
+});
 it('restores unfinished editor drafts and original images without creating an archive',async()=>{
  const library=new PersonaLibrary(),before=(await library.list()).length;
  const draft={id:'',name:'',persona:{...blankPersona(),rawText:'  未填姓名也保留\n'},portrait:new Blob(['original'],{type:'image/png'}),remark:'草稿',updatedAt:new Date().toISOString()};

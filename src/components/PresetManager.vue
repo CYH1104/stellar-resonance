@@ -108,7 +108,7 @@ async function useCurrentPreset(){await autoSave.flush();if(autoSave.error.value
 function copyPrompt(p:Preset){if(props.w.busy||p.marker)return;const id=crypto.randomUUID(),q={...JSON.parse(JSON.stringify(p)),id,identifier:id,name:p.name+'（副本）',included:true};props.w.preferences.presets.push(q);edit(q);}
 function toggleAll(enabled:boolean){if(props.w.busy)return;for(const p of rows.value)p.enabled=enabled;}
 function removeSet(){props.w.removePresetSet();deleting.value=false;}
-const autoSave=useAutoSave(()=>drafts.value,async()=>{if(props.w.busy)return false;const changes=Object.keys(drafts.value).filter(id=>JSON.stringify(drafts.value[id])!==JSON.stringify(originals.value[id])).map(cleanedDraft).filter(c=>!!c);if(!changes.length)return true;for(const change of changes)Object.assign(change.target,change.value);props.w.problem='';await props.w.save();if(props.w.problem)throw Error(props.w.problem);for(const change of changes)originals.value[change.target.id]=JSON.parse(JSON.stringify(change.value));return true;});
+const autoSave=useAutoSave(()=>drafts.value,async()=>{if(props.w.busy)return false;const changes=Object.keys(drafts.value).filter(id=>JSON.stringify(drafts.value[id])!==JSON.stringify(originals.value[id])).map(cleanedDraft).filter(c=>!!c);if(!changes.length)return true;for(const change of changes)Object.assign(change.target,change.value);props.w.problem='';await props.w.save();if(props.w.problem)throw Error(props.w.problem);for(const change of changes)originals.value[change.target.id]=JSON.parse(JSON.stringify(change.value));return true;},500,()=>props.w.busy);
 </script>
 <template>
   <section class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">

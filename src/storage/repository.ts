@@ -8,13 +8,18 @@ export class IndexedDbRepository implements Repository {
   private loaded=false;
   constructor(private name = accountDatabase('stellar-resonance-v1')) {}
   private open(): Promise<IDBDatabase> {
-    return this.connection ||= new Promise((resolve, reject) => {
+    if(this.connection)return this.connection;
+    let failed=false;
+    const opening=new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(this.name, 1);
       request.onupgradeneeded = () => request.result.createObjectStore('workspace');
-      request.onerror = () => reject(new Error('无法打开本地存档，请检查浏览器存储权限'));
-      request.onblocked = () => reject(new Error('请关闭旧版本网页后重试'));
-      request.onsuccess = () => { const db = request.result; db.onversionchange = () => { db.close(); this.connection=undefined; }; resolve(db); };
+      request.onerror = () => {failed=true;reject(new Error('无法打开本地存档，请检查浏览器存储权限'));};
+      request.onblocked = () => {failed=true;reject(new Error('请关闭旧版本网页后重试'));};
+      request.onsuccess = () => { const db = request.result;if(failed){db.close();return;} db.onversionchange = () => { db.close(); this.connection=undefined; }; resolve(db); };
     });
+    this.connection=opening;
+    void opening.catch(()=>{if(this.connection===opening)this.connection=undefined;});
+    return opening;
   }
   async read(): Promise<Snapshot | undefined> {
     const db = await this.open();

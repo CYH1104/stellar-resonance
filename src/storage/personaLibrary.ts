@@ -34,7 +34,21 @@ export function resolvePersonaArchiveFile(file:PersonaFile,files:PersonaFile[]){
 export function validatePersonaTextFile(name:string,size:number){if(!/\.(txt|md)$/i.test(name))throw Error('只能导入 .txt 或 .md 人设文件。');if(size>256*1024)throw Error('文件不能超过 256KB。');}
 export class PersonaLibrary {
   private db?:Promise<IDBDatabase>;
-  private open(){return this.db ||=new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(accountDatabase('stellar-persona-library'),2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('files'))r.result.createObjectStore('files',{keyPath:'id'});if(!r.result.objectStoreNames.contains('drafts'))r.result.createObjectStore('drafts');};r.onsuccess=()=>{r.result.onversionchange=()=>{r.result.close();this.db=undefined;};resolve(r.result);};r.onerror=()=>reject(Error('无法打开本机人物档案库'));});}
+  private open(){
+    if(this.db)return this.db;
+    let settled=false;
+    const opening=new Promise<IDBDatabase>((resolve,reject)=>{
+      const r=indexedDB.open(accountDatabase('stellar-persona-library'),2);
+      const fail=(text:string)=>{settled=true;reject(Error(text));};
+      r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('files'))r.result.createObjectStore('files',{keyPath:'id'});if(!r.result.objectStoreNames.contains('drafts'))r.result.createObjectStore('drafts');};
+      r.onblocked=()=>fail('人物档案库更新被其他页面占用，请关闭其他游戏标签页后重试保存。');
+      r.onsuccess=()=>{if(settled){r.result.close();return;}r.result.onversionchange=()=>{r.result.close();this.db=undefined;};resolve(r.result);};
+      r.onerror=()=>fail('无法打开本机人物档案库，请检查浏览器存储权限后重试。');
+    });
+    this.db=opening;
+    void opening.catch(()=>{if(this.db===opening)this.db=undefined;});
+    return opening;
+  }
   async readDraft():Promise<PersonaFile|undefined>{const db=await this.open();return new Promise((resolve,reject)=>{const r=db.transaction('drafts').objectStore('drafts').get('editor');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(Error('人设草稿读取失败'));});}
   async saveDraft(file:PersonaFile){const safe={...file,persona:{...file.persona},sourceSessionIds:[...(file.sourceSessionIds||[])],avatarAppearance:cleanAvatarAppearance(file.avatarAppearance)};const db=await this.open();await new Promise<void>((resolve,reject)=>{const t=db.transaction('drafts','readwrite');t.objectStore('drafts').put(safe,'editor');t.oncomplete=()=>resolve();t.onerror=t.onabort=()=>reject(Error('人设草稿保存失败'));});}
   async list():Promise<PersonaFile[]>{const db=await this.open();return new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').getAll();r.onsuccess=()=>resolve(r.result.sort((a:PersonaFile,b:PersonaFile)=>b.updatedAt.localeCompare(a.updatedAt)));r.onerror=()=>reject(Error('档案读取失败'));});}

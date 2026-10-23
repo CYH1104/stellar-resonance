@@ -10,7 +10,7 @@ const props=defineProps<{w:ViewModel}>();const shortcut=ref('');
 const persona=reactive(blankPersona());
 watch(()=>props.w.active?.id,()=>{Object.assign(persona,blankPersona(),props.w.active?.persona||{});},{immediate:true});
 function addShortcut(){if(shortcut.value.trim()){props.w.preferences.shortcuts.push(shortcut.value.trim());shortcut.value='';}}
-const autoSave=useAutoSave(()=>persona,async()=>{if(!persona.name.trim()||!props.w.active||props.w.busy)return false;props.w.problem='';await props.w.savePersona(persona);if(props.w.problem)throw Error(props.w.problem);return true;});
+const autoSave=useAutoSave(()=>persona,async()=>{if(!persona.name.trim()||!props.w.active||props.w.busy)return false;props.w.problem='';await props.w.savePersona(persona);if(props.w.problem)throw Error(props.w.problem);return true;},500,()=>props.w.busy);
 </script>
 <template><section class="surface game-settings-view">
   <header class="panel-heading"><div><p class="eyebrow">SETTINGS / 设置</p><h1>设置</h1></div></header>

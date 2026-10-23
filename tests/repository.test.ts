@@ -1,8 +1,20 @@
 import 'fake-indexeddb/auto';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { IndexedDbRepository } from '../src/storage/repository';
 import { defaults, newSession } from '../src/domain/story';
 import {cleanLocalApiCredentials} from '../src/storage/apiCredentials';
+it('temporary database connection errors do not permanently disable workspace and API saving',async()=>{
+ const repository=new IndexedDbRepository('retry-'+crypto.randomUUID());
+ const spy=vi.spyOn(indexedDB,'open').mockImplementationOnce(()=>{throw Error('temporary storage failure');});
+ try{
+  await expect(repository.read()).rejects.toThrow('temporary storage failure');
+  expect(await repository.read()).toBeUndefined();
+  await repository.write({version:1,sessions:[],preferences:defaults()});
+  expect((await repository.read())?.version).toBe(1);
+  await repository.writeApiCredentials({version:1,remember:false,keys:{},confirmed:{}});
+  expect((await repository.readApiCredentials())?.remember).toBe(false);
+ }finally{spy.mockRestore();}
+});
 
 it('迟到页面不能覆盖另一页面已保存的状态',async()=>{
  const name='race-'+crypto.randomUUID(),a=new IndexedDbRepository(name),b=new IndexedDbRepository(name);
