@@ -1,3 +1,4 @@
+import {isTerminalCodePath,validTerminalCode} from '../src/domain/terminalCodeVariables.ts';
 import {terminalMainPrompt} from './terminal-main.mjs';
 import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
 import {playerIdentityContext} from './player-identity.mjs';
@@ -335,9 +336,10 @@ export class StoryDecoder {
         if(incomplete.has('mvu'))throw Error();
         const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));
         if(patches.length>1)throw Error();
-        sceneOnly=(patches[0]||[]).filter(op=>isScenePath(op.path));
-        if(sceneOnly.some(op=>!['replace','add','insert'].includes(op.op)||!validSceneValue(op.path,op.value)))throw Error();
+        sceneOnly=(patches[0]||[]).filter(op=>isScenePath(op.path)||isTerminalCodePath(op.path,state));
+        if(sceneOnly.some(op=>!['replace','add','insert'].includes(op.op)||!(isTerminalCodePath(op.path,state)?op.value===''||validTerminalCode(op.value):validSceneValue(op.path,op.value))))throw Error();
         if(options.repairPlan)sceneOnly=[];
+        if(sceneOnly.some(op=>isTerminalCodePath(op.path,state)&&op.value!==''&&(!validTerminalCode(op.value)||!new RegExp('(?:^|[^0-9])'+op.value+'(?![0-9])').test(blocks.prose))))throw Error();
         if(sceneOnly.length)applyMvu(state,sceneOnly);
       }catch{sceneOnly=[];warn('STATE_SCENE_RETAINED');}
       blocks.mvu=[];delete assembled.mvu;
@@ -346,7 +348,7 @@ export class StoryDecoder {
     if(assembled.schemaVersion!==undefined)for(const key of ['forum','theaters','choices'])if(Object.hasOwn(assembled,key)){embeddedCompanions[key]=assembled[key];delete assembled[key];warn('STATE_COMPANION_RELOCATED');}
     if(options.stateEnabled===false&&assembled.schemaVersion!==undefined)assembled={event:assembled.event,suggestions:assembled.suggestions};
     const canonical=assembled.schemaVersion!==undefined;
-    const adapted=canonical?adaptStateOutput(assembled,state,options,warn):undefined;
+    const adapted=canonical?adaptStateOutput(assembled,state,{...options,prose:blocks.prose},warn):undefined;
     if(canonical&&candidates.length!==1){warn('STATE_PROTOCOL_CONFLICT');adapted.raw={event:assembled.event};adapted.records=[];adapted.reviewed=[];}
     if(adapted)assembled=adapted.raw;
     if(embeddedCompanions.forum!==undefined)assembled.forum=embeddedCompanions.forum;
@@ -383,7 +385,7 @@ export class StoryDecoder {
     }
     else if(incomplete.has('mvu')||(blocks.mvu.length&&mvu!==undefined))mvuFailed=true;
     else if(!canonical&&blocks.mvu.length){try{const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));if(patches.length>1&&patches.some(ops=>ops.length))throw Error('Ambiguous variable blocks');mvu=patches[0];received=true;}catch{mvuFailed=true;}}
-    if(mvu!==undefined&&!mvuFailed){try{mvu=prepareMvuUpdates(state,mvu,assembled.characters);applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch(error){warn(error.fieldPath?'STATE_MVU_PATH_REJECTED':'STATE_MVU_VALUE_REJECTED');mvuFailed=true;}}
+    if(mvu!==undefined&&!mvuFailed){try{mvu=prepareMvuUpdates(state,mvu,assembled.characters);if(mvu.some(op=>isTerminalCodePath(op.path,state)&&op.op!=='test'&&op.value!==''&&(!validTerminalCode(op.value)||!new RegExp('(?:^|[^0-9])'+op.value+'(?![0-9])').test(blocks.prose))))throw Error();applyMvu(state,mvu);assembled.mvu=mvu;received=true;}catch(error){warn(error.fieldPath?'STATE_MVU_PATH_REJECTED':'STATE_MVU_VALUE_REJECTED');mvuFailed=true;}}
     if(!canonical&&options.stateEnabled!==false&&(!options.repairPlan||options.repairPlan.affinityIds.length)&&mvu===undefined&&!mvuFailed)warn('STATE_MVU_OUTPUT_MISSING');
     if(mvuFailed){if(!single)throw modelError(502,'MODEL_STATE_CHARACTERS_INVALID');warn('STATE_MVU_REJECTED');rejected=true;}
     if(mvuFailed){

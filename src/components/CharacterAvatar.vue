@@ -5,7 +5,7 @@ import {majorCharacter} from '../domain/characterImages';
 import TerminalIcon from './TerminalIcon.vue';
 const props=defineProps<{w:ViewModel;id:string;group?:boolean}>();
 const failed=ref(false);
-const original=computed(()=>props.w.localService?.characters.find(a=>a.id===props.id));
+const original=computed(()=>(props.w.localService?.majorCharacters||props.w.localService?.characters)?.find(a=>a.id===props.id));
 const card=computed(()=>original.value&&majorCharacter(original.value.name));
 const image=computed(()=>card.value?props.w.preferences.characterImages?.[props.id]:undefined);
 const url=computed(()=>image.value?.url||card.value?.url||'');

@@ -1,3 +1,4 @@
+import {terminalCodePath,terminalCodeIds,validateTerminalCodeMap} from './terminalCodeVariables.ts';
 import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
 import {fixedActorFields,restoreActorFacts} from './actorPolicy.ts';
 import {newDynamicActor} from './dynamicActors.ts';
@@ -111,6 +112,10 @@ export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldSta
   const sceneOps=ops.filter(op=>isScenePath(op.path));
   if(sceneOps.some(op=>!['replace','add','insert','test'].includes(op.op)||!validSceneValue(op.path,op.value)))fail();
   if(sceneOps.length&&object(original.custom)&&original.custom.时间地点===undefined)original.custom.时间地点=emptyScene();
+  if(ops.some(op=>op.path.startsWith('/custom/终端码/'))&&object(original.custom)){
+    if(original.custom.终端码===undefined)original.custom.终端码={};
+    if(object(original.custom.终端码))for(const id of terminalCodeIds(state))if(ops.some(op=>op.path===terminalCodePath(id))&&original.custom.终端码[id]===undefined)original.custom.终端码[id]='';
+  }
   const next=patchData(original,ops,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
@@ -125,6 +130,7 @@ export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldSta
   }
   const player=actor(original.player as Record<string,Json>,next.player,true),characters=state.characters.map(c=>actor((original.characters as Record<string,Json>)[c.id] as Record<string,Json>,(next.characters as Record<string,Json>)[c.id]));
   const additions=Object.entries(next.characters).filter(([id])=>!state.characters.some(c=>c.id===id)).map(([id,value])=>{if(!object(value)||value.id!==id)fail();return newDynamicActor(value,legacy);});
+  validateTerminalCodeMap(state.variables?.终端码,next.custom.终端码,['player',...characters.map(c=>String(c.id)),...additions.map(c=>String(c.id))]);
   return {...clone(state),player,characters:[...characters,...additions],variables:next.custom} as unknown as WorldState;
 }
 

@@ -1,4 +1,6 @@
-import {createTerminalCodes,terminalCodePrompt} from './terminal-codes.mjs';
+import {majorCharacter} from '../src/domain/characterImages.ts';
+import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
+import {terminalCodePrompt} from './terminal-codes.mjs';
 import {terminalPlan,parseTerminalResult,terminalActors} from './personal-terminal.mjs';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {createRelayPolicy} from './relay-policy.mjs';
@@ -51,7 +53,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   fetchImpl=relayPolicy.guard(fetchImpl);
   const editorGateway=await createEditorGateway({projectRoot,editorPort,accounts,relayPolicy,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true};
-  const terminalCodes=createTerminalCodes(resolve(projectRoot,'server/private/terminal-codes.key'));
+
   const theaterShares=createTheaterShares(resolve(projectRoot,'server/private/theater-shares'));
   const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
@@ -129,15 +131,16 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}
       if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:{...(editorial?.data.map||{main:'',places:{}}),locations:source.places}});return;}
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
-      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',developerMode:developerAllowed(account),dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
+      if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',developerMode:developerAllowed(account),dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],majorCharacters:source.characters.filter(c=>majorCharacter(c.name)).map(({id,name})=>({id,name})),characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
         if(path==='/api/terminal-code'){
-          const actors=terminalActors(source,data.state),entries=await terminalCodes(current.accountId,data.sessionId,actors);
-          if(data.self===true){json(response,200,{code:entries[0].code});return;}
-          if(typeof data.code!=='string'||!/^8\d{10}$/.test(data.code))throw modelError(400,'INVALID_TERMINAL_CODE');
+          if(typeof data.sessionId!=='string'||!data.sessionId||data.sessionId.length>128)throw modelError(400,'INVALID_TERMINAL_REQUEST');
+          const actors=terminalActors(source,data.state),entries=Object.entries(terminalCodeBindings({...data.state,characters:actors})).map(([id,code])=>({id,code}));
+          if(data.self===true){json(response,200,{code:entries.find(e=>e.id==='player')?.code||''});return;}
+          if(typeof data.code!=='string'||!/^\d{11}$/.test(data.code))throw modelError(400,'INVALID_TERMINAL_CODE');
           const entry=entries.find(e=>e.code===data.code&&e.id!=='player'),actor=actors.find(c=>c.id===entry?.id);
           if(!actor)throw modelError(404,'TERMINAL_CODE_NOT_FOUND');json(response,200,{id:actor.id,name:actor.name,identity:identityOf(actor)||'',code:entry.code});return;
         }
@@ -205,7 +208,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(repairPlan){data.stateEnabled=data.stateEnabled!==false&&repairNeedsState(repairPlan);data.suggestionsEnabled=repairPlan.suggestions;data.theaterSettings=cleanTheaters(data.theaterSettings).map(s=>({...s,enabled:s.enabled&&repairPlan.theaterSlots.includes(s.slot)}));}
           const generation=data;
           const selected=await connection(current,generation),{requestId,messages,state,theaterSettings,dice,card:generationCard,presetDiagnostics,repairLore}=buildMessages(source,{...data,stateSeparate:false},privateBooks);
-          if(/终端|通讯|联系|号码|手机号/.test(data.input||'')&&data.sessionId)messages.splice(1,0,terminalCodePrompt(await terminalCodes(current.accountId,data.sessionId,terminalActors(source,data.state))));
+          messages.splice(3,0,terminalCodePrompt(Object.entries(terminalCodeBindings({...data.state,characters:terminalActors(source,data.state)})).map(([id,code])=>({id,code})),terminalActors(source,data.state),data.stateEnabled!==false));
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);

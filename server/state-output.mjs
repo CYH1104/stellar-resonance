@@ -1,3 +1,4 @@
+import {terminalCodePath,terminalCodeIds,terminalCodeBindings,isTerminalCodePath} from '../src/domain/terminalCodeVariables.ts';
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {dataFromState,applyMvu,readPath,pointer} from '../src/domain/mvu.ts';
 import {scenePaths,storyScene,validSceneValue} from '../src/domain/storyScene.ts';
@@ -14,7 +15,7 @@ export function normalizeStateFields(value,warn){
 export function outputManifest(state,options={}){
  const sceneSchema=Object.fromEntries(Object.values(scenePaths).map(path=>[path,{type:'string',clearable:false}]));
  const schema={};const visit=(v,path)=>{if(object(v)){for(const [k,x]of Object.entries(v))if(!k.startsWith('_'))visit(x,path+'/'+k.replace(/~/g,'~0').replace(/\//g,'~1'));}else schema[path]={type:Array.isArray(v)?'array':typeof v,clearable:false};};visit(state?.variables||{},'/custom');
- return {schemaVersion:'state-output-v1',requestId:options.requestId||'local-test',registeredCharacters:(state?.characters||[]).map(c=>({id:c.id,name:c.name,present:c.present,spiritAnimal:c.spiritAnimal})),requiredPlayerFields:state?.player?.spiritAnimal?['spiritThought']:[],requiredCharacterFields:['affinity','relationship','innerThought'],spiritRequiredIds:(state?.characters||[]).filter(c=>c.present&&c.spiritAnimal).map(c=>c.id),affinityRange:{min:-100,max:100},newCharacterAffinity:0,affinityIncreaseGuidance:{usualDeltas:[0.5,1],preferredMax:3,hardPerTurnCap:false},affinityDecreaseGuidance:{hardPerTurnCap:false},enabledTheaterSlots:(options.theaterSettings||[]).filter(t=>t.enabled!==false).map(t=>t.slot),customVariableSchema:{...schema,...sceneSchema},...(options.repairPlan?{repairOnly:options.repairPlan}:{})};
+ return {schemaVersion:'state-output-v1',requestId:options.requestId||'local-test',registeredCharacters:(state?.characters||[]).map(c=>({id:c.id,name:c.name,present:c.present,spiritAnimal:c.spiritAnimal})),requiredPlayerFields:state?.player?.spiritAnimal?['spiritThought']:[],requiredCharacterFields:['affinity','relationship','innerThought'],spiritRequiredIds:(state?.characters||[]).filter(c=>c.present&&c.spiritAnimal).map(c=>c.id),affinityRange:{min:-100,max:100},newCharacterAffinity:0,affinityIncreaseGuidance:{usualDeltas:[0.5,1],preferredMax:3,hardPerTurnCap:false},affinityDecreaseGuidance:{hardPerTurnCap:false},enabledTheaterSlots:(options.theaterSettings||[]).filter(t=>t.enabled!==false).map(t=>t.slot),customVariableSchema:{...schema,...sceneSchema,...Object.fromEntries(terminalCodeIds(state).map(id=>[terminalCodePath(id),{type:'string',clearable:false}]))},...(options.repairPlan?{repairOnly:options.repairPlan}:{})};
 }
 /** V1 is converted once to existing absolute snapshots. No second affinity patch. */
 export function adaptStateOutput(raw,state,options,warn){
@@ -80,8 +81,10 @@ export function adaptStateOutput(raw,state,options,warn){
    for(const u of custom){
     if(!object(u)||!manifest.customVariableSchema[u.path]||pointer(u.path).some(k=>k.startsWith('_'))||!reason(u.reason)||Object.keys(u).some(k=>!['path','action','value','delta','reason'].includes(k)))throw Error();
     const sceneKey=Object.keys(scenePaths).find(key=>scenePaths[key]===u.path);
-    const current=sceneKey?storyScene(state)[sceneKey]:readPath(dataFromState(state).stat_data,u.path);
+    const codeId=terminalCodeIds(state).find(id=>terminalCodePath(id)===u.path);
+    const current=codeId?(terminalCodeBindings(state)[codeId]||''):sceneKey?storyScene(state)[sceneKey]:readPath(dataFromState(state).stat_data,u.path);
     if(sceneKey&&u.action==='set'&&!validSceneValue(u.path,u.value))throw Error();
+    if(codeId&&u.action==='set'&&u.value!==current&&u.value!==''&&(typeof options.prose!=='string'||!(typeof u.value==='string'&&/^\d{11}$/.test(u.value)&&new RegExp('(?:^|[^0-9])'+u.value+'(?![0-9])').test(options.prose))))throw Error();
     if(u.action==='keep'){if('value'in u||'delta'in u)throw Error();continue;}
     if(u.action==='set'&&!('delta'in u)&&typeof current===typeof u.value&&Array.isArray(current)===Array.isArray(u.value))ops.push({op:'replace',path:u.path,value:u.value});
     else if(u.action==='delta'&&!('value'in u)&&typeof current==='number'&&typeof u.delta==='number'&&Number.isFinite(u.delta))ops.push({op:'delta',path:u.path,value:u.delta});

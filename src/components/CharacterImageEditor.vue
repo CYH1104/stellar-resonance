@@ -3,7 +3,7 @@ import {computed,ref} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {majorCharacter,imageUrl,type CharacterImage} from '../domain/characterImages';
 const props=defineProps<{w:ViewModel;id:string}>();
-const actor=computed(()=>props.w.localService?.characters.find(a=>a.id===props.id));
+const actor=computed(()=>(props.w.localService?.majorCharacters||props.w.localService?.characters)?.find(a=>a.id===props.id));
 const card=computed(()=>actor.value&&majorCharacter(actor.value.name));
 const setting=computed(()=>props.w.preferences.characterImages?.[props.id]);
 const error=ref(''),uploading=ref(false);
