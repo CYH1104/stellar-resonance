@@ -3,6 +3,7 @@ import {computed,reactive,ref,nextTick,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
 import SaveStatus from './SaveStatus.vue';
+import AutoTextarea from './AutoTextarea.vue';
 import {targetActors,groupOwner} from '../domain/personalTerminal';
 import {messagePage,terminalMessageVisible} from '../domain/terminalLedger';
 import TerminalIcon from './TerminalIcon.vue';
@@ -59,7 +60,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <div class="pt-pagination" v-if="searchedMessages.length>20"><button type="button" :disabled="(u.historyPage+1)*20>=searchedMessages.length" @click="u.historyPage++">更早记录</button><small>第 {{u.historyPage+1}} 页 · 共 {{searchedMessages.length}} 条</small><button type="button" :disabled="u.historyPage===0" @click="u.historyPage--">较新记录</button></div>
    <div ref="feed" class="pt-chat-feed" role="log" aria-label="终端聊天消息"><p v-if="!u.messages.length" class="pt-empty">从一句问候开始。</p><article v-for="m in pagedMessages" :key="m.id" class="pt-message" :class="{mine:m.sender==='player'}"><span class="pt-avatar"><img v-if="m.sender==='player'&&u.t.avatar" :src="u.t.avatar" :style="u.avatarStyle" alt="我的头像"><TerminalIcon v-else name="user"/></span><div><small>{{m.displayName||u.name(m.sender)}}</small><p>{{m.text}}</p><time>{{m.source?'剧情记录':messageTime(m.at)}}</time></div></article></div>
    <button v-if="u.messages.at(-1)?.sender==='player'" type="button" class="pt-link" :disabled="u.working" @click="u.sendChat(true)">重试角色回复</button>
-   <form class="pt-composer" @submit.prevent="u.sendChat()"><textarea v-model="u.draft" aria-label="终端消息" placeholder="输入消息…" maxlength="2000" rows="2"/><button type="submit" class="pt-primary" :disabled="u.working||!u.draft.trim()">发送</button></form><small>发送将调用终端 API</small>
+   <form class="pt-composer" @submit.prevent="u.sendChat()"><AutoTextarea v-model="u.draft" aria-label="终端消息" placeholder="输入消息…" maxlength="2000" rows="1"/><button type="submit" class="pt-primary" :disabled="u.working||!u.draft.trim()">发送</button></form><small class="pt-composer-hint">发送将调用终端 API</small>
   </template>
   <template v-else-if="u.page==='friends'">
    <div class="pt-toolbar"><h2>好友 · {{u.friends.length}}</h2><button type="button" @click="u.go('add')">＋ 添加好友</button></div><input v-model="u.search" aria-label="搜索好友" placeholder="搜索好友或备注">
@@ -145,4 +146,15 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
 #academy-workspace .pt input[type=range]{padding:0!important;border:0!important;accent-color:#8dcff5}
 @media(max-height:760px){#academy-workspace .pt-clock{height:auto;min-height:130px}#academy-workspace .pt-clock>b{font-size:50px}}
 
+#academy-workspace .pt-header{padding:4px 8px;gap:8px}
+#academy-workspace .pt-save-status{line-height:1.3;padding:2px 12px}
+#academy-workspace .pt-chat-identity{gap:8px;padding:2px 0 7px;margin-bottom:6px;flex-shrink:0}
+#academy-workspace .pt-chat-identity>.pt-avatar{width:34px;height:34px}
+#academy-workspace .pt-chat-identity strong{font-size:13px;line-height:1.4}
+#academy-workspace .pt-chat-identity small{font-size:11px;line-height:1.4}
+#academy-workspace .pt-chat-identity button{min-height:28px;padding:3px 7px!important}
+#academy-workspace .pt-composer{padding:6px 0 2px;flex-shrink:0;gap:7px}
+#academy-workspace .pt-composer textarea{min-height:0;line-height:1.5!important;padding:7px 9px!important;max-height:min(30dvh,180px);overflow-y:auto;resize:none}
+#academy-workspace .pt-screen>.pt-composer-hint{margin:3px 0;font-size:10px;line-height:1.4;flex-shrink:0}
+#academy-workspace .pt-screen:has(.pt-chat-feed)>.pt-chat-feed{min-height:0}
 </style>
