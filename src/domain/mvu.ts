@@ -2,6 +2,7 @@ import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
 import {fixedActorFields,restoreActorFacts} from './actorPolicy.ts';
 import {newDynamicActor} from './dynamicActors.ts';
 import type { WorldState } from './contracts';
+import {emptyScene,isScenePath,validSceneValue} from './storyScene.ts';
 
 export interface JsonObject { [key:string]:Json }
 export interface JsonArray extends Array<Json> {}
@@ -106,7 +107,11 @@ export function renderMvuMacros(text:string,data:MvuData):string{
 }
 const dynamic=new Set(['affinity','relationship','present','innerThought','spiritThought']);
 export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldState{
-  const original=dataFromState(state).stat_data,next=patchData(original,updates,true);
+  const original=dataFromState(state).stat_data,ops=cleanOperations(updates);
+  const sceneOps=ops.filter(op=>isScenePath(op.path));
+  if(sceneOps.some(op=>!['replace','add','insert','test'].includes(op.op)||!validSceneValue(op.path,op.value)))fail();
+  if(sceneOps.length&&object(original.custom)&&original.custom.时间地点===undefined)original.custom.时间地点=emptyScene();
+  const next=patchData(original,ops,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
   function actor(before:Record<string,Json>,after:Json,player=false){if(!object(after))fail();

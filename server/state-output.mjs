@@ -1,5 +1,6 @@
 import {newDynamicActor,resolveActorId} from '../src/domain/dynamicActors.ts';
 import {dataFromState,applyMvu,readPath,pointer} from '../src/domain/mvu.ts';
+import {scenePaths,storyScene,validSceneValue} from '../src/domain/storyScene.ts';
 const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const round=v=>Math.round(v*1e6)/1e6;
 const reason=v=>typeof v==='string'&&v.trim().length>=4&&v.length<=300&&!/^(?:略|按剧情|已更新|无|未知|待生成)[。.!！]?$/u.test(v.trim());
@@ -11,8 +12,9 @@ export function normalizeStateFields(value,warn){
  return Object.fromEntries([...grouped].filter(([,v])=>v!==undefined));
 }
 export function outputManifest(state,options={}){
+ const sceneSchema=Object.fromEntries(Object.values(scenePaths).map(path=>[path,{type:'string',clearable:false}]));
  const schema={};const visit=(v,path)=>{if(object(v)){for(const [k,x]of Object.entries(v))if(!k.startsWith('_'))visit(x,path+'/'+k.replace(/~/g,'~0').replace(/\//g,'~1'));}else schema[path]={type:Array.isArray(v)?'array':typeof v,clearable:false};};visit(state?.variables||{},'/custom');
- return {schemaVersion:'state-output-v1',requestId:options.requestId||'local-test',registeredCharacters:(state?.characters||[]).map(c=>({id:c.id,name:c.name,present:c.present,spiritAnimal:c.spiritAnimal})),requiredPlayerFields:state?.player?.spiritAnimal?['spiritThought']:[],requiredCharacterFields:['affinity','relationship','innerThought'],spiritRequiredIds:(state?.characters||[]).filter(c=>c.present&&c.spiritAnimal).map(c=>c.id),affinityRange:{min:-100,max:100},newCharacterAffinity:0,affinityIncreaseGuidance:{usualDeltas:[0.5,1],preferredMax:3,hardPerTurnCap:false},affinityDecreaseGuidance:{hardPerTurnCap:false},enabledTheaterSlots:(options.theaterSettings||[]).filter(t=>t.enabled!==false).map(t=>t.slot),customVariableSchema:schema,...(options.repairPlan?{repairOnly:options.repairPlan}:{})};
+ return {schemaVersion:'state-output-v1',requestId:options.requestId||'local-test',registeredCharacters:(state?.characters||[]).map(c=>({id:c.id,name:c.name,present:c.present,spiritAnimal:c.spiritAnimal})),requiredPlayerFields:state?.player?.spiritAnimal?['spiritThought']:[],requiredCharacterFields:['affinity','relationship','innerThought'],spiritRequiredIds:(state?.characters||[]).filter(c=>c.present&&c.spiritAnimal).map(c=>c.id),affinityRange:{min:-100,max:100},newCharacterAffinity:0,affinityIncreaseGuidance:{usualDeltas:[0.5,1],preferredMax:3,hardPerTurnCap:false},affinityDecreaseGuidance:{hardPerTurnCap:false},enabledTheaterSlots:(options.theaterSettings||[]).filter(t=>t.enabled!==false).map(t=>t.slot),customVariableSchema:{...schema,...sceneSchema},...(options.repairPlan?{repairOnly:options.repairPlan}:{})};
 }
 /** V1 is converted once to existing absolute snapshots. No second affinity patch. */
 export function adaptStateOutput(raw,state,options,warn){
@@ -77,7 +79,9 @@ export function adaptStateOutput(raw,state,options,warn){
    if(!Array.isArray(custom)||options.repairPlan&&custom.some(u=>!options.repairPlan.customPaths?.includes(u?.path)))throw Error();const ops=[],manifest=outputManifest(state,options);
    for(const u of custom){
     if(!object(u)||!manifest.customVariableSchema[u.path]||pointer(u.path).some(k=>k.startsWith('_'))||!reason(u.reason)||Object.keys(u).some(k=>!['path','action','value','delta','reason'].includes(k)))throw Error();
-    const current=readPath(dataFromState(state).stat_data,u.path);
+    const sceneKey=Object.keys(scenePaths).find(key=>scenePaths[key]===u.path);
+    const current=sceneKey?storyScene(state)[sceneKey]:readPath(dataFromState(state).stat_data,u.path);
+    if(sceneKey&&u.action==='set'&&!validSceneValue(u.path,u.value))throw Error();
     if(u.action==='keep'){if('value'in u||'delta'in u)throw Error();continue;}
     if(u.action==='set'&&!('delta'in u)&&typeof current===typeof u.value&&Array.isArray(current)===Array.isArray(u.value))ops.push({op:'replace',path:u.path,value:u.value});
     else if(u.action==='delta'&&!('value'in u)&&typeof current==='number'&&typeof u.delta==='number'&&Number.isFinite(u.delta))ops.push({op:'delta',path:u.path,value:u.delta});

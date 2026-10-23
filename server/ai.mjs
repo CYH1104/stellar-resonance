@@ -23,6 +23,7 @@ import {narrationRule,narrativeViewpoint,anchorNarration} from './narration.mjs'
 import {isSpiritDiary} from '../src/domain/spiritDiary.ts';
 import {applyWorldEntries} from './editor-store.mjs';
 import {applyMvu,dataFromState,prepareMvuUpdates,parseMvuMessage,cleanJson,renderMvuMacros} from '../src/domain/mvu.ts';
+import {isScenePath,validSceneValue} from '../src/domain/storyScene.ts';
 import {readPersonaExtra} from '../src/domain/personaExtras.ts';
 import {cleanSpecialEvent} from '../src/domain/randomEvents.ts';
 import { validateOutcome } from '../src/domain/story.ts';
@@ -328,6 +329,19 @@ export class StoryDecoder {
     // A complete companion payload inside the state object is unambiguous.
     // Separate it before validating state, so it cannot discard valid actor fields.
     const terminalRaw=assembled.terminal;delete assembled.terminal;
+    let sceneOnly=[];
+    if(options.stateEnabled===false){
+      try{
+        if(incomplete.has('mvu'))throw Error();
+        const patches=blocks.mvu.map(body=>parseMvuMessage('<UpdateVariable>'+body+'</UpdateVariable>'));
+        if(patches.length>1)throw Error();
+        sceneOnly=(patches[0]||[]).filter(op=>isScenePath(op.path));
+        if(sceneOnly.some(op=>!['replace','add','insert'].includes(op.op)||!validSceneValue(op.path,op.value)))throw Error();
+        if(options.repairPlan)sceneOnly=[];
+        if(sceneOnly.length)applyMvu(state,sceneOnly);
+      }catch{sceneOnly=[];warn('STATE_SCENE_RETAINED');}
+      blocks.mvu=[];delete assembled.mvu;
+    }
     const embeddedCompanions={};
     if(assembled.schemaVersion!==undefined)for(const key of ['forum','theaters','choices'])if(Object.hasOwn(assembled,key)){embeddedCompanions[key]=assembled[key];delete assembled[key];warn('STATE_COMPANION_RELOCATED');}
     if(options.stateEnabled===false&&assembled.schemaVersion!==undefined)assembled={event:assembled.event,suggestions:assembled.suggestions};
@@ -382,6 +396,7 @@ export class StoryDecoder {
     if(!this.story.trim()){if(single)warn('STATE_STORY_MISSING');else throw modelError(502,'MODEL_STORY_EMPTY');}
     if(single&&options.stateEnabled!==false&&!received){warn('STATE_UPDATE_MISSING');rejected=true;}
     const outcome=normalizeModelState(card,state,scrubModelData(assembled),{...options,validationWarnings:warnings,retainedPresentIds});
+    if(sceneOnly.length)outcome.mvu=sceneOnly;
     if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
     if(terminalRaw!==undefined){try{outcome.terminal=cleanTerminalBatch(terminalRaw,[...state.characters,...outcome.characters||[]],options.terminalContext);}catch{warn('STATE_TERMINAL_RETAINED');}}else if(options.terminalContext)warn('STATE_TERMINAL_MISSING');
     if(single){

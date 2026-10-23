@@ -1,13 +1,14 @@
+import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
 import {terminalAnchor,terminalAnchorActive,terminalMessageVisible,terminalBucket,recordTerminalChat,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
-import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
+import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from './useWorkspace';
 import {taskApi} from '../domain/apis';
 import {HttpGateway} from '../gateway/http';
 import {emptyTerminal,terminalId,requireFriends,createConversation,createKingRoom,drawKingRound,applyKingCommand,applyKingReplies,finishKingRound,targetActors,groupCanManage,groupOwner,applyGroupAction,syncStoryGroups,type StoryGroupSource,type PersonalTerminal,type KingRoom,type KingRound} from '../domain/personalTerminal';
 export function usePersonalTerminal(w:ViewModel){
  const lookup=ref<{id:string;name:string;identity:string;code:string}>(),bioDraft=ref(''),historyPage=ref(0),automatic=ref(false);
- const now=ref(new Date());let timer:ReturnType<typeof setInterval>|undefined;onMounted(()=>{timer=setInterval(()=>now.value=new Date(),1000);});onBeforeUnmount(()=>clearInterval(timer));
+
  const conversationFilter=ref<'all'|'private'|'group'>('all'),plusOpen=ref(false);
  const page=ref('home'),previous=ref('home'),search=ref(''),draft=ref(''),title=ref(''),note=ref(''),style=ref('日常'),picked=ref<string[]>([]),targets=ref<number[]>([]),conversationId=ref(''),friendId=ref(''),roomId=ref(''),courseId=ref(''),error=ref(''),working=ref(false),week=ref(false);
  const t=computed(()=>w.active?.terminal||emptyTerminal());
@@ -82,8 +83,8 @@ export function usePersonalTerminal(w:ViewModel){
  const retryReact=()=>run(()=>react());
  const playerReply=(refused=false)=>run(async()=>{const r=round.value;if(!r||!targetActors(r).includes('player')||r.replies.some(p=>p.id==='player'))return;if(!draft.value.trim())throw Error('请写下你的回应，或说明你拒绝后承担的正常惩罚。');await commit(t=>{const r=t.rooms.find(x=>x.id===roomId.value)!.rounds.at(-1)!;r.anchor=operationAnchor;r.replies.push({id:'player',text:draft.value.trim().slice(0,2000),refused,penalty:refused?'玩家已自行描述承担的惩罚':''});finishKingRound(r);});draft.value='';});
  const uploadAvatar=(file:File)=>run(async()=>{if(!/^image\/(png|jpeg|webp)$/.test(file.type)||file.size>5*1024*1024)throw Error('请选择5MB以内的PNG、JPEG或WebP图片。');const bitmap=await createImageBitmap(file);try{const canvas=document.createElement('canvas');const scale=Math.min(1,400/Math.max(bitmap.width,bitmap.height));canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);await commit(t=>{t.avatar=canvas.toDataURL('image/webp',.85);t.avatarView={scale:1,x:0,y:0};});}finally{bitmap.close();}});
- const storyClock=computed(()=>{const text=[...(w.active?.turns||[]).slice(-6).reverse().map(t=>t.variants[t.selected]?.text||''),w.active?.opening||''].join('\n');const time=text.match(/(?:[01]?\d|2[0-3]):[0-5]\d/);const day=text.match(/(?:第[一二三四五六七八九十百\d]+[日天]|星期[一二三四五六日天]|周[一二三四五六日天])/);const weekday=text.match(/(?:星期|周)([一二三四五六日天])/);return {time:time?.[0]||'— : —',label:day?.[0]||'剧情时间待明确',day:weekday?'一二三四五六日天'.indexOf(weekday[1])%7+1:0};});
- const clock=computed(()=>({time:now.value.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false}),label:now.value.toLocaleDateString('zh-CN'),day:storyClock.value.day}));
+ const storyClock=computed(()=>terminalStoryClock(w.state,[...(w.active?.turns||[]).slice(-6).reverse().filter(t=>t.variants[t.selected]?.status==='complete').map(t=>t.variants[t.selected]?.text||''),w.active?.opening||''].join('\n')));
+ const clock=storyClock;
  const storySources=computed(()=>{const sources:StoryGroupSource[]=[];for(const [index,turn] of (w.active?.turns||[]).entries()){const v=turn.variants[turn.selected];if(v?.status!=='complete')continue;for(const scene of v.outcome?.theaters||[])if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({anchor:terminalAnchor(w.active!,index+1),key:turn.id+':'+v.id+':'+scene.slot,slot:scene.slot,title:scene.title||'剧情群聊',at:v.createdAt,messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});}if(!sources.length)for(const scene of w.theaters)if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({key:'opening:'+scene.slot+':'+scene.title,slot:scene.slot,title:scene.title||'剧情群聊',at:w.active?.createdAt||'',messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});return sources;});
  watch([()=>JSON.stringify(storySources.value),working,()=>w.loading],()=>{if(working.value||w.loading||!w.active)return;try{const next=JSON.parse(JSON.stringify(t.value));if(syncStoryGroups(next,storySources.value,actors.value,w.active.persona.name)){for(const source of storySources.value){if(!source.anchor)continue;const c=next.conversations.find((c:any)=>c.storyKey===source.slot+':'+source.title.trim());if(c)recordTerminalChat(next,source.anchor,c,source.messages.map(m=>m.speaker),source.messages.map(m=>m.speaker+'：'+m.content).join('；').slice(0,4000));}void run(()=>commit(t=>Object.assign(t,next)));}}catch(e){error.value=e instanceof Error?e.message:'剧情群同步失败，原记录已保留。';}},{immediate:true});
  const unread=computed(()=>visibleConversations.value.filter(c=>c.joined!==false).reduce((n,c)=>n+c.unread,0));
