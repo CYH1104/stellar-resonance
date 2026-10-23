@@ -71,6 +71,13 @@ async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;con
 
 
 const w = reactive(useWorkspace());
+const saveToastExpired=ref(false);
+let saveToastTimer:ReturnType<typeof setTimeout>|undefined;
+watch(()=>[w.storageStatus,w.lastSaved,w.storageError],()=>{
+ clearTimeout(saveToastTimer);saveToastExpired.value=false;
+ if(w.storageStatus==='saved'&&!w.storageError)saveToastTimer=setTimeout(()=>{saveToastExpired.value=true;},5000);
+},{immediate:true});
+onUnmounted(()=>clearTimeout(saveToastTimer));
 function campusNotice(event:Event){const value=(event as CustomEvent).detail;if(typeof value?.message==='string')showNotice(value.message.slice(0,2000),value.error===true);}
 onMounted(()=>window.addEventListener('academy:notice',campusNotice));
 onUnmounted(()=>window.removeEventListener('academy:notice',campusNotice));
@@ -238,7 +245,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <div class="workspace-save-status"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
@@ -313,5 +320,5 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 </template>
 
 
-<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)} </style>
+<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)} @media(max-width:768px){.workspace-save-status.mobile-save-expired{display:none}}</style>
 
