@@ -22,6 +22,8 @@ const explanations:Record<string,string>={
   STATE_EMPTY_FIELD_RETAINED:'模型返回空字段，已保留旧值',
   STATE_UNKNOWN_CHARACTER_SKIPPED:'角色 ID 或姓名无法唯一匹配，未应用该角色更新',
   STATE_TERMINAL_MISSING:'本轮未返回自动通讯，原有聊天记录已保留，下一轮正文会继续同步',
+  STATE_TERMINAL_GROUP_METADATA_RETAINED:'本轮群资料与存档不一致，沿用已有成员、权限和公告，合法新消息已同步',
+  STATE_TERMINAL_PRIVATE_SKIPPED:'本轮有未知角色或格式不正确的主动私聊，已跳过；合法群消息继续同步',
   STATE_TERMINAL_RETAINED:'本轮自动通讯格式不完整，原有聊天记录已保留，下一轮正文会继续同步',
   STATE_ROSTER_RETAINED:'模型未返回在场名单，沿用已有名单或明确的在场更新',
   STATE_AFFINITY_RETAINED:'本轮未收到有效的好感度更新，保留原值',
