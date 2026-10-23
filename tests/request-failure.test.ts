@@ -9,7 +9,7 @@ const profile=()=>({...defaults().profiles[0],model:'actual-embedding-model',api
 it('identifies the actual auxiliary model and port without URL credentials or keys',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:'MODEL_TIMEOUT',detail:'synthetic-secret'}),{status:504}));
  const p=profile();let text='';try{await new HttpGateway().embed(['test'],p,'synthetic-secret',new AbortController().signal);}catch(e){text=(e as Error).message;}
- expect(text).toContain('模型：actual-embedding-model');expect(text).toContain('任务：向量模型');expect(text).toContain('接口：https://relay.example:8443');expect(text).toContain('端口：8443');expect(text).toContain('3 分钟');expect(text).not.toContain('synthetic-secret');
+ expect(text).toContain('模型：actual-embedding-model');expect(text).toContain('任务：向量模型');expect(text).toContain('接口：https://relay.example:8443');expect(text).toContain('端口：8443');expect(text).toContain('10 分钟');expect(text).not.toContain('synthetic-secret');
 });
 it('captures the failing model before edits and supplies the default HTTPS port',async()=>{
  const p={...profile(),apiBaseUrl:'https://user:synthetic-secret@relay.example/v1'};
@@ -27,9 +27,9 @@ it('includes source context for SSE failures and interruptions',async()=>{
  await expect(run()).rejects.toThrow('模型：actual-embedding-model');
  }
 });
-it('keeps manual cancellation distinct and refreshes the three-minute deadline per request',()=>{
- expect(MODEL_REQUEST_TIMEOUT_MS).toBe(180000);
+it('keeps manual cancellation distinct and refreshes the ten-minute deadline per request',()=>{
+ expect(MODEL_REQUEST_TIMEOUT_MS).toBe(600000);
  const context=modelRequestContext({profile:profile()},'generate'),error=new DOMException('取消','AbortError');
  expect(modelRequestFailure(error,context,100)).toBe(error);
- expect((modelRequestFailure(new DOMException('timeout','TimeoutError'),context,180000) as Error).message).toContain('已等待：180.0 秒');
+ expect((modelRequestFailure(new DOMException('timeout','TimeoutError'),context,600000) as Error).message).toContain('已等待：600.0 秒');
 });
