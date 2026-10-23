@@ -43,13 +43,14 @@ onBeforeUnmount(()=>{document.removeEventListener('pointerdown',outside);window.
      <template v-else><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('start')">新建存档</button><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('resume')">切换存档</button><button :disabled="blocked" @click="go('saves')">导入 / 导出</button></template>
     </div>
    </div>
+   <a class="navigation-manual" href="http://43.138.251.91:8809" target="_blank" rel="noopener noreferrer" @click="close">教程手册入口</a>
    <button :disabled="blocked" class="navigation-home" @click="close();emit('home')">{{embedded?'返回学院':'返回开场'}}</button>
   </nav>
  </header>
 </template>
 <style scoped>
 .workspace-navigation{position:sticky;top:0;z-index:30;background:var(--color-background);border-bottom:1px solid var(--color-border);padding:8px 16px}
-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}nav button{white-space:nowrap}.navigation-group{position:relative}.navigation-home{margin-left:auto}.navigation-dropdown{position:absolute;top:100%;left:0;min-width:210px;max-height:70vh;overflow:auto;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--color-surface);border:1px solid var(--color-border);box-shadow:0 8px 24px #0003}.navigation-dropdown :deep(button){text-align:left}
+nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}nav button{white-space:nowrap}.navigation-manual{font:inherit;color:inherit;padding:7px 8px;white-space:nowrap;text-decoration:none}.navigation-manual:hover{text-decoration:underline}.navigation-group{position:relative}.navigation-home{margin-left:auto}.navigation-dropdown{position:absolute;top:100%;left:0;min-width:210px;max-height:70vh;overflow:auto;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--color-surface);border:1px solid var(--color-border);box-shadow:0 8px 24px #0003}.navigation-dropdown :deep(button){text-align:left}
 @media(max-width:800px){
  .workspace-navigation{padding:6px 8px}
  nav{display:flex;flex-direction:row;align-items:center;gap:2px 6px;flex-wrap:wrap}
