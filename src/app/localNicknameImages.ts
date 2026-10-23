@@ -6,3 +6,5 @@ function read():Record<string,string>{try{const value=JSON.parse(accountStorage.
 export function nicknameImages(){void revision.value;return read();}
 export function nicknameImage(name:string){const value=nicknameImages()[name.trim()];if(typeof value!=='string')return '';try{return imageUrl(value);}catch{return '';}}
 export function saveNicknameImage(name:string,url:string){name=name.trim();if(!name||name.length>80||['__proto__','constructor','prototype'].includes(name))throw Error('请填写80字以内的昵称。');const value=read();if(url.trim())value[name]=imageUrl(url);else delete value[name];accountStorage.setItem('terminal-nickname-images',JSON.stringify(value));revision.value++;}
+
+export function resetNicknameImages(){accountStorage.removeItem('terminal-nickname-images');revision.value++;}

@@ -2,6 +2,7 @@
 import {computed,reactive,ref,nextTick,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
+import {resetMajorCharacterImages} from '../app/localCharacterImages';
 import NicknameImageSettings from './NicknameImageSettings.vue';
 import CharacterAvatar from './CharacterAvatar.vue';
 import CharacterImageEditor from './CharacterImageEditor.vue';
@@ -14,7 +15,8 @@ import {nextTerminalCourse} from '../domain/terminalSchedule';
 const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
 const u=reactive(usePersonalTerminal(props.w));
 const feed=ref<HTMLElement>(),avatarInput=ref<HTMLInputElement>();
-const imageCharacter=ref(''),showImageCharacters=ref(false);
+const imageCharacter=ref(''),showImageCharacters=ref(false),majorResetMessage=ref('');
+function resetMajorImages(){try{resetMajorCharacterImages(majorCharacters.value);majorResetMessage.value='主要角色头像已恢复默认，自定义昵称头像保留。';}catch{majorResetMessage.value='重置失败，请检查浏览器存储。';}}
 const majorCharacters=computed(()=>(props.w.localService?.majorCharacters||props.w.localService?.characters||[]).filter(a=>majorCharacter(a.name)));
 const titles:Record<string,string>={home:'个人终端',messages:'通讯',chat:'通讯',friends:'好友',add:'添加好友',profile:'好友资料','new-group':'发起群聊','invite-room':'邀请游戏好友','invite-group':'邀请好友','group-info':'群资料',courses:'课程表',course:'课程详情',apps:'应用',games:'游戏室','new-room':'创建房间',room:'国王游戏',king:'国王游戏',history:'游戏记录',account:'我的',legacy:'剧情群聊'};
 const currentTitle=computed(()=>u.page==='chat'?u.conversation?.title||'通讯':titles[u.page]||'个人终端');
@@ -69,7 +71,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <form class="pt-composer" @submit.prevent="u.sendChat()"><AutoTextarea v-model="u.draft" aria-label="终端消息" placeholder="输入消息…" maxlength="2000" rows="1"/><button type="submit" class="pt-primary" :disabled="u.working||!u.draft.trim()">发送</button></form><small class="pt-composer-hint">发送将调用终端 API</small>
   </template>
   <template v-else-if="u.page==='friends'">
-   <div class="pt-toolbar"><h2>好友 · {{u.friends.length}}</h2><button type="button" @click="u.go('add')">＋ 添加好友</button></div><NicknameImageSettings/><button type="button" @click="showImageCharacters=!showImageCharacters">主要角色头像管理</button><section v-if="showImageCharacters"><p>选择角色编辑头像。</p><button v-for="a in majorCharacters" :key="a.id" type="button" class="pt-row" @click="imageCharacter=a.id"><span class="pt-avatar"><CharacterAvatar :w="w" :id="a.id"/></span>{{a.name}} · 编辑头像</button><p v-if="!majorCharacters.length">角色资料尚未加载，请稍后重试。</p></section><input v-model="u.search" aria-label="搜索好友" placeholder="搜索好友或备注">
+   <div class="pt-toolbar"><h2>好友 · {{u.friends.length}}</h2><button type="button" @click="u.go('add')">＋ 添加好友</button></div><NicknameImageSettings/><button type="button" @click="showImageCharacters=!showImageCharacters">主要角色头像管理</button><section v-if="showImageCharacters"><p>选择角色编辑头像。</p><button type="button" :disabled="!majorCharacters.length" @click="resetMajorImages">重置主要角色头像</button><p role="status">{{majorResetMessage}}</p><button v-for="a in majorCharacters" :key="a.id" type="button" class="pt-row" @click="imageCharacter=a.id"><span class="pt-avatar"><CharacterAvatar :w="w" :id="a.id"/></span>{{a.name}} · 编辑头像</button><p v-if="!majorCharacters.length">角色资料尚未加载，请稍后重试。</p></section><input v-model="u.search" aria-label="搜索好友" placeholder="搜索好友或备注">
    <h3 v-if="u.incoming.length">好友申请 · {{u.incoming.length}}</h3><article v-for="f in u.incoming" :key="'request:'+f.id" class="pt-card pt-friend-request"><span class="pt-avatar"><CharacterAvatar :w="w" :id="f.id"/></span><div><strong>{{u.name(f.id)}}申请添加你</strong><p>{{f.requestReason||f.reply}}</p><small v-if="f.source">号码来源：{{f.source}}</small><small>{{messageTime(f.at||'')}}</small><div class="pt-actions"><button type="button" class="pt-gold" :disabled="u.working" @click="u.answerRequest(f.id,true)">接受</button><button type="button" :disabled="u.working" @click="u.answerRequest(f.id,false)">拒绝</button></div></div></article>
    <p v-if="!u.friends.length" class="pt-empty">好友列表还是空的<br>发送申请后，由角色决定是否接受。</p>
    <button v-for="f in filteredFriends" :key="f.id" type="button" class="pt-row" @click="profile(f.id)"><span class="pt-avatar"><CharacterAvatar :w="w" :id="f.id"/></span><div><strong>{{u.name(f.id)}}</strong><small>{{f.note||'已是好友'}}</small></div><span>›</span></button>
