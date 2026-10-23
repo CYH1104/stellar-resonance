@@ -6,5 +6,7 @@ export function masterPersonaSummary(persona:Persona){
   const field=(labels:string[])=>{for(const line of (persona.rawText||'').split('\n')){const clean=line.replace(/^\s*[-*#>]+\s*/,'').replace(/\*\*/g,'').trim();for(const label of labels){const match=clean.match(new RegExp('^'+label+'\\s*[:：]\\s*(.*)$'));if(match)return match[1].trim();}}return '';};
   return {name:persona.name.trim(),department:persona.identity!==undefined?persona.identity.trim():field(['学院','院系','所属院系','学院派系']),spiritLevel:persona.mentalPowerLevel?.trim()||(persona.other!==undefined?readPersonaExtra(persona.other,'精神力等级'):field(['精神力等级','精神力']))};
 }
-export function setMasterPersona(persona:Persona){const detail=masterPersonaSummary(persona);try{accountStorage.setItem(masterPersonaKey,JSON.stringify(detail));}catch{}window.dispatchEvent(new CustomEvent('academy:master-persona',{detail}));}
+export function setMasterPersona(persona:Persona,id?:string){const detail=masterPersonaSummary(persona);accountStorage.setItem(masterPersonaKey,JSON.stringify({...detail,...(id?{personaId:id}:{})}));window.dispatchEvent(new CustomEvent('academy:master-persona',{detail}));}
+export function clearMasterPersona(id:string){const current=JSON.parse(accountStorage.getItem(masterPersonaKey)||'null');if(current?.personaId!==id)return;accountStorage.removeItem(masterPersonaKey);window.dispatchEvent(new CustomEvent('academy:master-persona',{detail:{name:'',department:'',spiritLevel:''}}));}
+export function refreshMasterPersona(persona:Persona,id:string,sessionIds:string[]=[]){const current=JSON.parse(accountStorage.getItem(masterPersonaKey)||'null');if(current?.personaId===id||sessionIds.some(session=>'session/'+session===current?.personaId))setMasterPersona(persona,id);}
 

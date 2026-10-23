@@ -4,6 +4,14 @@ import {blankPersona} from '../src/domain/persona';
 import {PersonaLibrary,personaArchiveEntries,resolvePersonaArchiveFile,personaSourceSessionIds,type PersonaFile} from '../src/storage/personaLibrary';
 const original={...blankPersona(),name:'玩家',background:'原设定'};
 const session={id:'archive-source',persona:original,updatedAt:'2026-10-22T00:00:00Z'};
+it('removed session entries remain hidden without deleting historical personas or explicit archives',()=>{
+ const archived={id:'independent',name:original.name,persona:original,updatedAt:session.updatedAt};
+ expect(personaArchiveEntries([],[session],[session.id])).toEqual([]);
+ expect(personaArchiveEntries([archived],[session],[session.id])).toEqual([archived]);
+ expect(session.persona).toEqual(original);
+ const different={...session,id:'other',persona:{...original,background:'不同版本'}};
+ expect(personaArchiveEntries([],[session,different],[session.id]).map(f=>f.id)).toEqual(['session/other']);
+});
 it('editing a session fallback keeps one archive after autosaves and reopening',async()=>{
  const repo=new PersonaLibrary();
  const fallback=personaArchiveEntries([],[session])[0];

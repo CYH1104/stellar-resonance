@@ -262,7 +262,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <p v-if="!w.active&&entry==='new'&&pendingText" class="muted encounter-draft-notice" role="status">建立新存档后，所选角色的邂逅提示会填入剧情输入框，不会自动发送。</p>
 
-            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @master="setMasterPersona" @saved="savedFirstPersona" />
+            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @saved="savedFirstPersona" />
 
             <FormatErrorsView v-else-if="w.panel==='format-errors'" :w="w" /><HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" :first-setup="firstSetup==='name'" />
 
@@ -312,3 +312,4 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)} </style>
+

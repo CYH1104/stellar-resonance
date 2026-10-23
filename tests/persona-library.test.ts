@@ -9,6 +9,13 @@ it('restores unfinished editor drafts and original images without creating an ar
  await library.saveDraft(draft);const restored=await new PersonaLibrary().readDraft();
  expect(restored?.persona.rawText).toBe(draft.persona.rawText);expect(await restored?.portrait?.text()).toBe('original');expect((await library.list()).length).toBe(before);
 });
+it('deleting an archive also removes its editor draft so reopening cannot resurrect it',async()=>{
+ const library=new PersonaLibrary(),file={id:'deleted-editor',name:'删除测试',persona:{...blankPersona(),name:'删除测试'},updatedAt:new Date().toISOString()};
+ await library.save(file);await library.saveDraft(file);await library.remove(file.id);
+ expect(await library.readDraft()).toBeUndefined();expect((await library.list()).some(f=>f.id===file.id)).toBe(false);
+ const other={...file,id:'keep-draft'};await library.saveDraft(other);await library.remove(file.id);
+ expect((await library.readDraft())?.id).toBe(other.id);await library.clearDraft();
+});
 it('loads a bound portrait after persona edits and does not use another same-name persona',()=>{
  const persona={...blankPersona(),name:'同名'},portrait=new Blob(['image']);
  const linked={id:'linked',name:'原名',persona:{...persona,name:'原名'},portrait,sourceSessionIds:['session'],updatedAt:''};

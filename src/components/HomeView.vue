@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import {PersonaLibrary,type PersonaFile} from '../storage/personaLibrary';
+import {PersonaLibrary,personaArchiveEntries,samePersona,type PersonaFile} from '../storage/personaLibrary';
 import {blankPersona} from '../domain/persona';
 import SaveList from './SaveList.vue';
 const props=defineProps<{w:ViewModel;mode:'new'|'continue';firstSetup?:boolean}>();
 defineEmits<{personas:[]}>();
 const files=ref<PersonaFile[]>([]),chosen=ref('');
-const choices=computed(()=>[...files.value,...props.w.sessions.filter(s=>!files.value.some(f=>JSON.stringify(f.persona)===JSON.stringify(s.persona))).filter((s,i,a)=>a.findIndex(x=>JSON.stringify(x.persona)===JSON.stringify(s.persona))===i).map(s=>({id:'session/'+s.id,name:s.persona.name,persona:s.persona,updatedAt:s.updatedAt}))]);
-onMounted(async()=>{try{files.value=await new PersonaLibrary().list();const match=choices.value.find(f=>JSON.stringify(f.persona)===JSON.stringify(props.w.newGameDraft.persona));if(match)chosen.value=match.id;}catch{props.w.problem='读取人设失败，请重试';}});
+const choices=computed(()=>personaArchiveEntries(files.value,props.w.sessions));
+onMounted(async()=>{try{files.value=await new PersonaLibrary().list();const match=choices.value.find(f=>samePersona(f.persona,props.w.newGameDraft.persona));if(match)chosen.value=match.id;}catch{props.w.problem='读取人设失败，请重试';}});
 function choose(){const file=choices.value.find(f=>f.id===chosen.value);Object.assign(props.w.newGameDraft.persona,blankPersona(),file?.persona||{});}
 async function create(){if(chosen.value&&!props.w.creatingGame)await props.w.create(props.w.newGameDraft.title,props.w.newGameDraft.persona,props.w.newGameDraft.opening);}
 </script>
