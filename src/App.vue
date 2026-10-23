@@ -324,5 +324,5 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 </template>
 
 
-<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)} @media(max-width:768px){.workspace-save-status.mobile-save-expired{display:none}}</style>
+<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)}.workspace-save-status button{pointer-events:auto} @media(max-width:768px){.workspace-save-status.mobile-save-expired{display:none}}</style>
 

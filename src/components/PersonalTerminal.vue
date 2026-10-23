@@ -10,6 +10,7 @@ import AutoTextarea from './AutoTextarea.vue';
 import {targetActors,groupOwner,groupMemberIds} from '../domain/personalTerminal';
 import {messagePage,terminalMessageVisible} from '../domain/terminalLedger';
 import TerminalIcon from './TerminalIcon.vue';
+import {nextTerminalCourse} from '../domain/terminalSchedule';
 const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
 const u=reactive(usePersonalTerminal(props.w));
 const feed=ref<HTMLElement>();
@@ -30,7 +31,7 @@ const members=computed(()=>u.conversation?groupMemberIds(u.conversation):[]);
 const groupRole=(id:string)=>u.conversation&&groupOwner(u.conversation)===id?'群主':u.conversation?.adminIds?.includes(id)?'管理员':'成员';
 function member(id:string){if(id==='player'){u.go('account');return;}if(u.friends.some(f=>f.id===id))profile(id);else{u.go('add');}}
 const shownCourses=computed(()=>u.t.courses.filter(c=>u.week||!u.storyClock.day||c.day===u.storyClock.day).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time)));
-const nextCourse=computed(()=>shownCourses.value.find(c=>!u.storyClock.day||c.day>u.storyClock.day||c.time>u.storyClock.time));
+const nextCourse=computed(()=>nextTerminalCourse(u.t.courses,u.storyClock));
 const nav=computed(()=>['messages','chat','group-info','new-group','invite-group','legacy'].includes(u.page)?'messages':['friends','add','profile'].includes(u.page)?'friends':u.page==='home'?'home':['account','apps'].includes(u.page)?'account':'');
 function profile(id:string){u.friendId=id;u.note=u.t.friends.find(f=>f.id===id)?.note||'';u.go('profile');}
 function startRoom(){u.title='';u.picked=[];u.go('new-room');}
