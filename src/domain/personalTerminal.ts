@@ -1,3 +1,5 @@
+import {newDynamicActor} from './dynamicActors.ts';
+import type {ActorState} from './contracts';
 import type {TerminalAnchor,TerminalRoundMemory,TerminalJob} from './terminalLedger';
 export interface TerminalMessage {id:string;sender:string;text:string;at:string;source?:string;displayName?:string;archived?:boolean;anchor?:TerminalAnchor}
 export interface TerminalFriend {anchor?:TerminalAnchor;declinedRound?:number;source?:string;id:string;status:'pending'|'accepted'|'declined';reply:string;note:string;requestReason?:string;direction?:'incoming'|'outgoing';code?:string;at?:string}
@@ -30,7 +32,7 @@ export interface KingReply {id:string;text:string;refused:boolean;penalty:string
 export interface KingInteraction {id:string;kind:'chat'|'complete'|'refuse';text:string;replies:KingReply[];status:'pending'|'ready';anchor?:TerminalAnchor}
 export interface KingRound {interactions?:KingInteraction[];number:number;king:string;numbers:Record<string,number>;command:string;targets:number[];replies:KingReply[];phase:'command'|'respond'|'complete';betrayal?:boolean;anchor?:TerminalAnchor;archived?:boolean}
 export interface KingRoom {id:string;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;rounds:KingRound[]}
-export interface PersonalTerminal {version:1;avatar:string;bio?:string;avatarView?:{scale:number;x:number;y:number};ownCode?:string;memories?:TerminalRoundMemory[];jobs?:TerminalJob[];groupsReady?:boolean;scheduleKey?:string;discoveredCodes?:{id:string;code:string}[];friends:TerminalFriend[];conversations:TerminalConversation[];courses:TerminalCourse[];scheduleDate:string;rooms:KingRoom[]}
+export interface PersonalTerminal {version:1;contacts?:ActorState[];avatar:string;bio?:string;avatarView?:{scale:number;x:number;y:number};ownCode?:string;memories?:TerminalRoundMemory[];jobs?:TerminalJob[];groupsReady?:boolean;scheduleKey?:string;discoveredCodes?:{id:string;code:string}[];friends:TerminalFriend[];conversations:TerminalConversation[];courses:TerminalCourse[];scheduleDate:string;rooms:KingRoom[]}
 export const terminalId=()=>crypto.randomUUID();
 export const emptyTerminal=():PersonalTerminal=>({version:1,avatar:'',bio:'',memories:[],jobs:[],friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[]});
 export function acceptedIds(t:PersonalTerminal){return t.friends.filter(f=>f.status==='accepted').map(f=>f.id);}
@@ -48,6 +50,7 @@ export function applyKingReplies(round:KingRound,replies:KingReply[]){const expe
 export function validateTerminal(value:PersonalTerminal){
  const str=(v:unknown,n=4000):v is string=>typeof v==='string'&&v.length<=n;
  const list=(v:unknown,n:number)=>Array.isArray(v)&&v.length<=n;
+ if(value.contacts!==undefined){if(!list(value.contacts,300)||new Set(value.contacts.map(c=>c.id)).size!==value.contacts.length)throw Error('终端联系人格式不正确');for(const c of value.contacts)newDynamicActor(c);}
  if(!value||value.version!==1||!str(value.avatar,1500000)||value.avatar&&!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value.avatar)||!list(value.friends,300)||!list(value.conversations,100)||!list(value.courses,100)||!list(value.rooms,20)||!str(value.scheduleDate,200))throw Error('终端存档格式不正确。');
  if(value.avatarView&&(!Number.isFinite(value.avatarView.scale)||value.avatarView.scale<1||value.avatarView.scale>2.5||!Number.isFinite(value.avatarView.x)||Math.abs(value.avatarView.x)>30||!Number.isFinite(value.avatarView.y)||Math.abs(value.avatarView.y)>30))throw Error('头像位置不正确');
  if(value.bio!==undefined&&!str(value.bio,160)||value.ownCode!==undefined&&!/^\d{11}$/.test(value.ownCode)||value.groupsReady!==undefined&&typeof value.groupsReady!=='boolean'||value.scheduleKey!==undefined&&!str(value.scheduleKey,500))throw Error('终端资料不正确。');
