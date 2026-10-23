@@ -16,7 +16,7 @@ const shareCode=ref(''),preview=ref<TheaterShare>(),publishing=ref<TheaterSettin
 const bindingRules=computed(()=>(props.w.preferences.regexRules||[]).filter(r=>r.placement.includes(7)&&(!r.setId||r.setId===props.w.currentPreset)));
 function toggleRegex(s:TheaterSetting,id:string,checked:boolean){const current=s.regexIds??bindingRules.value.filter(r=>theaterRuleEnabled(props.w.preferences.theaters||[],s.slot,r.id)).map(r=>r.id);s.regexIds=checked?[...new Set([...current,id])]:current.filter(value=>value!==id);}
 const importedRules=ref<RegexRule[]>([]);
-function exportJson(s:TheaterSetting){const data=theaterBundle(s,props.w.preferences.regexRules||[]),url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='theater-'+s.slot+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function exportJson(s:TheaterSetting){const data=theaterBundle(s,bindingRules.value),url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='theater-'+s.slot+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function importJson(event:Event){const input=event.target as HTMLInputElement;try{const f=input.files?.[0];if(!f)return;if(f.size>5000000)throw Error('文件最多5MB');const value=parseTheaterBundle(await f.text());preview.value=value.theater;importedRules.value=value.regexRules;shareError.value='';}catch(e){shareError.value=(e as Error).message;}finally{input.value='';}}
 const api=new HttpGateway();
 async function lookup(){shareBusy.value=true;shareError.value='';preview.value=undefined;importedRules.value=[];try{const code=shareCode.value.trim();if(legacyOnline.value){if(!/^T[A-Za-z0-9]{9}$/.test(code))throw Error('旧版在线码格式不正确');preview.value=cleanTheaterShare((await api.lookupTheaterShare(code)).template);}else preview.value=decodeOfflineTheaterShare(code);}catch(e){shareError.value=(e as Error).message;}finally{shareBusy.value=false;}}
@@ -27,7 +27,7 @@ function template(slot:TheaterSetting,id:string){const value=theaterTemplates.fi
 function add(w:ViewModel){const settings=w.preferences.theaters||=[];const slot=Math.max(2,...settings.map(s=>s.slot))+1;if(!Number.isSafeInteger(slot))return;settings.push({slot,kind:'custom',enabled:false,title:'自定义小剧场',instruction:''});}
 </script>
 <template><section :class="embedded?'subsection':'surface'">
-  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" /></header>
+  <header class="panel-heading"><div><p class="eyebrow">SIDE STORIES / 小剧场设置</p><h1>小剧场设置</h1></div><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /><button type="button" @click="w.save()">立即保存</button></header>
   
   
   <p class="hint"><button type="button" @click="w.panel='settings'">前往 API 设置</button></p>

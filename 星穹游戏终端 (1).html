@@ -10299,6 +10299,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
 <script>(() => {
   const root=document.getElementById('__exp_splash__');if(!root)return;
   const q=s=>root.querySelector(s);
+  window.addEventListener('academy:character-images',event=>{for(const value of event.detail||[]){const box=root.querySelector('.spl-chcard[data-no="'+value.no+'"] .spl-chimg');if(!box)continue;let img=box.querySelector('img');if(value.url){if(!img){img=document.createElement('img');img.alt='角色图片';box.append(img);}img.src=value.url;const placeholder=box.querySelector('b');if(placeholder)placeholder.hidden=true;}else{if(img)img.remove();const placeholder=box.querySelector('b');if(placeholder)placeholder.hidden=false;}}});
   let linkedImageUrl='';
   window.addEventListener('academy:persona-image',event=>{if(linkedImageUrl)URL.revokeObjectURL(linkedImageUrl);const image=q('#portraitImg');if(event.detail?.image instanceof Blob){linkedImageUrl=URL.createObjectURL(event.detail.image);image.src=linkedImageUrl;image.hidden=false;q('#portraitUpload').textContent='更换主页图片';}else{let original='';try{original=JSON.parse(localStorage.getItem('interstellarPRO:academy:portrait'))||'';}catch{}image.src=original;image.hidden=!original;}});
   q('#portraitFile').addEventListener('change',event=>{if(event.target.files?.length)try{localStorage.removeItem('academy:master-image-file');}catch{}});

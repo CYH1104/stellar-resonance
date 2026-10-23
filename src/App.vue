@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
+import {majorCharacter} from './domain/characterImages';
 import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
 import NoticeHost from './components/NoticeHost.vue';
@@ -223,6 +224,7 @@ watch(()=>[w.active?.id,w.creatingGame] as const,([id,creating])=>{if(!id||creat
 
 watch(()=>w.loading,loading=>{if(!loading&&pendingNavigation){const detail=pendingNavigation;pendingNavigation=undefined;terminalNavigate(new CustomEvent('academy:navigate',{detail}));}});
 
+watch(()=>[w.preferences.characterImages,w.localService],()=>{const images=(w.localService?.characters||[]).map(a=>{const card=majorCharacter(a.name);return card?{no:card.no,url:w.preferences.characterImages?.[a.id]?.url||card.url}:undefined;}).filter(Boolean);window.dispatchEvent(new CustomEvent('academy:character-images',{detail:images}));},{deep:true,immediate:true});
 onMounted(()=>{window.addEventListener('academy:navigate',terminalNavigate);window.addEventListener('academy:insert',insertCampusText);window.addEventListener('academy:campus-access',campusAccess);window.dispatchEvent(new Event('academy:ready'));void restorePersonaMedia();});
 
 onUnmounted(()=>{window.removeEventListener('academy:navigate',terminalNavigate);window.removeEventListener('academy:insert',insertCampusText);window.removeEventListener('academy:campus-access',campusAccess);});
@@ -236,7 +238,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <div v-if="w.lastSaved||w.storageStatus!=='idle'" class="workspace-save-status"><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div class="workspace-save-status"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
