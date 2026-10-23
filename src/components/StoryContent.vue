@@ -9,7 +9,7 @@ import {type HtmlRenderContext} from '../domain/htmlRendering';
 import {type RegexRule,type RegexContext} from '../domain/regex';
 import {storyBlocks} from '../domain/storyMarkup';
 import {committedRenderText,renderChunks} from '../domain/renderChunks';
-const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext;preserveLineBreaks?:boolean}>();
+const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext}>();
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);let formattedInput='';
 const cleanText=computed(()=>stripReasoning(props.text));
 const committed=computed(()=>committedRenderText(cleanText.value,props.streaming));
@@ -26,7 +26,7 @@ const chunks=computed(()=>renderChunks(normalized.value.prose,true));
 </script>
 <template><div class="story-content">
   <template v-for="(chunk,chunkIndex) in chunks" :key="chunkIndex">
-  <HtmlMessageFrame v-if="chunk.kind==='html'" :content="chunk.text" :context="htmlContext" :highlighted="highlighted" :preserve-line-breaks="preserveLineBreaks" />
+  <HtmlMessageFrame v-if="chunk.kind==='html'" :content="chunk.text" :context="htmlContext" :highlighted="highlighted" />
   <template v-else v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
     <p v-if="block.kind==='text'" class="narrative"><StoryInline :text="block.text" /></p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
