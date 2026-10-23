@@ -117,7 +117,7 @@ export function validateOutcome(value: unknown, state: WorldState,legacy=false):
       }catch(error){if(error instanceof Error&&record(c))Object.assign(error,{actorId:c.id});throw error;}
     });
   }
-  if(v.terminal!==undefined)out.terminal=cleanTerminalBatch(v.terminal,[...state.characters,...out.characters||[]]);
+  if(v.terminal!==undefined)out.terminal=cleanTerminalBatch(v.terminal,[...mvuState.characters,...out.characters||[]]);
   if (v.forum !== undefined) out.forum = forumPosts(v.forum);
   if(v.theaters!==undefined){out.theaters=cleanTheaterScenes(v.theaters);const actorIds=new Set([...state.characters,...out.characters||[],...(out.mvu?applyMvu(state,out.mvu).characters:[])].map(c=>c.id));for(const scene of out.theaters)if(scene.diary&&scene.diary.ownerId!=='player'&&!actorIds.has(scene.diary.ownerId))throw Error('日记精神体主人不存在');}
   return out;
@@ -300,10 +300,11 @@ export function cleanPreferences(p: Preferences): Preferences {
 }
 function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
-function inspect(value: unknown, depth = 0): void {
+function inspect(value: unknown, depth = 0, path = ''): void {
   if (depth > 18) throw new Error('备份结构过深');
   if (!value || typeof value !== 'object') return;
-  for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1); }
+  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
+  for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
 export function parseBackup(text: string): Snapshot {
   if (new TextEncoder().encode(text).length > 20*1024*1024) throw new Error('首版备份限制为 20MB');

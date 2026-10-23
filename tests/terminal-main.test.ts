@@ -1,9 +1,35 @@
 import {expect,it} from 'vitest';
-import {newSession,visibleMemories} from '../src/domain/story';
+import 'fake-indexeddb/auto';
+import {IndexedDbRepository} from '../src/storage/repository';
+import {newSession,visibleMemories,validateOutcome,stateAt,backup,parseBackup,defaults} from '../src/domain/story';
 import {emptyTerminal} from '../src/domain/personalTerminal';
 import {terminalMainContext,cleanTerminalBatch,applyTerminalBatch} from '../src/domain/terminalMain';
 import {terminalMessageVisible} from '../src/domain/terminalLedger';
 function fixture(){const s=newSession('学院',{name:'玩家',identity:'学生',appearance:'',personality:'',background:''},'今天');s.initial.characters=[{id:'a',name:'陆离',present:false},{id:'b',name:'卫锋',present:false}];s.terminal=emptyTerminal();s.terminal.friends.push({id:'a',status:'accepted',reply:'同意',note:'',at:'now'});s.turns.push({id:'t1',input:'报到',selected:0,variants:[{id:'v1',text:'报到完成。',status:'complete',outcome:{event:'报到'},createdAt:'now'}]});return s;}
 function payload(s:ReturnType<typeof fixture>){return {groups:terminalMainContext(s).newGroupIds.slice(0,2).map(id=>({id,title:'教学群'+id,members:['a','b'],ownerId:'b',adminIds:[],announcement:'',messages:Array.from({length:3},()=>({id:'a',text:'明天训练。'})),topic:'明天训练安排'})),privateMessages:[{id:'a',text:'明天见',topic:'确认集合'}],friendRequests:[],courses:[]};}
+it('accepts terminal speakers introduced by MVU in the current or an earlier round and survives backup',async()=>{
+ const s=fixture(),v=s.turns[0].variants[0],batch=payload(s);
+ const actor={id:'new-npc',name:'新同学',present:true,affinity:0};
+ for(const g of batch.groups){g.members.push(actor.id);g.messages[0]={id:actor.id,text:'我来通知集合安排。'};}
+ v.outcome={event:'新同学报到',mvu:[{op:'insert',path:'/characters/new-npc',value:actor}],terminal:batch};
+ expect(()=>validateOutcome(v.outcome,s.initial)).not.toThrow();
+ expect(applyTerminalBatch(s,batch,0)).toBe(true);
+ expect(s.terminal!.conversations[0].messages[0].sender).toBe(actor.id);
+ expect(visibleMemories(s)[0].text).toContain('新同学');
+ const restored=parseBackup(backup({version:1,preferences:defaults(),sessions:[s]})).sessions[0];
+ expect(stateAt(restored).characters.some(c=>c.id===actor.id)).toBe(true);
+ restored.turns.push({id:'t2',input:'继续',selected:0,variants:[{id:'v2',text:'继续交流',status:'complete',createdAt:'now',outcome:{event:'交流',terminal:batch}}]});
+ expect(applyTerminalBatch(restored,batch,1)).toBe(true);
+ const repository=new IndexedDbRepository('terminal-save-'+crypto.randomUUID());await repository.read();
+ await repository.write({version:1,preferences:defaults(),sessions:[restored]});
+ expect((await repository.read())?.sessions[0].terminal!.jobs).toHaveLength(2);
+});
+it('permits generated terminal anchors but still rejects actual credentials and misplaced key fields',()=>{
+ const s=fixture();applyTerminalBatch(s,payload(s),0);
+ const text=backup({version:1,preferences:defaults(),sessions:[s]});expect(()=>parseBackup(text)).not.toThrow();
+ for(const edit of [(v:any)=>{v.apiKey='synthetic-secret';},(v:any)=>{v.sessions[0].terminal.key='synthetic-secret';},(v:any)=>{v.sessions[0].terminal.jobs[0].anchor.api_key='synthetic-secret';},(v:any)=>{v.sessions[0].terminal.jobs[0].anchor.key='synthetic-secret';}]){
+  const value=JSON.parse(text);edit(value);expect(()=>parseBackup(JSON.stringify(value))).toThrow('凭据');
+ }
+});
 it('persists main companions once, feeds memory and hides old messages on branch change',()=>{const s=fixture(),batch=payload(s);s.turns[0].variants[0].outcome!.characters=[{id:'a',affinity:1}];expect(applyTerminalBatch(s,batch,0)).toBe(true);expect(applyTerminalBatch(s,batch,0)).toBe(false);expect(s.terminal!.conversations.filter(c=>c.group)).toHaveLength(2);expect(visibleMemories(s)[0].text).toContain('私聊-陆离');const restored=JSON.parse(JSON.stringify(s));expect(applyTerminalBatch(restored,batch,0)).toBe(false);s.turns[0].variants.push({id:'v2',text:'另一个分支。',status:'complete',outcome:{event:'离开'},createdAt:'now'});s.turns[0].selected=1;expect(s.terminal!.conversations.flatMap(c=>c.messages).filter(m=>terminalMessageVisible(s,m))).toHaveLength(0);expect(visibleMemories(s)).toHaveLength(0);expect(terminalMainContext(s).groups).toHaveLength(0);});
 it('requires every fixed group, member-only speakers, accepted private senders and immutable management',()=>{const s=fixture(),b=payload(s),actors=s.initial.characters;applyTerminalBatch(s,b,0);const c=terminalMainContext(s);expect(cleanTerminalBatch(b,actors,c).groups).toHaveLength(2);for(const bad of [{...b,groups:b.groups.slice(0,1)},{...b,privateMessages:[{id:'b',text:'你好',topic:'陌生人'}]},{...b,groups:b.groups.map((g,i)=>i?g:{...g,ownerId:'player'})},{...b,groups:b.groups.map((g,i)=>i?g:{...g,messages:[...g.messages,{id:'player',text:'冒充用户'}]})}])expect(()=>cleanTerminalBatch(bad,actors,c)).toThrow();});
