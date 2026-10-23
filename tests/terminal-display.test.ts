@@ -25,3 +25,16 @@ it('updates the device clock across midnight and releases its timer when unmount
  expect(clock.value.time).toBe('23:59');vi.advanceTimersByTime(1000);expect(clock.value.time).toBe('00:00');expect(clock.value.label).toContain('25');
  app.unmount();expect(vi.getTimerCount()).toBe(0);
 });
+
+import {reactive,createSSRApp} from 'vue';import {renderToString} from 'vue/server-renderer';import {usePersonalTerminal} from '../src/app/usePersonalTerminal';import {newSession,defaults} from '../src/domain/story';import type {ViewModel} from '../src/app/useWorkspace';
+it('terminal desktop and header share story time, independent of real clock and reactive to save changes',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,24,2,34));
+ const s=newSession('剧情时间',{name:'我',appearance:'',personality:'',background:''},'');s.initial.variables={时间地点:{日期:'星历327年9月1日',时间:'08:35',地点:'破军系新生报到处'}};
+ const w=reactive({active:s,state:s.initial,preferences:defaults(),credentials:{},loading:true,busy:false,theaters:[],terminalBusy:false,storageStatus:'saved',save:async()=>{}}) as unknown as ViewModel;
+ let u!:ReturnType<typeof usePersonalTerminal>;await renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>null;}}));
+ expect(u.clock.value).toEqual(u.storyClock.value);expect(u.clock.value.time).toBe('08:35');expect(u.clock.value.label).toBe('星历327年9月1日');
+ vi.advanceTimersByTime(3600000);expect(u.clock.value.time).toBe('08:35');
+ w.state!.variables={时间地点:{日期:'星历327年9月2日',时间:'14:00',地点:'训练场'}};expect(u.clock.value.time).toBe('14:00');expect(u.clock.value.label).toContain('9月2日');
+ const other=newSession('另一存档',{name:'我',appearance:'',personality:'',background:''},'');w.active=other;w.state=other.initial;expect(u.clock.value.time).toBe('— : —');expect(u.clock.value.label).toBe('剧情日期待明确');
+});
+
