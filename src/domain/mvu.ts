@@ -118,6 +118,11 @@ export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldSta
   }
   const next=patchData(original,ops,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
+  // Historical whole-custom snapshots predate the program-owned code registry.
+  // An omitted registry is not an instruction to delete codes allocated later.
+  const rewritesCustom=ops.some(op=>op.path==='/custom'&&['replace','add','insert'].includes(op.op));
+  const targetsCodes=ops.some(op=>[op.path,...(op.op==='move'&&op.from?[op.from]:[])].some(path=>path==='/custom/终端码'||path.startsWith('/custom/终端码/')));
+  if(rewritesCustom&&!targetsCodes&&!Object.hasOwn(next.custom,'终端码')&&object(state.variables?.终端码))next.custom.终端码=clone(state.variables.终端码) as Record<string,Json>;
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
   function actor(before:Record<string,Json>,after:Json,player=false){if(!object(after))fail();
     for(const k of new Set([...Object.keys(before),...Object.keys(after)])){
