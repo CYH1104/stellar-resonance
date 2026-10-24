@@ -142,7 +142,7 @@ export function useWorkspace() {
     const value=snapshot(),privateValue=credentialsSnapshot(); storageStatus.value='saving';storageError.value='';notice.value='正在保存…';
     const task=writes.catch(()=>{}).then(async()=>{await repository.write(value);if(apiStorageReady)await repository.writeApiCredentials(privateValue);}); writes=task;
     await task;lastSaved.value=now();if(revision===saveRevision){storageStatus.value='saved';storageError.value='';notice.value='已保存在本机';}
-   }catch(e){if(revision===saveRevision){storageStatus.value='failed';storageError.value=message(e);problem.value=storageError.value;notice.value='未保存，请导出备份';}throw e;}
+   }catch(e){if(revision===saveRevision){storageStatus.value='failed';storageError.value=message(e);problem.value=storageError.value;notice.value='未保存，请导出备份';void formatErrors.record('保存失败：'+storageError.value+'；当前内存数据保留，请下载备份后重试。','WORKSPACE_SAVE_FAILED',active.value?.id||'','','runtime').catch(()=>{});}throw e;}
   }
   const safePersist=()=>persist().catch(()=>{});
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);
