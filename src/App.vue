@@ -207,7 +207,7 @@ async function terminalNavigate(event:Event){
   if(detail.entry==='continue'){resume();return;}
 
 
-  const panels:Panel[]=['cloud-backup','story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves','worldbooks'];
+  const panels:Panel[]=['format-errors','cloud-backup','story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves','worldbooks'];
 
   if(panels.includes(detail.panel)){
 

@@ -5,6 +5,7 @@ import {createCloudSave,parseCloudSave,type CloudSave} from '../domain/cloudBack
 import {localCharacterImage} from '../app/localCharacterImages';
 import {nicknameImages,saveNicknameImage} from '../app/localNicknameImages';
 import {accountStorage} from '../storage/accountScope';
+import {readCloudToken,writeCloudToken} from '../storage/cloudTokens';
 import {createCloudBackup,type CloudTransportError} from '../domain/cloudTransport.mjs';
 import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel}>();
@@ -12,7 +13,7 @@ type Provider='github'|'gitee';
 type Repo={provider:Provider;owner:string;repository:string;url:string;branch:string;created:boolean};
 type File={name:string;sha:string;size:number};
 function savedRepository(provider:Provider){try{return accountStorage.getItem('cloud-repository:'+provider)||'stellar-academy-backups';}catch{return 'stellar-academy-backups';}}
-const configs=reactive({github:{repository:savedRepository('github'),token:''},gitee:{repository:savedRepository('gitee'),token:''}});
+const configs=reactive({github:{repository:savedRepository('github'),token:readCloudToken('github')},gitee:{repository:savedRepository('gitee'),token:readCloudToken('gitee')}});
 const provider=ref<Provider>('gitee'),connection=ref<Repo>(),files=ref<File[]>([]),selected=ref(''),working=ref(false),message=ref(''),error=ref('');
 const helpOpen=ref(false);
 const preview=ref<{cloud:CloudSave;text:string;file:string}>(),uploadConfirm=ref(false),undoConfirm=ref(false);
@@ -35,7 +36,8 @@ function download(){void run(async()=>{if(!selected.value)throw Error('请先选
 async function restore(){const p=preview.value;if(!p)return;void run(async()=>{if(taskBlocked.value)throw Error('请先等待或停止当前任务，再恢复备份。');await props.w.restoreCloudSave(p.text);preview.value=undefined;let imageIssue=false;for(const [name,url] of Object.entries(p.cloud.nicknameImages))try{if(!nicknameImages()[name])saveNicknameImage(name,url);}catch{imageIssue=true;}message.value='全部存档与设置已恢复，覆盖前副本已保留。'+(imageIssue?'部分昵称头像链接未能保存，可稍后重新设置。':'');});}
 function undo(){undoConfirm.value=false;void run(async()=>{if(taskBlocked.value)throw Error('请先等待任务结束。');await props.w.undoCloudRestore();message.value='已恢复上次覆盖前的本地存档。';});}
 watch(()=>[provider.value,config.value.repository,config.value.token],()=>{connection.value=undefined;files.value=[];selected.value='';preview.value=undefined;error.value=message.value='';});
-onBeforeUnmount(()=>{disposed=true;controller?.abort();configs.github.token=configs.gitee.token='';});
+const tokenWatchStops=(['github','gitee'] as const).map(name=>watch(()=>configs[name].token,token=>{try{writeCloudToken(name,token);}catch{error.value='令牌未能保存到本机，请检查浏览器存储权限。';}},{flush:'sync'}));
+onBeforeUnmount(()=>{for(const stop of tokenWatchStops)stop();disposed=true;controller?.abort();configs.github.token=configs.gitee.token='';});
 </script>
 <template>
 <section class="cloud-backup-view">
@@ -48,8 +50,17 @@ onBeforeUnmount(()=>{disposed=true;controller?.abort();configs.github.token=conf
  <Transition name="cloud-switch" mode="out-in"><div :key="provider" :data-provider="provider" class="provider-content">
  <label>仓库名称<input v-model="config.repository" :disabled="working" maxlength="100" autocomplete="off"></label>
  <label>访问令牌<input v-model="config.token" :disabled="working" type="password" autocomplete="off" placeholder="填写你自己账号的访问令牌"></label>
+ <small class="token-help">令牌自动保存在本机，清空输入框即可删除。</small>
  <p v-if="provider==='gitee'" class="token-help">Gitee 令牌需要 user_info 和 projects 权限。<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">获取 Gitee 令牌</a></p>
- <p v-else class="token-help">GitHub 首次建仓可使用有 repo 权限的 classic token；已有仓库可使用具备 Contents 读写权限的令牌。<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">获取 GitHub 令牌</a></p>
+ <ol v-else class="token-help github-token-guide">
+ <li>打开 <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>，选择 Tokens (classic)。</li>
+ <li>右上角 Generate new token (classic)。</li>
+ <li>Note 填 stellar-academy-backups，Expiration 选最后一个。</li>
+ <li>勾选最上面那个 repo 大复选框。</li>
+ <li>拉到底部 → Generate token。</li>
+ <li>复制并保存那串 ghp_ 开头的字符串，然后填到访问令牌处。</li>
+ <li>点击连接并准备仓库即可。</li>
+ </ol>
  <button :disabled="working||!config.token.trim()||!config.repository.trim()" @click="connect">连接并准备仓库</button>
  <p v-if="connection" role="status">已连接：<a :href="connection.url" target="_blank" rel="noopener noreferrer">{{connection.owner}}/{{connection.repository}}</a></p>
  <hr><label>仓库中的备份<select v-model="selected" :disabled="working||!files.length"><option v-if="!files.length" value="">暂无备份，请先连接仓库或上传</option><option v-for="f in files" :key="f.name" :value="f.name">{{f.name}} · {{Math.ceil(f.size/1024)}} KB</option></select></label>
@@ -62,9 +73,17 @@ onBeforeUnmount(()=>{disposed=true;controller?.abort();configs.github.token=conf
  <p>下载所有数据：下载当前全部存档和设置的 JSON 文件。</p>
  <p>上传备份：以当前本地数据覆盖仓库中的固定备份文件，保留其他文件。拉取备份：读取仓库数据，确认后覆盖本地；覆盖前自动保留恢复副本。</p>
  <p>备份包含剧情、人设、记忆、变量、终端记录、预设、世界书及界面设置。云端不上传本地图片、立绘或 API 配置与密钥；图片只保留 URL。</p>
- <p>浏览器直接连接平台，令牌与备份不经过本站服务器。令牌仅在当前页面使用，离开后清除。连接时创建私有仓库，已有同名私有仓库则复用。</p>
+ <p>浏览器直接连接平台，令牌与备份不经过本站服务器。令牌自动保存在当前设备、当前账号的浏览器中，重新打开时自动读取；清空访问令牌输入框即可删除，不写入备份或提示词。连接时创建私有仓库，已有同名私有仓库则复用。</p>
  <p>上传大小按所选平台及账号的实际限制执行，不再设置应用自身的 20 MB 上限。GitHub 文件接口支持单文件最多 100 MB；Gitee 以平台对当前账号和接口返回的限制为准。</p>
- <p v-if="provider==='github'">首次建仓可使用有 repo 权限的 classic token；已有仓库可使用具备 Contents 读写权限的令牌。<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">获取 GitHub 令牌</a></p>
+ <ol v-if="provider==='github'" class="token-help github-token-guide">
+ <li>打开 <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>，选择 Tokens (classic)。</li>
+ <li>右上角 Generate new token (classic)。</li>
+ <li>Note 填 stellar-academy-backups，Expiration 选最后一个。</li>
+ <li>勾选最上面那个 repo 大复选框。</li>
+ <li>拉到底部 → Generate token。</li>
+ <li>复制并保存那串 ghp_ 开头的字符串，然后填到访问令牌处。</li>
+ <li>点击连接并准备仓库即可。</li>
+ </ol>
  <p v-else>Gitee 令牌需要 user_info 和 projects 权限。<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">获取 Gitee 令牌</a></p>
  </DialogShell>
  <DialogShell v-if="uploadConfirm" title="上传全部数据" @close="uploadConfirm=false"><p>将当前 {{w.sessions.length}} 个存档及全部预设、世界书、设置上传到私有仓库，更新同名备份。本地图片和 API 配置、密钥不上传。</p><div class="actions"><button @click="uploadConfirm=false">取消</button><button @click="upload">确认上传</button></div></DialogShell>
@@ -73,6 +92,7 @@ onBeforeUnmount(()=>{disposed=true;controller?.abort();configs.github.token=conf
 </section>
 </template>
 <style scoped>
+.github-token-guide{padding-left:22px;margin:10px 0 14px}.github-token-guide li{margin:5px 0;line-height:1.6}
 .cloud-backup-view{width:100%;max-width:none;min-height:100%;margin:0;padding:16px 20px;box-sizing:border-box;overflow-wrap:anywhere}
 #academy-workspace .cloud-backup-view{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important}
 .cloud-backup-view label{display:block;margin:14px 0}.cloud-backup-view input,.cloud-backup-view select{display:block;width:100%;max-width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px}

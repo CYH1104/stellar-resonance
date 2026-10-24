@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import {computed,reactive,ref,nextTick,watch} from 'vue';
+import {computed,reactive,ref,nextTick,watch,onBeforeUnmount} from 'vue';
+import {terminalSyncSummary} from '../domain/terminalSyncReport';
+import {logTarget} from '../app/logNavigation';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
 import {resetMajorCharacterImages} from '../app/localCharacterImages';
@@ -15,7 +17,13 @@ import TerminalIcon from './TerminalIcon.vue';
 import {nextTerminalCourse} from '../domain/terminalSchedule';
 const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
 const u=reactive(usePersonalTerminal(props.w));
+const syncVariant=computed(()=>{const turn=props.w.active?.turns.at(-1);return turn?.variants[turn.selected];});
+const syncSummary=computed(()=>terminalSyncSummary(syncWarnings.value,syncVariant.value?.outcome?.terminal?.report));
 const syncWarnings=computed(()=>props.w.active?.turns.at(-1)?.variants[props.w.active.turns.at(-1)!.selected]?.outcome?.stateUpdate?.codes?.filter(code=>code.startsWith('STATE_TERMINAL_'))||[]);
+const syncNoticeVisible=ref(false);let syncNoticeTimer:ReturnType<typeof setTimeout>|undefined;
+watch(()=>JSON.stringify([props.w.active?.id,props.w.active?.turns.at(-1)?.id,props.w.active?.turns.at(-1)?.selected,syncWarnings.value,props.w.storageStatus==='failed']),()=>{clearTimeout(syncNoticeTimer);syncNoticeVisible.value=props.w.storageStatus==='failed'||!!syncWarnings.value.length;if(syncNoticeVisible.value)syncNoticeTimer=setTimeout(()=>{syncNoticeVisible.value=false;},8000);},{immediate:true});
+onBeforeUnmount(()=>clearTimeout(syncNoticeTimer));
+function openSyncDetails(){const panel=props.w.storageStatus==='failed'?'cloud-backup':'format-errors';if(panel==='format-errors'&&props.w.active){const turn=props.w.active.turns.at(-1);if(turn)logTarget.value={sessionId:props.w.active.id,turnId:turn.id,variantId:syncVariant.value?.id||''};}props.w.panel=panel;window.dispatchEvent(new CustomEvent('academy:open',{detail:{panel}}));}
 const homeAvatarFailed=ref(false);
 watch(()=>u.t.avatar,()=>{homeAvatarFailed.value=false;});
 const feed=ref<HTMLElement>(),avatarInput=ref<HTMLInputElement>();
@@ -52,7 +60,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
  <header class="pt-header" title="拖动顶栏移动终端" @pointerdown="$emit('drag-start',$event)" @pointermove="$emit('drag-move',$event)" @pointerup="$emit('drag-end')" @pointercancel="$emit('drag-end')" @lostpointercapture="$emit('drag-end')"><button type="button" :aria-label="u.page==='home'?'返回桌面':'返回上一页'" @click="back">‹</button><div><strong>{{currentTitle}}</strong><small>STELLAR OS</small></div><span>{{u.clock.time}}</span><button type="button" aria-label="关闭个人终端" @click="$emit('close')">×</button></header>
  <div v-if="u.working" class="pt-progress" role="status">正在等待角色回应… <button type="button" disabled>请稍候</button></div>
  <div v-if="u.error" class="pt-error" role="alert">{{u.error}}<button type="button" aria-label="收起终端提示" @click="u.error=''">×</button></div>
- <div v-if="w.storageStatus==='failed'||syncWarnings.length" class="pt-sync-warning" role="status"><span>{{w.storageStatus==='failed'?'终端数据尚未保存，请先下载备份，保留当前页面。':syncWarnings.includes('STATE_TERMINAL_MISSING')?'本轮模型未返回终端通讯，旧记录保留。':'本轮部分终端内容未通过校验，有效消息已继续处理，旧资料保留。'}}</span><button type="button" @click="w.panel=w.storageStatus==='failed'?'cloud-backup':'format-errors';$emit('close')">{{w.storageStatus==='failed'?'下载备份':'查看运行日志'}}</button></div>
+ <div v-if="syncNoticeVisible" class="pt-sync-warning" role="status"><span>第 {{w.active?.turns.length}} 轮 · {{w.storageStatus==='failed'?'终端数据尚未保存，请先下载备份，保留当前页面。':syncSummary}}</span><button type="button" @click="openSyncDetails();$emit('close')">{{w.storageStatus==='failed'?'下载备份':'查看运行日志'}}</button></div>
  <main class="pt-screen" :class="{'pt-home-screen':u.page==='home'}" :aria-busy="u.working">
   <template v-if="u.page==='home'">
    <div class="pt-clock"><small>PERSONAL TERMINAL</small><b>{{u.clock.time}}</b><span>{{u.clock.label}}</span><small v-if="u.storyClock.location">{{u.storyClock.location}}</small><button class="pt-own" type="button" aria-label="设置终端头像" @click="u.go('account')"><img v-if="u.t.avatar&&!homeAvatarFailed" :src="u.t.avatar" alt="我的终端头像" @error="homeAvatarFailed=true"><TerminalIcon v-else name="user"/></button></div>
