@@ -1,6 +1,7 @@
 import type {VariableChangeLog} from '../domain/variableChangeLog';
-﻿import {accountDatabase} from './accountScope';
-export interface FormatErrorRecord {id:string;at:string;sessionId:string;turnId:string;code:string;raw:string;kind?:'format'|'runtime'|'generation';variantId?:string;round?:number;variables?:VariableChangeLog}
+﻿import type {RunLogSection} from '../domain/runLogSections';
+import {accountDatabase} from './accountScope';
+export interface FormatErrorRecord {id:string;at:string;sessionId:string;turnId:string;code:string;raw:string;kind?:'format'|'runtime'|'generation'|'terminal';variantId?:string;round?:number;variables?:VariableChangeLog;callId?:string;sections?:RunLogSection[]}
 export class FormatErrorRepository {
  private async db(){return new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open(accountDatabase('academy-format-errors-v1'),1);q.onupgradeneeded=()=>q.result.createObjectStore('errors');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});}
  async read():Promise<FormatErrorRecord[]>{const db=await this.db();try{return await new Promise((resolve,reject)=>{const q=db.transaction('errors').objectStore('errors').get('records');q.onsuccess=()=>resolve(Array.isArray(q.result)?q.result.slice(0,100):[]);q.onerror=()=>reject(q.error);});}finally{db.close();}}

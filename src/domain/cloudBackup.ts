@@ -31,5 +31,6 @@ export function parseCloudSave(text:string):CloudSave{
 export function mergeCloudSession(current:Session,incoming:Session){const next=copy(incoming);next.id=current.id;
  // Imported uploads omit local terminal avatar bytes. Preserve the local display in that case.
  if(current.terminal?.avatar&&!next.terminal?.avatar){next.terminal||=emptyTerminal();next.terminal.avatar=current.terminal.avatar;next.terminal.avatarView=copy(current.terminal.avatarView);}
+ for(const group of next.terminal?.conversations||[]){const old=current.terminal?.conversations.find(c=>c.id===group.id);if(old?.avatar&&!group.avatar)group.avatar=old.avatar;}
  next.updatedAt=new Date().toISOString();return next;
 }

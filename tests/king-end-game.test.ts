@@ -2,6 +2,8 @@ import {it,expect,vi,afterEach} from 'vitest';
 import {newSession,defaults,backup,parseBackup} from '../src/domain/story';
 import {emptyTerminal,drawKingRound} from '../src/domain/personalTerminal';
 import {usePersonalTerminal} from '../src/app/usePersonalTerminal';
+import PersonalTerminal from '../src/components/PersonalTerminal.vue';
+import * as terminalModule from '../src/app/usePersonalTerminal';
 import {createSSRApp,h,reactive} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import type {ViewModel} from '../src/app/useWorkspace';
@@ -11,3 +13,17 @@ it.each(['none','command','respond','complete'])('ends %s without fabricating co
 it('retains retry after save failed even though memory already contains endedAt',async()=>{const {w,u}=await fixture();w.storageStatus='failed';u.askEnd();await u.endGame();expect(u.page.value).toBe('room');expect(u.endSaveFailed.value).toBe('room');expect(u.error.value).toContain('结束状态未保存');const ended=u.room.value!.endedAt;w.storageStatus='saved';await u.endGame();expect(u.page.value).toBe('games');expect(u.endSaveFailed.value).toBe('');expect(u.room.value!.endedAt).toBe(ended);});
 it('stops a stuck request and ignores its late response',async()=>{const {w,u}=await fixture();u.room.value!.rounds.push({number:1,king:'a',numbers:{player:1,b:2},command:'',targets:[1],replies:[],phase:'command'});let resolve!:(r:Response)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(r=>{resolve=r;})));const pending=u.command();await vi.waitFor(()=>expect(resolve).toBeTypeOf('function'));u.askEnd();await u.endGame();await pending;expect(u.room.value!.endedAt).toBeTruthy();resolve(Response.json({template:'请{{target1}}分享趣事',targets:[1],betrayal:false}));await new Promise(r=>setTimeout(r,0));expect(u.round.value!.command).toBe('');expect(u.round.value!.phase).toBe('command');expect(w.terminalBusy).toBe(false);});
 it('rejects malformed ended timestamps while old active rooms remain compatible',async()=>{const {w}=await fixture();const data=()=>backup({version:1,preferences:w.preferences,sessions:[w.active!]});expect(parseBackup(data()).sessions[0].terminal!.rooms[0].endedAt).toBeUndefined();w.active!.terminal!.rooms[0].endedAt='2026-02-30T00:00:00.000Z';expect(()=>parseBackup(data())).toThrow();});
+it('ends a zero-round room without fabricating end chat, memory or review entries',async()=>{
+ const {w,u}=await fixture();u.askEnd();await u.endGame();expect(w.active!.terminal!.memories).toEqual([]);expect(w.active!.terminal!.conversations).toEqual([]);
+ const spy=vi.spyOn(terminalModule,'usePersonalTerminal').mockReturnValue(u);try{
+  u.go('games');let html=await renderToString(createSSRApp(PersonalTerminal,{w}));expect(html).toContain('未开始，未生成回看');expect(html).not.toContain('回看记录');
+  u.roomId.value='room';u.page.value='room';html=await renderToString(createSSRApp(PersonalTerminal,{w}));expect(html).toContain('未开始，未生成回看');expect(html).not.toContain('游戏记录');
+ }finally{spy.mockRestore();}
+});
+it('treats an old room with only archived rounds as zero visible rounds when ending',async()=>{
+ const {w,u}=await fixture();u.room.value!.rounds.push({number:1,king:'a',numbers:{player:1,b:2},command:'旧分支',targets:[1],replies:[],phase:'complete',archived:true});u.askEnd();await u.endGame();expect(w.active!.terminal!.conversations).toEqual([]);expect(w.active!.terminal!.memories).toEqual([]);expect(u.error.value).toBe('');
+});
+it('lists a review entry only when an ended room has real visible rounds',async()=>{
+ const {w,u}=await fixture();u.room.value!.rounds.push({number:1,king:'a',numbers:{player:1,b:2},command:'分享趣事',targets:[1],replies:[],phase:'complete'});u.askEnd();await u.endGame();
+ const spy=vi.spyOn(terminalModule,'usePersonalTerminal').mockReturnValue(u);try{u.go('games');const html=await renderToString(createSSRApp(PersonalTerminal,{w}));expect(html).toContain('回看记录');expect(html).not.toContain('未开始，未生成回看');}finally{spy.mockRestore();}
+});

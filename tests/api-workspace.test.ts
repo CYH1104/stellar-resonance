@@ -1,4 +1,4 @@
-import {exportApiSettings} from '../src/domain/apiTransfer';
+﻿import {exportApiSettings} from '../src/domain/apiTransfer';
 import {syncCharacterFacts} from '../src/domain/characterFacts';
 import {normalizeMemoryResult} from '../src/domain/memories';
 import {newWorldEntry} from '../src/domain/worldbooks';
@@ -577,4 +577,12 @@ it('回溯保存失败恢复全部记录，成功仅删除目标轮起内容且�
  await generateAndWait(w,'第一轮');await generateAndWait(w,'第二轮');w.input.value='保留草稿';await nextTick();const prior=JSON.stringify(w.active.value);
  vi.mocked(IndexedDbRepository.prototype.write).mockRejectedValueOnce(new Error('存储故障'));await w.rewind(1);expect(JSON.stringify(w.active.value)).toBe(prior);expect(w.problem.value).toContain('原对话和记录已恢复');expect(w.input.value).toBe('保留草稿');
  await w.rewind(1);expect(w.active.value!.turns).toHaveLength(1);expect(w.input.value).toBe('保留草稿');expect(saved!.sessions[0].turns).toHaveLength(1);expect(w.problem.value).toBe('');
+});
+it('records one call with real prose, character, theater, private terminal, MVU and recall sections',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('日志分区',{name:'玩家',appearance:'',background:'',personality:''},'');await w.formatErrors.clear();
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文段落'};yield {type:'done',outcome:{event:'交谈',characters:[{id:'guide',affinity:30}],theaters:[{slot:2,kind:'group',title:'群剧场',content:'',messages:[{speaker:'向导',content:'剧场对白'}]}],mvu:[{op:'replace',path:'/characters/guide/affinity',value:30}],terminal:{groups:[],privateMessages:[{id:'guide',text:'私聊内容',topic:'问候'}],friendRequests:[]}}};});
+ await generateAndWait(w,'先前事件');await w.formatErrors.clear();
+ await generateAndWait(w,'行动');const entry=await vi.waitFor(()=>{const row=w.formatErrors.entries.value.find(e=>e.code==='GENERATION_COMPLETE');expect(row?.sections?.length||0).toBeGreaterThan(5);return row!;});
+ expect(entry.callId).toBeTruthy();const kinds=entry.sections!.map(s=>s.kind);if(kinds.includes('errors'))expect(kinds[0]).toBe('errors');for(const kind of ['prose','characters','theaters','terminal','variables','terminalActivity','vector'])expect(kinds).toContain(kind);
+ expect(entry.sections!.find(s=>s.kind==='prose')!.text).toContain('正文段落');expect(entry.sections!.find(s=>s.kind==='terminal')!.text).toContain('私聊内容');expect(entry.sections!.find(s=>s.kind==='theaters')!.text).toContain('剧场对白');expect(entry.sections!.find(s=>s.kind==='variables')!.variables?.details.join(' ')).toContain('MVU 1');expect(entry.sections!.find(s=>s.kind==='vector')!.text).toContain('关键词');
 });

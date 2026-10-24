@@ -7,19 +7,19 @@ import {terminalMainContext,cleanTerminalBatch,applyTerminalBatch} from '../src/
 import {terminalMessageVisible} from '../src/domain/terminalLedger';
 function fixture(){const s=newSession('学院',{name:'玩家',identity:'学生',appearance:'',personality:'',background:''},'今天');s.initial.characters=[{id:'a',name:'陆离',present:false},{id:'b',name:'卫锋',present:false}];s.terminal=emptyTerminal();s.terminal.friends.push({id:'a',status:'accepted',reply:'同意',note:'',at:'now'});s.turns.push({id:'t1',input:'报到',selected:0,variants:[{id:'v1',text:'报到完成。',status:'complete',outcome:{event:'报到'},createdAt:'now'}]});return s;}
 function payload(s:ReturnType<typeof fixture>){return {groups:terminalMainContext(s).newGroupIds.slice(0,2).map(id=>({id,title:'教学群'+id,members:['a','b'],ownerId:'b',adminIds:[],announcement:'',messages:Array.from({length:3},()=>({id:'a',text:'明天训练。'})),topic:'明天训练安排'})),privateMessages:[{id:'a',text:'明天见',topic:'确认集合'}],friendRequests:[],courses:[]};}
-it('isolates bad groups, messages and categories while preserving ownerless historic management',async()=>{
+it('allows one legal management completion for an unconfirmed group while retaining stored members and rejecting impersonation',async()=>{
  const s=fixture(),batch=payload(s);applyTerminalBatch(s,batch,0);
  const historic=s.terminal!.conversations[0];historic.ownerId='';historic.managementReady=false;
  const context=terminalMainContext(s),warnings:string[]=[];
  const input={...batch,groups:batch.groups.map((g,i)=>i?{...g,members:['unknown'],messages:[{id:'unknown',text:'坏群'}]}:{...g,ownerId:'player',messages:[{id:'player',text:'冒充用户'},{id:'a',text:'合法消息'}]}),friendRequests:[{id:'unknown',reason:'无效'}],courses:[{title:'坏课表'}]};
  const result=cleanTerminalBatch(input,s.initial.characters,context,c=>warnings.push(c));
- // Stored members govern existing groups; model metadata cannot seize management.
- expect(result.groups[0].ownerId).toBe('');expect(result.groups[0].messages).toEqual([{id:'a',text:'合法消息'}]);
+ // Stored members govern existing groups; only the missing owner may be completed.
+ expect(result.groups[0].ownerId).toBe('player');expect(result.groups[0].messages).toEqual([{id:'a',text:'合法消息'}]);
  expect(result.groups[1].members).toEqual(['a','b']);expect(result.groups[1].messages).toEqual([]);
  expect(result.privateMessages).toEqual(batch.privateMessages);expect(result.friendRequests).toEqual([]);expect(result.courses).toBeUndefined();
  expect(warnings).toContain('STATE_TERMINAL_GROUP_MESSAGE_SKIPPED');expect(warnings).toContain('STATE_TERMINAL_COURSES_RETAINED');
  s.turns.push({id:'t2',input:'继续',selected:0,variants:[{id:'v2',status:'complete',text:'继续',createdAt:'now',outcome:{event:'继续',terminal:result}}]});
- expect(applyTerminalBatch(s,result,1)).toBe(true);expect(historic.ownerId).toBe('');expect(historic.managementReady).toBe(false);
+ expect(applyTerminalBatch(s,result,1)).toBe(true);expect(historic.ownerId).toBe('player');expect(historic.managementReady).toBe(true);
  expect(applyTerminalBatch(s,result,1)).toBe(false);
  const repo=new IndexedDbRepository('isolated-terminal-'+crypto.randomUUID());await repo.read();await repo.write({version:1,sessions:[s],preferences:defaults()});
  expect((await repo.read())?.sessions[0].terminal!.conversations.find(c=>!c.group)?.messages).toHaveLength(2);

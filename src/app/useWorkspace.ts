@@ -4,6 +4,8 @@ import {terminalMainContext,applyTerminalBatch} from '../domain/terminalMain';
 import {saveOnLeave} from './saveOnLeave';
 import {terminalRecall} from '../domain/terminalLedger';
 import {variableChangeLog} from '../domain/variableChangeLog';
+import {readCloudToken} from '../storage/cloudTokens';
+import {generationSections,type RecallTrace} from '../domain/runLogSections';
 import {stateUpdateDetails as logStateDetails} from '../domain/stateUpdate';
 import {missingRepairPlan,repairNeedsState} from '../domain/repairPlan';
 import {prepareForumLikes} from '../domain/forumLikes';
@@ -39,7 +41,7 @@ import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyAp
 export function useWorkspace() {
   const repairReport=ref<{sessionId:string;turnId:string;rows:RepairComparison[];problem?:string}>();
   const developerTraces=ref<import('../domain/contracts').DeveloperTrace[]>([]);
-  const formatErrors=useFormatErrors(()=>Object.values(credentials));
+  const formatErrors=useFormatErrors(()=>[...Object.values(credentials),readCloudToken('github'),readCloudToken('gitee')]);
   const hideFloors=ref((()=>{try{return accountStorage.getItem('academy:auto-hide-floors')!=='false';}catch{return true;}})());
   watch(hideFloors,value=>{try{accountStorage.setItem('academy:auto-hide-floors',String(value));}catch{}});
   const preferences=reactive<Preferences>({...defaults(),activePreset:'legacy',theaters:defaultTheaters()});
@@ -101,11 +103,12 @@ export function useWorkspace() {
   async function confirmAllApis(){if(configuringApis.value||busy.value)return;const structural=apiConfigurationIssues(preferences,credentials,()=>true);if(structural.length){problem.value=structural[0];return;}configuringApis.value=true;try{for(const p of [...new Map([...requiredApis(preferences),...auxiliaryApis(preferences).filter(apiSelectable)].map(p=>[p.id,p])).values()])if(!await connectProfile(p))return;notice.value='必需的 API 配置已就绪，可以进入游戏。';await safePersist();}finally{configuringApis.value=false;}}
   const storageStatus=ref<'idle'|'pending'|'saving'|'saved'|'failed'>('idle');
   const notice=ref('正在读取本地存档…'), problem=ref(''), input=ref(''), lastSaved=ref('');
+  let activeCallId='';
   function logRuntime(error:unknown,stage='运行错误'){
     if(error instanceof Error&&error.name==='AbortError')return;
     const detail=error instanceof Error?error.message:String(error);if(!detail.trim())return;
     const session=active.value,turn=session?.turns.at(-1);
-    void formatErrors.record(detail,stage,session?.id||'',turn?.id||'','runtime');
+    void formatErrors.record(detail,stage,session?.id||'',turn?.id||'','runtime',{...(activeCallId?{callId:activeCallId}:{})});
   }
   watch(problem,value=>{if(value)logRuntime(value,generationPhase.value||'运行错误');},{flush:'sync'});
   watch(forumReplyError,value=>{if(value)logRuntime(value,'论坛 AI 回复');},{flush:'sync'});
@@ -280,12 +283,15 @@ export function useWorkspace() {
     try{const indices=session.turns.map((_,i)=>i).filter(i=>{const t=session.turns[i],m=session.memories.find(m=>m.sourceTurn===t.id&&m.sourceVariant===selected(t)?.id&&m.kind==='event');return selected(t)?.text.trim()&&memoryNeedsWork(session,i)&&(!id||m?.id===id||id===`missing:${t.id}`);});for(const index of indices){current.signal.throwIfAborted();await executeMemoryBatch(session,[index],current.signal);}notice.value='记忆已保存。';}
     catch(e){problem.value=message(e);}finally{workingMemory.value=false;if(memoryController===current)memoryController=undefined;await safePersist();}
   }
-  async function recall(session:Session,text:string,before=session.turns.length,contextual=true):Promise<Memory[]> {
-    const list=memoryLedger(session,before).filter(memoryReady).reverse();if(!list.length)return [];
+  async function recall(session:Session,text:string,before=session.turns.length,contextual=true,trace?:(value:RecallTrace)=>void):Promise<Memory[]> {
+    const list=memoryLedger(session,before).filter(memoryReady).reverse();if(!list.length){trace?.({mode:'keyword',query:text,candidates:0,hits:[]});return [];}
     const contextState=stateAt(session,before),recent=session.turns.slice(0,before).flatMap(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome?[v.outcome.event]:[];});
-    const query=contextual?buildRecallQuery(text,contextState,recent,memoryLedger(session,before).filter(m=>m.record&&memoryReady(m)).at(-1)?.record?.location):text;let vector:number[]|undefined;const p=copy(profile(preferences.embeddingProfile));
-    if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;logRuntime(e,'记忆向量检索');notice.value='向量接口不可用，已退回关键词检索';}
-    return retrieve(list,query,fingerprint(p),vector,session.memoryEngine==='candidate');
+    const query=contextual?buildRecallQuery(text,contextState,recent,memoryLedger(session,before).filter(m=>m.record&&memoryReady(m)).at(-1)?.record?.location):text;let vector:number[]|undefined,fallback='';const p=copy(profile(preferences.embeddingProfile));
+    if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;fallback='向量接口不可用，已退回关键词检索';logRuntime(e,'记忆向量检索');notice.value='向量接口不可用，已退回关键词检索';}
+    const mode:RecallTrace['mode']=vector?.length?'vector+keyword':'keyword';
+    const hits=await retrieve(list,query,fingerprint(p),vector,session.memoryEngine==='candidate');
+    trace?.({mode,query,candidates:list.length,hits,...(fallback?{fallback}:{})});
+    return hits;
   }
   async function prepareRandomEvent(session:Session,index:number){
     const turn=session.turns[index],gate=turn.randomEvent;if(!gate||(gate.status!=='preparing'&&gate.status!=='failed'))return;const kind=gate.kind,p=copy(profile(preferences.randomEventProfile||preferences.mainProfile));
@@ -318,9 +324,9 @@ export function useWorkspace() {
     if(!stateOnly)ensureTerminalCodes(session,index);
     const logBefore=copy(repairBefore||stateAt(session,index));
     const generationType=continuePartial?'continue':firstAttempt?'normal':'regenerate';continuationAttempt.value=0;repairingState.value=stateOnly;
-    busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false, checkpoint=Date.now();await safePersist();
+    busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false, checkpoint=Date.now();const callId=crypto.randomUUID();activeCallId=callId;const callErrors:string[]=[];let recallTrace:RecallTrace|undefined;await safePersist();
     try {
-      const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index);
+      const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index,true,trace=>{recallTrace=trace;});
       const lore=sessionLore(preferences,session,index,turn.input,turn.id,localService.value?.narratorName||'星穹学院');
       worldbookRuntimeWarnings.value=lore.warnings;
       worldbookRuntimeDiagnostics.value=lore.diagnostics;
@@ -329,14 +335,14 @@ export function useWorkspace() {
       if(repairPlan&&request.continuation){request.continuation.repairPlan=repairPlan;request.state.characters.push(...copy(repairBefore!.characters.filter(c=>!request.state.characters.some(a=>a.id===c.id))));request.stateEnabled=repairNeedsState(repairPlan);request.theaterSettings=request.theaterSettings?.map(s=>({...s,enabled:repairPlan.theaterSlots.includes(s.slot)}));request.suggestionsEnabled=repairPlan.suggestions;}
       const regexRules=copy((preferences.regexRules||[]).filter(r=>!r.setId||r.setId===currentPreset.value));
       if(!stateOnly&&!continuePartial)variant.generationRequirements={stateEnabled:request.stateEnabled!==false,theaters:copy(request.theaterSettings||defaultTheaters())};
-      if(regexRules.some(r=>!r.disabled&&(!r.markdownOnly||r.promptOnly))){const context={scope:'prompt' as const,user:session.persona.name,char:localService.value?.narratorName||'星穹学院'};const messages=[...request.history,{role:'user' as const,content:request.input}];const edited=session.turns.slice(Math.max(0,index-12),index).filter(t=>selected(t)?.status==='complete').flatMap(t=>[!!t.inputEdited,!!selected(t)?.edited]);edited.push(!!turn.inputEdited);for(let i=0;i<messages.length;i++){const item=messages[i];const transformed=await runRegex(item.content,regexRules,{...context,placement:item.role==='user'?1:2,edited:edited[i],depth:messages.length-1-i},controller.signal);if(transformed.errors.length)void formatErrors.record(transformed.errors.join('；'),'REGEX_WARNING',session.id,turn.id,'runtime').catch(()=>{});item.content=transformed.text;}request.input=messages.pop()!.content;request.history=messages;for(const entry of request.worldInfo||[]){const transformed=await runRegex(entry.content,regexRules,{...context,placement:5,depth:entry.depth},controller.signal);if(transformed.errors.length)void formatErrors.record(transformed.errors.join('；'),'REGEX_WARNING',session.id,turn.id,'runtime').catch(()=>{});entry.content=transformed.text;}}
+      if(regexRules.some(r=>!r.disabled&&(!r.markdownOnly||r.promptOnly))){const context={scope:'prompt' as const,user:session.persona.name,char:localService.value?.narratorName||'星穹学院'};const messages=[...request.history,{role:'user' as const,content:request.input}];const edited=session.turns.slice(Math.max(0,index-12),index).filter(t=>selected(t)?.status==='complete').flatMap(t=>[!!t.inputEdited,!!selected(t)?.edited]);edited.push(!!turn.inputEdited);for(let i=0;i<messages.length;i++){const item=messages[i];const transformed=await runRegex(item.content,regexRules,{...context,placement:item.role==='user'?1:2,edited:edited[i],depth:messages.length-1-i},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('；'));item.content=transformed.text;}request.input=messages.pop()!.content;request.history=messages;for(const entry of request.worldInfo||[]){const transformed=await runRegex(entry.content,regexRules,{...context,placement:5,depth:entry.depth},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('；'));entry.content=transformed.text;}}
       generationPhase.value='等待模型返回（单次请求／重试最长10分钟）…';
       const branchBinding=()=>JSON.stringify({sessionId:sessionId.value,persona:session.persona,initial:session.initial,turns:session.turns.map(t=>({id:t.id,input:t.input,selected:t.selected,ids:t.variants.map(v=>v.id)}))});const expectedBinding=branchBinding();
       for await(const event of gateway().generate(request,key(p),controller.signal)) {
         if(branchBinding()!==expectedBinding)throw Error('当前分支已变化，已拒绝迟到的生成结果');
         if(controller.signal.aborted)throw new DOMException('已停止','AbortError');
         if(event.type==='developer-trace'){if(localService.value?.developerMode){developerTraces.value.unshift(event.trace);developerTraces.value=developerTraces.value.slice(0,40);}}
-        else if(event.type==='format-error'){await formatErrors.record(event.raw,event.code,session.id,turn.id);}
+        else if(event.type==='format-error'){callErrors.push(event.code+'：'+event.raw);}
         else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未完成更新；主接口的正文、小剧场和快捷回复已保存，原状态沿用。';if(event.diagnostic.code==='STATE_SIDE_SCENE_RETAINED')notice.value='模型遗漏了本轮已开启的部分小剧场，正文和有效内容已保存；可在回复操作中手动补全，不会自动再次调用。';if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
         else if(event.type==='progress'){generationPhase.value=event.phase==='hidden'?'中转站正在返回数据，目前尚无可展示正文（思考内容保持隐藏）…':event.phase==='receiving'?'正在接收正文和隐藏状态…':'等待模型返回…';}
         else if(event.type==='delta'){generationPhase.value='正在接收正文…';if(repairingState.value)continue;variant.text+=event.text;if(Date.now()-checkpoint>700){checkpoint=Date.now();await safePersist();}}
@@ -346,14 +352,14 @@ export function useWorkspace() {
           let outcome=event.outcome;
           if(previousOutcome){outcome={...mergeRepairOutcome(previousOutcome,outcome,stateAt(session,index),repairBefore!,repairPlan),theaters:mergeRepairTheaters(previousOutcome.theaters,outcome.theaters,preferences.theaters,repairBefore!)};}
           if(previousOutcome)outcome=reconcileRepairScenes(outcome,preferences.theaters,stateAt(session,index+1));
-          finishVariant(session,index,variant,outcome);if(outcome.terminal)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];await persist();done=true;if(variant.outcome?.terminal?.report)void formatErrors.record(JSON.stringify(variant.outcome.terminal.report),'TERMINAL_SYNC_SAVED',session.id,turn.id,'runtime',{variantId:variant.id,round:index+1}).catch(()=>{});
+          finishVariant(session,index,variant,outcome);if(outcome.terminal)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];await persist();done=true;
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
       notice.value='正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
-    }catch(e){problem.value=message(e);if(variant.outcome?.terminal?.report)void formatErrors.record(JSON.stringify(variant.outcome.terminal.report),'TERMINAL_SYNC_SAVE_FAILED',session.id,turn.id,'runtime',{variantId:variant.id,round:index+1}).catch(()=>{});if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes,message(e));if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1)),problem:message(e)};}
-    finally{const logApplied=selected(turn)?.id===variant.id&&variant.status==='complete';const logAfter=logApplied?stateAt(session,index+1):logBefore;void formatErrors.record(done?'本次生成完成。':problem.value||'本次生成未完成。',done?'GENERATION_COMPLETE':'GENERATION_INCOMPLETE',session.id,turn.id,'generation',{variantId:variant.id,round:index+1,variables:variableChangeLog(logBefore,logAfter,logApplied,variant.outcome?.stateUpdate?.affinityReviewedIds,logStateDetails(variant.outcome).map(d=>d.text),variant.outcome?.stateUpdate?.codes)}).catch(()=>{});busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';void scheduleMemoryWork(session);}
+    }catch(e){problem.value=message(e);callErrors.push(problem.value);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes,message(e));if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1)),problem:message(e)};}
+    finally{const logApplied=selected(turn)?.id===variant.id&&variant.status==='complete';const logAfter=logApplied?stateAt(session,index+1):logBefore;const variables=variableChangeLog(logBefore,logAfter,logApplied,variant.outcome?.stateUpdate?.affinityReviewedIds,logStateDetails(variant.outcome).map(d=>d.text),variant.outcome?.stateUpdate?.codes);const sections=generationSections({errors:callErrors,variant,outcome:variant.outcome,before:logBefore,after:logAfter,applied:logApplied,variables,recall:recallTrace,stateOnly});void formatErrors.record(done?'本次生成完成。':problem.value||'本次生成未完成。',done?'GENERATION_COMPLETE':'GENERATION_INCOMPLETE',session.id,turn.id,'generation',{variantId:variant.id,round:index+1,variables,callId,sections}).catch(()=>{});busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;activeCallId='';session.updatedAt=now();await safePersist();const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';void scheduleMemoryWork(session);}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){

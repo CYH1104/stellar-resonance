@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {runLogGroups,copyableRunLog} from '../src/domain/runLogGroups';
+import {runLogGroups,copyableRunLog,runLogCalls} from '../src/domain/runLogGroups';
 import type {FormatErrorRecord} from '../src/storage/formatErrors';
 const row=(id:string,sessionId:string,turnId:string,code:string,at:string,kind:FormatErrorRecord['kind']='runtime'):FormatErrorRecord=>({id,sessionId,turnId,code,at,kind,raw:id});
 it('orders parseable instants, retains equal-time insertion order and tolerates invalid timestamps without mutation',()=>{
@@ -25,4 +25,13 @@ it('copies all records of one round including source identifiers and variable sn
  const text=copyableRunLog(runLogGroups(entries,[])[0]);
  for(const value of ['第 2 轮','会话 s','楼层 t','稿件 v','GENERATION_COMPLETE','后台记忆整理','变量变化','"applied": true'])expect(text).toContain(value);
  expect(text.indexOf('后台记忆整理')).toBeLessThan(text.indexOf('GENERATION_COMPLETE'));
+});
+it('merges same-call records and copies sections in error-first order',()=>{
+ const entries=[
+  {...row('gen','s','t','GENERATION_COMPLETE','3','generation'),callId:'call-1',sections:[{id:'prose',kind:'prose' as const,title:'生成正文',text:'本轮正文'},{id:'var',kind:'variables' as const,title:'MVU 变量与状态差异',text:'实际状态差异 1 项'}]},
+  {...row('error','s','t','网络中断','4'),callId:'call-1'},
+  {...row('terminal','s','t','终端API · chat','5','terminal'),callId:'call-2',sections:[{id:'act',kind:'terminalActivity' as const,title:'终端活动',text:'群聊消息'}]}
+ ];
+ const group=runLogGroups(entries,[])[0];const calls=runLogCalls(group);expect(calls).toHaveLength(2);expect(calls[0].callId).toBe('call-2');expect(calls[1].entries).toHaveLength(2);
+ const text=copyableRunLog(group);expect(text).toContain('【生成正文】');expect(text).toContain('【终端活动】');expect(text).toContain('调用 call-1');expect(text.indexOf('网络中断')).toBeLessThan(text.indexOf('本轮正文'));
 });
