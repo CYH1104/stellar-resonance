@@ -43,6 +43,7 @@ onBeforeUnmount(()=>{document.removeEventListener('pointerdown',outside);window.
      <template v-else><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('start')">新建存档</button><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('resume')">切换存档</button><button :disabled="blocked" @click="go('saves')">导入 / 导出</button></template>
     </div>
    </div>
+   <button :disabled="blocked" @click="go('cloud-backup')">云端备份</button>
    <a class="navigation-manual" href="http://43.138.251.91:8809" target="_blank" rel="noopener noreferrer" @click="close">教程手册入口</a>
    <button :disabled="blocked" class="navigation-home" @click="close();emit('home')">{{embedded?'返回学院':'返回开场'}}</button>
   </nav>

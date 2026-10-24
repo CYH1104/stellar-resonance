@@ -309,7 +309,6 @@ function inspect(value: unknown, depth = 0, path = ''): void {
   for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
 export function parseBackup(text: string): Snapshot {
-  if (new TextEncoder().encode(text).length > 20*1024*1024) throw new Error('首版备份限制为 20MB');
   const value = JSON.parse(text.replace(/^\uFEFF/,'')) as Snapshot; inspect(value);
   if (!value || value.version !== 1 || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
   value.sessions=sanitizeSessions(value.sessions);

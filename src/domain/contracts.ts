@@ -2,7 +2,7 @@ import type {MvuOperation,Json} from './mvu';
 import type {WorkspaceLayout} from './layout';
 import type {SpecialEvent,RandomEventGate} from './randomEvents';
 export type Mode = 'demo' | 'server';
-export type Panel = 'format-errors' | 'story' | 'memory' | 'relations' | 'map' | 'forum' | 'game-settings' | 'theaters' | 'status' | 'settings' | 'presets' | 'saves' | 'worldbooks';
+export type Panel = 'cloud-backup' | 'format-errors' | 'story' | 'memory' | 'relations' | 'map' | 'forum' | 'game-settings' | 'theaters' | 'status' | 'settings' | 'presets' | 'saves' | 'worldbooks';
 export interface Persona {ability?:string;spiritName?:string;spiritAppearance?:string;spiritPersonality?:string;spiritAbility?:string;mentalPowerLevel?:string; rawText?:string; name: string; appearance: string; personality: string; background: string; identity?:string;primaryGender?: string; secondaryGender?: string; spiritAnimal?:string; other?:string; pairingPreference?:string }
 export interface ActorState {ability?:string;mentalPowerLevel?:string;
   id: string; name: string; present: boolean; affinity?: number; relationship?: string;

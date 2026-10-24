@@ -10273,7 +10273,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   window.addEventListener('academy:home',()=>{mount.hidden=true;window.ACADEMY?.home();});
   window.addEventListener('academy:open',event=>open(event.detail));
   window.addEventListener('academy:encounter-new',event=>{const detail=event.detail;if(!detail)return;const access={ok:false};window.dispatchEvent(new CustomEvent('academy:campus-access',{detail:access}));if(!access.ok&&access.reason&&!access.reason.includes('建立')){showHint(access.reason);return;}open(detail);if(detail.accepted!==false)window.ACADEMY?.home();});
-  const ids={chatEntry:{entry:'conversation'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
+  const ids={academyCloudBackup:{panel:'cloud-backup'},chatEntry:{entry:'conversation'},apiSetupBtn:{panel:'settings'},presetImportBtn:{panel:'presets'},academySettings:{panel:'game-settings'},accountButton:{entry:'personas'}};
   const modules={new:{entry:'new'},continue:{entry:'continue'},chat:{entry:'conversation'},personas:{entry:'personas'},memory:{panel:'memory'},stu:{entry:'new'},full:{panel:'saves'},export:{panel:'saves'},settings:{panel:'settings'},presets:{panel:'presets'},worldbooks:{panel:'worldbooks'},theaters:{panel:'forum'},relations:{panel:'relations'},saves:{panel:'saves'}};
   const hint=document.createElement('div');hint.className='academy-campus-hint';hint.setAttribute('role','status');hint.hidden=true;root.append(hint);let hintTimer;
   function showHint(text){if(ready){window.dispatchEvent(new CustomEvent('academy:notice',{detail:{message:text}}));return;}hint.textContent=text;hint.hidden=false;clearTimeout(hintTimer);hintTimer=setTimeout(()=>hint.hidden=true,8000);}
@@ -10329,6 +10329,7 @@ body[data-brightness] .academy-gate{background:var(--a-bg)!important;color:var(-
   root.querySelectorAll('button').forEach(button=>{if(button.textContent.includes('草稿'))button.textContent='插入剧情输入框';});
   const top=q('.spl-top-r'),close=q('.spl-x');close.textContent='\u8fd4\u56de';close.setAttribute('aria-label','\u8fd4\u56de');
   const settings=document.createElement('button');settings.id='academySettings';settings.textContent='设置';settings.title='API 与模型设置';top.insertBefore(settings,close);
+  const backup=document.createElement('button');backup.id='academyCloudBackup';backup.type='button';backup.textContent='云端备份';top.insertBefore(backup,settings.nextSibling);
   for(const id of ['apiSetupBtn','presetImportBtn']){const button=q('#'+id);button.classList.add('top-setting-link');button.textContent=id==='apiSetupBtn'?'API':'预设';top.insertBefore(button,close);}
   const quick=q('.ah-quick');quick?.remove();
   const logotype=q('.ah-logotype');logotype.innerHTML='<span>星穹联合军事学院</span><small>INTERSTELLAR ACADEMY</small>';

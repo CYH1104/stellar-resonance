@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CloudBackupView from './components/CloudBackupView.vue';
 import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
 import {localCharacterImage,localImageRevision} from './app/localCharacterImages';
 import {majorCharacter} from './domain/characterImages';
@@ -206,7 +207,7 @@ async function terminalNavigate(event:Event){
   if(detail.entry==='continue'){resume();return;}
 
 
-  const panels:Panel[]=['story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves','worldbooks'];
+  const panels:Panel[]=['cloud-backup','story','memory','relations','map','forum','game-settings','theaters','status','settings','presets','saves','worldbooks'];
 
   if(panels.includes(detail.panel)){
 
@@ -303,6 +304,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="w" />
 
+            <CloudBackupView v-else-if="w.panel==='cloud-backup'" :w="w" />
             <SavesView v-else-if="w.panel==='saves'" :w="w" />
 
           </template>

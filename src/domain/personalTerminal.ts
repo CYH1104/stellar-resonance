@@ -52,7 +52,7 @@ export function validateTerminal(value:PersonalTerminal){
  const str=(v:unknown,n=4000):v is string=>typeof v==='string'&&v.length<=n;
  const list=(v:unknown,n:number)=>Array.isArray(v)&&v.length<=n;
  if(value.contacts!==undefined){if(!list(value.contacts,300)||new Set(value.contacts.map(c=>c.id)).size!==value.contacts.length)throw Error('终端联系人格式不正确');for(const c of value.contacts)newDynamicActor(c);}
- if(!value||value.version!==1||!str(value.avatar,1500000)||value.avatar&&!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value.avatar)||!list(value.friends,300)||!list(value.conversations,100)||!list(value.courses,100)||!list(value.rooms,20)||!str(value.scheduleDate,200))throw Error('终端存档格式不正确。');
+ if(!value||value.version!==1||!str(value.avatar,1500000)||value.avatar&&!validRemoteAvatar(value.avatar)&&!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value.avatar)||!list(value.friends,300)||!list(value.conversations,100)||!list(value.courses,100)||!list(value.rooms,20)||!str(value.scheduleDate,200))throw Error('终端存档格式不正确。');
  if(value.avatarView&&(!Number.isFinite(value.avatarView.scale)||value.avatarView.scale<1||value.avatarView.scale>2.5||!Number.isFinite(value.avatarView.x)||Math.abs(value.avatarView.x)>30||!Number.isFinite(value.avatarView.y)||Math.abs(value.avatarView.y)>30))throw Error('头像位置不正确');
  if(value.bio!==undefined&&!str(value.bio,160)||value.ownCode!==undefined&&!/^\d{11}$/.test(value.ownCode)||value.groupsReady!==undefined&&typeof value.groupsReady!=='boolean'||value.scheduleKey!==undefined&&!str(value.scheduleKey,500))throw Error('终端资料不正确。');
  const anchor=(a:TerminalAnchor)=>{if(!a||!str(a.key,500)||!str(a.turnId,128)||!str(a.variantId,128)||!Array.isArray(a.path)||a.path.some(p=>!str(p,500)))throw Error('终端轮次来源不正确。');};
@@ -70,3 +70,5 @@ export function validateTerminal(value:PersonalTerminal){
 }
 
 function validEndedAt(value:unknown){return typeof value==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString()===value;}
+
+function validRemoteAvatar(value:string){if(value.length>8192)return false;try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password;}catch{return false;}}

@@ -31,6 +31,7 @@
   root.querySelectorAll('button').forEach(button=>{if(button.textContent.includes('草稿'))button.textContent='插入剧情输入框';});
   const top=q('.spl-top-r'),close=q('.spl-x');close.textContent='\u8fd4\u56de';close.setAttribute('aria-label','\u8fd4\u56de');
   const settings=document.createElement('button');settings.id='academySettings';settings.textContent='设置';settings.title='API 与模型设置';top.insertBefore(settings,close);
+  const backup=document.createElement('button');backup.id='academyCloudBackup';backup.type='button';backup.textContent='云端备份';top.insertBefore(backup,settings.nextSibling);
   for(const id of ['apiSetupBtn','presetImportBtn']){const button=q('#'+id);button.classList.add('top-setting-link');button.textContent=id==='apiSetupBtn'?'API':'预设';top.insertBefore(button,close);}
   const quick=q('.ah-quick');quick?.remove();
   const logotype=q('.ah-logotype');logotype.innerHTML='<span>星穹联合军事学院</span><small>INTERSTELLAR ACADEMY</small>';

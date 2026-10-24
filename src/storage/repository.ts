@@ -29,13 +29,16 @@ export class IndexedDbRepository implements Repository {
       request.onerror = () => reject(new Error('本地存档读取失败'));
     });
   }
-  async write(value: Snapshot): Promise<void> {
+  async write(value: Snapshot,recoveryFor?:string): Promise<void> {
     const serialized = backup(value); parseBackup(serialized); const db = await this.open();
     return new Promise((resolve,reject) => {
       const tx = db.transaction('workspace','readwrite'),store=tx.objectStore('workspace');let stale=false;
-      const current=store.get('snapshot');current.onsuccess=()=>{if(current.result!==this.baseline&&(this.loaded||current.result!==undefined)){stale=true;tx.abort();return;}store.put(serialized,'snapshot');};
+      const current=store.get('snapshot');current.onsuccess=()=>{if(current.result!==this.baseline&&(this.loaded||current.result!==undefined)){stale=true;tx.abort();return;}if(recoveryFor&&current.result)store.put(current.result,'cloud-recovery:'+recoveryFor);store.put(serialized,'snapshot');};
       tx.oncomplete = () => {this.baseline=serialized;this.loaded=true;resolve();}; tx.onerror = tx.onabort = () => reject(new Error(stale?'存档已被其他页面修改，已停止覆盖保存；请导出当前草稿并刷新页面。':'本地保存失败，请导出备份并检查存储空间'));
     });
+  }
+  async readCloudRecovery(id:string):Promise<Snapshot|undefined>{
+    const db=await this.open();return new Promise((resolve,reject)=>{const request=db.transaction('workspace','readonly').objectStore('workspace').get('cloud-recovery:'+id);request.onsuccess=()=>{try{resolve(request.result?parseBackup(request.result):undefined);}catch(e){reject(e);}};request.onerror=()=>reject(Error('无法读取覆盖前备份。'));});
   }
   async readApiCredentials():Promise<LocalApiCredentials|undefined>{
     const db=await this.open();

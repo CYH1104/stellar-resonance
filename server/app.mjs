@@ -1,3 +1,4 @@
+import {createCloudBackup} from './cloud-backup.mjs';
 const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.upstreamStatus>=100&&error.upstreamStatus<=599?{upstreamStatus:error.upstreamStatus}:{};
 import {majorCharacter} from '../src/domain/characterImages.ts';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
@@ -43,6 +44,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   let external;
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
+  const cloudBackup=createCloudBackup(fetchImpl);
   const source=card||await loadCard(projectRoot);
   const privateBooks=await loadPrivateWorldbooks(projectRoot);
   const baseSource=source;
@@ -134,6 +136,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
       if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',developerMode:developerAllowed(account),dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],majorCharacters:source.characters.filter(c=>majorCharacter(c.name)).map(({id,name,img})=>({id,name,...(img?{img}: {})})),characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
+      if(path==='/api/cloud-backup'&&request.method==='POST'){session(request);const data=await body(request,12*1024*1024);json(response,200,await cloudBackup(data));return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
@@ -272,7 +275,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
-    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR',...upstreamStatusField(error)});}
+    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR',...upstreamStatusField(error),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudDetail==='string'?{cloudDetail:error.cloudDetail}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudStep==='string'?{cloudStep:error.cloudStep}:{})});}
   }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
   server.once('close',closeAccounts);server.once('error',closeAccounts);
