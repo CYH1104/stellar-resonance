@@ -33,8 +33,9 @@ it('games list shows all seven games with six locked and keeps rooms reachable',
  const spy=vi.spyOn(terminalModule,'usePersonalTerminal').mockReturnValue(u);
  try{
   u.go('games');const html=await renderToString(createSSRApp(PersonalTerminal,{w}));
-  for(const name of ['国王游戏','真心话大冒险','每日占卜','狼人杀','日麻','斗地主','十一点半'])expect(html).toContain(name);
-  expect((html.match(/暂未开放/g)||[])).toHaveLength(6);
+  for(const name of ['国王游戏','真心话大冒险','狼人杀','日麻','斗地主','十一点半'])expect(html).toContain(name);
+  expect((html.match(/暂未开放/g)||[])).toHaveLength(5);
+  expect(html).toContain('每日占卜');
   expect(html).toContain('创建房间');expect(html).toContain('回看记录');expect(html).toContain('游戏室房间');
  }finally{spy.mockRestore();}
 });
@@ -223,7 +224,7 @@ it('renders accessible drunk progress bars for participants only and disables lo
   u.go('games');const gamesHtml=await renderToString(createSSRApp(PersonalTerminal,{w}));
   expect(gamesHtml).not.toContain('aria-disabled');
   const locked=(gamesHtml.match(/<button[^>]*disabled[^>]*>/g)||[]).length;
-  expect(locked).toBeGreaterThanOrEqual(6);
+  expect(locked).toBeGreaterThanOrEqual(5);// 每日占卜 unlocked in this round: five locked remain
   for(const g of ['真心话大冒险','十一点半'])expect(gamesHtml).toContain(g);
  }finally{spy.mockRestore();}
 });

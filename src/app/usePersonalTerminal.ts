@@ -8,12 +8,13 @@ import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
 import {factAudienceCovers} from '../domain/knowledge';
 import {terminalAnchor,terminalAnchorActive,terminalMessageVisible,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
-import {computed,ref,watch,onBeforeUnmount} from 'vue';
+import {computed,ref,watch,onMounted,onBeforeUnmount} from 'vue';
 import {markGenerationComplete,startGeneration,finishGeneration} from './generationCompletion';
 import type {ViewModel} from './useWorkspace';
 import {taskApi,auxiliaryApis} from '../domain/apis';
 import {HttpGateway} from '../gateway/http';
 import {emptyTerminal,lockKingTargets,terminalId,requireFriends,createConversation,createKingRoom,drawKingRound,applyKingCommand,applyKingReplies,finishKingRound,targetActors,syncKingDrunk,kingOverLimit,kingParticipants,missingTolerances,visibleTextLength,afterpartyMinChars,afterpartyMaxChars,groupCanManage,groupOwner,groupManagementReady,groupNeedsManagement,groupAutoAdminLimit,applyGroupAction,syncStoryGroups,type StoryGroupSource,type PersonalTerminal,type KingRoom,type KingRound,type KingInteraction} from '../domain/personalTerminal';
+import {divinationDay,divinationDraftText,findDivination,ensureDivination,cardsFingerprint,divinationSectionMax,divinationReactionMax,divinationDraftMax,type TerminalDivination} from '../domain/divination';
 export function terminalContextState(state:{player?:any}|undefined,codes:Record<string,string>,characters:{id:string;name:string;identity?:string;relationship?:string;affinity?:number;present?:boolean}[]){
  return {variables:{终端码:codes},...(state?.player?{player:state.player}:{}),characters:characters.map(({id,name,identity,relationship,affinity,present})=>({id,name,identity,relationship,affinity,present}))};
 }
@@ -56,9 +57,9 @@ function logTerminalActivity(title:string,text:string,callId=operationCallId||cr
  function activeGame(id=roomId.value){const r=t.value.rooms.find(r=>r.id===id);if(!r||r.endedAt)throw Error('游戏已结束，只能回看记录。');operationRoom=id;operationRound=r.rounds.at(-1)?.number||0;return r;}
  let controller:AbortController|undefined;let operationAnchor:TerminalAnchor|undefined;let operationSession='';
  watch(()=>[JSON.stringify(profile.value),JSON.stringify(requestProfile('friend')),w.credentials[profile.value?.id||''],w.credentials[requestProfile('friend')?.id||'']],()=>controller?.abort());
- watch(()=>w.active?.id,()=>{controller?.abort();endConfirm.value=endSaveFailed.value='';inviteTarget.value=inviteNote.value='';page.value='home';conversationId.value=friendId.value=roomId.value=courseId.value='';picked.value=[];draft.value=error.value='';lookup.value=undefined;lookupCandidates.value=[];historyPage.value=0;});
+ watch(()=>w.active?.id,()=>{controller?.abort();endConfirm.value=endSaveFailed.value='';inviteTarget.value=inviteNote.value='';page.value='home';conversationId.value=friendId.value=roomId.value=courseId.value='';picked.value=[];draft.value=error.value='';lookup.value=undefined;lookupCandidates.value=[];historyPage.value=0;peekActorId.value='';});
  onBeforeUnmount(()=>controller?.abort());
- function go(next:string){plusOpen.value=false;previous.value=page.value;page.value=next;error.value='';search.value='';historyPage.value=0;if(next==='add'){lookup.value=undefined;lookupCandidates.value=[];note.value='';}if(next==='account'){bioDraft.value=t.value.bio||'';}}
+ function go(next:string){plusOpen.value=false;previous.value=page.value;page.value=next;error.value='';search.value='';historyPage.value=0;if(next==='divination')refreshDay();if(next==='add'){lookup.value=undefined;lookupCandidates.value=[];note.value='';}if(next==='account'){bioDraft.value=t.value.bio||'';}}
  /** Safety recovery: an active room that is already over the tolerance limit (e.g. the
  * browser was refreshed between the drunk commit and the end save) is ended first,
  * before any further action or request runs on it. */
@@ -86,8 +87,11 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
   if(operationCancelled)throw Error('请求已停止。');const sid=s.id,signature=JSON.stringify([p,w.credentials[p.id]]);controller=new AbortController();
   const apiCallId=crypto.randomUUID();const signal=controller.signal;signal.throwIfAborted();let aborted:()=>void=()=>{};const cancellation=new Promise<never>((_,reject)=>{aborted=()=>reject(new Error('请求已停止。'));signal.addEventListener('abort',aborted,{once:true});});
   startGeneration(apiCallId);
-const scopedTask=['chat','invite','react','game-interact','friend','afterparty'].includes(task);
-  const result=await Promise.race([new HttpGateway().terminal({task,sessionId:s.id,actorIds,input,persona:s.persona,context:['command','react','game-interact','tolerance'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(scopedTask?['player',...actorIds]:[],scopedTask?input:undefined)),...extra}},p,w.credentials[p.id]||'',signal),cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
+const scopedTask=['chat','invite','react','game-interact','friend','afterparty','divination'].includes(task);
+  // Divination is the target actor's private sign: the NPC never learns that the
+  // player peeked, and the player's own reading is scoped to the player alone.
+  const audience=task==='divination'?[actorIds[0]]:scopedTask?['player',...actorIds]:[];
+  const result=await Promise.race([new HttpGateway().terminal({task,sessionId:s.id,actorIds,input,persona:s.persona,context:['command','react','game-interact','tolerance'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(audience,scopedTask?input:undefined)),...extra}},p,w.credentials[p.id]||'',signal),cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
   signal.throwIfAborted();if(operationCancelled||operationRoom&&t.value.rooms.find(r=>r.id===operationRoom)?.endedAt)throw Error("游戏已结束，请求未应用。");if(w.active?.id!==sid||operationAnchor&&!terminalAnchorActive(s,operationAnchor)||signature!==JSON.stringify([requestProfile(task),w.credentials[p.id]]))throw Error('存档或API已改变，本次回复未应用。');logTerminalActivity('终端API返回 · '+task+'（尚未提交）',JSON.stringify(Object.fromEntries(Object.entries(result).filter(([key])=>key!=='raw'))),apiCallId,false,typeof result.raw==='string'?result.raw:'');operationSucceeded=true;return result;
  }
  async function run(action:()=>Promise<void>){if(w.restoreInterrupted){error.value='上次备份恢复中断，请先恢复覆盖前的完整副本。';return;}if(working.value||ending.value||w.busy||w.backupWorking)return;operationCancelled=false;operationRoom='';operationRound=0;operationCallId=crypto.randomUUID();operationSucceeded=false;operationDone=new Promise<void>(resolve=>{finishOperation=resolve;});working.value=true;w.terminalBusy=true;operationSession=w.active?.id||'';operationAnchor=w.active?terminalAnchor(w.active):undefined;error.value='';try{await action();if(operationSucceeded)markGenerationComplete(operationCallId);}catch(e){error.value=e instanceof Error?e.message:'操作失败，原记录已保留。';if(error.value&&!operationCancelled)logTerminalActivity('终端操作失败',error.value,operationCallId,true);}finally{working.value=false;w.terminalBusy=false;controller=undefined;operationSession='';operationAnchor=undefined;operationRoom='';finishOperation();}}
@@ -248,7 +252,124 @@ async function requestAfterparty(id:string){
  }catch(e){failure=e;draftCandidate=afterpartyDraftText((e as any)?.raw);}
  if(failure){await markAfterpartyFailure(id,guard,failure instanceof Error?failure.message:'生成失败',draftCandidate);throw failure;}
 }
-/** Ending the room is saved atomically first; only then is the afterparty requested. */
+/** Daily divination: one locked draw per (Beijing day, actor). The draw is persisted
+ * atomically before any interpretation request; the reading write is bound to the
+ * original session, day, actor and cards fingerprint, so a late success after an
+ * archive/branch switch can never land elsewhere, and retries never re-draw. */
+// Reactive Beijing-day source: a plain Date.now() inside computed caches yesterday's
+// key, so an open page would keep showing the old sign across midnight. Refresh on a
+// minute tick, on tab focus and when leaving the background; cleared on unmount.
+const dayNow=ref(divinationDay());
+const refreshDay=()=>{dayNow.value=divinationDay();};
+let dayTimer:ReturnType<typeof setInterval>|undefined;
+onMounted(()=>{refreshDay();dayTimer=setInterval(refreshDay,30000);if(typeof document!=='undefined'&&typeof window!=='undefined'){document.addEventListener('visibilitychange',refreshDay);window.addEventListener('focus',refreshDay);}});
+onBeforeUnmount(()=>{if(dayTimer!==undefined)clearInterval(dayTimer);if(typeof document!=='undefined'&&typeof window!=='undefined'){document.removeEventListener('visibilitychange',refreshDay);window.removeEventListener('focus',refreshDay);}});
+const divinationToday=computed(()=>dayNow.value);
+const myDivination=computed(()=>findDivination(t.value,dayNow.value,'player'));
+const peekActorId=ref('');
+const peekRecord=computed(()=>peekActorId.value?findDivination(t.value,dayNow.value,peekActorId.value):undefined);
+const peekCandidates=computed(()=>actors.value.filter(a=>a.id!=='player'));
+const divinationHistory=computed(()=>(t.value.divinations||[]).filter(d=>d.day!==dayNow.value).slice().reverse());
+const divinationHistoryPage=ref(1);
+const visibleDivinationHistory=computed(()=>divinationHistory.value.slice(0,divinationHistoryPage.value*20));
+/** Records proven to be on disk: only these may reach the interpretation API, so an
+ * in-memory leftover from a failed save can never bypass persist-first. Keyed by
+ * session|day|actor|cards-fingerprint (not object identity): a reading commit clones
+ * the terminal, and the clone must not lose its proven-persisted status. */
+const persistedKeys=new Set<string>();
+const persistedKey=(sid:string,record:{day:string;actorId:string;cards:TerminalDivination['cards']})=>`${sid}|${record.day}|${record.actorId}|${cardsFingerprint(record.cards)}`;
+async function persistedDivination(day:string,actorId:string):Promise<TerminalDivination>{
+ const session=w.active;if(!session)throw Error('请先打开存档。');
+ const existing=findDivination(t.value,day,actorId);
+ if(existing&&persistedKeys.has(persistedKey(session.id,existing)))return existing;
+ await commit(next=>{ensureDivination(next,day,actorId);});
+ const winning=findDivination(t.value,day,actorId);
+ if(!winning)throw Error('占卜保存后未能读取，请刷新页面。');
+ persistedKeys.add(persistedKey(session.id,winning));
+ return winning;
+}
+/** Controlled write path for a divination record: only the reading field may change,
+ * and only while the locked cards fingerprint still matches. A failed save rolls the
+ * terminal back, so a fake "ready" reading never lingers in memory. */
+async function commitDivination(guard:{sid:string;day:string;actorId:string;fingerprint:string;anchor:TerminalAnchor},update:(next:PersonalTerminal,record:TerminalDivination)=>void){
+ const session=w.active;if(!session||session.id!==guard.sid)throw Error('存档已切换，占卜写入已停止。');
+ if(!terminalAnchorActive(session,guard.anchor))throw Error('剧情分支已切换，占卜写入已停止。');
+ const next:PersonalTerminal=JSON.parse(JSON.stringify(session.terminal||emptyTerminal()));
+ const record=findDivination(next,guard.day,guard.actorId);
+ if(!record||cardsFingerprint(record.cards)!==guard.fingerprint)throw Error('占卜记录已改变，写入已停止。');
+ if(record.reading.status==='ready')return;
+ const previous=session.terminal;
+ update(next,record);
+ session.terminal=next;syncTerminalMemoryNotes(session);
+ try{
+  await w.save();
+  if(w.active?.id!==guard.sid)throw Error('存档已切换，占卜写入已停止。');
+  if(w.storageStatus==='failed')throw Error('终端保存失败，请先导出当前存档。');
+  w.indexTerminalNotes();
+ }catch(e){session.terminal=previous;syncTerminalMemoryNotes(session);throw e;}
+}
+async function markDivinationFailure(guard:{sid:string;day:string;actorId:string;fingerprint:string;anchor:TerminalAnchor},message:string,draft:string){
+ try{await commitDivination(guard,(_next,record)=>{if(record.reading.status!=='ready'){const keep=typeof record.reading.draft==='string'?record.reading.draft:'';const keepDraft=draft.length>keep.length?draft:keep;record.reading={...record.reading,status:'failed',error:message.slice(0,2000),...(keepDraft?{draft:keepDraft}:{})};}});}catch{/* failure bookkeeping must not mask the original error */}
+}
+async function requestDivinationReading(record:TerminalDivination){
+ const session=w.active;if(!session)throw Error('请先打开存档。');
+ if(!profile.value)throw Error('请先配置终端 API。');
+ const kind=record.actorId==='player'?'player':'npc';
+ const guard={sid:session.id,day:record.day,actorId:record.actorId,fingerprint:cardsFingerprint(record.cards),anchor:terminalAnchor(session)};
+ const actorLabel=kind==='npc'?name(record.actorId):'玩家';
+ const input=kind==='npc'?`请为角色「${actorLabel}」解读程序已锁定的今日塔罗牌，并给出该角色本人的反应。`:'请解读玩家（你自己）程序已锁定的今日塔罗牌。';
+ const priorDraft=typeof record.reading.draft==='string'&&record.reading.draft.trim()?record.reading.draft:undefined;
+ let failure:unknown,draftCandidate='',parsed:Record<string,unknown>|undefined;
+ // readable partial content from a structurally invalid reply is still worth keeping
+ const partialDraft=()=>{let best='';if(parsed&&typeof parsed==='object')for(const value of Object.values(parsed))if(typeof value==='string'){const s=value.trim();if(s.length>=4&&s.length<=divinationSectionMax&&s.length>best.length)best=s;}return best;};
+ try{
+  const r=await request('divination',[record.actorId],input,{divination:{day:record.day,actorId:record.actorId,kind,cards:record.cards,...(priorDraft?{priorDraft}:{})}}) as Record<string,unknown>;parsed=r;
+  const section=(v:unknown,max:number=divinationSectionMax)=>typeof v==='string'&&v.trim().length>=4&&v.length<=max;
+  if(!section(r.overall)||!section(r.love)||!section(r.career)||!section(r.caution))throw Error('解读结构不正确，原文已保留，可重试。');
+  if(kind==='npc'&&!section(r.reaction,divinationReactionMax))throw Error('角色反应缺失，解读未保存，可重试。');
+  await commitDivination(guard,(_next,rec)=>{
+   rec.reading={status:'ready',overall:r.overall as string,love:r.love as string,career:r.career as string,caution:r.caution as string,...(kind==='npc'&&typeof r.reaction==='string'&&r.reaction.trim()?{reaction:r.reaction}:{}),at:new Date().toISOString()};
+  });
+  logTerminalActivity('每日占卜解读已保存',`${actorLabel} · ${record.day} · ${record.cards.map(c=>c.name+(c.reversed?'（逆位）':'')).join('、')}`);
+ }catch(e){failure=e;draftCandidate=divinationDraftText((e as any)?.raw)||partialDraft();}
+ if(failure){await markDivinationFailure(guard,failure instanceof Error?failure.message:'生成失败',draftCandidate);throw failure;}
+}
+/** Atomically persist the locked draw first; only a persisted draw is ever interpreted.
+ * Today-entry actions refresh the day first: a click just after Beijing midnight must
+ * not draw into yesterday while the 30s interval has not ticked yet. Backfill keeps
+ * its explicit past day and never moves dayNow; the reading write-back uses the
+ * record's original day, so a late response can never roll the visible day back. */
+const drawDaily=()=>run(async()=>{
+ refreshDay();
+ const winning=await persistedDivination(divinationToday.value,'player');
+ if(winning.reading.status==='ready')return;
+ await requestDivinationReading(winning);
+});
+/** Lazy NPC peek: the record is created on the first peek of the day and then fixed.
+ * It never consumes the player's own draw and is invisible to other characters. */
+const peekDaily=(actorId:string)=>run(async()=>{
+ refreshDay();
+ if(!actors.value.some(a=>a.id===actorId)||actorId==='player')throw Error('只能偷看本档已知角色。');
+ const winning=await persistedDivination(divinationToday.value,actorId);
+ peekActorId.value=actorId;
+ if(winning.reading.status==='ready')return;
+ await requestDivinationReading(winning);
+});
+const retryDivination=(actorId='player')=>run(async()=>{
+ refreshDay();
+ const session=w.active,day=divinationToday.value,record=findDivination(t.value,day,actorId);
+ if(!record||record.reading.status==='ready')throw Error('该记录不存在或解读已完成。');
+ if(!session||!persistedKeys.has(persistedKey(session.id,record)))await persistedDivination(day,actorId);
+ await requestDivinationReading(findDivination(t.value,day,actorId)||record);
+});
+/** Explicit backfill for a past day's unfinished reading: same original day, same
+ * locked cards, never a re-draw; completed history stays read-only. */
+const backfillDivination=(day:string,actorId:string)=>run(async()=>{
+ const session=w.active,record=findDivination(t.value,day,actorId);
+ if(!record||record.reading.status==='ready')throw Error('该记录不存在或解读已完成。');
+ if(!session||!persistedKeys.has(persistedKey(session.id,record)))await persistedDivination(day,actorId);
+ await requestDivinationReading(findDivination(t.value,day,actorId)||record);
+});
 async function saveGameEnd(id:string,reason:'manual'|'drunk',triggers:string[]){
  const session=w.active,sid=session?.id;
  if(!session)throw Error('请先打开存档。');
@@ -317,5 +438,5 @@ const setGroupAvatarPosition=(position:{x:number;y:number})=>run(async()=>{const
  async function processAutomatic(retry=false){if(working.value||w.busy||w.loading||!w.active)return;const sid=w.active.id;if(!retry&&automaticSeen.has(sid))return;automaticSeen.add(sid);}
  const retryAutomatic=()=>{error.value='自动群聊、角色主动私聊和课表随下一轮正文同步，不额外请求终端API。';};
  watch(()=>[w.active?.id,w.busy,w.loading,working.value],()=>{void processAutomatic();},{immediate:true});
- return {ending,endConfirm,endSaveFailed,askEnd,endGame,tolerances,toleranceValue,retryAfterparty,openRoom,inviteTarget,inviteNote,beginInvite,sendInvite,addMode,lookupCandidates,gameInteract,retryGameInteract,activeFriends,boundCodes,ownCode,gameHistory,removeMember,avatarDraft,avatarStyle,adjustAvatar,flushAvatar,lookup,lookupCode,answerRequest,incoming,bioDraft,saveBio,historyPage,messages,visibleConversations,automatic,processAutomatic,retryAutomatic,storyClock,t,terminalProfile:profile,conversationFilter,plusOpen,canManage,isOwner,refreshGroup,completeGroupManagement,setAdmin,page,previous,go,search,draft,title,note,style,picked,targets,toggle,conversationId,friendId,roomId,courseId,actors,name,friends,conversation,room,round,course,error,working,week,clock,unread,commit,run,friendApply,openChat,makeGroup,inviteGroup,openConversation,sendChat,updateNote,removeFriend,editGroup,leaveGroup,schedule,createRoom,retryInvite,addRoomFriends,startRound,command,retryReact,playerReply,uploadAvatar,uploadGroupAvatar,clearGroupAvatar,setGroupAvatarUrl,setGroupAvatarPosition};
+ return {divinationToday,myDivination,peekActorId,peekRecord,peekCandidates,divinationHistory,visibleDivinationHistory,divinationHistoryPage,drawDaily,peekDaily,retryDivination,backfillDivination,ending,endConfirm,endSaveFailed,askEnd,endGame,tolerances,toleranceValue,retryAfterparty,openRoom,inviteTarget,inviteNote,beginInvite,sendInvite,addMode,lookupCandidates,gameInteract,retryGameInteract,activeFriends,boundCodes,ownCode,gameHistory,removeMember,avatarDraft,avatarStyle,adjustAvatar,flushAvatar,lookup,lookupCode,answerRequest,incoming,bioDraft,saveBio,historyPage,messages,visibleConversations,automatic,processAutomatic,retryAutomatic,storyClock,t,terminalProfile:profile,conversationFilter,plusOpen,canManage,isOwner,refreshGroup,completeGroupManagement,setAdmin,page,previous,go,search,draft,title,note,style,picked,targets,toggle,conversationId,friendId,roomId,courseId,actors,name,friends,conversation,room,round,course,error,working,week,clock,unread,commit,run,friendApply,openChat,makeGroup,inviteGroup,openConversation,sendChat,updateNote,removeFriend,editGroup,leaveGroup,schedule,createRoom,retryInvite,addRoomFriends,startRound,command,retryReact,playerReply,uploadAvatar,uploadGroupAvatar,clearGroupAvatar,setGroupAvatarUrl,setGroupAvatarPosition};
 }
