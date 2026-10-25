@@ -1,7 +1,7 @@
 import {cleanSceneSnapshot} from './storyScene.ts';
 import {cleanCharacterImages} from './characterImages.ts';
 import {cleanTerminalBatch} from './terminalMain.ts';
-import {terminalNoteVisible} from './terminalLedger.ts';
+import {terminalNoteVisible,isTerminalMemoryNote} from './terminalLedger.ts';
 import {validateTerminal} from './personalTerminal.ts';
 import {prepareForumLikes} from './forumLikes.ts';
 import {validateRepairAudit} from './repairAudit.ts';
@@ -157,7 +157,7 @@ export function encounteredCharacters(session:Session,before=session.turns.lengt
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
   const active = new Map(session.turns.slice(0, before).map(t => [t.id, selected(t)]));
-  return session.memories.filter(m => {if(m.terminalKey)return terminalNoteVisible(session,m,before);if(!m.sourceTurn)return m.kind!=='event'||session.memoryEngine!=='candidate';const v=active.get(m.sourceTurn),index=session.turns.findIndex(t=>t.id===m.sourceTurn);if(v?.status!=='complete'||v.id!==m.sourceVariant)return false;if(session.memoryEngine!=='candidate')return true;if(!m.source||m.source.sessionId!==session.id||m.source.sourceTextHash!==textHash(JSON.stringify([session.turns[index].input,v.text])))return false;return m.source.sourceStateRevision===memorySignature({input:session.turns[index].input,story:v.text,before:stateAt(session,index),after:stateAt(session,index+1),event:v.outcome?.event,diceEvent:v.outcome?.diceEvent});});
+  return session.memories.filter(m => {if(isTerminalMemoryNote(m))return terminalNoteVisible(session,m,before);if(!m.sourceTurn)return m.kind!=='event'||session.memoryEngine!=='candidate';const v=active.get(m.sourceTurn),index=session.turns.findIndex(t=>t.id===m.sourceTurn);if(v?.status!=='complete'||v.id!==m.sourceVariant)return false;if(session.memoryEngine!=='candidate')return true;if(!m.source||m.source.sessionId!==session.id||m.source.sourceTextHash!==textHash(JSON.stringify([session.turns[index].input,v.text])))return false;return m.source.sourceStateRevision===memorySignature({input:session.turns[index].input,story:v.text,before:stateAt(session,index),after:stateAt(session,index+1),event:v.outcome?.event,diceEvent:v.outcome?.diceEvent});});
 }
 /** Internal event summaries for long-term memory, not a chronicle UI. */
 export function effectiveEvents(session: Session) {

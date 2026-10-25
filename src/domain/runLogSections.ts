@@ -2,7 +2,7 @@ import type {Outcome, Variant, WorldState} from './contracts';
 import type {VariableChangeLog} from './variableChangeLog';
 import type {Memory} from './contracts';
 
-export type RunLogSectionKind='errors'|'prose'|'characters'|'theaters'|'terminal'|'variables'|'terminalActivity'|'vector'|'note';
+export type RunLogSectionKind='errors'|'prose'|'characters'|'theaters'|'terminal'|'variables'|'terminalActivity'|'modelOutput'|'vector'|'note';
 export interface RunLogSection {id:string;kind:RunLogSectionKind;title:string;text?:string;details?:string[];variables?:VariableChangeLog}
 export interface RecallTrace {mode:'vector+keyword'|'keyword'|'none';query:string;candidates:number;hits:Memory[];fallback?:string}
 const section=(kind:RunLogSectionKind,title:string,text?:string,extra:Partial<RunLogSection>={}):RunLogSection=>({id:kind+'-'+Math.random().toString(36).slice(2,10),kind,title,...(text?{text}:{}),...extra});
@@ -37,8 +37,12 @@ export function vectorSection(trace:RecallTrace|undefined,stateOnly=false){
  for(const m of trace.hits)rows.push('命中：'+m.text.replace(/\s+/g,' ').slice(0,240));
  return section('vector','向量记忆召回',rows.join('\n'));
 }
-export function generationSections(input:{errors:string[];variant:Variant;outcome?:Outcome;before:WorldState;after:WorldState;applied:boolean;variables:VariableChangeLog;recall?:RecallTrace;stateOnly?:boolean}){
- const {errors,variant,outcome,before,after,applied,variables,recall,stateOnly}=input;
+export function modelOutputSection(raw?:string){
+ if(typeof raw!=='string'||!raw.trim())return undefined;
+ return section('modelOutput','模型原始输出',raw);
+}
+export function generationSections(input:{errors:string[];variant:Variant;outcome?:Outcome;before:WorldState;after:WorldState;applied:boolean;variables:VariableChangeLog;recall?:RecallTrace;stateOnly?:boolean;raw?:string}){
+ const {errors,variant,outcome,before,after,applied,variables,recall,stateOnly,raw}=input;
  const sections:RunLogSection[]=[];
  const diagnostics=[...errors,...(outcome?.stateUpdate?.codes||[])];if(diagnostics.length)sections.push(section('errors','错误与校验',[...new Set(diagnostics)].join('\n')));
  sections.push(section('prose','生成正文',variant.text||'本次没有收到正文。'));
@@ -48,9 +52,10 @@ export function generationSections(input:{errors:string[];variant:Variant;outcom
  const mvu=(outcome?.mvu||[]).map(op=>JSON.stringify(op));
  sections.push(section('variables','MVU 变量与状态差异',variables.applied?`实际状态差异 ${variables.total} 项；MVU 操作 ${mvu.length} 条`:'本次未应用状态。',{variables:{...variables,...(mvu.length?{details:[...variables.details,...mvu.slice(0,100).map((op,i)=>'MVU '+(i+1)+'：'+op)]}:{})}}));
  sections.push(terminalActivitySection(outcome,after));
+ const modelOutput=modelOutputSection(raw);if(modelOutput)sections.push(modelOutput);
  const vector=vectorSection(recall,stateOnly);if(vector)sections.push(vector);
  if(!applied)sections.push(section('note','保存说明','本次生成未应用为当前稿件，状态差异与正文按请求结束时的快照记录。'));
  return sections;
 }
-export function orderedSections(sections:RunLogSection[]=[]){const order:RunLogSectionKind[]=['errors','prose','characters','theaters','terminal','variables','terminalActivity','vector','note'];return [...sections].sort((a,b)=>order.indexOf(a.kind)-order.indexOf(b.kind));}
+export function orderedSections(sections:RunLogSection[]=[]){const order:RunLogSectionKind[]=['errors','prose','characters','theaters','terminal','variables','terminalActivity','modelOutput','vector','note'];return [...sections].sort((a,b)=>order.indexOf(a.kind)-order.indexOf(b.kind));}
 export function legacySectionsNote(record:{kind?:string;sections?:RunLogSection[]}){return !record.sections?.length&&(record.kind==='generation'||record.kind==='terminal')?'此历史记录未记录分区明细。':'';}

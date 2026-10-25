@@ -10,7 +10,9 @@ import {HttpGateway} from '../src/gateway/http';
 import {backup,parseBackup,defaults,initialState,newSession,finishVariant,stateAt} from '../src/domain/story';
 import {ensureTerminalCodes} from '../src/app/terminalCodeRegistry';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables';
-import type {LocalService,Snapshot} from '../src/domain/contracts';
+import type {LocalService,Snapshot,GenerateRequest} from '../src/domain/contracts';
+import {emptyTerminal} from '../src/domain/personalTerminal';
+import {terminalAnchor} from '../src/domain/terminalLedger';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
 const service:LocalService={runtime:'local-card',dataset:'test-world',name:'测试',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true}};
@@ -101,6 +103,34 @@ it('撤回时仍在运行的记忆请求不能复活已删除轮次或覆盖 sta
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('迟到记忆',{name:'玩家',appearance:'',background:'',personality:''},'');let release!:()=>void;const wait=new Promise<void>(r=>release=r);
  vi.mocked(HttpGateway.prototype.memory).mockImplementation(async input=>{await wait;return normalizeMemoryResult({participants:[input.after.player.name],time:'未明确',location:'未明确',userActions:[input.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]},input);});
  vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'事件'}};});await w.generate('要撤回的行动');await vi.waitFor(()=>expect(HttpGateway.prototype.memory).toHaveBeenCalledTimes(1));expect(await w.withdraw(0)).toBe(true);release();await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));expect(w.active.value?.turns).toHaveLength(0);expect(w.memories.value).toEqual([]);expect(w.active.value?.memoryTasks?.[0].status).toBe('stale');
+});
+it('uses the current turn input to keep a named older private chat in the real generate request',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('点名私聊',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const s=w.active.value!,terminal=s.terminal=emptyTerminal();
+ terminal.conversations=Array.from({length:9},(_,i)=>({
+  id:'p'+i,title:i===0?'陆离':'角色'+i,group:false,members:['npc'+i],announcement:'',unread:0,origin:'manual' as const,joined:true,
+  messages:i===0
+   ?[{id:'a-player',sender:'player',text:'我答应周六带你去观星台。',at:'2026-01-01T00:00:00.000Z'},{id:'a-reply',sender:'npc0',text:'我会带星图。',at:'2026-01-01T00:01:00.000Z'}]
+   :[{id:'p'+i+'-m',sender:'player',text:'无关私聊'+i,at:new Date(2026,0,i+1).toISOString()}],
+ }));
+ const captured:GenerateRequest[]=[];
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(request){captured.push(request);yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'推进'}};});
+ await w.generate('今天去图书馆');
+ const activeAnchor=terminalAnchor(s,1);
+ terminal.conversations[0].messages.push({id:'a-active',sender:'npc0',text:'第一轮确认后的私聊仍可见。',at:'2026-01-10T00:00:00.000Z',anchor:activeAnchor});
+ terminal.conversations.push({id:'ghost',title:'无关知情',group:false,members:['outsider'],announcement:'',unread:0,origin:'manual',joined:true,messages:[{id:'ghost-m',sender:'outsider',text:'其他分支的私聊不应出现。',at:'2026-01-10T00:02:00.000Z',anchor:{...activeAnchor,turnId:'ghost-turn'}}]});
+ await w.generate('去找陆离确认旧约定');
+ expect(captured).toHaveLength(2);
+ const request=captured[1],chats=request.terminalContext?.privateChats||[];
+ expect(request.input).toBe('去找陆离确认旧约定');
+ expect(chats).toHaveLength(8);
+ expect(chats[0]).toMatchObject({participantId:'npc0',participantName:'陆离',knownBy:['player','npc0']});
+ expect(chats[0].messages.map(m=>m.text)).toEqual(expect.arrayContaining(['我答应周六带你去观星台。','我会带星图。','第一轮确认后的私聊仍可见。']));
+ expect(chats[0].knownBy).toEqual(['player','npc0']);
+ expect(chats.some(c=>c.participantId==='outsider')).toBe(false);
+ expect(JSON.stringify(chats)).not.toContain('无关知情');
+ expect(JSON.stringify(chats)).not.toContain('其他分支的私聊不应出现。');
+ expect(JSON.stringify(chats[0])).not.toContain('无关私聊');
 });
 it('补修对照保存到当前稿件，记录实际差异、无变化和失败，续写新稿不继承旧稿对照',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修审计',{name:'玩家',appearance:'',background:'',personality:''},'');const s=w.active.value!,v={id:'audit-v',text:'固定正文',status:'incomplete' as const,createdAt:''};s.initial.characters.find(c=>c.id==='guide')!.affinity=35;s.turns.push({id:'audit-t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'原事件'});

@@ -16,7 +16,7 @@ export function createCloudSave(source:Session|Snapshot,preferences:Preferences,
  for(const key of ['profiles','auxiliaryProfiles','stateProfile','mainProfile','auxiliaryProfile','embeddingProfile','storyProfile','summaryProfile','suggestionsProfile','personaProfile','terminalProfile','randomEventProfile','forumReplyProfile'] as const)Object.assign(p,{[key]:apiDefaults[key]});
  p.characterImages=Object.fromEntries(Object.entries(preferences.characterImages||{}).filter(([,v])=>remoteImage(v.url)));
  const cleaned=withoutEmbeddedMedia(copy(sessions)) as Session[];
- for(const session of cleaned)if(session.terminal){session.terminal.avatar=remoteImage(session.terminal.avatar);if(!session.terminal.avatar)delete session.terminal.avatarView;}
+ for(const session of cleaned)if(session.terminal){session.terminal.avatar=remoteImage(session.terminal.avatar);if(!session.terminal.avatar)delete session.terminal.avatarView;for(const group of session.terminal.conversations||[])if(!remoteImage(group.avatar)){group.avatar='';delete group.avatarPosition;}}
  const snapshot=parseBackup(backup({version:1,sessions:cleaned,preferences:withoutEmbeddedMedia(p) as Preferences}));
  const value:CloudSave={schema:'stellar-cloud-save-v1',savedAt:new Date().toISOString(),snapshot,nicknameImages:Object.fromEntries(Object.entries(nicknameImages).filter(([name,url])=>name.trim()&&name.length<=80&&remoteImage(url)))};
  return JSON.stringify(value);
@@ -31,6 +31,6 @@ export function parseCloudSave(text:string):CloudSave{
 export function mergeCloudSession(current:Session,incoming:Session){const next=copy(incoming);next.id=current.id;
  // Imported uploads omit local terminal avatar bytes. Preserve the local display in that case.
  if(current.terminal?.avatar&&!next.terminal?.avatar){next.terminal||=emptyTerminal();next.terminal.avatar=current.terminal.avatar;next.terminal.avatarView=copy(current.terminal.avatarView);}
- for(const group of next.terminal?.conversations||[]){const old=current.terminal?.conversations.find(c=>c.id===group.id);if(old?.avatar&&!group.avatar)group.avatar=old.avatar;}
+ for(const group of next.terminal?.conversations||[]){const old=current.terminal?.conversations.find(c=>c.id===group.id);if(old?.avatar&&!group.avatar){group.avatar=old.avatar;if(old.avatarPosition)group.avatarPosition=copy(old.avatarPosition);else delete group.avatarPosition;}}
  next.updatedAt=new Date().toISOString();return next;
 }

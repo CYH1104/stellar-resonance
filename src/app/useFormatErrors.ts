@@ -6,11 +6,11 @@ function fit(record:FormatErrorRecord){
  if(JSON.stringify(record).length<=recordLimit)return record;
  const marker='\n…[日志总量超限已截断]';
  record.raw=safeLogText(record.raw,[],100000)+marker;
- record.sections=(record.sections||[]).map(section=>({...section,text:section.text?safeLogText(section.text,[],section.kind==='prose'?400000:60000):undefined,details:section.details?.slice(0,50).map(detail=>safeLogText(detail,[],2000)),variables:section.variables?{...section.variables,changes:section.variables.changes.slice(0,50),details:section.variables.details.slice(0,50),reviews:section.variables.reviews.slice(0,50),codes:section.variables.codes.slice(0,50)}:undefined}));
- if(JSON.stringify(record).length>recordLimit){record.sections=record.sections.map(section=>section.kind==='prose'?{...section,text:section.text?safeLogText(section.text,[],200000)+marker:undefined}:section).slice(0,8);record.raw=safeLogText(record.raw,[],20000)+marker;}
+ record.sections=(record.sections||[]).map(section=>({...section,text:section.text?safeLogText(section.text,[],section.kind==='prose'||section.kind==='modelOutput'?400000:60000):undefined,details:section.details?.slice(0,50).map(detail=>safeLogText(detail,[],2000)),variables:section.variables?{...section.variables,changes:section.variables.changes.slice(0,50),details:section.variables.details.slice(0,50),reviews:section.variables.reviews.slice(0,50),codes:section.variables.codes.slice(0,50)}:undefined}));
+ if(JSON.stringify(record).length>recordLimit){record.sections=record.sections.map(section=>section.kind==='prose'||section.kind==='modelOutput'?{...section,text:section.text?safeLogText(section.text,[],200000)+marker:undefined}:section).slice(0,8);record.raw=safeLogText(record.raw,[],20000)+marker;}
  if(JSON.stringify(record).length>recordLimit){
   record.variables=record.variables?{...record.variables,changes:record.variables.changes.slice(0,30),details:record.variables.details.slice(0,30),reviews:record.variables.reviews.slice(0,30),codes:record.variables.codes.slice(0,30)}:undefined;
-  record.sections=record.sections?.map(section=>({...section,text:section.text?safeLogText(section.text,[],section.kind==='prose'?100000:10000):undefined,details:section.details?.slice(0,20),variables:section.variables?sanitizeLogValue(section.variables,[],500) as typeof section.variables:undefined}));
+  record.sections=record.sections?.map(section=>({...section,text:section.text?safeLogText(section.text,[],section.kind==='prose'||section.kind==='modelOutput'?100000:10000):undefined,details:section.details?.slice(0,20),variables:section.variables?sanitizeLogValue(section.variables,[],500) as typeof section.variables:undefined}));
  }
  if(JSON.stringify(record).length>recordLimit){record.variables=undefined;record.sections=record.sections?.map(s=>({...s,variables:undefined,details:undefined}));}
  return record;

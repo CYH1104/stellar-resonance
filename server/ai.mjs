@@ -403,7 +403,7 @@ export class StoryDecoder {
     if(openingSceneRaw!==undefined){try{outcome.openingScene=cleanSceneSnapshot(openingSceneRaw);}catch{warn('STATE_OPENING_SCENE_INVALID');}}
     if(sceneOnly.length)outcome.mvu=sceneOnly;
     if(!single&&!this.hasCompletionMarker())throw modelError(502,'MODEL_RESPONSE_INCOMPLETE');
-    if(terminalRaw!==undefined){try{outcome.terminal=cleanTerminalBatch(terminalRaw,[...state.characters,...outcome.characters||[]],options.terminalContext,warn);}catch{warn('STATE_TERMINAL_RETAINED');}}else if(options.terminalContext)warn('STATE_TERMINAL_MISSING');
+    if(terminalRaw!==undefined){try{outcome.terminal=cleanTerminalBatch(terminalRaw,[...state.characters,...outcome.characters||[],...(Array.isArray(options.terminalContext?.contacts)?options.terminalContext.contacts:[])],options.terminalContext,warn);}catch{warn('STATE_TERMINAL_RETAINED');}}else if(options.terminalContext)warn('STATE_TERMINAL_MISSING');
     if(single){
       const partial=warnings.some(code=>/STATE_(?:TERMINAL_|FIELD_(?:SKIPPED|CONFLICT)|EMPTY_FIELD_RETAINED|UNKNOWN_CHARACTER|ROSTER_|(?:SPIRIT|PLAYER)_THOUGHT_STALE)/.test(code));
       const changed=!!outcome.mvu?.length||outcome.characters?.some(patch=>Object.entries(patch).some(([key,value])=>key!=='id'&&JSON.stringify(state.characters.find(c=>c.id===patch.id)?.[key])!==JSON.stringify(value)))||outcome.player&&Object.entries(outcome.player).some(([key,value])=>JSON.stringify(state.player[key])!==JSON.stringify(value));

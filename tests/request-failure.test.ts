@@ -27,6 +27,12 @@ it('includes source context for SSE failures and interruptions',async()=>{
  await expect(run()).rejects.toThrow('模型：actual-embedding-model');
  }
 });
+it('keeps terminal provider raw output available for run logs after a safe failure',async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:'INVALID_TERMINAL_RESULT',raw:'{"bad":true}'}),{status:502}));
+ let failure:Error&{raw?:string}|undefined;
+ try{await new HttpGateway().terminal({task:'chat',actorIds:['a'],input:'你好',persona:{name:'玩家'},context:{}} ,profile(),'synthetic-secret',new AbortController().signal);}catch(e){failure=e as Error&{raw?:string};}
+ expect(failure?.message).toContain('角色回复格式未通过检查');expect(failure?.raw).toBe('{"bad":true}');expect(failure?.message).not.toContain('"bad"');
+});
 it('keeps manual cancellation distinct and refreshes the ten-minute deadline per request',()=>{
  expect(MODEL_REQUEST_TIMEOUT_MS).toBe(600000);
  const context=modelRequestContext({profile:profile()},'generate'),error=new DOMException('取消','AbortError');

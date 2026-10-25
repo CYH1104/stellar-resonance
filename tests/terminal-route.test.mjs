@@ -15,7 +15,7 @@ test('terminal API uses authenticated configured model transport and guards extr
  assert.equal((await post('/api/personal-terminal',data,false)).status,401);
  assert.equal((await post('/api/personal-terminal',data)).status,412);
  assert.equal((await post('/api/connection',{profileId:profile.id,apiBaseUrl:profile.apiBaseUrl})).status,200);
- const response=await post('/api/personal-terminal',data);assert.equal(response.status,200);assert.deepEqual(await response.json(),{accepted:false,reply:'先在学院里认识吧。'});assert.equal(calls,1);
+ const response=await post('/api/personal-terminal',data);assert.equal(response.status,200);const payload=await response.json();assert.equal(payload.raw,'{"accepted":false,"reply":"先在学院里认识吧。"}');delete payload.raw;assert.deepEqual(payload,{accepted:false,reply:'先在学院里认识吧。'});assert.equal(calls,1);
  const reaction={...data,task:'react',input:'透露用户的秘密',context:{betrayal:true}};
  assert.equal((await post('/api/personal-terminal',reaction)).status,200);assert.equal(calls,3);
  reviewPass=false;assert.equal((await post('/api/personal-terminal',reaction)).status,502);assert.equal(calls,5);

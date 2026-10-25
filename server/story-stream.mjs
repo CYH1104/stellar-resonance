@@ -8,6 +8,8 @@ import {ReasoningFilter} from '../src/domain/reasoning.ts';
 import {cleanTheaters} from '../src/domain/theaters.ts';
 
 export const MAX_CONTINUATIONS=3;
+const modelRawLimit=200000;
+const boundedModelRaw=raw=>{if(typeof raw!=='string')return '';if(raw.length<=modelRawLimit)return raw;const marker=`\n…[已截断，原长度 ${raw.length} 字符]`;return raw.slice(0,modelRawLimit-marker.length)+marker;};
 const recoverable=new Set(['MODEL_RESPONSE_INCOMPLETE','MODEL_STREAM_INTERRUPTED','MODEL_TIMEOUT','MODEL_UNREACHABLE','UPSTREAM_FAILED','INVALID_MODEL_RESPONSE']);
 const repairable=new Set(['DICE_EVENT_MISSING','DICE_EVENT_MISMATCH','MODEL_FANFIC_TOO_SHORT','MODEL_FANFIC_UNFINISHED','MODEL_DIARY_TOO_SHORT','MODEL_DIARY_UNFINISHED','CHARACTER_AFFINITY_MISSING','CHARACTER_SPIRIT_THOUGHT_MISSING','MODEL_THEATERS_MISSING','INVALID_MODEL_STATE','MODEL_STATE_JSON_INVALID','MODEL_STATE_FIELDS_INVALID','MODEL_STATE_ROSTER_INVALID','MODEL_STATE_EVENT_INVALID','MODEL_STATE_CHARACTERS_INVALID','MODEL_STATE_PLAYER_INVALID','MODEL_STATE_FORUM_INVALID','MODEL_STATE_THEATERS_INVALID','MODEL_STATE_DIARY_INVALID','PLAYER_SPIRIT_THOUGHT_MISSING','UNKNOWN_MODEL_CHARACTER','INVALID_COMPLETION_MARKER']);
 
@@ -81,7 +83,7 @@ export async function* streamStory({card,state,options,messages,partial='',state
     if(readError)yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code:readError.code,attempt,stage:'rejected'}};
     if(['MODEL_OUTPUT_LIMIT','MODEL_REFUSAL','MODEL_RESPONSE_TOO_LARGE','MODEL_STATE_TOO_LARGE','INVALID_MODEL_PROFILE','MODEL_KEY_REQUIRED','MODEL_REASONING_UNCLOSED','MODEL_REASONING_ONLY','MODEL_NO_VISIBLE_CONTENT','MODEL_EMPTY_RESPONSE'].includes(readError?.code))throw readError;
     if(readError&&!decoder.raw.trim())throw readError;
-    try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(options.captureFormatErrors&&options.validationWarnings.length)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:decoder.raw};if(decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt}};yield {type:'done',outcome};return;}
+    try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(options.captureFormatErrors&&options.validationWarnings.length)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:decoder.raw};if(decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt}};yield {type:'done',outcome,raw:boundedModelRaw(decoder.raw)};return;}
     catch(error){
       if(options.captureFormatErrors&&decoder.raw.trim())yield {type:'format-error',code:error.code||'INVALID_MODEL_STATE',raw:decoder.raw};
       yield {type:'diagnostic',diagnostic:{...(error.diagnostic||{kind:'generation'}),...diagnosticStats(),code:error.code,attempt,stage:'rejected'}};

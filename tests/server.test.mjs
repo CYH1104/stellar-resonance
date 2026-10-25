@@ -182,7 +182,7 @@ test('HTTP cutoff automatically continues once and returns only joined prose and
   const count=calls.length;const result=events(await(await post('/api/generate',await request('cut-success'))).text());
   assert.equal(calls.length-count,2);assert.deepEqual(result.filter(e=>e.type==='continuation').map(e=>e.attempt),[1]);
   assert.equal(result.filter(e=>e.type==='delta').map(e=>e.text).join(''),'前半句。后半句。');assert.equal(result.filter(e=>e.type==='done').length,1);
-  assert.equal(calls.at(-1).payload.messages.at(-2).content,'前半句。');assert.ok(!JSON.stringify(result).includes('SR_DONE'));assert.ok(!JSON.stringify(result).includes('SR_STATE'));
+  assert.equal(calls.at(-1).payload.messages.at(-2).content,'前半句。');assert.ok(!result.filter(e=>e.type!=='done').some(e=>JSON.stringify(e).includes('SR_DONE')||JSON.stringify(e).includes('SR_STATE')));assert.ok(result.find(e=>e.type==='done').raw.includes('SR_DONE'));
 });
 test('HTTP cutoff exhausts exactly three extra calls before error, without committing state',async()=>{
   const count=calls.length;const result=events(await(await post('/api/generate',await request('cut-limit'))).text());

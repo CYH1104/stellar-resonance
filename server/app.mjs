@@ -183,16 +183,33 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const plan=terminalPlan(source,data),selected=await connection(current,data);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
+          const clipRaw=(value,limit=48000)=>{if(typeof value!=='string')return '';if(value.length<=limit)return value;const marker=`\n…[已截断，原长度 ${value.length} 字符]`;return value.slice(0,Math.max(0,limit-marker.length))+marker;};
+          const terminalRaw=text=>clipRaw(text,48000);
+          const combinedRaw=(first,second)=>second?clipRaw(first,24000)+'\n\n[纠正稿]\n'+clipRaw(second,24000):terminalRaw(first);
+          let content='',corrected='';
+          try{
           const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:6000},key:data.key,messages:plan.messages,signal,fetchImpl});
-          let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
-          signal.throwIfAborted();const result=parseTerminalResult(content,plan);
+          for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+          signal.throwIfAborted();let result;
+          try{result=parseTerminalResult(content,plan);}
+          catch(error){
+            if(!error?.retryable||signal.aborted)throw error;
+            const correction=[...plan.messages,{role:'assistant',content:content.slice(0,16000)},{role:'user',content:`上一次回复未通过格式检查（${error.reason}）。仍使用同一组已锁定目标，不得改选、重新抽签或泄露任何姓名/编号映射；请严格只输出系统要求的 JSON。`}];
+            const retryUpstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:6000},key:data.key,messages:correction,signal,fetchImpl});
+            for await(const chunk of completionChunks(retryUpstream,{signal})){corrected+=chunk;if(corrected.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+            signal.throwIfAborted();
+            try{result=parseTerminalResult(corrected,plan);}catch(next){next.raw=combinedRaw(content,corrected);throw next;}
+          }
+          let raw=combinedRaw(content,corrected);
           if(plan.task==='react'){
             const review=terminalPlan(source,{...data,task:'review',input:data.input,context:{command:data.input,result}});
             const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl});
             let checked='';for await(const part of completionChunks(upstream,{signal})){checked+=part;if(checked.length>4000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
-            signal.throwIfAborted();parseTerminalResult(checked,review);
+            try{signal.throwIfAborted();parseTerminalResult(checked,review);}catch(error){error.raw=terminalRaw(checked);throw error;}
+            raw=clipRaw(raw+'\n\n[复核]\n'+checked,48000);
           }
-          json(response,200,result);return;
+          json(response,200,{...result,raw:terminalRaw(raw)});return;
+          }catch(error){if(typeof error?.raw!=='string')error.raw=terminalRaw(content+(corrected?'\n\n[纠正稿]\n'+corrected:''));throw error;}
         }
         if(path==='/api/new-game'){json(response,200,createGame(data,source));return;}
         if(path==='/api/persona'){
@@ -275,7 +292,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
-    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR',...upstreamStatusField(error),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudDetail==='string'?{cloudDetail:error.cloudDetail}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudStep==='string'?{cloudStep:error.cloudStep}:{})});}
+    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR',...(typeof error.reason==='string'?{reason:error.reason}:{}),...upstreamStatusField(error),...(typeof error.raw==='string'?{raw:error.raw.slice(0,48000)}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudDetail==='string'?{cloudDetail:error.cloudDetail}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudStep==='string'?{cloudStep:error.cloudStep}:{})});}
   }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
   server.once('close',closeAccounts);server.once('error',closeAccounts);

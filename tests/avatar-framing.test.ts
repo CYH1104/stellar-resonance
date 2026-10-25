@@ -1,23 +1,21 @@
 import {it,expect} from 'vitest';
-import {avatarSizes,avatarAppearanceStyle,avatarFrame,avatarImageStyle,cleanAvatarAppearance} from '../src/domain/avatarAppearance';
-import {createSSRApp} from 'vue';
+import {createSSRApp,h} from 'vue';
 import {renderToString} from 'vue/server-renderer';
-import UserAvatar from '../src/components/UserAvatar.vue';
-it('large portraits have a substantially larger display area than small headshots',()=>{
- expect(avatarSizes.small).toBeGreaterThanOrEqual(40);
- expect(avatarSizes.large).toBeGreaterThanOrEqual(avatarSizes.small*3);
+import {avatarFrameStyle} from '../src/app/avatarFraming';
+import GroupAvatar from '../src/components/GroupAvatar.vue';
+
+it('clamps stored avatar offsets so cover frames never reveal the background and keeps zoom bounded',()=>{
+ expect(avatarFrameStyle(undefined)).toMatchObject({objectFit:'cover',objectPosition:'50% 50%',transform:'scale(1)'});
+ expect(avatarFrameStyle({x:30,y:-30,scale:2})).toMatchObject({objectFit:'cover',objectPosition:'80% 20%',transform:'scale(2)'});
+ expect(avatarFrameStyle({x:999,y:-999,scale:9})).toMatchObject({objectFit:'cover',objectPosition:'100% 0%',transform:'scale(4)'});
+ expect(avatarFrameStyle({x:Number.NaN,y:Number.POSITIVE_INFINITY,scale:0})).toMatchObject({objectFit:'cover',objectPosition:'50% 50%',transform:'scale(1)'});
 });
-it('larger sizes reveal more of the full original rather than rescaling the same crop',async()=>{
- const small=avatarFrame({size:'small'}),medium=avatarFrame({size:'medium'}),large=avatarFrame({size:'large'});
- expect(small.zoom).toBeGreaterThan(medium.zoom);expect(medium.zoom).toBeGreaterThan(large.zoom);expect(large).toEqual({zoom:1,x:0,y:0});
- const html=await renderToString(createSSRApp(UserAvatar,{name:'玩家',src:'/original.png',appearance:{size:'large',shape:'rectangle'}}));expect(html).toContain('object-fit:contain');expect(html).toContain('scale(1)');expect(html).toContain('height:224px');
-});
-it('framing is saved separately for each size and corrupt coordinates cannot poison layout',()=>{
- const saved=cleanAvatarAppearance({size:'small',shape:'circle',frames:{small:{zoom:2.5,x:.1,y:.2},large:{zoom:1.1,x:0,y:0}}});
- expect(avatarFrame(saved).zoom).toBe(2.5);expect(avatarFrame({...saved,size:'large'}).zoom).toBe(1.1);expect(avatarFrame({...saved,size:'medium'}).zoom).toBe(1.35);
- expect(avatarImageStyle(saved,false).transform).toContain('scale(1)');
- expect(cleanAvatarAppearance({frames:{small:{zoom:Infinity,x:0,y:0}}}).frames).toBeUndefined();
-});
-it('rectangles are upright, not landscape, at every size',()=>{
- for(const size of ['small','medium','large'] as const){const style=avatarAppearanceStyle({size,shape:'rectangle'});expect(parseInt(style.height)).toBeGreaterThan(parseInt(style.width));}
+it('renders group avatars with cover and saved or locally previewed percentage focus',async()=>{
+ const conversation={avatar:'https://example.test/g.png',avatarPosition:{x:12,y:88}};
+ let html=await renderToString(createSSRApp({render:()=>h(GroupAvatar,{conversation})}));
+ expect(html).toContain('object-fit:cover');expect(html).toContain('object-position:12% 88%');
+ html=await renderToString(createSSRApp({render:()=>h(GroupAvatar,{conversation,position:{x:70,y:30}})}));
+ expect(html).toContain('object-position:70% 30%');
+ html=await renderToString(createSSRApp({render:()=>h(GroupAvatar,{conversation:{avatar:'https://example.test/l.png'}})}));
+ expect(html).toContain('object-position:50% 50%');
 });

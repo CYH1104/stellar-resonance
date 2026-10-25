@@ -6,6 +6,7 @@ import {majorCharacter} from './domain/characterImages';
 import SaveStatus from './components/SaveStatus.vue';
 import DismissibleNotice from './components/DismissibleNotice.vue';
 import NoticeHost from './components/NoticeHost.vue';
+import CompletionPulse from './components/CompletionPulse.vue';
 import {showNotice} from './app/notices';
 import WorkspaceNavigation from './components/WorkspaceNavigation.vue';
 
@@ -250,7 +251,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><CompletionPulse /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
