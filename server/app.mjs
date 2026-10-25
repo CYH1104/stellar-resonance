@@ -187,16 +187,17 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const terminalRaw=text=>clipRaw(text,48000);
           const combinedRaw=(first,second)=>second?clipRaw(first,24000)+'\n\n[纠正稿]\n'+clipRaw(second,24000):terminalRaw(first);
           let content='',corrected='';
+          const isAfterparty=plan.task==='afterparty',taskMaxTokens=isAfterparty?4000:6000,taskContentCap=isAfterparty?24000:48000;
           try{
-          const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:6000},key:data.key,messages:plan.messages,signal,fetchImpl});
-          for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+          const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:plan.messages,signal,fetchImpl});
+          for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>taskContentCap)throw modelError(502,'INVALID_TERMINAL_RESULT');}
           signal.throwIfAborted();let result;
           try{result=parseTerminalResult(content,plan);}
           catch(error){
             if(!error?.retryable||signal.aborted)throw error;
             const correction=[...plan.messages,{role:'assistant',content:content.slice(0,16000)},{role:'user',content:`上一次回复未通过格式检查（${error.reason}）。仍使用同一组已锁定目标，不得改选、重新抽签或泄露任何姓名/编号映射；请严格只输出系统要求的 JSON。`}];
-            const retryUpstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:6000},key:data.key,messages:correction,signal,fetchImpl});
-            for await(const chunk of completionChunks(retryUpstream,{signal})){corrected+=chunk;if(corrected.length>48000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
+            const retryUpstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:correction,signal,fetchImpl});
+            for await(const chunk of completionChunks(retryUpstream,{signal})){corrected+=chunk;if(corrected.length>taskContentCap)throw modelError(502,'INVALID_TERMINAL_RESULT');}
             signal.throwIfAborted();
             try{result=parseTerminalResult(corrected,plan);}catch(next){next.raw=combinedRaw(content,corrected);throw next;}
           }

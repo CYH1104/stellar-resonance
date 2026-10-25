@@ -13,7 +13,7 @@ import {markGenerationComplete,startGeneration,finishGeneration} from './generat
 import type {ViewModel} from './useWorkspace';
 import {taskApi,auxiliaryApis} from '../domain/apis';
 import {HttpGateway} from '../gateway/http';
-import {emptyTerminal,lockKingTargets,terminalId,requireFriends,createConversation,createKingRoom,drawKingRound,applyKingCommand,applyKingReplies,finishKingRound,targetActors,groupCanManage,groupOwner,groupManagementReady,groupNeedsManagement,groupAutoAdminLimit,applyGroupAction,syncStoryGroups,type StoryGroupSource,type PersonalTerminal,type KingRoom,type KingRound,type KingInteraction} from '../domain/personalTerminal';
+import {emptyTerminal,lockKingTargets,terminalId,requireFriends,createConversation,createKingRoom,drawKingRound,applyKingCommand,applyKingReplies,finishKingRound,targetActors,syncKingDrunk,kingOverLimit,kingParticipants,missingTolerances,visibleTextLength,afterpartyMinChars,afterpartyMaxChars,groupCanManage,groupOwner,groupManagementReady,groupNeedsManagement,groupAutoAdminLimit,applyGroupAction,syncStoryGroups,type StoryGroupSource,type PersonalTerminal,type KingRoom,type KingRound,type KingInteraction} from '../domain/personalTerminal';
 export function terminalContextState(state:{player?:any}|undefined,codes:Record<string,string>,characters:{id:string;name:string;identity?:string;relationship?:string;affinity?:number;present?:boolean}[]){
  return {variables:{终端码:codes},...(state?.player?{player:state.player}:{}),characters:characters.map(({id,name,identity,relationship,affinity,present})=>({id,name,identity,relationship,affinity,present}))};
 }
@@ -37,6 +37,8 @@ export function usePersonalTerminal(w:ViewModel){
  const isOwner=computed(()=>!!conversation.value&&groupOwner(conversation.value)==='player');
  const visibleConversations=computed(()=>t.value.conversations.filter(c=>!c.anchor||!!w.active&&terminalAnchorActive(w.active,c.anchor)));
  const room=computed(()=>t.value.rooms.find(r=>r.id===roomId.value));
+ const tolerances=computed(()=>t.value.tolerances||{});
+ const toleranceValue=(id:string)=>tolerances.value[id];
  const gameHistory=computed(()=>room.value?.rounds.filter(r=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor)))||[]);
  const round=computed(()=>gameHistory.value.at(-1));
  const course=computed(()=>t.value.courses.find(c=>c.id===courseId.value));
@@ -57,7 +59,14 @@ function logTerminalActivity(title:string,text:string,callId=operationCallId||cr
  watch(()=>w.active?.id,()=>{controller?.abort();endConfirm.value=endSaveFailed.value='';inviteTarget.value=inviteNote.value='';page.value='home';conversationId.value=friendId.value=roomId.value=courseId.value='';picked.value=[];draft.value=error.value='';lookup.value=undefined;lookupCandidates.value=[];historyPage.value=0;});
  onBeforeUnmount(()=>controller?.abort());
  function go(next:string){plusOpen.value=false;previous.value=page.value;page.value=next;error.value='';search.value='';historyPage.value=0;if(next==='add'){lookup.value=undefined;lookupCandidates.value=[];note.value='';}if(next==='account'){bioDraft.value=t.value.bio||'';}}
- function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!current){error.value='未找到该房间，请重新打开当前存档。';return;}roomId.value=id;draft.value='';targets.value=[];go(current.endedAt?'history':'room');}
+ /** Safety recovery: an active room that is already over the tolerance limit (e.g. the
+ * browser was refreshed between the drunk commit and the end save) is ended first,
+ * before any further action or request runs on it. */
+async function recoverDrunkEnd(id:string){const rm=t.value.rooms.find(r=>r.id===id);if(!rm||rm.endedAt)return false;const over=kingOverLimit(rm,tolerances.value);if(!over.length)return false;
+ await saveGameEnd(id,'drunk',over);endSaveFailed.value='';logTerminalActivity('国王游戏因醉酒结束（安全恢复）',`${rm.name} · ${over.map(x=>name(x)).join('、')} 达到耐受度`);go('history');await requestAfterparty(id);return true;}
+function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!current){error.value='未找到该房间，请重新打开当前存档。';return;}roomId.value=id;draft.value='';targets.value=[];
+ if(!current.endedAt&&kingOverLimit(current,tolerances.value).length){void run(async()=>{await recoverDrunkEnd(id);});return;}
+ go(current.endedAt?'history':'room');}
  function toggle(id:string){picked.value=picked.value.includes(id)?picked.value.filter(i=>i!==id):[...picked.value,id];}
  async function commit(update:(next:PersonalTerminal)=>void){const session=w.active;if(!session)throw Error('请先打开存档。');if(operationSession&&session.id!==operationSession||operationAnchor&&!terminalAnchorActive(session,operationAnchor))throw Error('剧情分支已改变，记录未应用。');if(operationCancelled)throw Error('请求已停止。');if(operationRoom){const r=t.value.rooms.find(r=>r.id===operationRoom);if(!r||r.endedAt||(r.rounds.at(-1)?.number||0)!==operationRound)throw Error('游戏已结束或轮次已改变。');}const next:PersonalTerminal=structuredClone(JSON.parse(JSON.stringify(t.value)));update(next);for(const old of t.value.rooms)if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.rooms.find(r=>r.id===old.id)))throw Error("游戏已结束，只能回看记录。");for(const room of next.rooms)for(const round of room.rounds){if(!round.anchor)continue;for(const anchor of [round.anchor,...[...new Map((round.interactions||[]).flatMap(i=>i.anchor&&terminalAnchorActive(session,i.anchor)?[[i.anchor.key,i.anchor] as const]:[])).values()].filter(a=>a.key!==round.anchor!.key)]){const b=terminalBucket(next,anchor),game={id:room.id+':'+round.number,name:room.name,round:round.number,king:name(round.king),command:round.command,penalties:round.replies.filter(r=>r.refused).map(r=>name(r.id)+'：'+r.penalty).join('；'),complete:round.phase==='complete',knownBy:audienceSnapshot(room.members.filter(id=>id!=='player'&&room.invitations[id]==='accepted')),...(room.endedAt?{endedAt:room.endedAt}:{}),interactions:(round.interactions||[]).filter(i=>(!i.anchor||i.anchor.key===anchor.key)&&(!i.anchor||terminalAnchorActive(session,i.anchor))).map(i=>name('player')+'：'+i.text+'；'+i.replies.map(r=>name(r.id)+'：'+r.text+(r.refused?'；惩罚：'+r.penalty:'')).join('；')).join('\n')};const i=b.games.findIndex(g=>g.id===game.id);if(i<0)b.games.push(game);else b.games[i]=game;}}session.terminal=next;syncTerminalMemoryNotes(session);await w.save();if(w.storageStatus==='failed')throw Error('终端保存失败，请先导出当前存档。');w.indexTerminalNotes();}
 
@@ -77,8 +86,8 @@ function logTerminalActivity(title:string,text:string,callId=operationCallId||cr
   if(operationCancelled)throw Error('请求已停止。');const sid=s.id,signature=JSON.stringify([p,w.credentials[p.id]]);controller=new AbortController();
   const apiCallId=crypto.randomUUID();const signal=controller.signal;signal.throwIfAborted();let aborted:()=>void=()=>{};const cancellation=new Promise<never>((_,reject)=>{aborted=()=>reject(new Error('请求已停止。'));signal.addEventListener('abort',aborted,{once:true});});
   startGeneration(apiCallId);
-const scopedTask=['chat','invite','react','game-interact','friend'].includes(task);
-  const result=await Promise.race([new HttpGateway().terminal({task,sessionId:s.id,actorIds,input,persona:s.persona,context:['command','react','game-interact'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(scopedTask?['player',...actorIds]:[],scopedTask?input:undefined)),...extra}},p,w.credentials[p.id]||'',signal),cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
+const scopedTask=['chat','invite','react','game-interact','friend','afterparty'].includes(task);
+  const result=await Promise.race([new HttpGateway().terminal({task,sessionId:s.id,actorIds,input,persona:s.persona,context:['command','react','game-interact','tolerance'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(scopedTask?['player',...actorIds]:[],scopedTask?input:undefined)),...extra}},p,w.credentials[p.id]||'',signal),cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
   signal.throwIfAborted();if(operationCancelled||operationRoom&&t.value.rooms.find(r=>r.id===operationRoom)?.endedAt)throw Error("游戏已结束，请求未应用。");if(w.active?.id!==sid||operationAnchor&&!terminalAnchorActive(s,operationAnchor)||signature!==JSON.stringify([requestProfile(task),w.credentials[p.id]]))throw Error('存档或API已改变，本次回复未应用。');logTerminalActivity('终端API返回 · '+task+'（尚未提交）',JSON.stringify(Object.fromEntries(Object.entries(result).filter(([key])=>key!=='raw'))),apiCallId,false,typeof result.raw==='string'?result.raw:'');operationSucceeded=true;return result;
  }
  async function run(action:()=>Promise<void>){if(w.restoreInterrupted){error.value='上次备份恢复中断，请先恢复覆盖前的完整副本。';return;}if(working.value||ending.value||w.busy||w.backupWorking)return;operationCancelled=false;operationRoom='';operationRound=0;operationCallId=crypto.randomUUID();operationSucceeded=false;operationDone=new Promise<void>(resolve=>{finishOperation=resolve;});working.value=true;w.terminalBusy=true;operationSession=w.active?.id||'';operationAnchor=w.active?terminalAnchor(w.active):undefined;error.value='';try{await action();if(operationSucceeded)markGenerationComplete(operationCallId);}catch(e){error.value=e instanceof Error?e.message:'操作失败，原记录已保留。';if(error.value&&!operationCancelled)logTerminalActivity('终端操作失败',error.value,operationCallId,true);}finally{working.value=false;w.terminalBusy=false;controller=undefined;operationSession='';operationAnchor=undefined;operationRoom='';finishOperation();}}
@@ -122,29 +131,162 @@ const scopedTask=['chat','invite','react','game-interact','friend'].includes(tas
  function beginInvite(id='*'){const current=room.value;if(!current||current.endedAt)return;inviteTarget.value=id;inviteNote.value=id==='*'?'':current.inviteNotes?.[id]||'';}
  const sendInvite=()=>run(async()=>{const target=inviteTarget.value;if(!target)return;await inviteRoom(target==='*'?undefined:[target]);inviteTarget.value='';});
  const addRoomFriends=()=>run(async()=>{activeGame();await commit(t=>{requireFriends(t,picked.value);const room=t.rooms.find(r=>r.id===roomId.value)!;if(room.rounds.at(-1)&&room.rounds.at(-1)!.phase!=='complete')throw Error('请在本轮结束后邀请新成员。');const ids=[...new Set([...room.members,...picked.value])];if(ids.length>8)throw Error('房间最多8人，请另建房间。');for(const id of picked.value)if(!room.members.includes(id)){room.members.push(id);room.invitations[id]='pending';}});picked.value=[];go('room');await inviteRoom();});
- const startRound=()=>run(async()=>{const id=activeGame().id;await commit(t=>{const current=t.rooms.find(r=>r.id===id)!;for(const r of current.rounds)if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))r.archived=true;const round=drawKingRound(t,current);round.anchor=operationAnchor;});const drawn=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!;logTerminalActivity('国王游戏抽签',`第 ${drawn.number} 轮 · 国王 ${name(drawn.king)}`);operationRound=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!.number;if(operationCancelled)return;targets.value=[];draft.value='';go('king');});
+  // Archive-level tolerance map: generate once per character (player included), persist
+  // before the draw, fill only missing entries, never re-roll or overwrite on retry.
+ const startRound=()=>run(async()=>{const id=activeGame().id;if(await recoverDrunkEnd(id))throw Error('游戏已结束，只能回看记录。');
+ const missing=missingTolerances(t.value,t.value.rooms.find(r=>r.id===id)!);
+  if(missing.length){const r=await request('tolerance',missing,'请为每位参与者依据人设设定酒量耐受度。',{participantNames:missing.map(name)});
+   await commit(t=>{t.tolerances||={};for(const d of r.tolerances){if(!Number.isInteger(d.value)||d.value<1||d.value>10)throw Error('耐受度结果不正确，未保存，请重试。');if(!missing.includes(d.id))continue;if(!Number.isInteger(t.tolerances[d.id]))t.tolerances[d.id]=d.value;}});}
+  await commit(t=>{const current=t.rooms.find(r=>r.id===id)!;for(const r of current.rounds)if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))r.archived=true;const round=drawKingRound(t,current);round.anchor=operationAnchor;});const drawn=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!;logTerminalActivity('国王游戏抽签',`第 ${drawn.number} 轮 · 国王 ${name(drawn.king)}`);operationRound=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!.number;if(operationCancelled)return;targets.value=[];draft.value='';go('king');});
  function gameContext(r:KingRound,room:KingRoom){return {round:r.number,king:r.king,targets:r.targets,revealedTargets:r.phase==='command'?[]:targetActors(r).map(id=>({id,number:r.numbers[id]})),command:r.command,replies:r.replies,interactions:(r.interactions||[]).filter(i=>!i.anchor||!!w.active&&terminalAnchorActive(w.active,i.anchor)).slice(-6).map(i=>({...i,text:i.text.slice(0,1000),replies:i.replies.map(r=>({...r,text:r.text.slice(0,600),penalty:r.penalty?.slice(0,300)}))})),maxNumber:Object.keys(r.numbers).length,style:room.style,recentRounds:room.rounds.filter(r=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor))).slice(-3).map(r=>({number:r.number,command:r.command,replies:r.replies.map(reply=>({...reply,text:reply.text.slice(0,600)}))}))};}
- const command=()=>run(async()=>{activeGame();const r=round.value,rm=room.value;if(!r||!rm)return;requireFriends(t.value,Object.keys(r.numbers).filter(id=>id!=='player'));let text=draft.value,chosen=targets.value,betrayal=false;
+ const command=()=>run(async()=>{activeGame();const r=round.value,rm=room.value;if(!r||!rm)return;if(await recoverDrunkEnd(rm.id))throw Error('游戏已结束，只能回看记录。');requireFriends(t.value,Object.keys(r.numbers).filter(id=>id!=='player'));let text=draft.value,chosen=targets.value,betrayal=false;
   if(r.king==='player'){if(!text.trim()||!chosen.length)throw Error('请输入命令并选择目标编号。');betrayal=(await request('evaluate',[],text)).betrayal;}
   else{await commit(t=>{const locked=t.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!;lockKingTargets(locked);});const locked=t.value.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!;chosen=[...locked.targets];const participantNames=[...new Set([...Object.keys(locked.numbers),locked.king,'player'].map(name))];const result=await request('command',[r.king],'请针对锁定的匿名目标发布本轮命令。',{round:locked.number,style:rm.style,maxNumber:Object.keys(locked.numbers).length,targets:chosen,participantNames});if(JSON.stringify(result.targets)!==JSON.stringify(chosen))throw Error('模型更改了抽签目标，请重试。');text=renderKingCommand(result.template,chosen,participantNames);}
   await commit(t=>{const round=t.rooms.find(x=>x.id===rm.id)!.rounds.at(-1)!;round.anchor=operationAnchor;applyKingCommand(round,text,chosen,betrayal);});draft.value='';await react(rm.id);});
- async function react(id=roomId.value){activeGame(id);const rm=t.value.rooms.find(room=>room.id===id),r=rm?.rounds.at(-1);if(!r||!rm||r.phase!=='respond')return;if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))throw Error('该轮属于旧剧情分支，请新开一轮。');const ids=targetActors(r).filter(id=>id!=='player');requireFriends(t.value,rm.members.filter(id=>id!=='player'&&rm.invitations[id]==='accepted'));
+ async function react(id=roomId.value){activeGame(id);const rm=t.value.rooms.find(room=>room.id===id),r=rm?.rounds.at(-1);if(!r||!rm||r.phase!=='respond')return;if(await recoverDrunkEnd(id))throw Error('游戏已结束，只能回看记录。');if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))throw Error('该轮属于旧剧情分支，请新开一轮。');const ids=targetActors(r).filter(id=>id!=='player');requireFriends(t.value,rm.members.filter(id=>id!=='player'&&rm.invitations[id]==='accepted'));
   if(!ids.length){return;}
-  const result=await request('react',ids,r.command,{...gameContext(r,rm),betrayal:r.betrayal});await commit(t=>{const round=t.rooms.find(x=>x.id===rm.id)!.rounds.at(-1)!;round.anchor=operationAnchor;round.betrayal=round.betrayal||result.betrayal;applyKingReplies(round,result.replies);});}
+  const result=await request('react',ids,r.command,{...gameContext(r,rm),betrayal:r.betrayal});let ended=false;
+ // Atomic: the refusing reply, the two cups and — when a tolerance is crossed — the
+ // game end all land in one persisted commit; a refresh can never observe drunk>=tol
+ // on a still-active room.
+ await commit(t=>{const room2=t.rooms.find(x=>x.id===rm.id)!;const round=room2.rounds.at(-1)!;round.anchor=operationAnchor;round.betrayal=round.betrayal||result.betrayal;applyKingReplies(round,result.replies);syncKingDrunk(t,room2);ended=applyDrunkEnd(t,room2,kingOverLimit(room2,tolerances.value));});
+ if(ended){endSaveFailed.value='';logTerminalActivity('国王游戏因醉酒结束',`${rm.name} · ${kingOverLimit(t.value.rooms.find(x=>x.id===rm.id)!,tolerances.value).map(x=>name(x)).join('、')} 达到耐受度`);go('history');await requestAfterparty(rm.id);return;}
+ await maybeDrunkEnd(rm.id);}
  const retryReact=()=>run(()=>react());
- async function interact(retry=false,kind:KingInteraction['kind']='chat'){activeGame();
+async function interact(retry=false,kind:KingInteraction['kind']='chat'){activeGame();if(await recoverDrunkEnd(roomId.value))throw Error('游戏已结束，只能回看记录。');
  const r=round.value,rm=room.value;if(!r||!rm||r.phase==='command')throw Error('请先发布本轮命令。');if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))throw Error('剧情分支已改变。');
  const pending=r.interactions?.find(i=>i.status==='pending');if(pending&&!retry)throw Error('请先重试上一次互动。');let interaction=pending;
  if(!retry){const text=draft.value.trim();if(!text||text.length>2000)throw Error('请输入1～2000字的互动。');if((r.interactions?.length||0)>=200)throw Error('本轮互动已达200条，请结束本轮。');if(kind!=='chat'&&(!targetActors(r).includes('player')||r.replies.some(p=>p.id==='player')))throw Error('本轮没有等待你的命令回应。');
- const entry:KingInteraction={id:terminalId(),kind,text,replies:[],status:'pending',anchor:operationAnchor};await commit(t=>{const current=t.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!;current.anchor||=operationAnchor;current.interactions||=[];current.interactions.push(entry);if(kind!=='chat'){current.replies.push({id:'player',text,refused:kind==='refuse',penalty:kind==='refuse'?'玩家已自行描述承担的惩罚':''});finishKingRound(current);}});draft.value='';interaction=entry;}
+ const entry:KingInteraction={id:terminalId(),kind,text,replies:[],status:'pending',anchor:operationAnchor};await commit(t=>{const current=t.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!;current.anchor||=operationAnchor;current.interactions||=[];current.interactions.push(entry);if(kind!=='chat'){current.replies.push({id:'player',text,refused:kind==='refuse',penalty:kind==='refuse'?'玩家已自行描述承担的惩罚':''});finishKingRound(current);}syncKingDrunk(t,t.rooms.find(x=>x.id===rm.id)!);});draft.value='';interaction=entry;}
+ if(kind!=='chat'){
+  // The player's own cups settle with the reply above: judge the threshold at once.
+  // A crossing ends and saves the game here — the ordinary game-interact request is
+  // never sent, and the pending interaction is closed as stopped by the end commit.
+  const rmNow=t.value.rooms.find(x=>x.id===rm.id)!;const over=kingOverLimit(rmNow,tolerances.value);
+   if(over.length){let ended=false;await commit(t=>{ended=applyDrunkEnd(t,t.rooms.find(x=>x.id===rm.id)!,kingOverLimit(t.rooms.find(x=>x.id===rm.id)!,tolerances.value));});
+   if(ended){endSaveFailed.value='';logTerminalActivity('国王游戏因醉酒结束',`${rm.name} · ${over.map(x=>name(x)).join('、')} 达到耐受度`);go('history');await requestAfterparty(rm.id);return;}}}
  if(!interaction)return;const ids=rm.members.filter(id=>id!=='player'&&rm.invitations[id]==='accepted');requireFriends(t.value,ids);const current=t.value.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!;
- const result=await request('game-interact',ids,interaction.text,{...gameContext(current,rm),interactionKind:interaction.kind,betrayal:current.betrayal});
- await commit(t=>{const current=t.rooms.find(x=>x.id===rm.id)!.rounds.find(x=>x.number===r.number)!,entry=current.interactions?.find(i=>i.id===interaction!.id);if(!entry||entry.status!=='pending')return;entry.replies=result.replies;entry.status='ready';});
+ const result=await request('game-interact',ids,interaction.text,{...gameContext(current,rm),interactionKind:interaction.kind,betrayal:current.betrayal});let ended=false;
+ await commit(t=>{const room2=t.rooms.find(x=>x.id===rm.id)!;const current=room2.rounds.find(x=>x.number===r.number)!,entry=current.interactions?.find(i=>i.id===interaction!.id);if(!entry||entry.status!=='pending')return;entry.replies=result.replies;entry.status='ready';syncKingDrunk(t,room2);ended=applyDrunkEnd(t,room2,kingOverLimit(room2,tolerances.value));});
+ if(ended){endSaveFailed.value='';logTerminalActivity('国王游戏因醉酒结束',`${rm.name} · ${kingOverLimit(t.value.rooms.find(x=>x.id===rm.id)!,tolerances.value).map(x=>name(x)).join('、')} 达到耐受度`);go('history');await requestAfterparty(rm.id);return;}
+ await maybeDrunkEnd(rm.id);
  }
  const gameInteract=()=>run(()=>interact());const retryGameInteract=()=>run(()=>interact(true));const playerReply=(refused=false)=>run(()=>interact(false,refused?'refuse':'complete'));
 
  function askEnd(){if(room.value)endConfirm.value=room.value.id;}
- async function endGame(){
+ /** Fingerprint of everything except the afterparty field: a late/failed afterparty write
+ * must only ever land on the very session+room+end state it was requested for. */
+const roomFingerprint=(rm:KingRoom)=>JSON.stringify({...rm,afterparty:undefined});
+/** Controlled write path for ended rooms: only the afterparty field (and the memory
+ * summary written by the caller) may change after endedAt. The write is bound to the
+ * original session, room, endedAt stamp and room fingerprint, so a failure that settles
+ * after the user switched archives or branches can never land on a different room that
+ * happens to share an id. This bypasses commit's ended-room guard on purpose but stays
+ * session-guarded. */
+async function commitAfterparty(id:string,guard:{sid:string;endedAt:string;fingerprint:string;anchor:TerminalAnchor},update:(next:PersonalTerminal,room:KingRoom)=>void){
+ const session=w.active;if(!session||session.id!==guard.sid)throw Error('存档已切换，复盘写入已停止。');
+ // Bound to the anchor captured when the afterparty request was made: an async same-session
+ // branch switch (another variant now selected) invalidates the request, so neither the
+ // success write nor the failure bookkeeping may land on the old branch.
+ if(!terminalAnchorActive(session,guard.anchor))throw Error('剧情分支已切换，复盘写入已停止。');
+ const current=session.terminal?.rooms.find(r=>r.id===id);
+ if(!current||current.endedAt!==guard.endedAt||roomFingerprint(current)!==guard.fingerprint)throw Error('复盘上下文已改变，写入已停止。');
+ const next:PersonalTerminal=JSON.parse(JSON.stringify(session.terminal));
+ const rm=next.rooms.find(r=>r.id===id);if(!rm||!rm.endedAt)throw Error('房间不存在或尚未结束。');
+ update(next,rm);
+ session.terminal=next;syncTerminalMemoryNotes(session);await w.save();
+ if(w.active?.id!==guard.sid)throw Error('存档已切换，复盘写入已停止。');
+ if(w.storageStatus==='failed')throw Error('终端保存失败，请先导出当前存档。');
+ w.indexTerminalNotes();
+}
+/** Safe prose extraction from a failed model reply: takes the text field of any parseable
+ * JSON segment, or plain prose; raw JSON is never stored as the body. */
+function afterpartyDraftText(raw:unknown):string{
+ if(typeof raw!=='string')return '';let best='';
+ for(const piece of raw.split('\n\n[纠正稿]\n')){const text=piece.trim();if(!text)continue;let candidate='';
+  if(text.startsWith('{')||text.startsWith('[')){try{const v=JSON.parse(text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));if(v&&typeof v==='object'&&typeof (v as any).text==='string')candidate=(v as any).text;}catch{candidate='';}}
+  else candidate=text;
+  if(candidate&&candidate.length>best.length)best=candidate;
+ }return best.slice(0,afterpartyMaxChars);
+}
+async function markAfterpartyFailure(id:string,guard:{sid:string;endedAt:string;fingerprint:string;anchor:TerminalAnchor},message:string,draft:string){
+ try{await commitAfterparty(id,guard,(_next,room)=>{if(room.afterparty&&room.afterparty.status!=='ready'){const keep=typeof room.afterparty.draft==='string'?room.afterparty.draft:'';const keepDraft=draft.length>keep.length?draft:keep;room.afterparty={...room.afterparty,status:'failed',error:message.slice(0,2000),...(keepDraft?{draft:keepDraft}:{})};}});}catch{/* failure bookkeeping must not mask the original error */}
+}
+async function requestAfterparty(id:string){
+ const session=w.active;const rm=session?.terminal?.rooms.find(r=>r.id===id);
+ if(!session||!rm||!rm.endedAt||!rm.afterparty||rm.afterparty.status==='ready')return;
+ if(!profile.value)throw Error('请先配置终端 API。');
+ operationRoom='';operationRound=0;// dedicated ended-room path: skip the active-game request guard
+ // Snapshot taken when the game ended: only actually-accepted participants (player
+ // included) receive the afterparty; declined or pending invitees are excluded and no
+ // anonymous number mapping is revealed (the king command keeps its own protection).
+ const participants=rm.afterparty.participants?.length?rm.afterparty.participants:kingParticipants(rm);
+ const guard={sid:session.id,endedAt:rm.endedAt,fingerprint:roomFingerprint(rm),anchor:terminalAnchor(session)};
+ const triggers=[...(rm.afterparty.triggers||[])];
+ const oldDraft=typeof rm.afterparty.draft==='string'?rm.afterparty.draft:'';
+ const visible=rm.rounds.filter(r=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor)));
+ const context={room:{name:rm.name,style:rm.style},participants:participants.map(mid=>({id:mid,name:name(mid),drunk:rm.drunk?.[mid]||0,tolerance:toleranceValue(mid)})),triggers:triggers.map(name),rounds:visible.slice(-6).map(r=>({number:r.number,king:name(r.king),command:r.command,replies:r.replies.map(x=>({id:x.id,name:name(x.id),text:x.text.slice(0,600),refused:x.refused,penalty:(x.penalty||'').slice(0,300)})),interactions:(r.interactions||[]).slice(-4).map(i=>({kind:i.kind,text:i.text.slice(0,600),replies:i.replies.map(x=>({id:x.id,name:name(x.id),text:x.text.slice(0,400),refused:x.refused,penalty:(x.penalty||'').slice(0,200)}))}))}))};
+ let failure:unknown,draftCandidate='';
+ try{
+  // Scoped context: the audience is this room's end-time participants, so recall only
+  // surfaces knowledge shared with them; other characters' private chats and the raw
+  // recent prose never enter an afterparty request.
+  const r=await request('afterparty',participants.filter(x=>x!=='player'),'请生成本局国王游戏结束后的afterparty场景正文。',{afterparty:context,...(oldDraft?{priorDraft:oldDraft.slice(0,afterpartyMaxChars)}:{})});
+  const text=typeof r.text==='string'?r.text:'';
+  if(visibleTextLength(text)<afterpartyMinChars){failure=Error('复盘正文不足1200字，原文与错误已保留，可重试补写。');draftCandidate=text.length>oldDraft.length?text:oldDraft;}
+  else{
+   const summary=(typeof r.summary==='string'&&r.summary.trim()?r.summary.trim():text.replace(/\s+/gu,'').slice(0,240)).slice(0,400);
+   await commitAfterparty(id,guard,(next,room)=>{
+    room.afterparty={status:'ready',text,summary,triggers,at:new Date().toISOString(),participants};
+    const anchor=room.rounds.filter(x=>!x.archived).at(-1)?.anchor||terminalAnchor(session);
+    const b=terminalBucket(next,anchor);
+    for(const g of b.games)if(g.id.startsWith(id+':')){g.afterparty=summary;g.knownBy=audienceSnapshot(participants);}
+    recordTerminalChat(next,anchor,{id:'afterparty:'+id,title:room.name,group:false},participants,'国王游戏复盘：'+summary,[],audienceSnapshot(participants));
+   });
+   logTerminalActivity('国王游戏复盘已保存',`${context.room.name} · ${visibleTextLength(text)} 字`);
+  }
+ }catch(e){failure=e;draftCandidate=afterpartyDraftText((e as any)?.raw);}
+ if(failure){await markAfterpartyFailure(id,guard,failure instanceof Error?failure.message:'生成失败',draftCandidate);throw failure;}
+}
+/** Ending the room is saved atomically first; only then is the afterparty requested. */
+async function saveGameEnd(id:string,reason:'manual'|'drunk',triggers:string[]){
+ const session=w.active,sid=session?.id;
+ if(!session)throw Error('请先打开存档。');
+ const next:PersonalTerminal=JSON.parse(JSON.stringify(session.terminal||emptyTerminal()));const rm=next.rooms.find(r=>r.id===id);if(!rm)throw Error('房间不存在。');
+ rm.endedAt||=new Date().toISOString();
+ const participants=kingParticipants(rm);
+ if(reason==='drunk'){rm.endReason||='drunk';rm.endTriggers||=[...triggers];rm.afterparty||={status:'pending',triggers:[...triggers],at:rm.endedAt,participants};}
+ for(const r of rm.rounds)for(const i of r.interactions||[])if(i.status==='pending')i.status='stopped';
+ const visibleRounds=rm.rounds.filter(r=>!r.archived&&(!r.anchor||terminalAnchorActive(session,r.anchor)));
+ if(visibleRounds.length){for(const b of next.memories||[])for(const g of b.games)if(g.id.startsWith(id+':'))g.endedAt=rm.endedAt;
+ recordTerminalChat(next,terminalAnchor(session),{id:'ended:'+id,title:rm.name,group:false},[name('player')],reason==='drunk'?'有参与者醉酒达到耐受度，国王游戏提前结束；已有记录保留，未完成轮次停止。':'国王游戏已结束；已有记录保留，未完成轮次停止。',[],audienceSnapshot(participants));}
+ session.terminal=next;syncTerminalMemoryNotes(session);await w.save();if(w.active?.id!==sid)throw Error('存档已改变。');if(w.storageStatus==='failed')throw Error('保存失败');
+ return {rm,visibleRounds};
+}
+/** Fallback threshold end kept for paths that did not end inside their own commit. */
+const retryAfterparty=(id=roomId.value)=>run(async()=>{const rm=t.value.rooms.find(r=>r.id===id);if(!rm?.endedAt||!rm.afterparty||rm.afterparty.status==='ready')throw Error('该房间没有待补写的复盘。');await requestAfterparty(id);});
+async function maybeDrunkEnd(id:string){
+ const rm=t.value.rooms.find(r=>r.id===id);if(!rm||rm.endedAt)return;
+ const over=kingOverLimit(rm,tolerances.value);if(!over.length)return;
+ const {rm:ended,visibleRounds}=await saveGameEnd(id,'drunk',over);
+ endSaveFailed.value='';if(visibleRounds.length)logTerminalActivity('国王游戏因醉酒结束',`${ended.name} · ${over.map(x=>name(x)).join('、')} 达到耐受度`);
+ go('history');
+ await requestAfterparty(id);
+}
+/** Atomic drunk-end applied inside a regular commit: end fields, memory stamps, the
+ * afterparty participant snapshot and consistent closure of pending interactions all
+ * land in one persisted write. */
+function applyDrunkEnd(next:PersonalTerminal,room:KingRoom,triggers:string[]){
+ if(room.endedAt||!triggers.length)return false;
+ room.endedAt=new Date().toISOString();room.endReason='drunk';room.endTriggers=[...triggers];
+ room.afterparty={status:'pending',triggers:[...triggers],at:room.endedAt,participants:kingParticipants(room)};
+ for(const r of room.rounds)for(const i of r.interactions||[])if(i.status==='pending')i.status='stopped';
+ for(const b of next.memories||[])for(const g of b.games)if(g.id.startsWith(room.id+':'))g.endedAt=room.endedAt;
+ if(w.active)recordTerminalChat(next,operationAnchor||terminalAnchor(w.active),{id:'ended:'+room.id,title:room.name,group:false},[name('player')],'有参与者醉酒达到耐受度，国王游戏提前结束；已有记录保留，未完成轮次停止。',[],audienceSnapshot(kingParticipants(room)));
+ return true;
+}
+
+async function endGame(){
   if(ending.value||!endConfirm.value)return;const id=endConfirm.value,sid=w.active?.id;
   if(working.value&&operationRoom!==id){error.value='其他任务正在处理中，请稍后结束游戏。';return;}
   ending.value=true;
@@ -175,5 +317,5 @@ const setGroupAvatarPosition=(position:{x:number;y:number})=>run(async()=>{const
  async function processAutomatic(retry=false){if(working.value||w.busy||w.loading||!w.active)return;const sid=w.active.id;if(!retry&&automaticSeen.has(sid))return;automaticSeen.add(sid);}
  const retryAutomatic=()=>{error.value='自动群聊、角色主动私聊和课表随下一轮正文同步，不额外请求终端API。';};
  watch(()=>[w.active?.id,w.busy,w.loading,working.value],()=>{void processAutomatic();},{immediate:true});
- return {ending,endConfirm,endSaveFailed,askEnd,endGame,openRoom,inviteTarget,inviteNote,beginInvite,sendInvite,addMode,lookupCandidates,gameInteract,retryGameInteract,activeFriends,boundCodes,ownCode,gameHistory,removeMember,avatarDraft,avatarStyle,adjustAvatar,flushAvatar,lookup,lookupCode,answerRequest,incoming,bioDraft,saveBio,historyPage,messages,visibleConversations,automatic,processAutomatic,retryAutomatic,storyClock,t,terminalProfile:profile,conversationFilter,plusOpen,canManage,isOwner,refreshGroup,completeGroupManagement,setAdmin,page,previous,go,search,draft,title,note,style,picked,targets,toggle,conversationId,friendId,roomId,courseId,actors,name,friends,conversation,room,round,course,error,working,week,clock,unread,commit,run,friendApply,openChat,makeGroup,inviteGroup,openConversation,sendChat,updateNote,removeFriend,editGroup,leaveGroup,schedule,createRoom,retryInvite,addRoomFriends,startRound,command,retryReact,playerReply,uploadAvatar,uploadGroupAvatar,clearGroupAvatar,setGroupAvatarUrl,setGroupAvatarPosition};
+ return {ending,endConfirm,endSaveFailed,askEnd,endGame,tolerances,toleranceValue,retryAfterparty,openRoom,inviteTarget,inviteNote,beginInvite,sendInvite,addMode,lookupCandidates,gameInteract,retryGameInteract,activeFriends,boundCodes,ownCode,gameHistory,removeMember,avatarDraft,avatarStyle,adjustAvatar,flushAvatar,lookup,lookupCode,answerRequest,incoming,bioDraft,saveBio,historyPage,messages,visibleConversations,automatic,processAutomatic,retryAutomatic,storyClock,t,terminalProfile:profile,conversationFilter,plusOpen,canManage,isOwner,refreshGroup,completeGroupManagement,setAdmin,page,previous,go,search,draft,title,note,style,picked,targets,toggle,conversationId,friendId,roomId,courseId,actors,name,friends,conversation,room,round,course,error,working,week,clock,unread,commit,run,friendApply,openChat,makeGroup,inviteGroup,openConversation,sendChat,updateNote,removeFriend,editGroup,leaveGroup,schedule,createRoom,retryInvite,addRoomFriends,startRound,command,retryReact,playerReply,uploadAvatar,uploadGroupAvatar,clearGroupAvatar,setGroupAvatarUrl,setGroupAvatarPosition};
 }
