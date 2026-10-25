@@ -15,7 +15,7 @@ export function taskFor(session:Session,request:MemoryRequest):MemoryTask{
 export function captureRevision(m:Memory){
  const revisions=m.revisions||=([]),revision=m.revision||1;
  if(!revisions.some(r=>r.revision===revision))revisions.push(JSON.parse(JSON.stringify({revision,at:new Date().toISOString(),text:m.text,annotation:m.annotation,record:m.record})));
- m.revision=revision+1;delete m.vector;delete m.indexError;
+ m.revision=revision+1;delete m.vector;delete m.factVectors;delete m.indexError;
 }
 export function sourceActive(session:Session,source:MemorySource,before=session.turns.length){
  if(source.sessionId!==session.id)return false;
@@ -33,7 +33,7 @@ export function migrateMemoryLedger(session:Session,requestAt:(index:number)=>Me
   if(index<0||v?.status!=='complete'||v.id!==session.turns[index].variants[session.turns[index].selected]?.id){unconfirmed.push(m.id);continue;}
   const request=requestAt(index);
   if(m.sourceFingerprint!==memorySignature(request)){unconfirmed.push(m.id);continue;}
-  m.source=sourceFor(session,request);m.revision||=1;mapping[m.id]=m.id;delete m.vector;
+  m.source=sourceFor(session,request);m.revision||=1;mapping[m.id]=m.id;delete m.vector;delete m.factVectors;
  }
  session.memoryMigration={version:1,at:new Date().toISOString(),legacy,mapping,unconfirmed};session.memoryEngine='candidate';
 }

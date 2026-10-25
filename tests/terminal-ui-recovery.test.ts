@@ -19,7 +19,7 @@ function session(){
  s.terminal.rooms=[{id:'room-a',name:'旧房间',style:'日常',members:['player','contact-a','npc-b'],invitations:{'contact-a':'accepted','npc-b':'accepted'},rounds:[]}];return s;
 }
 async function fixture(s=session()){
- const w=reactive({active:s,state:s.initial,preferences:defaults(),credentials:{},localService:{majorCharacters:[]},loading:false,busy:false,terminalBusy:false,theaters:[],storageStatus:'saved',save:vi.fn(async()=>{}),connectionReady:()=>true}) as unknown as ViewModel;
+ const w=reactive({active:s,state:s.initial,preferences:defaults(),credentials:{},localService:{majorCharacters:[]},loading:false,busy:false,terminalBusy:false,theaters:[],storageStatus:'saved',save:vi.fn(async()=>{}),connectionReady:()=>true,scopedRecall:async()=>[],indexTerminalNotes:()=>{}}) as unknown as ViewModel;
  let u!:ReturnType<typeof usePersonalTerminal>;
  await renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}}));return {w,u};
 }

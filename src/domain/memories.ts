@@ -1,9 +1,10 @@
 import type {Memory,WorldState,Session,DiceEvent} from './contracts';
 import {stripReasoning,scrubModelData} from './reasoning.ts';
+import {cleanFacts,type ScopedFact} from './knowledge.ts';
 export interface Commitment {id:string;participants:string[];content:string;deadline:string;status:'open'|'fulfilled'|'cancelled'}
 export interface AffinityChange {id:string;name:string;before?:number;after:number;delta?:number;reason:string}
 export interface StateChange {id:string;name:string;field:string;before:string;after:string}
-export interface RoundMemory {version:1;participants:string[];time:string;location:string;userActions:string[];charActions:{name:string;actions:string[]}[];gains:string[];losses:string[];commitments:Commitment[];affinityChanges:AffinityChange[];stateChanges:StateChange[]}
+export interface RoundMemory {version:1;participants:string[];time:string;location:string;userActions:string[];charActions:{name:string;actions:string[]}[];gains:string[];losses:string[];commitments:Commitment[];affinityChanges:AffinityChange[];stateChanges:StateChange[];facts?:ScopedFact[]}
 export interface MemoryRequest {turnId:string;variantId:string;input:string;story:string;event?:string;diceEvent?:DiceEvent;before:WorldState;after:WorldState;priorCommitments:Commitment[]}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function text(v:unknown,max=500,required=true):string {if(typeof v!=='string')throw Error('记忆字段格式不正确');const s=stripReasoning(v).trim();if(s.length>max||required&&!s||/<\/?(?:Slate|Scene_NO|Scene_Title|EN_Title|Quote|Location|Ti|SR_STATE|SR_DONE)\b/i.test(s))throw Error('记忆字段不完整或含排版标签');return s;}
@@ -11,10 +12,10 @@ function list(v:unknown,max=32,size=500){if(!Array.isArray(v)||v.length>max)thro
 export function cleanCommitments(v:unknown):Commitment[]{if(!Array.isArray(v)||v.length>200)throw Error('约定格式不正确');const ids=new Set<string>();return v.map(p=>{if(!object(p)||!['open','fulfilled','cancelled'].includes(String(p.status)))throw Error('约定状态不正确');const id=text(p.id,200);if(ids.has(id))throw Error('约定标识重复');ids.add(id);return {id,participants:list(p.participants,20,80),content:text(p.content,800),deadline:text(p.deadline,200),status:p.status as Commitment['status']};});}
 export function validateMemoryRecord(v:unknown):RoundMemory{
  if(!object(v)||v.version!==1)throw Error('记忆格式不正确');
- const allowed=['version','participants','time','location','userActions','charActions','gains','losses','commitments','affinityChanges','stateChanges'];if(Object.keys(v).some(k=>!allowed.includes(k)))throw Error('记忆包含不支持的字段');
+ const allowed=['version','participants','time','location','userActions','charActions','gains','losses','commitments','affinityChanges','stateChanges','facts'];if(Object.keys(v).some(k=>!allowed.includes(k)))throw Error('记忆包含不支持的字段');
  if(!Array.isArray(v.charActions)||v.charActions.length>50||!Array.isArray(v.affinityChanges)||v.affinityChanges.length>50||!Array.isArray(v.stateChanges)||v.stateChanges.length>200)throw Error('记忆人物更新格式不正确');
  const out:RoundMemory={version:1,participants:list(v.participants,50,80),time:text(v.time,200),location:text(v.location,500),userActions:list(v.userActions,32,800),charActions:v.charActions.map(c=>{if(!object(c))throw Error('记忆人物行动不正确');return {name:text(c.name,80),actions:list(c.actions,32,800)};}),gains:list(v.gains),losses:list(v.losses),commitments:cleanCommitments(v.commitments),affinityChanges:v.affinityChanges.map(c=>{if(!object(c)||typeof c.after!=='number'||!Number.isFinite(c.after)||c.before!==undefined&&(typeof c.before!=='number'||!Number.isFinite(c.before))||c.delta!==undefined&&(typeof c.delta!=='number'||!Number.isFinite(c.delta)))throw Error('记忆好感度格式不正确');return {id:text(c.id,200),name:text(c.name,80),...(c.before!==undefined?{before:c.before as number}:{}),after:c.after as number,...(c.delta!==undefined?{delta:c.delta as number}:{}),reason:text(c.reason,500)};}),stateChanges:v.stateChanges.map(c=>{if(!object(c))throw Error('记忆状态变化格式不正确');return {id:text(c.id,200),name:text(c.name,80),field:text(c.field,80),before:text(c.before,2000),after:text(c.after,2000)};})};
- if(!out.participants.length||!out.userActions.length||formatMemory(out).length>6000)throw Error('记忆内容不完整或超过6000字');return out;
+ if(!out.participants.length||!out.userActions.length||formatMemory(out).length>6000)throw Error('记忆内容不完整或超过6000字');out.facts=cleanFacts(v.facts);if(!out.facts.length)delete out.facts;return out;
 }
 export function formatMemory(r:RoundMemory){const join=(s:string[])=>s.length?s.join('；'):'无';return ['人物：'+join(r.participants),'时间：'+r.time,'地点：'+r.location,'事件概括：','user行动：'+join(r.userActions),'char行动：'+(r.charActions.map(c=>c.name+'：'+join(c.actions)).join('；')||'无'),'获得：'+join(r.gains),'失去／消耗：'+join(r.losses),'重要约定：'+(r.commitments.map(c=>c.participants.join('、')+'：'+c.content+'；期限：'+c.deadline+'；'+({open:'未履行',fulfilled:'已履行',cancelled:'已取消'}[c.status])).join('；')||'无'),'好感度变化：'+(r.affinityChanges.map(c=>c.name+'：'+(c.before===undefined?'首次建立 → '+c.after:c.before+' → '+c.after+'（'+((c.delta||0)>0?'+':'')+c.delta+'）')+'；'+c.reason).join('；')||'无'),'其他状态变化：'+(r.stateChanges.map(c=>c.name+' · '+c.field+'：'+c.before+' → '+c.after).join('；')||'无')].join('\n');}
 export function memoryText(m:Memory){return m.record?formatMemory(m.record)+(m.annotation?'\n补充：'+m.annotation:''):m.text;}
@@ -26,13 +27,35 @@ export function activeCommitments(memories:Memory[]){const values=new Map<string
 export function buildRecallQuery(input:string,state:WorldState,recent:string[],location?:string){const present=state.characters.filter(c=>c.present||input.includes(c.name)).map(c=>c.name);return [input,'相关人物：'+[state.player.name,...present].join('、'),...(location&&location!=='未明确'?['当前地点：'+location]:[]),...recent.slice(-2).map(t=>'最近事件：'+t)].join('\n');}
 export function memoryContext(retrieved:Memory[],promises:Commitment[]){const chunks:string[]=[];let current='';for(const p of promises.slice(-30)){const line='未履行约定：'+p.participants.join('、')+'；'+p.content+'；期限：'+p.deadline+'\n';if(current.length+line.length>6000){chunks.push(current);current='';}current+=line;}if(current)chunks.push(current);if(chunks.length>3)chunks.splice(3);for(const m of retrieved){if(chunks.length===8)break;if(!memoryReady(m))continue;const t=m.text,parts:string[]=[];for(let i=0;i<t.length;i+=6000)parts.push(t.slice(i,i+6000));if(parts.length>8-chunks.length)continue;chunks.push(...parts);}return chunks;}
 /** Create numeric changes from committed state, never from model-proposed numbers. */
-export function normalizeMemoryResult(raw:unknown,input:MemoryRequest):RoundMemory{
+export function normalizeMemoryResult(raw:unknown,input:MemoryRequest,diagnostics?:string[]):RoundMemory{
  const v=scrubModelData(raw) as any;if(!object(v))throw Error('记忆结果不是对象');
  const reasons=Array.isArray(v.affinityChanges)?v.affinityChanges:[];const affinityChanges:AffinityChange[]=[];
  for(const a of input.after.characters){const before=input.before.characters.find(c=>c.id===a.id)?.affinity;if(a.affinity===undefined||a.affinity===before)continue;affinityChanges.push({id:a.id,name:a.name,...(before!==undefined?{before,delta:a.affinity-before}:{}),after:a.affinity,reason:text((reasons as any[]).find(c=>c?.id===a.id)?.reason||'本轮互动后状态更新',500)});}
  const stateChanges:StateChange[]=[];for(const a of [input.after.player,...input.after.characters]){const old=[input.before.player,...input.before.characters].find(c=>c.id===a.id);for(const field of ['identity','ability','mentalPowerLevel','energy','focus'] as const)if(a[field]!==undefined&&a[field]!==old?.[field])stateChanges.push({id:a.id,name:a.name,field:{identity:'身份',ability:'异能',mentalPowerLevel:'精神力等级',energy:'体力',focus:'专注'}[field],before:old?.[field]===undefined?'未明确':String(old[field]).trim()||'无',after:String(a[field]).trim()||'无'});}
  if(!Array.isArray(v.commitments))throw Error('缺少约定记录');
  const commitments=(v.commitments as any[]).map((c,i)=>({...c,id:input.priorCommitments.some(p=>p.id===c?.id)?c.id:input.variantId+'/promise-'+i}));
- return validateMemoryRecord({...v,version:1,commitments,affinityChanges,stateChanges});
+ // Fact audiences: stable ids win, unique names resolve, same-name ambiguity becomes
+ // unknown — the last duplicate must never win the map and receive someone's secret.
+ const allIds=new Set<string>(),byName=new Map<string,string[]>();
+ for(const a of [input.after.player,...input.after.characters,...(input.before.player?[input.before.player]:[]),...input.before.characters])if(a?.id&&a?.name){allIds.add(String(a.id));const name=String(a.name).trim();const ids=byName.get(name)||[];if(!ids.includes(String(a.id)))ids.push(String(a.id));byName.set(name,ids);}
+ const resolveAudience=(value:unknown):string|undefined=>{
+  // Type comes before mapping: a non-string entry (42, an object) must never be
+  // coerced into a plausible role id; it degrades to unknown with a diagnostic.
+  if(typeof value!=='string'){diagnostics?.push('事实知情对象类型不正确，已保守降级为未知：'+JSON.stringify(value));return undefined;}
+  const s=value.trim();
+  if(!s){diagnostics?.push('事实知情对象为空，已保守降级为未知');return undefined;}
+  if(allIds.has(s))return s;
+  const ids=byName.get(s);
+  if(ids&&ids.length===1)return ids[0];
+  diagnostics?.push('事实知情对象无法识别，已保守降级为未知：'+s);
+  return undefined;
+ };
+ const rawFacts=Array.isArray(v.facts)?v.facts.map(f=>{
+  if(!f||typeof f!=='object'||!Array.isArray((f as any).knownBy))return f;
+  const knownBy:string[]=[];
+  for(const entry of (f as any).knownBy){const id=resolveAudience(entry);if(id){if(!knownBy.includes(id))knownBy.push(id);}else diagnostics?.push('事实知情对象无法识别，已保守降级为未知：'+String(entry));}
+  return {...f,knownBy};
+ }):v.facts;
+ return validateMemoryRecord({...v,version:1,commitments,affinityChanges,stateChanges,...(rawFacts!==undefined?{facts:rawFacts}:{})});
 }
 export function visibleSourceStillMatches(session:Session,turnId:string,variantId:string){const t=session.turns.find(t=>t.id===turnId),v=t?.variants[t.selected];return v?.id===variantId&&v.status==='complete';}

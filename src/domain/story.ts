@@ -231,7 +231,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   const turn = session.turns[index]; if (!turn || !text.trim()) throw new Error('消息不能为空');
   if(role==='user'){turn.input=text.trim();turn.inputEdited=true;for(const v of turn.variants)delete v.repairAudit;if(!turn.variants.length&&turn.randomEvent?.status==='pending')turn.randomEvent={status:'preparing',kind:turn.randomEvent.proposal.kind};}
   else {const variant=selected(turn);if(!variant)throw new Error('稿件不存在');const clean=stripReasoning(text.trim());if(!clean.trim())throw new Error('消息不能为空');variant.text=clean;variant.edited=true;delete variant.repairAudit;}
-  for(const memory of session.memories)if(memory.kind==='event'&&memory.sourceTurn===turn.id){if(memory.record)session.memoryArchive=[...(session.memoryArchive||[]),copy(memory)];memory.status='pending';delete memory.record;delete memory.vector;delete memory.sourceFingerprint;}
+  for(const memory of session.memories)if(memory.kind==='event'&&memory.sourceTurn===turn.id){if(memory.record)session.memoryArchive=[...(session.memoryArchive||[]),copy(memory)];memory.status='pending';delete memory.record;delete memory.vector;delete memory.factVectors;delete memory.sourceFingerprint;}
   session.updatedAt=now();
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
@@ -286,7 +286,7 @@ export function migrateAffinitySession(session:Session):void{
    if(state.variables)v.outcome.mvu=[{op:'replace',path:'/custom',value:state.variables}];
   }
   if(session.memories.length)records.push({source:'memories',value:copy(session.memories)});
-  for(const memory of session.memories)if(memory.kind!=='note'){memory.status='pending';delete memory.vector;delete memory.sourceFingerprint;}
+  for(const memory of session.memories)if(memory.kind!=='note'){memory.status='pending';delete memory.vector;delete memory.factVectors;delete memory.sourceFingerprint;}
  }
  if(needed)session.affinityMigration={version:1,at:new Date().toISOString(),records};
 }
@@ -362,6 +362,7 @@ export function parseBackup(text: string): Snapshot {
       if (!m || typeof m.id !== 'string' || typeof m.text !== 'string' || !['note','event','chapter'].includes(m.kind)) throw new Error('记忆格式不正确');
       if (m.sourceTurn && (!turnIds.has(m.sourceTurn) || !s.turns.find(t=>t.id===m.sourceTurn)?.variants.some(v=>v.id===m.sourceVariant))) throw new Error('记忆来源不存在');
       if (m.vector && (typeof m.vector.model !== 'string' || !Array.isArray(m.vector.values) || m.vector.values.length > 8192 || m.vector.values.some(n=>typeof n!=='number'||!Number.isFinite(n)))) throw new Error('记忆向量不正确');
+      if (m.factVectors !== undefined && (!Array.isArray(m.factVectors) || m.factVectors.length > 400 || m.factVectors.some(v => !v || typeof v.id !== 'string' || !v.id || v.id.length > 300 || typeof v.text !== 'string' || !v.text || v.text.length > 8000 || typeof v.model !== 'string' || !v.model || v.model.length > 200 || !Array.isArray(v.values) || v.values.length > 8192 || v.values.some(n => typeof n !== 'number' || !Number.isFinite(n))))) throw new Error('记忆分段向量不正确');
     }
     if (s.forumActivity !== undefined) {
       if (!record(s.forumActivity) || Object.keys(s.forumActivity).length > 10000) throw new Error('论坛互动记录不合法');

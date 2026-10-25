@@ -10,5 +10,5 @@ export function hybridRanks(items:SearchItem[],query:string,vector?:number[]){
  const scores=new Map<string,number>();lexical.filter(x=>x.score>0).forEach((x,i)=>scores.set(x.id,1/(60+i+1)));
  if(vector?.length)items.filter(m=>m.vector?.length===vector.length).map(m=>({id:m.id,score:cosine(m.vector!,vector)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).forEach((x,i)=>scores.set(x.id,(scores.get(x.id)||0)+1/(60+i+1)));
  // Recent records are a bounded fallback only when no query term matches.
- return scores.size?[...scores].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([id])=>id):items.slice(0,4).map(m=>m.id);
+ return scores.size?[...scores].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([id])=>id):[];
 }

@@ -14,7 +14,7 @@ import {ensureTerminalCodes} from '../src/app/terminalCodeRegistry';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables';
 import type {LocalService,Snapshot,GenerateRequest} from '../src/domain/contracts';
 import {emptyTerminal} from '../src/domain/personalTerminal';
-import {terminalAnchor} from '../src/domain/terminalLedger';
+import {terminalAnchor,recordTerminalChat,syncTerminalMemoryNotes,isTerminalMemoryNote} from '../src/domain/terminalLedger';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
 const service:LocalService={runtime:'local-card',dataset:'test-world',name:'测试',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true}};
@@ -133,6 +133,50 @@ it('uses the current turn input to keep a named older private chat in the real g
  expect(JSON.stringify(chats)).not.toContain('无关知情');
  expect(JSON.stringify(chats)).not.toContain('其他分支的私聊不应出现。');
  expect(JSON.stringify(chats[0])).not.toContain('无关私聊');
+});
+it('远期私聊canary通过正文记忆召回并带知情标签，最近窗口和其他角色请求都不含它',async()=>{
+ const w=await workspace();fill(w);w.preferences.vectorEnabled=true;fill(w,'embed');await w.confirmAllApis();await w.create('私聊canary',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const captured:GenerateRequest[]=[];
+ const gen=vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){captured.push(r);yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'推进',characters:[]}};});
+ await generateAndWait(w,'铺垫');
+ const s=w.active.value!,terminal=s.terminal=emptyTerminal(),anchor=terminalAnchor(s);
+ recordTerminalChat(terminal,anchor,{id:'canary',title:'样例引导员',group:false},['玩家','样例引导员'],'远期canary：青铜罗盘藏在天文台地下室',[],['player','guide']);
+ syncTerminalMemoryNotes(s);
+ // 淹没最近窗口：canary会话追加13条新消息（>12），另有9个更新会话（>8）
+ terminal.conversations.push({id:'canary',title:'样例引导员',group:false,members:['guide'],announcement:'',unread:0,origin:'manual' as const,joined:true,messages:Array.from({length:13},(_,i)=>({id:'cm'+i,sender:i%2?'guide':'player',text:'无关新消息'+i,at:new Date(2026,1,i+1).toISOString()}))});
+ for(let i=0;i<9;i++)terminal.conversations.push({id:'p'+i,title:'角色'+i,group:false,members:['engineer'],announcement:'',unread:0,origin:'manual' as const,joined:true,messages:[{id:'om'+i,sender:'player',text:'别的私聊'+i,at:new Date(2026,2,i+1).toISOString()}]});
+ await w.generate('那件藏在天文台地下室的信物是什么');
+ expect(captured).toHaveLength(2);
+ const request=captured[1],chats=request.terminalContext?.privateChats||[];
+ // 最近窗口里没有canary原文
+ expect(JSON.stringify(chats.map(c=>c.messages))).not.toContain('青铜罗盘');
+ // 正文记忆里召回canary并带知情标签
+ expect(request.memories.some(t=>t.includes('青铜罗盘')&&t.includes('知情：player、guide'))).toBe(true);
+ // A的scoped请求可召回，B的不含
+ const aHits=await w.scopedRecall(s,'那件藏在天文台地下室的信物是什么',['player','guide']);
+ expect(aHits.map(m=>m.text).join('|')).toContain('青铜罗盘');
+ const bHits=await w.scopedRecall(s,'那件藏在天文台地下室的信物是什么',['player','engineer']);
+ expect(bHits.map(m=>m.text).join('|')).not.toContain('青铜罗盘');
+});
+it('旧存档只有private bucket而无note时，首次正文生成前自动补齐#private note并召回带知情标签的canary',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('旧存档升级',{name:'玩家',appearance:'',personality:'',background:''},'');
+ const s=w.active.value!,terminal=s.terminal=emptyTerminal(),anchor=terminalAnchor(s);
+ // 模拟旧存档：terminal.memories 已有纯私聊记录，但 s.memories 里没有任何派生 note
+ recordTerminalChat(terminal,anchor,{id:'canary',title:'样例引导员',group:false},['玩家','样例引导员'],'旧私聊：青铜罗盘藏在天文台地下室',[],['player','guide']);
+ expect(s.memories.filter(isTerminalMemoryNote)).toHaveLength(0);
+ const captured:GenerateRequest[]=[];
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(r){captured.push(r);yield {type:'delta',text:'正文'};yield {type:'done',outcome:{event:'推进',characters:[]}};});
+ await w.generate('那件藏在天文台地下室的信物是什么');
+ expect(captured).toHaveLength(1);
+ // 检索前同步已生效：召回正文记忆含 canary 且带正确知情标签
+ expect(captured[0].memories.some(t=>t.includes('青铜罗盘')&&t.includes('知情：player、guide'))).toBe(true);
+ // 幂等且未污染：#private note 建立，公开聚合note不含私聊原文，真实终端记录未删改
+ const notes=s.memories.filter(isTerminalMemoryNote);
+ expect(notes.some(m=>m.id.endsWith('#private')&&m.text.includes('青铜罗盘'))).toBe(true);
+ expect(notes.some(m=>!m.id.endsWith('#private')&&m.text.includes('青铜罗盘'))).toBe(false);
+ expect(terminal.memories![0].chats).toHaveLength(1);
+ expect(terminal.memories![0].chats[0].knownBy).toEqual(['player','guide']);
+ expect(terminal.memories![0].chats[0].summary).toBe('旧私聊：青铜罗盘藏在天文台地下室');
 });
 it('补修对照保存到当前稿件，记录实际差异、无变化和失败，续写新稿不继承旧稿对照',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('补修审计',{name:'玩家',appearance:'',background:'',personality:''},'');const s=w.active.value!,v={id:'audit-v',text:'固定正文',status:'incomplete' as const,createdAt:''};s.initial.characters.find(c=>c.id==='guide')!.affinity=35;s.turns.push({id:'audit-t',input:'行动',selected:0,variants:[v]});finishVariant(s,0,v,{event:'原事件'});
