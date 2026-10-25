@@ -140,7 +140,7 @@ function campusAccess(event:Event){const detail=(event as CustomEvent).detail;if
 
 watch(()=>w.active?.persona,persona=>{if(persona)setMasterPersona(persona);},{deep:true});
 
-watch(()=>w.newGameDraft.persona,persona=>{if(!w.active&&persona.name.trim())setMasterPersona(persona);},{deep:true});
+watch(()=>w.newGameDraft.persona,persona=>{if(!w.backupWorking&&!w.active&&persona.name.trim())setMasterPersona(persona);},{deep:true});
 
 watch(()=>w.loading,loading=>{if(!loading&&!w.active){try{if(accountStorage.getItem(masterPersonaKey))return;}catch{}const recent=[...w.sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))[0];if(recent)setMasterPersona(recent.persona);}});
 
@@ -255,7 +255,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
-  <div v-else class="app-shell"><FloatingGroupChat v-if="w.active" :visible="!library&&w.panel==='story'" :w="w" />
+  <div v-else class="app-shell" :inert="w.backupWorking||undefined"><FloatingGroupChat v-if="w.active" :visible="!library&&w.panel==='story'" :w="w" />
 
     <WorkspaceNavigation :w="w" :embedded="embedded" @navigate="navigate" @start="start" @resume="resume" @home="opening" @reset="layout.reset()" @personas="library=true" />
 

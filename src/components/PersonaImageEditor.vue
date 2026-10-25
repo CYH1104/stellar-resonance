@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {registerBackupFlusher} from '../app/backupFlushers';
 import DismissibleNotice from './DismissibleNotice.vue';
 import UserAvatar from './UserAvatar.vue';
 import {avatarFrame,avatarAppearanceStyle,cleanAvatarAppearance,type AvatarAppearance,type AvatarSize,type AvatarShape} from '../domain/avatarAppearance';
@@ -38,6 +39,7 @@ async function select(event:Event){const el=event.target as HTMLInputElement,fil
 function down(event:PointerEvent){if(!hasImage.value||props.disabled)return;drag={x:frame.value.x,y:frame.value.y,startX:event.clientX,startY:event.clientY};(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);}
 function move(event:PointerEvent){if(!drag||props.disabled)return;const rect=(event.currentTarget as HTMLElement).getBoundingClientRect();updateFrame({x:drag.x+(event.clientX-drag.startX)/rect.width,y:drag.y+(event.clientY-drag.startY)/rect.height});}
 onUnmounted(()=>{imageRequest++;generation++;clearTimeout(cropTimer);if(url)URL.revokeObjectURL(url);});
+registerBackupFlusher(async()=>{clearTimeout(cropTimer);await crop();},0);
 </script>
 <template><section class="persona-image-editor"><h2>人设图片与头像</h2><div class="actions"><button type="button" :disabled="disabled" @click="input?.click()">选择图片</button><button v-if="portrait" type="button" :disabled="disabled" @click="emit('update:portrait',undefined);emit('update:avatar',undefined);emit('dirty')">移除图片</button><input ref="input" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="select" /><small class="muted">PNG / JPEG / WebP · 最多5MB</small><slot name="image-options" /></div>
 <div class="avatar-appearance-controls"><label>头像尺寸<select v-model="size" :disabled="disabled"><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label><label>头像形状<select v-model="shape" :disabled="disabled"><option value="square">正方形</option><option value="circle">圆形</option><option value="rectangle">长方形（竖向）</option></select></label></div>

@@ -57,7 +57,7 @@ it('previews avatar pan immediately and saves the newest adjustment after an in-
  let a!:ReturnType<typeof useAvatarAdjustment>;const errors:string[]=[];
  await renderToString(createSSRApp({setup(){a=useAvatarAdjustment(w,e=>errors.push(e));return()=>h('div');}}));
  a.adjustAvatar('scale',2);a.adjustAvatar('x',20);expect(a.avatarStyle.value.transformOrigin).toBe('70% 50%');
- const first=a.flushAvatar();a.adjustAvatar('x',-20);a.adjustAvatar('y',15);await a.flushAvatar();finish();await first;await nextTick();
+ const first=a.flushAvatar();a.adjustAvatar('x',-20);a.adjustAvatar('y',15);const waiting=a.flushAvatar();finish();await waiting;await first;await nextTick();
  expect(w.active!.terminal!.avatarView).toEqual({scale:2,x:-20,y:15});expect(calls).toBe(2);expect(errors).toEqual([]);
  w.save=vi.fn(async()=>{throw Error('disk');});a.adjustAvatar('x',5);await a.flushAvatar();expect(a.avatarDraft.value.x).toBe(-20);expect(errors[0]).toContain('未保存');
 });

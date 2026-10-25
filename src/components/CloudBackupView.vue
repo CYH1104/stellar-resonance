@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,reactive,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import {createCloudSave,parseCloudSave,type CloudSave} from '../domain/cloudBackup';
-import {localCharacterImage} from '../app/localCharacterImages';
-import {nicknameImages,saveNicknameImage} from '../app/localNicknameImages';
+import {parseCloudSave,type CloudSave} from '../domain/cloudBackup';
 import {accountStorage} from '../storage/accountScope';
 import {readCloudToken,writeCloudToken} from '../storage/cloudTokens';
 import {createCloudBackup,type CloudTransportError} from '../domain/cloudTransport.mjs';
@@ -19,7 +17,7 @@ const helpOpen=ref(false);
 const preview=ref<{cloud:CloudSave;text:string;file:string}>(),uploadConfirm=ref(false),undoConfirm=ref(false);
 const config=computed(()=>configs[provider.value]);
 
-const taskBlocked=computed(()=>!!(props.w.loading||props.w.busy||props.w.terminalBusy||props.w.workingMemory||props.w.workingPersona||props.w.creatingGame||props.w.workingForumReply||props.w.configuringApis));
+const taskBlocked=computed(()=>!!(props.w.backupWorking||props.w.loading||props.w.busy||props.w.terminalBusy||props.w.workingMemory||props.w.workingPersona||props.w.creatingGame||props.w.workingForumReply||props.w.configuringApis));
 let controller:AbortController|undefined,disposed=false;
 const errors:Record<string,string>={CLOUD_INVALID_FILE_METADATA:'平台返回的文件信息不完整，已停止上传，避免误用更新接口。',CLOUD_REQUEST_REJECTED:'平台拒绝了请求参数（400），不一定是令牌权限问题。',CLOUD_VALIDATION_FAILED:'平台校验未通过（422）：可能是仓库初始化、分支、文件参数或平台文件限制。请保留此提示以便定位。',CLOUD_RATE_LIMITED:'平台请求过于频繁（429），请稍后重试。',CLOUD_FILE_TOO_LARGE:'备份超过平台允许的文件大小，请使用本地备份。',CLOUD_INVALID_CONFIGURATION:'请填写正确的仓库名称和访问令牌。',CLOUD_TOKEN_INVALID:'令牌无效或已过期，请重新填写。',CLOUD_PERMISSION_DENIED:'令牌权限不足、访问受限或调用次数达到限制。请检查仓库读写权限。',CLOUD_PRIVATE_REPOSITORY_REQUIRED:'同名仓库不是私有仓库。请更换仓库名，或先在平台将仓库设为私有。',CLOUD_REPOSITORY_NOT_FOUND:'仓库不存在，请先连接仓库。',CLOUD_CONNECTION_FAILED:'无法连接备份平台，请检查网络后重试。',CLOUD_CONFLICT:'仓库已被其他设备更新，请刷新列表后重试。',CLOUD_UPSTREAM_FAILED:'平台未能完成请求，请检查令牌权限、仓库限制后重试。',CLOUD_BACKUP_NOT_FOUND:'备份不存在或超过大小限制，请刷新列表。',CLOUD_INVALID_BACKUP:'存档格式不兼容，原数据未被覆盖。',LOCAL_SESSION_REQUIRED:'本地服务会话已过期，请刷新页面后重试。'};
 async function api(action:string,extra:object={}){
@@ -31,9 +29,9 @@ async function run(action:()=>Promise<void>){if(working.value)return;working.val
 async function refresh(){const r=await api('list');files.value=r.files;selected.value=files.value.some(f=>f.name===selected.value)?selected.value:files.value[0]?.name||'';}
 function connect(){void run(async()=>{connection.value=undefined;files.value=[];const r=await api('connect');connection.value=r;try{accountStorage.setItem('cloud-repository:'+provider.value,config.value.repository.trim());}catch{}await refresh();message.value=r.created?'私有备份仓库已创建并连接。':'已连接已有私有仓库。';});}
 function prepareUpload(){if(!connection.value||taskBlocked.value)return;uploadConfirm.value=true;}
-async function upload(){uploadConfirm.value=false;void run(async()=>{if(!connection.value||taskBlocked.value)throw Error('请先连接仓库并等待当前任务结束。');await props.w.save();if(props.w.storageStatus==='failed')throw Error('本地保存失败，请先导出本地备份。');const characters=props.w.localService?.majorCharacters||props.w.localService?.characters||[];const imageOverrides=Object.fromEntries(characters.flatMap(a=>{const image=localCharacterImage(a.id);return image?.url?[[a.id,image]]:[];}));const text=createCloudSave({version:1,sessions:props.w.sessions,preferences:props.w.preferences},{...props.w.preferences,characterImages:{...props.w.preferences.characterImages,...imageOverrides}},nicknameImages());await api('upload',{file:'stellar-workspace-backup.json',text});await refresh();message.value='备份已上传。本地图片和 API 密钥未上传。';});}
+async function upload(){uploadConfirm.value=false;void run(async()=>{if(!connection.value||taskBlocked.value)throw Error('请先连接仓库并等待当前任务结束。');const text=await props.w.createCloudWorkspaceBackup();await api('upload',{file:'stellar-workspace-backup.json',text});await refresh();message.value='完整备份已上传，包含人设档案和终端记录。本地图片、运行日志和密钥未上传。';});}
 function download(){void run(async()=>{if(!selected.value)throw Error('请先选择仓库备份。');const r=await api('download',{file:selected.value});preview.value={cloud:parseCloudSave(r.text),text:r.text,file:selected.value};});}
-async function restore(){const p=preview.value;if(!p)return;void run(async()=>{if(taskBlocked.value)throw Error('请先等待或停止当前任务，再恢复备份。');await props.w.restoreCloudSave(p.text);preview.value=undefined;let imageIssue=false;for(const [name,url] of Object.entries(p.cloud.nicknameImages))try{if(!nicknameImages()[name])saveNicknameImage(name,url);}catch{imageIssue=true;}message.value='全部存档与设置已恢复，覆盖前副本已保留。'+(imageIssue?'部分昵称头像链接未能保存，可稍后重新设置。':'');});}
+async function restore(){const p=preview.value;if(!p)return;void run(async()=>{if(taskBlocked.value)throw Error('请先等待或停止当前任务，再恢复备份。');await props.w.restoreCloudSave(p.text);preview.value=undefined;message.value='全部存档、人设档案和终端记录已恢复，覆盖前的完整副本已保留。';});}
 function undo(){undoConfirm.value=false;void run(async()=>{if(taskBlocked.value)throw Error('请先等待任务结束。');await props.w.undoCloudRestore();message.value='已恢复上次覆盖前的本地存档。';});}
 watch(()=>[provider.value,config.value.repository,config.value.token],()=>{connection.value=undefined;files.value=[];selected.value='';preview.value=undefined;error.value=message.value='';});
 const tokenWatchStops=(['github','gitee'] as const).map(name=>watch(()=>configs[name].token,token=>{try{writeCloudToken(name,token);}catch{error.value='令牌未能保存到本机，请检查浏览器存储权限。';}},{flush:'sync'}));
@@ -42,7 +40,7 @@ onBeforeUnmount(()=>{for(const stop of tokenWatchStops)stop();disposed=true;cont
 <template>
 <section class="cloud-backup-view">
  <header class="panel-heading"><div><p class="eyebrow">CLOUD BACKUP</p><h1>云端备份 <button class="backup-help" aria-label="查看备份说明" @click="helpOpen=true">?</button></h1></div></header>
- <p class="backup-count">当前共有 {{w.sessions.length}} 个存档</p>
+ <p v-if="w.restoreInterrupted" role="alert" class="cloud-error">上次恢复中断，请使用下方“恢复上次覆盖前的全部数据”，或重新拉取完整备份。</p><p class="backup-count">当前共有 {{w.sessions.length}} 个存档</p>
  <div class="backup-controls">
  <div class="actions" aria-label="备份操作"><button :disabled="working||taskBlocked" @click="run(async()=>{await w.saveCurrentCloudBackup();message='全部数据备份文件已下载。';})">下载所有数据</button><button :disabled="working||taskBlocked||!connection" @click="prepareUpload">上传备份</button><button :disabled="working||taskBlocked||!connection||!selected" @click="download">拉取备份</button></div>
  <div class="actions provider-switch" aria-label="备份平台"><button :disabled="working" :aria-pressed="provider==='gitee'" @click="provider='gitee'">国内 · Gitee</button><button :disabled="working" :aria-pressed="provider==='github'" @click="provider='github'">GitHub</button></div>
@@ -70,9 +68,9 @@ onBeforeUnmount(()=>{for(const stop of tokenWatchStops)stop();disposed=true;cont
  <button :disabled="working||taskBlocked" @click="undoConfirm=true">恢复上次覆盖前的全部数据</button>
  <p v-if="working" role="status">正在处理，请稍候…</p><p v-if="message" role="status">{{message}}</p><p v-if="error" role="alert" class="cloud-error">{{error}}</p>
  <DialogShell v-if="helpOpen" title="备份说明" @close="helpOpen=false">
- <p>下载所有数据：下载当前全部存档和设置的 JSON 文件。</p>
+ <p>下载所有数据：下载全部存档、人设档案、备注、草稿、主人设选择、终端记录与设置的 JSON 文件。旧备份仍可导入。</p>
  <p>上传备份：以当前本地数据覆盖仓库中的固定备份文件，保留其他文件。拉取备份：读取仓库数据，确认后覆盖本地；覆盖前自动保留恢复副本。</p>
- <p>备份包含剧情、人设、记忆、变量、终端记录、预设、世界书及界面设置。云端不上传本地图片、立绘或 API 配置与密钥；图片只保留 URL。</p>
+ <p>备份包含剧情、独立人设档案、主人设、备注与草稿、记忆、变量、终端记录、预设、世界书及界面设置。运行日志和模型原始输出不备份。云端不上传本地图片、立绘或 API 配置与密钥；图片只保留 URL。</p>
  <p>浏览器直接连接平台，令牌与备份不经过本站服务器。令牌自动保存在当前设备、当前账号的浏览器中，重新打开时自动读取；清空访问令牌输入框即可删除，不写入备份或提示词。连接时创建私有仓库，已有同名私有仓库则复用。</p>
  <p>上传大小按所选平台及账号的实际限制执行，不再设置应用自身的 20 MB 上限。GitHub 文件接口支持单文件最多 100 MB；Gitee 以平台对当前账号和接口返回的限制为准。</p>
  <ol v-if="provider==='github'" class="token-help github-token-guide">
@@ -86,9 +84,9 @@ onBeforeUnmount(()=>{for(const stop of tokenWatchStops)stop();disposed=true;cont
  </ol>
  <p v-else>Gitee 令牌需要 user_info 和 projects 权限。<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noopener noreferrer">获取 Gitee 令牌</a></p>
  </DialogShell>
- <DialogShell v-if="uploadConfirm" title="上传全部数据" @close="uploadConfirm=false"><p>将当前 {{w.sessions.length}} 个存档及全部预设、世界书、设置上传到私有仓库，更新同名备份。本地图片和 API 配置、密钥不上传。</p><div class="actions"><button @click="uploadConfirm=false">取消</button><button @click="upload">确认上传</button></div></DialogShell>
- <DialogShell v-if="preview" title="拉取全部数据" @close="!working&&(preview=undefined)"><p>文件：{{preview.file}}</p><p>备份时间：{{new Date(preview.cloud.savedAt).toLocaleString()}} · {{preview.cloud.snapshot.sessions.length}} 个存档</p><p>确认后将以仓库备份覆盖当前全部存档、预设、世界书和设置，覆盖前自动保存本地恢复副本。当前 API 配置、密钥和本地图片保留。</p><div class="actions"><button :disabled="working" @click="preview=undefined">取消</button><button :disabled="working||taskBlocked" @click="restore">确认覆盖全部数据</button></div></DialogShell>
- <DialogShell v-if="undoConfirm" title="恢复本地副本" @close="undoConfirm=false"><p>恢复上次云端覆盖前的全部存档与设置，当前状态也会保留为新的恢复副本。</p><div class="actions"><button @click="undoConfirm=false">取消</button><button @click="undo">确认恢复</button></div></DialogShell>
+ <DialogShell v-if="uploadConfirm" title="上传全部数据" @close="uploadConfirm=false"><p>将当前 {{w.sessions.length}} 个存档、全部人设档案、备注与草稿、预设、世界书和设置上传到私有仓库，更新同名备份。本地图片和 API 配置、密钥不上传。</p><div class="actions"><button @click="uploadConfirm=false">取消</button><button @click="upload">确认上传</button></div></DialogShell>
+ <DialogShell v-if="preview" title="拉取全部数据" @close="!working&&(preview=undefined)"><p>文件：{{preview.file}}</p><p>备份时间：{{new Date(preview.cloud.savedAt).toLocaleString()}} · {{preview.cloud.snapshot.sessions.length}} 个存档</p><p v-if="preview.cloud.snapshot.archive?.personas!==undefined">包含 {{preview.cloud.snapshot.archive.personas.length}} 份独立人设档案，以及备份中的主人设、备注和草稿。</p><p v-else>此旧备份没有独立人设库，本机已有的人设档案和草稿将保留。</p><p>确认后将以仓库备份覆盖当前全部存档、人设档案、预设、世界书和设置，覆盖前自动保存本地恢复副本。当前 API 配置、密钥和本地图片保留。</p><div class="actions"><button :disabled="working" @click="preview=undefined">取消</button><button :disabled="working||taskBlocked" @click="restore">确认覆盖全部数据</button></div></DialogShell>
+ <DialogShell v-if="undoConfirm" title="恢复本地副本" @close="undoConfirm=false"><p>恢复上次覆盖前的全部存档、人设档案与设置，当前状态也会保留为新的恢复副本。</p><div class="actions"><button @click="undoConfirm=false">取消</button><button @click="undo">确认恢复</button></div></DialogShell>
 </section>
 </template>
 <style scoped>

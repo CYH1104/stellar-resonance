@@ -1,3 +1,4 @@
+import {cleanBackupArchive,assertBackupSnapshotFields} from './backupArchive.ts';
 import {cleanSceneSnapshot} from './storyScene.ts';
 import {cleanCharacterImages} from './characterImages.ts';
 import {cleanTerminalBatch} from './terminalMain.ts';
@@ -260,7 +261,8 @@ export function keywordScore(text: string, query: string): number {
   return words.reduce((n,w) => n + (text.toLowerCase().includes(w) ? 3 : 0), 0) + chars.reduce((n,c) => n + (text.toLowerCase().includes(c) ? 0.1 : 0), 0);
 }
 export function backup(snapshot: Snapshot): string {
-  return JSON.stringify({ version: 1, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences) }, null, 2);
+  assertBackupSnapshotFields(snapshot);
+  return JSON.stringify({ version: snapshot.archive?2:1, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences),...(snapshot.archive?{archive:cleanBackupArchive(snapshot.archive)}:{}) }, null, 2);
 }
 /** Explicit one-time migration. Preserve original snapshots/patches for audit,
  * replay each old branch under its original range, then store bounded snapshots. */
@@ -321,6 +323,10 @@ export function saveFailureLocation(error:unknown):SaveFailureLocation{
 }
 export function parseBackup(text: string): Snapshot {
   const value = JSON.parse(text.replace(/^\uFEFF/,'')) as Snapshot; inspect(value);
+  const version=(value as any)?.version;if(version!==1&&version!==2)throw Error('备份版本不支持，请更新页面后再试。');
+  if(version===2)assertBackupSnapshotFields(value);
+  if(version===2&&!value.archive)throw Error('完整备份缺少人设档案资料，已停止导入。');
+  if(value.archive!==undefined)value.archive=cleanBackupArchive(value.archive);value.version=1;
   if (!value || value.version !== 1 || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
   value.sessions=sanitizeSessions(value.sessions);
   if (value.sessions.length > 100 || !value.preferences.profiles.length || value.preferences.profiles.length > 30) throw new Error('存档最多 100 份，接口档案必须为 1～30 份');
