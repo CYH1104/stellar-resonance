@@ -3,7 +3,7 @@ const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.
 import {majorCharacter} from '../src/domain/characterImages.ts';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
 import {terminalCodePrompt} from './terminal-codes.mjs';
-import {terminalPlan,parseTerminalResult,terminalActors} from './personal-terminal.mjs';
+import {terminalPlan,terminalFollowupPlan,parseTerminalResult,terminalActors} from './personal-terminal.mjs';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {createRelayPolicy} from './relay-policy.mjs';
 import {createTheaterShares} from './theater-shares.mjs';
@@ -202,7 +202,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           }
           let raw=combinedRaw(content,corrected);
           if(plan.task==='react'){
-            const review=terminalPlan(source,{...data,task:'review',input:data.input,context:{command:data.input,result}});
+            const review=terminalFollowupPlan(source,data,'review',{command:data.input,result});
             const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl});
             let checked='';for await(const part of completionChunks(upstream,{signal})){checked+=part;if(checked.length>4000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
             try{signal.throwIfAborted();parseTerminalResult(checked,review);}catch(error){error.raw=terminalRaw(checked);throw error;}

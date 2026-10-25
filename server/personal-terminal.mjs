@@ -41,6 +41,10 @@ export function terminalPlan(card,data){
  const ownCodes=Object.entries(terminalCodeBindings(data.context?.state)).filter(([id])=>ids.includes(id)).map(([id,code])=>({id,code}));if(ownCodes.length&&!game)messages.splice(messages.length-1,0,terminalCodePrompt(ownCodes,actors));
  return {task,ids,lockedTargets:context.targets,forbiddenNames:task==='command'?(hasParticipantNames?[...new Set([...participantNames.map(name=>name.trim()),data.persona.name.trim()])]:[...roster.map(a=>a.name),data.persona.name]):[...roster.map(a=>a.name),data.persona.name],contactId:data.context?.contactTarget?.id,messages,input:data.input,conversation:data.context?.conversation,maxNumber:data.context?.maxNumber||0,betrayal:!!data.context?.betrayal||betrayalPattern.test(data.input)};
 }
+// Follow-up checks keep the original roster without copying unrelated story or game context.
+export function terminalFollowupPlan(card,data,task,context){
+ return terminalPlan(card,{...data,task,context:{...context,state:data.context?.state}});
+}
 function terminalResultError(reason,retryable=false){const error=modelError(502,'INVALID_TERMINAL_RESULT');error.reason=reason;error.retryable=retryable;return error;}
 export function parseTerminalResult(content,plan){
  let r;const str=(s,max=3000)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
