@@ -7,7 +7,9 @@ import {effectScope,nextTick} from 'vue';
 import {useWorkspace} from '../src/app/useWorkspace';
 import {IndexedDbRepository} from '../src/storage/repository';
 import {HttpGateway} from '../src/gateway/http';
-import {backup,parseBackup,defaults,initialState,newSession,finishVariant} from '../src/domain/story';
+import {backup,parseBackup,defaults,initialState,newSession,finishVariant,stateAt} from '../src/domain/story';
+import {ensureTerminalCodes} from '../src/app/terminalCodeRegistry';
+import {terminalCodeBindings} from '../src/domain/terminalCodeVariables';
 import type {LocalService,Snapshot} from '../src/domain/contracts';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
@@ -40,6 +42,24 @@ it('automatically saves direct story and terminal changes without a new generati
  await nextTick();expect(w.storageStatus.value).toBe('pending');await vi.advanceTimersByTimeAsync(501);
  expect(saved?.sessions[0].name).toBe('修改后的存档');expect(saved?.sessions[0].terminal?.bio).toBe('新的简介');
  expect(w.storageStatus.value).toBe('saved');expect(w.lastSaved.value).not.toBe('');
+});
+it('attributes a save validation failure to the actual session, turn and variant',async()=>{
+ const w=await workspace();
+ const active=newSession('当前页',{name:'玩家',appearance:'',background:'',personality:''},''),broken=newSession('历史页',{name:'玩家',appearance:'',background:'',personality:''},'');
+ ensureTerminalCodes(active);ensureTerminalCodes(broken);
+ const codes=terminalCodeBindings(stateAt(broken)),changed=codes.player==='00000000001'?'00000000002':'00000000001';
+ broken.turns=[{id:'t1',input:'历史回合',selected:1,variants:[
+  {id:'v1',text:'未选中的旧稿',status:'complete',createdAt:'now',outcome:{event:'旧稿',mvu:[{op:'replace',path:'/custom',value:{终端码:{...codes,player:changed}}}]}},
+  {id:'v2',text:'当前选中稿件',status:'complete',createdAt:'now',outcome:{event:'当前稿件'}},
+ ]}];
+ w.sessions.value.push(active,broken);w.sessionId.value=active.id;
+ vi.mocked(IndexedDbRepository.prototype.write).mockImplementationOnce(async value=>{parseBackup(backup(value));});
+ await w.save();
+ expect(w.storageStatus.value).toBe('failed');
+ await vi.waitFor(()=>expect(w.formatErrors.entries.value.some(entry=>entry.code==='WORKSPACE_SAVE_FAILED')).toBe(true));
+ const entry=w.formatErrors.entries.value.find(entry=>entry.code==='WORKSPACE_SAVE_FAILED')!;
+ expect(entry).toMatchObject({sessionId:broken.id,turnId:'t1',variantId:'v1',round:1});
+ expect(entry.sessionId).not.toBe(active.id);
 });
 it('reports save validation failures and retries after fixing the terminal state',async()=>{
  const w=await workspace();w.sessions.value.push(newSession('自动保存',{name:'玩家',appearance:'',background:'',personality:''},''));

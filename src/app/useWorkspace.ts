@@ -26,7 +26,7 @@ import {syncCharacterFacts} from '../domain/characterFacts';
 import {defaultJourneyName} from '../domain/journeyName';
 import { computed, reactive, ref, watch, nextTick, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant } from '../domain/contracts';
-import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
+import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, saveFailureLocation, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
 import {apiAddress,type LocalApiCredentials} from '../storage/apiCredentials';
 import {drawSpecialEvent,awaitingSpecialEvent} from '../domain/randomEvents';
@@ -104,7 +104,9 @@ export function useWorkspace() {
   const storageStatus=ref<'idle'|'pending'|'saving'|'saved'|'failed'>('idle');
   const notice=ref('正在读取本地存档…'), problem=ref(''), input=ref(''), lastSaved=ref('');
   let activeCallId='';
+  let reportingSaveFailure=false;
   function logRuntime(error:unknown,stage='运行错误'){
+    if(reportingSaveFailure)return;
     if(error instanceof Error&&error.name==='AbortError')return;
     const detail=error instanceof Error?error.message:String(error);if(!detail.trim())return;
     const session=active.value,turn=session?.turns.at(-1);
@@ -145,7 +147,7 @@ export function useWorkspace() {
     const value=snapshot(),privateValue=credentialsSnapshot(); storageStatus.value='saving';storageError.value='';notice.value='正在保存…';
     const task=writes.catch(()=>{}).then(async()=>{await repository.write(value);if(apiStorageReady)await repository.writeApiCredentials(privateValue);}); writes=task;
     await task;lastSaved.value=now();if(revision===saveRevision){storageStatus.value='saved';storageError.value='';notice.value='已保存在本机';}
-   }catch(e){if(revision===saveRevision){storageStatus.value='failed';storageError.value=message(e);problem.value=storageError.value;notice.value='未保存，请导出备份';void formatErrors.record('保存失败：'+storageError.value+'；当前内存数据保留，请下载备份后重试。','WORKSPACE_SAVE_FAILED',active.value?.id||'','','runtime').catch(()=>{});}throw e;}
+   }catch(e){if(revision===saveRevision){storageStatus.value='failed';storageError.value=message(e);reportingSaveFailure=true;problem.value=storageError.value;reportingSaveFailure=false;notice.value='未保存，请导出备份';const at=saveFailureLocation(e);void formatErrors.record('保存失败：'+storageError.value+'；当前内存数据保留，请下载备份后重试。','WORKSPACE_SAVE_FAILED',at.sessionId||'',at.turnId||'','runtime',at.variantId||at.round?{...(at.variantId?{variantId:at.variantId}:{}),...(at.round?{round:at.round}:{})}:undefined).catch(()=>{});}throw e;}
   }
   const safePersist=()=>persist().catch(()=>{});
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);

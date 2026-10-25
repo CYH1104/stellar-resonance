@@ -1,4 +1,4 @@
-import {terminalCodePath,terminalCodeIds,validateTerminalCodeMap} from './terminalCodeVariables.ts';
+import {terminalCodePath,terminalCodeIds,validTerminalCode,validateTerminalCodeMap} from './terminalCodeVariables.ts';
 import {validAffinity,affinityNumber,affinitySchema} from './affinity.ts';
 import {fixedActorFields,restoreActorFacts} from './actorPolicy.ts';
 import {newDynamicActor} from './dynamicActors.ts';
@@ -119,10 +119,16 @@ export function applyMvu(state:WorldState,updates:unknown,legacy=false):WorldSta
   const next=patchData(original,ops,true);
   if(Object.keys(next).sort().join(',')!=='characters,custom,player'||!object(next.player)||!object(next.characters)||!object(next.custom))fail();
   // Historical whole-custom snapshots predate the program-owned code registry.
-  // An omitted registry is not an instruction to delete codes allocated later.
+  // An omitted, empty or partial registry is not an instruction to delete codes allocated later.
+  // Only keys that are entirely absent are inherited, so explicit edits and deletions still fail below.
   const rewritesCustom=ops.some(op=>op.path==='/custom'&&['replace','add','insert'].includes(op.op));
   const targetsCodes=ops.some(op=>[op.path,...(op.op==='move'&&op.from?[op.from]:[])].some(path=>path==='/custom/终端码'||path.startsWith('/custom/终端码/')));
-  if(rewritesCustom&&!targetsCodes&&!Object.hasOwn(next.custom,'终端码')&&object(state.variables?.终端码))next.custom.终端码=clone(state.variables.终端码) as Record<string,Json>;
+  const previousCodes=state.variables?.终端码;
+  if(rewritesCustom&&!targetsCodes&&object(previousCodes)){
+    const codes=next.custom.终端码;
+    if(codes===undefined)next.custom.终端码=clone(previousCodes) as Record<string,Json>;
+    else if(object(codes))for(const [id,code] of Object.entries(previousCodes))if(validTerminalCode(code)&&!Object.hasOwn(codes,id))codes[id]=code;
+  }
   if(state.characters.some(c=>!Object.hasOwn(next.characters as object,c.id)))fail();
   function actor(before:Record<string,Json>,after:Json,player=false){if(!object(after))fail();
     for(const k of new Set([...Object.keys(before),...Object.keys(after)])){

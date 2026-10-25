@@ -20,7 +20,7 @@ it('still rejects explicit registry deletion, unknown bindings and conflicting c
  const s=fixture();ensureTerminalCodes(s);const state=stateAt(s),codes=terminalCodeBindings(state);
  for(const updates of [
   [{op:'remove',path:'/custom/终端码'}],
-  [{op:'replace',path:'/custom',value:{终端码:{}}}],
+  [{op:'replace',path:'/custom/终端码',value:{}}],
   [{op:'replace',path:'/custom',value:{终端码:{...codes,ghost:'12345678901'}}}],
   [{op:'replace',path:'/custom',value:{终端码:{...codes,player:'12345678901'}}}],
   [{op:'replace',path:'/custom',value:{}},{op:'add',path:'/custom/终端码',value:{ghost:'12345678901'}}],

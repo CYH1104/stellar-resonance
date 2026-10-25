@@ -308,13 +308,24 @@ function inspect(value: unknown, depth = 0, path = ''): void {
   const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
   for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
+export interface SaveFailureLocation{sessionId?:string;turnId?:string;variantId?:string;round?:number}
+function locateFailure(error:unknown,context:SaveFailureLocation):never{
+ if(error instanceof Error)for(const [key,value] of Object.entries(context))if(value!==undefined&&(error as unknown as Record<string,unknown>)[key]===undefined)(error as unknown as Record<string,unknown>)[key]=value;
+ throw error;
+}
+export function saveFailureLocation(error:unknown):SaveFailureLocation{
+ const value=record(error)?error:{};
+ const text=(key:string)=>typeof value[key]==='string'&&value[key]?value[key] as string:undefined;
+ const round=typeof value.round==='number'&&Number.isInteger(value.round)&&value.round>0?value.round:undefined;
+ return {sessionId:text('sessionId'),turnId:text('turnId'),variantId:text('variantId'),round};
+}
 export function parseBackup(text: string): Snapshot {
   const value = JSON.parse(text.replace(/^\uFEFF/,'')) as Snapshot; inspect(value);
   if (!value || value.version !== 1 || !Array.isArray(value.sessions) || !value.preferences || !Array.isArray(value.preferences.profiles) || !Array.isArray(value.preferences.presets) || !Array.isArray(value.preferences.shortcuts)) throw new Error('不是支持的备份格式');
   value.sessions=sanitizeSessions(value.sessions);
   if (value.sessions.length > 100 || !value.preferences.profiles.length || value.preferences.profiles.length > 30) throw new Error('存档最多 100 份，接口档案必须为 1～30 份');
   const ids = new Set<string>();
-  for (const s of value.sessions) {
+  for (const s of value.sessions) {try{
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
     if(s.terminal!==undefined)validateTerminal(s.terminal);
     ids.add(s.id);
@@ -333,7 +344,7 @@ export function parseBackup(text: string): Snapshot {
       if(t.randomEvent&&['preparing','failed','pending'].includes(t.randomEvent.status)&&(t.variants.length||t!==s.turns.at(-1)))throw new Error('待决定的随机事件不能有正文或后续回合');
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
       for(const v of t.variants)if(v?.generationRequirements!==undefined){const requirements=v.generationRequirements;if(!record(requirements)||Object.keys(requirements).some(k=>!['stateEnabled','theaters'].includes(k))||typeof requirements.stateEnabled!=='boolean')throw Error('本轮生成配置不正确');v.generationRequirements={stateEnabled:requirements.stateEnabled,theaters:cleanTheaters(requirements.theaters)};}
-      for (const v of t.variants) { if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }
+      for (const v of t.variants) {try{ if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }catch(error){locateFailure(error,{sessionId:s.id,turnId:t.id,variantId:v?.id,round:index+1});} }
     }
     validateLedgerMetadata(s);
     if(s.hiddenActorCardIds!==undefined&&(!Array.isArray(s.hiddenActorCardIds)||s.hiddenActorCardIds.length>1000||s.hiddenActorCardIds.some(id=>!validActorId(id))))throw new Error('Invalid hidden actor cards');
@@ -351,7 +362,7 @@ export function parseBackup(text: string): Snapshot {
       for (const activity of Object.values(s.forumActivity)) {
         if (!record(activity) || (activity.baseLikes!==undefined&&(!Number.isSafeInteger(activity.baseLikes)||Number(activity.baseLikes)<0||Number(activity.baseLikes)>1e9)) || typeof activity.liked !== 'boolean' || !Array.isArray(activity.replies) || activity.replies.length > 100 || activity.replies.some(r => !record(r) || !shortText(r.id,128,true) || !shortText(r.text,1000,true) || !shortText(r.createdAt,100,true)||(r.kind!==undefined&&r.kind!=='ai')||(r.kind==='ai'&&(!shortText(r.authorName,80,true)||!shortText(r.authorId,128,true)||!shortText(r.replyTo,128,true))))) throw new Error('论坛评论记录不合法');
       }
-    }
+    }}catch(error){locateFailure(error,{sessionId:s?.id});}
   }
   for (const p of value.preferences.profiles) if (!p || typeof p.id !== 'string' || typeof p.name !== 'string' || typeof p.providerId !== 'string' || typeof p.model !== 'string' || !Number.isFinite(p.temperature) || p.temperature < 0 || p.temperature > 2 || !Number.isInteger(p.maxTokens) || p.maxTokens < 1 || p.maxTokens > 32000) throw new Error('模型参数不正确');
   for(const p of value.preferences.profiles)for(const [key,min,max] of [['topP',0,1],['frequencyPenalty',-2,2],['presencePenalty',-2,2]] as const)if(p[key]!==undefined&&(!Number.isFinite(p[key])||p[key]!<min||p[key]!>max))throw new Error('采样参数不正确');
