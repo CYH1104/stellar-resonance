@@ -2,7 +2,6 @@
 import {computed,onMounted,onBeforeUnmount,ref,watch} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Panel} from '../domain/contracts';
-import RandomEventControl from './RandomEventControl.vue';
 import HiddenActorCards from './HiddenActorCards.vue';
 import RegexPanel from './RegexPanel.vue';
 const props=defineProps<{w:ViewModel;embedded:boolean}>();
@@ -34,7 +33,6 @@ onBeforeUnmount(()=>{document.removeEventListener('pointerdown',outside);window.
     <div v-show="group===name" :id="`navigation-${name}`" class="navigation-dropdown">
      <template v-if="name==='创作配置'"><button v-for="tab in config" :key="tab.id" :disabled="blocked" @click="go(tab.id)">{{tab.label}}</button><button :disabled="blocked" @click="close();emit('personas')">人设档案</button><RegexPanel v-if="w.panel==='story'&&w.active" :w="w" /></template>
      <template v-else-if="name==='更多'">
-      <RandomEventControl :preferences="w.preferences" :disabled="w.busy" />
       <button :aria-pressed="w.preferences.suggestionsEnabled!==false" :disabled="w.busy" @click="w.preferences.suggestionsEnabled=w.preferences.suggestionsEnabled===false">行动建议 · {{w.preferences.suggestionsEnabled!==false?'已开启':'已关闭'}}</button>
       <button :aria-pressed="w.hideFloors" @click="w.hideFloors=!w.hideFloors">自动隐藏楼层 · {{w.hideFloors?'已开启':'已关闭'}}</button>
       <HiddenActorCards :w="w" /><button @click="go('format-errors')">运行日志</button>

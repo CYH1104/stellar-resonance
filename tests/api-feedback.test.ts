@@ -1,3 +1,5 @@
+import {vi} from 'vitest';
+vi.mock('../src/domain/featureAvailability',()=>({randomEventsAvailable:true}));
 import {expect,it} from 'vitest';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';

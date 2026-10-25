@@ -36,5 +36,5 @@ it('renders pale red negative edges and keeps positive line strength increasing 
  expect(affinityEdgeStyle(-50).stroke).toBe('#d99b9b');expect(affinityEdgeStyle(0).stroke).toBe('var(--color-accent)');expect(affinityEdgeStyle(100).strokeWidth).toBeGreaterThan(affinityEdgeStyle(50).strokeWidth);
  const s=session(),state=stateAt(s);state.characters[0].affinity=-50;state.characters[1].affinity=100;
  const w={state,active:s,preferences:defaults()} as unknown as ViewModel;
- const html=await renderToString(createSSRApp(WorldView,{w,kind:'relations'}));expect(html).toContain('stroke:#d99b9b');expect(html).toContain('好感度 -50');expect(html).toContain('好感度 100');
+ w.preferences.showRelationGraph=true;const html=await renderToString(createSSRApp(WorldView,{w,kind:'relations'}));expect(html).toContain('stroke:#d99b9b');expect(html).toContain('好感度 -50');expect(html).toContain('好感度 100');
 });

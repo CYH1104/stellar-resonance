@@ -1,3 +1,5 @@
+// Keep dormant random-event behavior covered independently of its production availability.
+vi.mock('../src/domain/featureAvailability',()=>({randomEventsAvailable:true}));
 ﻿import {exportApiSettings} from '../src/domain/apiTransfer';
 import {syncCharacterFacts} from '../src/domain/characterFacts';
 import {normalizeMemoryResult} from '../src/domain/memories';

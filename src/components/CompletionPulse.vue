@@ -1,31 +1,21 @@
 <script setup lang="ts">
-import {onBeforeUnmount,onMounted,ref,watch} from 'vue';
+import {onBeforeUnmount,onMounted,watch} from 'vue';
 import {generationCompletion} from '../app/generationCompletion';
-const visible=ref(false);let hideTimer:ReturnType<typeof setTimeout>|undefined,originalTitle='',titleChanged=false;
-watch(()=>generationCompletion.id,()=>{
- if(!generationCompletion.id)return;
- visible.value=true;
- clearTimeout(hideTimer);
- hideTimer=setTimeout(()=>{visible.value=false;},2600);
- if(document.visibilityState==='hidden'){
-  if(!titleChanged){originalTitle=document.title;titleChanged=true;}
-  document.title='生成完成 · '+originalTitle;
- }
-});
-function restoreTitle(){if(!titleChanged)return;document.title=originalTitle;titleChanged=false;}
-function onVisibility(){if(document.visibilityState==='visible')restoreTitle();}
-onMounted(()=>{document.addEventListener('visibilitychange',onVisibility);window.addEventListener('focus',restoreTitle);});
-onBeforeUnmount(()=>{clearTimeout(hideTimer);restoreTitle();document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('focus',restoreTitle);});
+const props=withDefaults(defineProps<{busy?:boolean}>(),{busy:false});
+let unread=false,mounted=false,created:HTMLLinkElement|undefined;
+let originals:{link:HTMLLinkElement;href:string|null;type:string|null;sizes:string|null}[]=[];
+function restore(){for(const {link,href,type,sizes} of originals){for(const [key,value] of [['href',href],['type',type],['sizes',sizes]]){if(value===null)link.removeAttribute(key!);else link.setAttribute(key!,value!);}}}
+function render(){
+ if(!mounted)return;
+ const icon=(props.busy||generationCompletion.pending>0)?'/favicon-generating.svg':unread?'/favicon-unread.svg':'';
+ if(!icon){restore();created?.remove();created=undefined;return;}
+ if(!originals.length&&!created){created=document.createElement('link');created.rel='icon';document.head.append(created);}
+ for(const link of originals.length?originals.map(o=>o.link):[created!]){link.href=icon;link.type='image/svg+xml';link.setAttribute('sizes','any');}
+}
+function acknowledge(){if(document.visibilityState==='visible'&&document.hasFocus()){unread=false;render();}}
+watch(()=>[props.busy,generationCompletion.pending],render);
+watch(()=>generationCompletion.id,()=>{if(!generationCompletion.id||!mounted)return;unread=document.visibilityState==='hidden'||!document.hasFocus();render();});
+onMounted(()=>{mounted=true;originals=[...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')].map(link=>({link,href:link.getAttribute('href'),type:link.getAttribute('type'),sizes:link.getAttribute('sizes')}));document.addEventListener('visibilitychange',acknowledge);window.addEventListener('focus',acknowledge);render();});
+onBeforeUnmount(()=>{mounted=false;restore();created?.remove();document.removeEventListener('visibilitychange',acknowledge);window.removeEventListener('focus',acknowledge);});
 </script>
-<template>
- <div v-if="visible" :key="generationCompletion.id" class="completion-pulse" role="status" aria-live="polite">
-  <span class="completion-pulse-label">本轮生成已完成</span>
- </div>
-</template>
-<style scoped>
-.completion-pulse{position:fixed;inset:0;z-index:90;pointer-events:none;border:3px solid rgba(120,175,255,.78);box-shadow:inset 0 0 0 1px rgba(142,190,255,.28),inset 0 0 32px rgba(120,170,255,.3);animation:completion-pulse 0.76s ease-in-out 3}
-.completion-pulse-label{position:absolute;top:16px;left:50%;transform:translateX(-50%);padding:5px 14px;border:1px solid rgba(120,175,255,.5);border-radius:999px;background:rgba(255,250,243,.94);color:#526a86;font-size:12px;letter-spacing:.06em;box-shadow:0 4px 16px rgba(60,100,160,.12);white-space:nowrap}
-@keyframes completion-pulse{0%,100%{opacity:0}38%{opacity:1}}
-@media(max-width:480px){.completion-pulse{border-width:1.5px;box-shadow:inset 0 0 0 1px rgba(142,190,255,.16),inset 0 0 18px rgba(120,170,255,.18)}}
-@media(prefers-reduced-motion:reduce){.completion-pulse{animation:none;opacity:1;border-color:rgba(142,190,255,.4);box-shadow:inset 0 0 0 1px rgba(142,190,255,.14)}}
-</style>
+<template></template>
