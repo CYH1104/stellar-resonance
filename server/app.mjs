@@ -292,7 +292,19 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
       let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
-    }catch(error){if(response.headersSent){response.destroy();return;}if(error.name==='TimeoutError')error=modelError(504,'MODEL_TIMEOUT');json(response,error.status||500,{code:error.code&&error.status?error.code:'SERVER_ERROR',...(typeof error.reason==='string'?{reason:error.reason}:{}),...upstreamStatusField(error),...(typeof error.raw==='string'?{raw:error.raw.slice(0,48000)}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudDetail==='string'?{cloudDetail:error.cloudDetail}:{}),...(error.code?.startsWith('CLOUD_')&&typeof error.cloudStep==='string'?{cloudStep:error.cloudStep}:{})});}
+    }catch(error){
+      // Disconnects abort upstream work with a DOMException whose code is numeric.
+      // A closed response needs no error body; never let error formatting reject
+      // this async request handler and terminate the process (and every session).
+      if(response.destroyed||response.writableEnded)return;
+      if(response.headersSent){response.destroy();return;}
+      const failure=error!==null&&typeof error==='object'?error:{};
+      if(failure.name==='TimeoutError'){json(response,504,{code:'MODEL_TIMEOUT'});return;}
+      const validStatus=Number.isInteger(failure.status)&&failure.status>=400&&failure.status<=599;
+      const status=validStatus?failure.status:500;
+      const code=validStatus&&typeof failure.code==='string'&&failure.code?failure.code:'SERVER_ERROR';
+      json(response,status,{code,...(typeof failure.reason==='string'?{reason:failure.reason}:{}),...upstreamStatusField(failure),...(typeof failure.raw==='string'?{raw:failure.raw.slice(0,48000)}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudDetail==='string'?{cloudDetail:failure.cloudDetail}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudStep==='string'?{cloudStep:failure.cloudStep}:{})});
+    }
   }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
   server.once('close',closeAccounts);server.once('error',closeAccounts);
