@@ -28,11 +28,12 @@ Object.assign(apiMessages,{MODEL_OUTPUT_LIMIT:'模型耗尽输出 Token 额度�
   MODEL_STATE_ROSTER_INVALID:'在场角色名单缺失、重复或格式错误。',MODEL_STATE_EVENT_INVALID:'本轮事件摘要缺失、为空或超过500字。',
   MODEL_STATE_CHARACTERS_INVALID:'角色状态中的 ID、字段类型或长度不符合要求。',MODEL_STATE_PLAYER_INVALID:'玩家状态的字段类型或长度不符合要求。',
   MODEL_STATE_DIARY_INVALID:'精神体日记缺少完整日记、第一人称叙述或已知精神体作者。',
-  MODEL_STATE_FORUM_INVALID:'论坛帖子或评论缺少字段、重复编号或格式错误。',MODEL_STATE_THEATERS_INVALID:'小剧场、群聊消息或同人文配对数据格式错误。'
+  MODEL_STATE_FORUM_INVALID:'论坛帖子或评论缺少字段、重复编号或格式错误。',MODEL_STATE_THEATERS_INVALID:'小剧场、群聊消息或同人文配对数据格式错误。',
+  TERMINAL_DISABLED:'当前版本未启用手机终端功能。'
 });
 export class HttpGateway implements Gateway {
   // Upstream errors are mapped to public messages, never displayed verbatim.
-  capabilities:{continue:boolean;keyRequired?:boolean;embeddings?:boolean} = { continue: false, keyRequired:true };
+  capabilities:{continue:boolean;keyRequired?:boolean;embeddings?:boolean;terminal?:boolean;channel?:string} = { continue: false, keyRequired:true, terminal:true };
   async bootstrap():Promise<LocalService|undefined>{const response=await fetch('/api/bootstrap',{credentials:'same-origin'});if(response.status===404)return; if(!response.ok)throw new Error('无法连接本机后台'); const value=await response.json() as LocalService;if(value.runtime!=='local-card'||!Array.isArray(value.characters)||!Array.isArray(value.places)||!Array.isArray(value.greeting))throw new Error('本机资料接口格式不正确');this.capabilities=value.capabilities;return value;}
   async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal):Promise<any>{return(await this.post('personal-terminal',{...(input as object),profile,key},signal)).json();}
   async createTheaterShare(template:unknown):Promise<{code:string}>{return (await this.post('theater-shares',{template})).json();}

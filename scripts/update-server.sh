@@ -7,6 +7,18 @@ update_server() {
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
 ORIGIN="${1:-http://43.138.251.91:8807}"
+# 实例隔离：测试实例只用自有目录、自有锁与自有服务名，更新它不会重启或覆盖稳定版。
+INSTANCE="${TERMINAL_INSTANCE:-stable}"
+if [ "$INSTANCE" = "stable" ]; then
+  CHANNEL="${TERMINAL_CHANNEL:-stable}"
+  SERVICE="${SERVICE_NAME:-stellar-resonance}"
+  STATE_DIR="server/.local"
+else
+  CHANNEL="${TERMINAL_CHANNEL:-test}"
+  SERVICE="${SERVICE_NAME:-stellar-resonance-$INSTANCE}"
+  STATE_DIR="server/.local/instances/$INSTANCE"
+fi
+export TERMINAL_INSTANCE="$INSTANCE" TERMINAL_CHANNEL="$CHANNEL" SERVICE_NAME="$SERVICE"
 command -v git >/dev/null
 command -v node >/dev/null
 command -v pnpm >/dev/null
@@ -15,9 +27,17 @@ node -v
 pnpm -v
 APP_PORT="$(node --input-type=module -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major<24||(major===24&&minor<12))throw Error("需要 Node.js 24.12 或更新版");const u=new URL(process.argv[1]);if(u.protocol!=="http:"||u.username||u.password||u.pathname!=="/"||u.search||u.hash)throw Error("请输入完整 HTTP 公网地址，不带路径");console.log(u.port||80);' "$ORIGIN")"
 test "$(git rev-parse --show-toplevel)" = "$ROOT"
-mkdir -p server/.local
-exec 200>server/.local/update.lock
+mkdir -p "$STATE_DIR"
+exec 200>"$STATE_DIR/update.lock"
 flock -n 200 || { echo '另一次更新正在执行。'; exit 1; }
+# 两个实例共享同一工作树：reset/install/build 必须串行，否则一次测试版更新会在
+# 稳定版构建过程中改掉源码与 dist。锁从取代码一直持有到本实例的快照生成完毕。
+mkdir -p server/.local
+exec 201>"server/.local/update-tree.lock"
+if ! flock -w 1800 201; then
+  echo '另一个实例正在更新同一代码树，请稍后重试。'
+  exit 1
+fi
 # A previous --single-branch clone may fetch only the old preview branch.
 # Register main as well: fetching a ref alone does not make it eligible for
 # `git branch --set-upstream-to` in that checkout. Preserve other refspecs.
@@ -60,7 +80,7 @@ BACKUP="$(mktemp -d "$BACKUP_ROOT/update-$(date +%Y%m%d-%H%M%S)-XXXXXX")"
 chmod 700 "$BACKUP"
 git rev-parse HEAD > "$BACKUP/previous-commit.txt"
 printf '%s\n' "$TARGET" > "$BACKUP/target-commit.txt"
-tar --exclude='./.git' --exclude='./node_modules' --exclude='./dist' --exclude='./.integration' -czf "$BACKUP/workspace.tar.gz" .
+tar --exclude='./.git' --exclude='./node_modules' --exclude='./dist' --exclude='./.integration' --exclude='./server/.local/releases' -czf "$BACKUP/workspace.tar.gz" .
 chmod 600 "$BACKUP/workspace.tar.gz"
 echo "更新前备份：$BACKUP"
 # Older releases tracked this machine-specific file. Keep the actual file,
@@ -77,33 +97,32 @@ git branch --set-upstream-to=origin/main main
 STAGE='安装依赖'
 printf '\n[5/7] 安装依赖：pnpm install --frozen-lockfile\n'
 pnpm install --frozen-lockfile
-STAGE='构建网页'
-printf '\n[6/7] 构建网页：pnpm build\n'
+STAGE='准备发布快照'
+printf '\n[6/7] 构建网页并准备本实例的发布快照\n'
 pnpm build
+# 每个实例只从自己的快照目录加载页面、代码与依赖。这里只“准备”目标版本，不动已确认指针：
+# 新版本必须先用它启动并通过健康检查，才算发布成功。
+PREVIOUS_RELEASE="$(node scripts/release-snapshot.mjs --instance "$INSTANCE" --channel "$CHANNEL" --current || true)"
+RELEASE_ID="$(node scripts/release-snapshot.mjs --instance "$INSTANCE" --channel "$CHANNEL" --prepare)"
+if [ -z "$RELEASE_ID" ]; then
+  echo '无法准备发布快照。'
+  exit 1
+fi
+printf '{"buildId":"%s"}\n' "$RELEASE_ID" > "$STATE_DIR/pending-release.json"
+flock -u 201
 STAGE='重启与启动检查'
-printf '\n[7/7] 重启服务并检查启动状态\n'
-bash scripts/restart-server.sh "$ORIGIN" 200>&-
-node --input-type=module -e '
-import {createHash} from "node:crypto";
-const [root,port]=process.argv.slice(1),projectId=createHash("sha256").update(root).digest("hex").slice(0,16);
-let last="未收到健康响应";
-for(let attempt=0;attempt<20;attempt++){
-  try{
-    const response=await fetch(`http://127.0.0.1:${port}/api/health`,{signal:AbortSignal.timeout(1000)});
-    if(!response.ok)throw Error(`健康检查 HTTP ${response.status}`);
-    const info=await response.json();
-    if(info.app!=="stellar-resonance-local"||info.projectId!==projectId||!info.accountsRequired||!Number.isSafeInteger(info.pid)||info.pid<=1)throw Error("健康信息与当前项目或账号配置不匹配");
-    console.log(`启动检查通过：端口 ${port}，进程 PID ${info.pid}，应用版本 ${info.version}，账号系统已启用。`);
-    process.exit(0);
-  }catch(error){last=error.message;}
-  await new Promise(resolve=>setTimeout(resolve,500));
-}
-throw Error(`服务启动检查失败：${last}。请查看 server/.local/deploy.log 或 systemd 日志。`);
-' "$ROOT" "$APP_PORT"
+printf '\n[7/7] 重启服务并检查启动状态（目标快照 %s）\n' "$RELEASE_ID"
+# 发布最后一步的状态机在这里：重启失败、端口起不来、健康检查不过都走同一条回滚路径
+# （核对旧版本后清理 pending），不能让 bash 的非零退出把回滚整段跳过。
+node scripts/release-deploy.mjs \
+  --instance "$INSTANCE" --channel "$CHANNEL" --state-dir "$STATE_DIR" \
+  --target "$RELEASE_ID" --previous "$PREVIOUS_RELEASE" --origin "$ORIGIN" --port "$APP_PORT"
+# 走到这里说明目标快照已健康并且已经确认（commitRelease 只在健康检查通过后调用），
+# 才推进 last-deployed；上面的非零退出由顶部 ERR trap 接管，脚本不会带着半成品状态继续。
 # HEAD alone is insufficient: installation/build may have failed after reset.
-printf '%s\n' "$TARGET" > server/.local/last-deployed-main.tmp
-mv -- server/.local/last-deployed-main.tmp server/.local/last-deployed-main
-printf '\n更新完成，服务已启动。\n当前部署：'
+printf '%s\n' "$TARGET" > "$STATE_DIR/last-deployed-main.tmp"
+mv -- "$STATE_DIR/last-deployed-main.tmp" "$STATE_DIR/last-deployed-main"
+printf '\n更新完成，服务已启动（%s 通道）。\n当前部署：' "$CHANNEL"
 git --no-pager log -1 --oneline
 printf '游戏地址：%s/terminal\n管理页面：%s/editor/\n' "${ORIGIN%/}" "${ORIGIN%/}"
 echo '以上为服务器本机启动检查；公网可达性还取决于安全组和网络。'

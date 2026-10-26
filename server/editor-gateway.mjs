@@ -3,17 +3,19 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 const hash=value=>createHash('sha256').update(value).digest();
-export async function editorAccessKey(projectRoot){
-  const file=resolve(projectRoot,'server/private/editor-access-key.txt');await mkdir(resolve(projectRoot,'server/private'),{recursive:true,mode:0o700});
+export async function editorAccessKey(projectRoot,directory=resolve(projectRoot,'server/private')){
+  const file=resolve(directory,'editor-access-key.txt');await mkdir(directory,{recursive:true,mode:0o700});
   const existing=async()=>{const key=(await readFile(file,'utf8')).trim();if(!/^[A-Za-z0-9_-]{24,128}$/.test(key))throw Error('EDITOR_KEY_INVALID');return key;};
   try{return await existing();}catch(e){if(e.code!=='ENOENT')throw e;}
   const key=randomBytes(24).toString('base64url');try{await writeFile(file,key+'\n',{flag:'wx',mode:0o600});return key;}catch(e){if(e.code==='EEXIST')return existing();throw e;}
 }
-export async function createEditorGateway({projectRoot,editorPort,protectedAccess,secure=false,accounts,relayPolicy,gameOrigin}){
-  const key=protectedAccess?await editorAccessKey(projectRoot):'',sessions=new Map(),attempts=new Map();
+export async function createEditorGateway({projectRoot,privateDir=resolve(projectRoot,'server/private'),editorPort,protectedAccess,secure=false,accounts,relayPolicy,gameOrigin,editorCookie='academy_editor'}){
+  // 管理登录 Cookie 按实例命名：同一主机的 8808／9001 端口不能互相覆盖或注销对方的管理登录。
+  const cookieName=editorCookie,cookiePrefix=cookieName+'=';
+  const key=protectedAccess?await editorAccessKey(projectRoot,privateDir):'',sessions=new Map(),attempts=new Map();
   const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
-  const cookie=(res,value,age)=>res.setHeader('Set-Cookie',`academy_editor=${value}; HttpOnly; SameSite=Strict; Path=/editor; Max-Age=${age}${secure?'; Secure':''}`);
-  function authorized(req){if(!protectedAccess)return true;const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith('academy_editor='))?.slice(15);return token&&sessions.get(hash(token).toString('hex'))>Date.now();}
+  const cookie=(res,value,age)=>res.setHeader('Set-Cookie',`${cookieName}=${value}; HttpOnly; SameSite=Strict; Path=/editor; Max-Age=${age}${secure?'; Secure':''}`);
+  function authorized(req){if(!protectedAccess)return true;const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookiePrefix))?.slice(cookiePrefix.length);return token&&sessions.get(hash(token).toString('hex'))>Date.now();}
   return async function editorGateway(req,res,path){
     if(path==='/editor'){res.writeHead(302,{Location:'/editor/'});res.end();return;}
     if(path==='/editor/login'&&req.method==='POST'){
@@ -30,7 +32,7 @@ export async function createEditorGateway({projectRoot,editorPort,protectedAcces
       if(path==='/editor/'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});res.end(await readFile(resolve(projectRoot,'server/auth-ui/editor-login.html')));return;}
       json(res,401,{code:'EDITOR_ACCESS_REQUIRED'});return;
     }
-    if(path==='/editor/logout'&&req.method==='POST'){const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith('academy_editor='))?.slice(15);if(token)sessions.delete(hash(token).toString('hex'));cookie(res,'',0);json(res,200,{ok:true});return;}
+    if(path==='/editor/logout'&&req.method==='POST'){const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookiePrefix))?.slice(cookiePrefix.length);if(token)sessions.delete(hash(token).toString('hex'));cookie(res,'',0);json(res,200,{ok:true});return;}
     if(path==='/editor/accounts'||path==='/editor/accounts.js'){
       if(req.method!=='GET'){json(res,405,{code:'GET_REQUIRED'});return;}
       res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"});res.end(await readFile(resolve(projectRoot,path.endsWith('.js')?'server/auth-ui/admin-accounts.js':'server/auth-ui/admin-accounts.html')));return;

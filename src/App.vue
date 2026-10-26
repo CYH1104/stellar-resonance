@@ -269,7 +269,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
-  <div v-else class="app-shell" :inert="w.backupWorking||undefined"><FloatingGroupChat v-if="w.active" :visible="!library&&w.panel==='story'" :w="w" />
+  <div v-else class="app-shell" :inert="w.backupWorking||undefined"><FloatingGroupChat v-if="w.active && w.terminalEnabled" :visible="!library&&w.panel==='story'" :w="w" />
 
     <WorkspaceNavigation :w="w" :embedded="embedded" @navigate="navigate" @start="start" @resume="resume" @home="opening" @reset="layout.reset()" @personas="guardNavigation(()=>{library=true})||(library=true)" />
 

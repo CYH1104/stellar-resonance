@@ -93,15 +93,30 @@ it('generates tolerances once per participant, persists them before the draw and
  expect(calls.filter(c=>c.task==='tolerance')).toHaveLength(1);
  expect(u.t.value.tolerances).toEqual({player:1,a:10,b:5});
 });
-it('rejects invalid tolerance results without saving or drawing, then succeeds on retry',async()=>{
+it('draws the round even when the tolerance answer is malformed, and fills it later without blocking',async()=>{
  const {u}=await fixture();let bad=true;const calls:any[]=[];
  vi.stubGlobal('fetch',vi.fn(async(_url:string,options:any)=>{const data=JSON.parse(options.body);calls.push(data);
   if(data.task==='tolerance')return Response.json({tolerances:data.actorIds.map((id:string)=>({id,value:bad?11:5}))});
+  if(data.task==='evaluate')return Response.json({betrayal:false});
+  if(data.task==='command')return Response.json({template:data.context.targets.map((_:number,i:number)=>`请{{target${i+1}}}分享趣事`).join('和'),targets:data.context.targets,betrayal:false});
+  if(data.task==='react')return Response.json({betrayal:false,replies:data.context.revealedTargets.filter((t:any)=>t.id!=='player').map((t:any)=>({id:t.id,text:'好呀。',refused:false,penalty:''}))});
+  if(data.task==='game-interact')return Response.json({replies:data.actorIds.map((id:string)=>({id,text:'好呀。',refused:false,penalty:''}))});
   throw Error('unexpected task '+data.task);}));
- await u.startRound();expect(u.error.value).toContain('耐受度');
- expect(u.t.value.tolerances).toBeUndefined();expect(u.room.value!.rounds).toHaveLength(0);
+ // The tolerance call is malformed, but the draw must still happen: the game is not
+ // blocked by a model that answers the tolerance prompt in the wrong shape.
+ await u.startRound();expect(u.error.value).toBe('');
+ expect(u.room.value!.rounds).toHaveLength(1);
+ expect(u.t.value.tolerances).toBeUndefined();
+ expect(calls.filter(c=>c.task==='tolerance')).toHaveLength(1);
+ // Finish the round, then the next draw retries the tolerance fill on its own.
+ if(u.round.value!.king==='player'){u.draft.value='分享趣事';u.targets.value=[1];}
+ await u.command();expect(u.error.value).toBe('');
+ if(u.round.value!.phase==='respond'&&!u.round.value!.replies.some(r=>r.id==='player')&&u.round.value!.targets.some(n=>Object.entries(u.round.value!.numbers).some(([id,num])=>num===n&&id==='player'))){u.draft.value='好呀。';await u.playerReply(false);}
+ if(u.round.value!.phase==='respond'){await u.retryReact();}
+ expect(u.round.value!.phase).toBe('complete');
  bad=false;await u.startRound();expect(u.error.value).toBe('');
- expect(u.t.value.tolerances).toEqual({player:5,a:5,b:5});expect(u.room.value!.rounds).toHaveLength(1);
+ expect(u.t.value.tolerances).toEqual({player:5,a:5,b:5});
+ expect(u.room.value!.rounds).toHaveLength(2);
 });
 it('counts fixed one-cup penalties once per stable event for NPC refusals and player refusals, never for completion',async()=>{
  const {u}=await fixture();
@@ -198,16 +213,53 @@ it('manual end without drunk never requests an afterparty; zero-round manual end
  expect(u.room.value!.afterparty).toBeUndefined();expect(u.room.value!.endReason).toBeUndefined();
  expect(calls).toHaveLength(0);
 });
-it('a mid-request archive switch drops late tolerance replies',async()=>{
- const {w,u}=await fixture();let resolve!:(r:Response)=>void;
+it('keeps the drawn round playable while the tolerance request is still hanging upstream',async()=>{
+ const {w,u}=await fixture();const calls:any[]=[];let release!:(value:Response)=>void;
+ vi.stubGlobal('fetch',vi.fn((_url:string,options:any)=>{
+  const data=JSON.parse(options.body);calls.push(data);
+  // 上游迟迟不返回：耐受度不能因此锁住出令、互动或任何存档写入。
+  if(data.task==='tolerance')return new Promise<Response>(done=>{release=()=>done(Response.json({tolerances:[{id:'player',value:4},{id:'a',value:6},{id:'b',value:7}]}));});
+  if(data.task==='evaluate')return Promise.resolve(Response.json({betrayal:false}));
+  if(data.task==='command')return Promise.resolve(Response.json({template:data.context.targets.map((_:number,i:number)=>`请{{target${i+1}}}讲个笑话`).join('和'),targets:data.context.targets,betrayal:false}));
+  if(data.task==='react')return Promise.resolve(Response.json({betrayal:false,replies:data.actorIds.map((id:string)=>({id,text:'好呀。',refused:false,penalty:''}))}));
+  if(data.task==='game-interact')return Promise.resolve(Response.json({replies:data.actorIds.map((id:string)=>({id,text:'好呀。',refused:false,penalty:''}))}));
+  return Promise.resolve(Response.json({}));
+ }));
+ const drawing=u.startRound();
+ await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ // 抽签已落盘并切换页面，但耐受度仍在等待：此时不能再持有全局操作锁。
+ expect(u.room.value!.rounds).toHaveLength(1);expect(u.page.value).toBe('king');
+ expect(u.working.value).toBe(false);expect(w.terminalBusy).toBe(false);
+ expect(u.t.value.tolerances).toBeUndefined();
+ // 界面上"发布命令/请国王出令"必须立即可点，而不是等耐受度返回才解除禁用。
+ const spy=vi.spyOn(terminalModule,'usePersonalTerminal').mockReturnValue(u as any);
+ try{
+  const html=await renderToString(createSSRApp(PersonalTerminal,{w}));
+  expect(html).toMatch(/class="pt-gold">(?:发布命令|请国王出令)/);
+ }finally{spy.mockRestore();}
+ // 出令不排队：请求真的发出去了，而不是被静默跳过。
+ const before=calls.length;
+ if(u.round.value!.king==='player'){u.draft.value='讲个笑话';u.targets.value=[1];}
+ await u.command();
+ expect(u.error.value).toBe('');
+ expect(calls.length).toBeGreaterThan(before);
+ expect(calls.slice(before).some(c=>c.task==='command'||c.task==='evaluate')).toBe(true);
+ // 迟到的耐受度仍然落到同一房间，且不影响已经推进的轮次。
+ release(Response.json({tolerances:[{id:'player',value:4},{id:'a',value:6},{id:'b',value:7}]}));
+ await vi.waitFor(()=>expect(u.t.value.tolerances).toEqual({player:4,a:6,b:7}));
+ expect(u.room.value!.rounds).toHaveLength(1);
+ await drawing;
+});
+it('a mid-request archive switch drops late tolerance replies without losing the drawn round',async()=>{ const {w,u}=await fixture();let resolve!:(r:Response)=>void;
  vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(r=>{resolve=r;})));
  const pending=u.startRound();
  await vi.waitFor(()=>expect(resolve).toBeTypeOf('function'));
  w.credentials[w.preferences.terminalProfile!]='changed';
  resolve(Response.json({tolerances:[{id:'player',value:3},{id:'a',value:3},{id:'b',value:3}]}));
  await pending;
- expect(u.error.value).toContain('未应用');
- expect(u.t.value.tolerances).toBeUndefined();expect(u.room.value!.rounds).toHaveLength(0);
+ // The draw is local and already persisted; only the late model answer is dropped.
+ expect(u.error.value).toBe('');
+ expect(u.t.value.tolerances).toBeUndefined();expect(u.room.value!.rounds).toHaveLength(1);
 });
 it('roundtrips the new game fields through backup v1-compat validation and rejects corrupt afterparty data',async()=>{
  const {w}=await fixture();
@@ -423,4 +475,22 @@ it('an async same-session branch switch stops both late afterparty success and f
  expect(u.t.value.rooms[0].afterparty?.status).toBe('failed');
  expect(onlyScene(u.t.value.rooms[0])?.text).toBeUndefined();
  expect(onlyScene(u.t.value.rooms[0])?.draft).toBe('短文。');// prior failure record untouched
+});
+
+// 同一个档案里改模型或接口地址，也必须让挂起中的旧耐受度结果失效；不能只比对档案 ID 和密钥。
+it('changing the model or endpoint under the same profile drops late tolerance replies',async()=>{
+ const {w,u}=await fixture();let release!:(value:Response)=>void;
+ vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(done=>{
+  // 替身故意忽略 abort：迟到的响应一定会回来，写入必须由守卫拦住。
+  release=()=>done(Response.json({tolerances:[{id:'player',value:2},{id:'a',value:3},{id:'b',value:4}]}));
+ })));
+ const pending=u.startRound();
+ await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ const profile=w.preferences.profiles.find(p=>p.id===w.preferences.terminalProfile)!;
+ profile.model='changed-model-during-request';
+ profile.apiBaseUrl='https://changed.synthetic.example/v1';
+ await Promise.resolve();
+ release(Response.json({tolerances:[{id:'player',value:2},{id:'a',value:3},{id:'b',value:4}]}));
+ await pending;
+ expect(u.t.value.tolerances).toBeUndefined();
 });

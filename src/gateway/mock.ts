@@ -7,7 +7,7 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 }
 /** Original synthetic fixtures. No private author lore is bundled. */
 export class MockGateway implements Gateway {
-  capabilities = { continue: true };
+  capabilities = { continue: true, terminal: true };
   async authorize(): Promise<void> {}
   async *generate(request: GenerateRequest, _key: string, signal: AbortSignal): AsyncIterable<GenerateEvent> {
     const plan=request.dice?dicePlan(request.dice):undefined;

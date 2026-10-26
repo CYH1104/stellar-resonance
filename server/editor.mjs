@@ -5,8 +5,8 @@ import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {createEditorStore} from './editor-store.mjs';
-export function createEditorServer({projectRoot,card,port=8808,gameUrl='http://127.0.0.1:8807/terminal'}){
-  const store=createEditorStore(projectRoot,card),token=randomBytes(32).toString('hex');
+export function createEditorServer({projectRoot,card,port=8808,dataDir=resolve(projectRoot,'server/private'),gameUrl='http://127.0.0.1:8807/terminal'}){
+  const store=createEditorStore(projectRoot,card,{directory:dataDir}),token=randomBytes(32).toString('hex');
   const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
   const server=createServer(async(req,res)=>{const actual=server.address()?.port||port,hosts=[`127.0.0.1:${actual}`,`localhost:${actual}`];
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");

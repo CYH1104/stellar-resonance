@@ -5,8 +5,8 @@ import {importWorldbook,cleanLoreInsertions,resolveWorldbooks} from '../src/doma
 import {personaDescription} from './participants.mjs';
 const error=code=>Object.assign(new Error(code),{status:400,code});
 /** Operator-managed private files. No client path, filename or book selection is accepted. */
-export async function loadPrivateWorldbooks(root){
-  const directory=resolve(root,'server/private/worldbooks');let names;
+export async function loadPrivateWorldbooks(root,privateDirectory=resolve(root,'server/private')){
+  const directory=resolve(privateDirectory,'worldbooks');let names;
   try{names=await readdir(directory);}catch(e){if(e.code==='ENOENT')return [];throw e;}
   const base=await realpath(directory),books=[];
   for(const name of names.filter(n=>n.toLowerCase().endsWith('.json')).sort()){

@@ -4,6 +4,8 @@ import {majorCharacter} from '../src/domain/characterImages.ts';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
 import {terminalCodePrompt} from './terminal-codes.mjs';
 import {terminalPlan,terminalFollowupPlan,parseTerminalResult,terminalActors} from './personal-terminal.mjs';
+import {instanceDescriptor,normalizeChannel} from './channel.mjs';
+import {markReleaseActive} from './release.mjs';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {createRelayPolicy} from './relay-policy.mjs';
 import {createTheaterShares} from './theater-shares.mjs';
@@ -40,25 +42,36 @@ import {stripReasoning} from '../src/domain/reasoning.ts';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
-export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',accountDirectory=resolve(projectRoot,'server/private/accounts'),invitesRequired=true,editorPort=8808}){
+export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',privateDir=resolve(projectRoot,'server/private'),accountDirectory,invitesRequired=true,editorPort=8808,channel='test',instanceName='',releaseDir='',identityRoot=''}){
   let external;
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
+  // 通道是部署配置：稳定版只关闭手机功能面，不改动任何存档结构或备份字段。
+  // 通道、实例名、Cookie 后缀全部从同一份实例描述派生，避免各处推断出不一致的身份。
+  channel=normalizeChannel(channel)||'test';
+  const identity=instanceDescriptor({channel,instanceName});
+  const terminalEnabled=identity.terminal,instanceLabel=identity.instanceName,cookieSuffix=identity.cookieSuffix,editorCookie=identity.editorCookie;
+  // 运行实例只从自己的发布快照读取页面与静态资源：另一个实例更新共享工作树不会改变这里正在提供的内容。
+  const runtimeRoot=releaseDir?resolve(releaseDir):projectRoot;
+  const releaseId=releaseDir?releaseDir.replace(/[\\/]+$/,'').split(/[\\/]/).pop()||'':'';
+  const dataDir=resolve(privateDir),accountDir=accountDirectory||resolve(dataDir,'accounts');
   const cloudBackup=createCloudBackup(fetchImpl);
-  const source=card||await loadCard(projectRoot);
-  const privateBooks=await loadPrivateWorldbooks(projectRoot);
+  // 卡与世界书是用户数据，按实例私有目录读取；projectRoot 可能是发布快照，里面没有 server/private。
+  const source=card||await loadCard(projectRoot,dataDir);
+  const privateBooks=await loadPrivateWorldbooks(projectRoot,dataDir);
   const baseSource=source;
-  const editorStore=card?null:createEditorStore(projectRoot,source);
-  const dist=await realpath(resolve(projectRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
-  const projectId=createHash('sha256').update(projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
-  const accounts=authRequired?await createAccounts({directory:accountDirectory,requireInvite:invitesRequired}):null;
-  const relayPolicy=createRelayPolicy(resolve(accountDirectory,'relay-policy.json'),{required:authRequired});
+  const editorStore=card?null:createEditorStore(projectRoot,source,{directory:dataDir});
+  const dist=await realpath(resolve(runtimeRoot,'dist')),dataset=`world-card-v1-pro-${source.source.sha256.slice(0,16)}`;
+  // 身份仍按真实项目根计算：从发布快照运行的实例必须和部署脚本、启动器认出彼此。
+  const projectId=createHash('sha256').update(identityRoot||projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
+  const accounts=authRequired?await createAccounts({directory:accountDir,requireInvite:invitesRequired}):null;
+  const relayPolicy=createRelayPolicy(resolve(accountDir,'relay-policy.json'),{required:authRequired});
   fetchImpl=relayPolicy.guard(fetchImpl);
-  const editorGateway=await createEditorGateway({projectRoot,editorPort,accounts,relayPolicy,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
-  const capabilities={continue:true,keyRequired:true,embeddings:true};
+  const editorGateway=await createEditorGateway({projectRoot:runtimeRoot,privateDir:dataDir,editorPort,accounts,relayPolicy,editorCookie,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
+  const capabilities={continue:true,keyRequired:true,embeddings:true,terminal:terminalEnabled,channel};
 
-  const theaterShares=createTheaterShares(resolve(projectRoot,'server/private/theater-shares'));
-  const sessions=new Map(),cookieName=`stellar_${projectId}`,accountCookie=`academy_account_${projectId}`;
+  const theaterShares=createTheaterShares(resolve(dataDir,'theater-shares'));
+  const sessions=new Map(),cookieName=`stellar_${projectId}${cookieSuffix}`,accountCookie=`academy_account_${projectId}${cookieSuffix}`;
   const accountTokenOf=request=>request.headers.cookie?.split(';').map(p=>p.trim()).find(p=>p.startsWith(accountCookie+'='))?.slice(accountCookie.length+1);
   const worldName=source.world.greeting?.[0]?.match(/欢迎您，(.+?)第/)?.[1]||'';
   let server;
@@ -96,11 +109,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const account=accounts?.user(accountToken);
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/${age===null?'':`; Max-Age=${age}`}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts,channel,terminal:terminalEnabled,instanceName:instanceLabel,port:currentPort,release:releaseId});return;}
       const authFiles={'/reset':['reset.html','text/html'],'/auth/reset.js':['reset.js','text/javascript'],'/auth/manage.js':['manage.js','text/javascript'],'/login':['login.html','text/html'],'/auth/login.css':['login.css','text/css'],'/auth/login.js':['login.js','text/javascript'],'/auth/account.js':['account.js','text/javascript'],'/auth/editor-login.js':['editor-login.js','text/javascript'],'/auth/boot.js':['boot.js','text/javascript'],'/auth/boot.css':['boot.css','text/css']};
       if(authFiles[path]&&['GET','HEAD'].includes(request.method)){
         if(path==='/login'&&(!accounts||account)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
-        const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(['/login','/reset'].includes(path)?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(projectRoot,'server/auth-ui',file)));return;
+        const [file,type]=authFiles[path];response.writeHead(200,{'Content-Type':type+'; charset=utf-8',...(['/login','/reset'].includes(path)?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",'X-Frame-Options':'DENY'}:{})});response.end(request.method==='HEAD'?undefined:await readFile(resolve(runtimeRoot,'server/auth-ui',file)));return;
       }
       if(path==='/editor'||path.startsWith('/editor/')){await editorGateway(request,response,path);return;}
       if(path.startsWith('/api/auth/')){
@@ -128,12 +141,12 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       }
       if(['GET','HEAD'].includes(request.method)&&['/','/index.html'].includes(path)){response.writeHead(302,{Location:'/terminal'});response.end();return;}
       function accountHtml(html){const info=JSON.stringify(account).replace(/</g,'\\u003c');return html.replace(/\blocalStorage\b/g,'academyStorage').replace(/<head\b[^>]*>/i,match=>match+`<script>window.__ACADEMY_ACCOUNT__=${info};</script><script src="/auth/account.js"></script>`).replace('</body>','<style>.account-tools{position:fixed;z-index:2147480000;right:12px;bottom:8px;display:flex;gap:10px;align-items:center;padding:4px 9px;background:#fffaf2e8;border-radius:4px;font-size:11px;color:#73869a}.account-tools button{border:0;background:transparent;color:inherit;font:inherit;padding:3px 5px;cursor:pointer}.account-tools button:hover{color:#294a68}</style></body>');}
-      if(path==='/account'&&['GET','HEAD'].includes(request.method)){if(!account){response.writeHead(302,{Location:'/login'});response.end();return;}response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Frame-Options':'DENY','Content-Security-Policy':"frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});response.end(accountHtml(await readFile(resolve(projectRoot,'server/auth-ui/manage.html'),'utf8')));return;}
+      if(path==='/account'&&['GET','HEAD'].includes(request.method)){if(!account){response.writeHead(302,{Location:'/login'});response.end();return;}response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Frame-Options':'DENY','Content-Security-Policy':"frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});response.end(accountHtml(await readFile(resolve(runtimeRoot,'server/auth-ui/manage.html'),'utf8')));return;}
       const editorial=editorStore?await editorStore.read():null;
       const source=editorial?cardWithEditor(baseSource,editorial.data):baseSource;setInternalPrompts(editorial?.data.internalPrompts);
       if(path==='/api/character-cards'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,characters:publicCards({characters:source.characters})});return;}
       if(path==='/api/map-assets'&&request.method==='GET'){json(response,200,{revision:editorial?.revision||dataset,map:{...(editorial?.data.map||{main:'',places:{}}),locations:source.places}});return;}
-      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid});return;}
+      if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,channel,terminal:terminalEnabled,instanceName:instanceLabel,port:currentPort,release:releaseId});return;}
       if(path==='/api/bootstrap'&&request.method==='GET'){authorize(request,response);json(response,200,{runtime:'local-card',developerMode:developerAllowed(account),dataset,name:worldName,narratorName:source.world.name||'星穹学院',capabilities,greeting:source.world.greeting,characters:[],majorCharacters:source.characters.filter(c=>majorCharacter(c.name)).map(({id,name,img})=>({id,name,...(img?{img}: {})})),characterFacts:source.characters.filter(c=>c.primaryGender||identityOf(c)||abilityOf(c)||mentalPowerLevelOf(c)).map(c=>({id:c.id,primaryGender:c.primaryGender||'',...(identityOf(c)?{identity:identityOf(c)}:{}),...(abilityOf(c)?{ability:abilityOf(c)}:{}),...(mentalPowerLevelOf(c)?{mentalPowerLevel:mentalPowerLevelOf(c)}:{})})),places:source.places.map(p=>({id:p.id,name:p.name,area:p.area,px:p.px,py:p.py})),counts:{characters:source.characters.length,departments:source.world.departments.length,places:source.places.length},missing:source.missing});return;}
       if(path==='/api/access'&&request.method==='POST'){await body(request);authorize(request,response);json(response,200,{capabilities});return;}
       if(path==='/api/cloud-backup'&&request.method==='POST'){session(request);const data=await body(request,12*1024*1024);json(response,200,await cloudBackup(data));return;}
@@ -141,6 +154,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
         if(path==='/api/terminal-code'){
+          if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
           if(typeof data.sessionId!=='string'||!data.sessionId||data.sessionId.length>128)throw modelError(400,'INVALID_TERMINAL_REQUEST');
           const actors=terminalActors(source,data.state),entries=Object.entries(terminalCodeBindings({...data.state,characters:actors})).map(([id,code])=>({id,code}));
           if(data.self===true){json(response,200,{code:entries.find(e=>e.id==='player')?.code||''});return;}
@@ -180,6 +194,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           }return;
         }
         if(path==='/api/personal-terminal'){
+          if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
           const plan=terminalPlan(source,data),selected=await connection(current,data);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
@@ -224,13 +239,15 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
         if(path==='/api/generate'){
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
+          // 稳定版直接丢弃手机上下文：既不注入手机提示词，也不要求终端批次返回，更不会触发缺额补修告警。
+          if(!terminalEnabled)delete data.terminalContext;
           let partial='',stateOnly=false;
           if(data.continuation!==undefined){if(!data.continuation||Array.isArray(data.continuation)||Object.keys(data.continuation).some(k=>!['partial','mode','repairPlan'].includes(k))||data.continuation.mode!==undefined&&data.continuation.mode!=='state'||!safeString(data.continuation.partial,200000)||!data.continuation.partial.trim())throw modelError(400,'INVALID_CONTINUATION');partial=data.continuation.partial;stateOnly=data.continuation.mode==='state';}
           let repairPlan;if(stateOnly&&data.continuation?.repairPlan!==undefined){try{repairPlan=validateRepairPlan(data.continuation.repairPlan);}catch{throw modelError(400,'INVALID_REPAIR_PLAN');}}
           if(repairPlan){data.stateEnabled=data.stateEnabled!==false&&repairNeedsState(repairPlan);data.suggestionsEnabled=repairPlan.suggestions;data.theaterSettings=cleanTheaters(data.theaterSettings).map(s=>({...s,enabled:s.enabled&&repairPlan.theaterSlots.includes(s.slot)}));}
           const generation=data;
           const selected=await connection(current,generation),{requestId,messages,state,theaterSettings,dice,card:generationCard,presetDiagnostics,repairLore}=buildMessages(source,{...data,stateSeparate:false},privateBooks);
-          messages.splice(3,0,terminalCodePrompt(Object.entries(terminalCodeBindings({...data.state,characters:terminalActors(source,data.state)})).map(([id,code])=>({id,code})),terminalActors(source,data.state),data.stateEnabled!==false));
+          if(terminalEnabled)messages.splice(3,0,terminalCodePrompt(Object.entries(terminalCodeBindings({...data.state,characters:terminalActors(source,data.state)})).map(([id,code])=>({id,code})),terminalActors(source,data.state),data.stateEnabled!==false));
           if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
@@ -279,7 +296,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       }
       if(!['GET','HEAD'].includes(request.method))throw modelError(405,'GET_REQUIRED');
       if(path==='/terminal'){
-        let terminal=await readFile(resolve(projectRoot,'星穹游戏终端 (1).html'),'utf8');
+        let terminal=await readFile(resolve(runtimeRoot,'星穹游戏终端 (1).html'),'utf8');
         const catalog=JSON.stringify(publicCards({characters:source.characters})).replace(/</g,'\\u003c');
         terminal=terminal.replace('<script>','<script>window.__ACADEMY_MAP_ASSETS__='+JSON.stringify({...editorial?.data.map,locations:source.places}).replace(/</g,'\\u003c')+';');
         terminal=terminal.replace(/const SPLASH_CHARACTERS = \[[\s\S]*?\n    \];/,()=> 'const SPLASH_CHARACTERS = '+catalog+';window.__ACADEMY_CARD_REVISION__='+JSON.stringify(editorial?.revision||dataset)+';');
@@ -309,5 +326,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
   server.once('close',closeAccounts);server.once('error',closeAccounts);
+  // 运行中的实例登记自己的快照：清理旧快照时必须保护正在服务的版本。
+  const releaseHandle=releaseDir?await markReleaseActive(runtimeRoot).catch(()=>undefined):undefined;
+  if(releaseHandle)server.once('close',()=>{void releaseHandle();});
   return {server,dataset,start:()=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>resolve(server.address().port));})};
 }

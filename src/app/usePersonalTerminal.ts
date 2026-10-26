@@ -52,6 +52,12 @@ export function usePersonalTerminal(w:ViewModel){
  function requestProfile(task:string){if(!['friend','friend-create'].includes(task))return profile.value;const auxiliary=auxiliaryApis(w.preferences);return auxiliary.find(p=>p.id===profile.value?.id)||auxiliary[0];}
  const ending=ref(false),endConfirm=ref(''),endSaveFailed=ref('');
  let operationRoom='',operationRound=0,operationCancelled=false,operationDone:Promise<void>=Promise.resolve(),finishOperation=()=>{},operationCallId='',operationSucceeded=false;
+// 终端存档写入串行化：耐受度补取等后台任务可能与正在进行的操作同时落盘，
+// 克隆-修改-保存必须在同一把队列锁内完成，否则晚到的写入会把别人的改动覆盖掉。
+let writeQueue:Promise<unknown>=Promise.resolve();
+function exclusiveWrite<T>(task:()=>Promise<T>):Promise<T>{const result=writeQueue.then(task,task);writeQueue=result.then(()=>undefined,()=>undefined);return result;}
+// 耐受度是独立任务：自己的控制器与守卫，不占用 working/terminalBusy，也不共享出令的 operationSession/operationAnchor。
+let toleranceController:AbortController|undefined,toleranceRoom='',toleranceTask:Promise<void>|undefined;
 const boundedRaw=(value:string,limit:number)=>{if(value.length<=limit)return value;const marker=`\n…[已截断，原长度 ${value.length} 字符]`;return value.slice(0,Math.max(0,limit-marker.length))+marker;};
 function logTerminalActivity(title:string,text:string,callId=operationCallId||crypto.randomUUID(),failed=false,raw=''){
  if(!text.trim()||!w.formatErrors||operationSession&&operationSession!==w.active?.id)return;
@@ -62,9 +68,9 @@ function logTerminalActivity(title:string,text:string,callId=operationCallId||cr
  const roundLimit=(room:KingRoom)=>kingRoundLimitReached(room,r=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor)));
  function activeGame(id=roomId.value){const r=t.value.rooms.find(r=>r.id===id);if(!r||r.endedAt)throw Error('游戏已结束，只能回看记录。');operationRoom=id;operationRound=r.rounds.at(-1)?.number||0;return r;}
  let controller:AbortController|undefined;let operationAnchor:TerminalAnchor|undefined;let operationSession='';
- watch(()=>[JSON.stringify(profile.value),JSON.stringify(requestProfile('friend')),w.credentials[profile.value?.id||''],w.credentials[requestProfile('friend')?.id||'']],()=>controller?.abort());
- watch(()=>w.active?.id,()=>{controller?.abort();endConfirm.value=endSaveFailed.value='';inviteTarget.value=inviteNote.value='';page.value='home';conversationId.value=friendId.value=roomId.value=courseId.value='';picked.value=[];draft.value=error.value='';lookup.value=undefined;lookupCandidates.value=[];historyPage.value=0;peekActorId.value='';});
- onBeforeUnmount(()=>controller?.abort());
+ watch(()=>[JSON.stringify(profile.value),JSON.stringify(requestProfile('friend')),w.credentials[profile.value?.id||''],w.credentials[requestProfile('friend')?.id||''],toleranceSignature()],()=>{controller?.abort();toleranceController?.abort();});
+ watch(()=>w.active?.id,()=>{controller?.abort();toleranceController?.abort();endConfirm.value=endSaveFailed.value='';inviteTarget.value=inviteNote.value='';page.value='home';conversationId.value=friendId.value=roomId.value=courseId.value='';picked.value=[];draft.value=error.value='';lookup.value=undefined;lookupCandidates.value=[];historyPage.value=0;peekActorId.value='';});
+onBeforeUnmount(()=>{controller?.abort();toleranceController?.abort();});
  function go(next:string){plusOpen.value=false;previous.value=page.value;page.value=next;error.value='';search.value='';historyPage.value=0;if(next==='divination')refreshDay();if(next==='add'){lookup.value=undefined;lookupCandidates.value=[];note.value='';}if(next==='account'){bioDraft.value=t.value.bio||'';}}
  /** Safety recovery: an active room that is already over the tolerance limit (e.g. the
  * browser was refreshed between the drunk commit and the end save) is ended first,
@@ -75,7 +81,7 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
  if(!current.endedAt&&(kingOverLimit(current,tolerances.value).length||roundLimit(current))){void run(async()=>{await recoverDrunkEnd(id);});return;}
  go(current.endedAt?'history':'room');}
  function toggle(id:string){picked.value=picked.value.includes(id)?picked.value.filter(i=>i!==id):[...picked.value,id];}
- async function commit(update:(next:PersonalTerminal)=>void){const session=w.active;if(!session)throw Error('请先打开存档。');if(operationSession&&session.id!==operationSession||operationAnchor&&!terminalAnchorActive(session,operationAnchor))throw Error('剧情分支已改变，记录未应用。');if(operationCancelled)throw Error('请求已停止。');if(operationRoom){const r=t.value.rooms.find(r=>r.id===operationRoom);if(!r||r.endedAt||(r.rounds.at(-1)?.number||0)!==operationRound)throw Error('游戏已结束或轮次已改变。');}const next:PersonalTerminal=structuredClone(JSON.parse(JSON.stringify(t.value)));update(next);for(const old of t.value.rooms)if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.rooms.find(r=>r.id===old.id)))throw Error("游戏已结束，只能回看记录。");for(const room of next.rooms)for(const round of room.rounds){if(!round.anchor)continue;for(const anchor of [round.anchor,...[...new Map((round.interactions||[]).flatMap(i=>i.anchor&&terminalAnchorActive(session,i.anchor)?[[i.anchor.key,i.anchor] as const]:[])).values()].filter(a=>a.key!==round.anchor!.key)]){const b=terminalBucket(next,anchor),game={id:room.id+':'+round.number,name:room.name,round:round.number,king:name(round.king),command:round.command,penalties:round.replies.filter(r=>r.refused).map(r=>name(r.id)+'：'+r.penalty).join('；'),complete:round.phase==='complete',knownBy:audienceSnapshot(room.members.filter(id=>id!=='player'&&room.invitations[id]==='accepted')),...(room.endedAt?{endedAt:room.endedAt}:{}),interactions:(round.interactions||[]).filter(i=>(!i.anchor||i.anchor.key===anchor.key)&&(!i.anchor||terminalAnchorActive(session,i.anchor))).map(i=>name('player')+'：'+i.text+'；'+i.replies.map(r=>name(r.id)+'：'+r.text+(r.refused?'；惩罚：'+r.penalty:'')).join('；')).join('\n')};const i=b.games.findIndex(g=>g.id===game.id);if(i<0)b.games.push(game);else b.games[i]=game;}}const previous=session.terminal,priorNotes=session.memories.filter(isTerminalMemoryNote).map(m=>JSON.parse(JSON.stringify(m)));session.terminal=next;syncTerminalMemoryNotes(session);try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('终端保存失败，请先导出当前存档。');}catch(e){if(session.terminal===next){session.terminal=previous;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];}throw e;}w.indexTerminalNotes();}
+ async function commit(update:(next:PersonalTerminal)=>void){const session=w.active;if(!session)throw Error('请先打开存档。');if(operationSession&&session.id!==operationSession||operationAnchor&&!terminalAnchorActive(session,operationAnchor))throw Error('剧情分支已改变，记录未应用。');if(operationCancelled)throw Error('请求已停止。');if(operationRoom){const r=t.value.rooms.find(r=>r.id===operationRoom);if(!r||r.endedAt||(r.rounds.at(-1)?.number||0)!==operationRound)throw Error('游戏已结束或轮次已改变。');}await exclusiveWrite(async()=>{if(w.active!==session)throw Error('存档已切换，记录未应用。');const next:PersonalTerminal=structuredClone(JSON.parse(JSON.stringify(t.value)));update(next);for(const old of t.value.rooms)if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.rooms.find(r=>r.id===old.id)))throw Error("游戏已结束，只能回看记录。");for(const room of next.rooms)for(const round of room.rounds){if(!round.anchor)continue;for(const anchor of [round.anchor,...[...new Map((round.interactions||[]).flatMap(i=>i.anchor&&terminalAnchorActive(session,i.anchor)?[[i.anchor.key,i.anchor] as const]:[])).values()].filter(a=>a.key!==round.anchor!.key)]){const b=terminalBucket(next,anchor),game={id:room.id+':'+round.number,name:room.name,round:round.number,king:name(round.king),command:round.command,penalties:round.replies.filter(r=>r.refused).map(r=>name(r.id)+'：'+r.penalty).join('；'),complete:round.phase==='complete',knownBy:audienceSnapshot(room.members.filter(id=>id!=='player'&&room.invitations[id]==='accepted')),...(room.endedAt?{endedAt:room.endedAt}:{}),interactions:(round.interactions||[]).filter(i=>(!i.anchor||i.anchor.key===anchor.key)&&(!i.anchor||terminalAnchorActive(session,i.anchor))).map(i=>name('player')+'：'+i.text+'；'+i.replies.map(r=>name(r.id)+'：'+r.text+(r.refused?'；惩罚：'+r.penalty:'')).join('；')).join('\n')};const i=b.games.findIndex(g=>g.id===game.id);if(i<0)b.games.push(game);else b.games[i]=game;}}const previous=session.terminal,priorNotes=session.memories.filter(isTerminalMemoryNote).map(m=>JSON.parse(JSON.stringify(m)));session.terminal=next;syncTerminalMemoryNotes(session);try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('终端保存失败，请先导出当前存档。');}catch(e){if(session.terminal===next){session.terminal=previous;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];}throw e;}});w.indexTerminalNotes();}
 
  async function context(audience:string[]=[],query?:string){const s=w.active;
   const scoped=audience.length>0&&!!s;
@@ -160,13 +166,74 @@ const scopedTask=['chat','invite','react','game-interact','friend','afterparty',
  function beginInvite(id='*'){const current=room.value;if(!current||current.endedAt)return;inviteTarget.value=id;inviteNote.value=id==='*'?'':current.inviteNotes?.[id]||'';}
  const sendInvite=()=>run(async()=>{const target=inviteTarget.value;if(!target)return;await inviteRoom(target==='*'?undefined:[target]);inviteTarget.value='';});
  const addRoomFriends=()=>run(async()=>{activeGame();await commit(t=>{requireFriends(t,picked.value);const room=t.rooms.find(r=>r.id===roomId.value)!;if(room.rounds.at(-1)&&room.rounds.at(-1)!.phase!=='complete')throw Error('请在本轮结束后邀请新成员。');const ids=[...new Set([...room.members,...picked.value])];if(ids.length>8)throw Error('房间最多8人，请另建房间。');for(const id of picked.value)if(!room.members.includes(id)){room.members.push(id);room.invitations[id]='pending';}});picked.value=[];go('room');await inviteRoom();});
-  // Archive-level tolerance map: generate once per character (player included), persist
-  // before the draw, fill only missing entries, never re-roll or overwrite on retry.
- const startRound=()=>run(async()=>{const id=activeGame().id;if(await recoverDrunkEnd(id))throw Error('游戏已结束，只能回看记录。');
- const missing=missingTolerances(t.value,t.value.rooms.find(r=>r.id===id)!);
-  if(missing.length){const r=await request('tolerance',missing,'请为每位参与者依据人设设定酒量耐受度。',{participantNames:missing.map(name)});
-   await commit(t=>{t.tolerances||={};for(const d of r.tolerances){if(!Number.isInteger(d.value)||d.value<1||d.value>10)throw Error('耐受度结果不正确，未保存，请重试。');if(!missing.includes(d.id))continue;if(!Number.isInteger(t.tolerances[d.id]))t.tolerances[d.id]=d.value;}});}
-  await commit(t=>{const current=t.rooms.find(r=>r.id===id)!;for(const r of current.rounds)if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))r.archived=true;const round=drawKingRound(t,current);round.anchor=operationAnchor;});const drawn=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!;logTerminalActivity('国王游戏抽签',`第 ${drawn.number} 轮 · 国王 ${name(drawn.king)}`);operationRound=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!.number;if(operationCancelled)return;targets.value=[];draft.value='';go('king');});
+  // Archive-level tolerance map: generate once per character (player included), fill only
+  // missing entries, never re-roll or overwrite.
+ // Tolerances are a separate, retryable concern with their own lifecycle: the draw is
+ // persisted first, then this optional request runs on its own controller and guard. It
+ // never sets working/terminalBusy, so the king can issue the command immediately even
+ // while the tolerance call is still hanging upstream.
+ // 完整档案配置参与签名：同一档案里改模型、接口地址或采样参数，旧的耐受度结果也必须失效。
+ // 用函数声明（而不是 const 箭头函数）：上面的配置 watch 可能在初始化期间就读它。
+ function toleranceSignature(){const p=requestProfile('tolerance');return JSON.stringify([p||null,w.credentials[p?.id||'']||'']);}
+ async function requestTolerance(missing:string[]){
+  const session=w.active;if(!session)throw Error('请先打开存档。');
+  const p=requestProfile('tolerance');if(!p)throw Error('请先配置终端 API。');
+  if(!w.connectionReady(p)&&!await w.connectProfile(p))throw Error('请先在 API 设置确认所用接口。');
+  const controller=new AbortController();toleranceController=controller;
+  const callId=crypto.randomUUID();startGeneration(callId);
+  try{
+   return await new HttpGateway().terminal({task:'tolerance',sessionId:session.id,actorIds:missing,input:'请为每位参与者依据人设设定酒量耐受度。',persona:session.persona,context:{participantNames:missing.map(name),state:{characters:actors.value.filter(a=>missing.includes(a.id))}}},p,w.credentials[p.id]||'',controller.signal);
+  }finally{finishGeneration(callId);if(toleranceController===controller)toleranceController=undefined;}
+ }
+ /** Controlled write path for tolerances: same archive and branch, room still known, and
+  * only entries that are still missing — a value already known is never re-rolled. */
+ async function commitTolerances(guard:{sid:string;roomId:string;anchor:TerminalAnchor;signature:string},entries:{id:string;value:number}[]){
+  await exclusiveWrite(async()=>{
+   // 写入队列里再核验一次：即使上游或替身忽略了 abort，旧配置的迟到结果也不能落库。
+   if(guard.signature!==toleranceSignature())throw Error('终端 API 已改变，耐受度未保存。');
+   const session=w.active;if(!session||session.id!==guard.sid)throw Error('存档已切换，耐受度写入已停止。');
+   if(!terminalAnchorActive(session,guard.anchor))throw Error('剧情分支已切换，耐受度写入已停止。');
+   if(!session.terminal?.rooms.some(r=>r.id===guard.roomId))throw Error('房间已不存在，耐受度写入已停止。');
+   const next:PersonalTerminal=JSON.parse(JSON.stringify(session.terminal));
+   next.tolerances||={};let changed=false;
+   for(const entry of entries)if(!Number.isInteger(next.tolerances[entry.id])){next.tolerances[entry.id]=entry.value;changed=true;}
+   if(!changed)return;
+   const prior=session.terminal;session.terminal=next;syncTerminalMemoryNotes(session);
+   try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(w.active?.id!==guard.sid)throw Error('存档已切换，耐受度写入已停止。');if(String(w.storageStatus)==='failed')throw Error('耐受度保存失败');}
+   catch(e){if(session.terminal===next){session.terminal=prior;syncTerminalMemoryNotes(session);}throw e;}
+  });
+ }
+ function fillTolerances(id:string):Promise<void>{
+  const room=t.value.rooms.find(r=>r.id===id);
+  if(!room||room.endedAt)return Promise.resolve();
+  if(toleranceRoom===id&&toleranceTask)return toleranceTask;
+  const missing=missingTolerances(t.value,room);if(!missing.length)return Promise.resolve();
+  const session=w.active;if(!session)return Promise.resolve();
+  const guard={sid:session.id,roomId:id,anchor:terminalAnchor(session),signature:toleranceSignature()};
+  toleranceRoom=id;
+  const task=(async()=>{
+   try{
+    const r=await requestTolerance(missing) as {tolerances?:unknown};
+    const raw:unknown[]=Array.isArray(r?.tolerances)?r.tolerances:[];
+    const valid=raw.filter((d:any)=>d&&typeof d.id==='string'&&missing.includes(d.id)&&Number.isInteger(d.value)&&d.value>=1&&d.value<=10) as Array<{id:string;value:number}>;
+    if(!valid.length)throw Error('耐受度结果不正确，未保存。');
+    if(guard.signature!==toleranceSignature())throw Error('终端 API 已改变，耐受度未保存。');
+    await commitTolerances(guard,valid);
+    const skipped=missing.filter(x=>!valid.some(d=>d.id===x));
+    if(skipped.length)logTerminalActivity('酒量耐受度部分缺失',skipped.map(name).join('、'));
+   }catch(e){
+    logTerminalActivity('酒量耐受度未获取（不影响本局）',e instanceof Error?e.message:'请求失败');
+   }finally{toleranceRoom='';toleranceTask=undefined;}
+  })();
+  toleranceTask=task;
+  return task;
+ }
+ const startRound=async()=>{let pending:Promise<void>=Promise.resolve();
+  await run(async()=>{const id=activeGame().id;if(await recoverDrunkEnd(id))throw Error('游戏已结束，只能回看记录。');
+  await commit(t=>{const current=t.rooms.find(r=>r.id===id)!;for(const r of current.rounds)if(r.anchor&&w.active&&!terminalAnchorActive(w.active,r.anchor))r.archived=true;const round=drawKingRound(t,current);round.anchor=operationAnchor;});const drawn=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!;logTerminalActivity('国王游戏抽签',`第 ${drawn.number} 轮 · 国王 ${name(drawn.king)}`);operationRound=t.value.rooms.find(r=>r.id===id)!.rounds.at(-1)!.number;if(operationCancelled)return;targets.value=[];draft.value='';go('king');
+  // 不 await：抽签已经落盘并解锁，出令可以立刻开始；耐受度只在后台补取。
+  pending=fillTolerances(id);});
+  return pending;};
  function gameContext(r:KingRound,room:KingRoom){return {round:r.number,king:r.king,targets:r.targets,revealedTargets:r.phase==='command'?[]:targetActors(r).map(id=>({id,number:r.numbers[id]})),command:r.command,replies:r.replies,interactions:(r.interactions||[]).filter(i=>!i.anchor||!!w.active&&terminalAnchorActive(w.active,i.anchor)).slice(-6).map(i=>({...i,text:i.text.slice(0,1000),replies:i.replies.map(r=>({...r,text:r.text.slice(0,600),penalty:r.penalty?.slice(0,300)}))})),maxNumber:Object.keys(r.numbers).length,style:room.style,recentRounds:room.rounds.filter(r=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor))).slice(-3).map(r=>({number:r.number,command:r.command,replies:r.replies.map(reply=>({...reply,text:reply.text.slice(0,600)}))}))};}
  const command=()=>run(async()=>{activeGame();const r=round.value,rm=room.value;if(!r||!rm)return;if(await recoverDrunkEnd(rm.id))throw Error('游戏已结束，只能回看记录。');requireFriends(t.value,Object.keys(r.numbers).filter(id=>id!=='player'));let text=draft.value,chosen=targets.value,betrayal=false;
   if(r.king==='player'){if(!text.trim()||!chosen.length)throw Error('请输入命令并选择目标编号。');betrayal=(await request('evaluate',[],text)).betrayal;}
