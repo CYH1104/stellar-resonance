@@ -80,3 +80,28 @@ test('npc divination never receives the requester private persona as user profil
  const playerPlan=terminalPlan(card,{...base,persona,context:{divination:{day:'2026-10-26',actorId:'player',kind:'player',cards}}});
  assert.ok(JSON.stringify(playerPlan.messages).includes('玩家绝不外传的私人背景设定'));// own reading keeps it
 });
+test('divination audience is exactly the target actor; other terminal tasks still require the player',()=>{
+ const npcCtx={divination:{day:'2026-10-26',actorId:'a',kind:'npc',cards}};
+ const scopeRejected=e=>e.code==='INVALID_DIVINATION_SCOPE';
+ // An NPC peek scoped to the target itself passes: the player is not the subject and must not be forced in.
+ const npc=terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['a']}});
+ assert.deepEqual(npc.ids,['a']);
+ assert.deepEqual(JSON.parse(npc.messages.at(-1).content).context.audience,['a']);
+ // The player's own reading is scoped to the player alone.
+ const own=terminalPlan(card,{...base,context:{...base.context,audience:['player']}});
+ assert.deepEqual(JSON.parse(own.messages.at(-1).content).context.audience,['player']);
+ // The old one-line workaround (padding the NPC request with 'player') is refused, and so is
+ // every other mismatch between the reading subject and its knowing scope.
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['player','a']}}),scopeRejected);
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['player']}}),scopeRejected);
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['b']}}),scopeRejected);
+ assert.throws(()=>terminalPlan(card,{...base,context:{...base.context,audience:['a']}}),scopeRejected);
+ // Malformed audiences stay a plain bad request rather than a scope mismatch.
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['a','a']}}),e=>e.code==='INVALID_TERMINAL_REQUEST');
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:['']}}),e=>e.code==='INVALID_TERMINAL_REQUEST');
+ assert.throws(()=>terminalPlan(card,{...base,actorIds:['a'],context:{...npcCtx,audience:'a'}}),e=>e.code==='INVALID_TERMINAL_REQUEST');
+ // Other terminal tasks keep the shared rule: no 'player' in scope is still invalid.
+ const friend={task:'friend',actorIds:['a'],input:'申请好友',persona:{name:'玩家'},context:{audience:['a']}};
+ assert.throws(()=>terminalPlan(card,friend),e=>e.code==='INVALID_TERMINAL_REQUEST');
+ assert.doesNotThrow(()=>terminalPlan(card,{...friend,context:{audience:['player','a']}}));
+});

@@ -160,6 +160,37 @@ it('NPC peek is lazy and fixed per day, ignores the player count and returns dis
  expect(calls.filter(c=>c.task==='divination')).toHaveLength(2);
 });
 
+it('npc peek scopes the request to the target alone and that exact payload passes the real server plan',async()=>{
+ const {w,u}=await fixture();const calls:any[]=[];const recall:any[]=[];
+ // Synthetic recall: the player's private chat must never be requested for an NPC reading.
+ (w as any).scopedRecall=async(_s:any,query:any,audience:any)=>{recall.push({query,audience});return [{text:'合成记忆：只有目标角色知道的对话'}];};
+ fetchStub(calls,divinationOk);
+ await u.peekDaily('a');expect(u.error.value).toBe('');
+ const sent=calls[0];
+ expect(sent.task).toBe('divination');
+ expect(sent.actorIds).toEqual(['a']);
+ expect(sent.context.audience).toEqual(['a']);// exactly the target; the player is not padded in
+ expect(sent.context.audience).not.toContain('player');
+ expect(sent.context.divination.kind).toBe('npc');
+ expect(sent.context.divination.actorId).toBe('a');
+ expect(recall.map(r=>r.audience)).toEqual([['a']]);// recall boundary follows the same scope
+ // 偷看只落在目标角色自己的签上，不产生任何"被偷看"的知情事件：不写会话、不写记忆、不动玩家记录。
+ expect(u.t.value.conversations??[]).toHaveLength(0);
+ expect(w.active?.memories??[]).toHaveLength(0);
+ expect(findDivination(u.t.value,divinationDay(),'player')).toBeUndefined();
+ // The real server plan accepts this exact frontend payload…
+ const server=await import(new URL('../server/personal-terminal.mjs',import.meta.url).href) as any;
+ const card={characters:[{id:'a',name:'阿一'},{id:'b',name:'阿二'}]};
+ expect(()=>server.terminalPlan(card,sent)).not.toThrow();
+ // …while the old one-line workaround (padding the NPC request with player) is refused.
+ expect(()=>server.terminalPlan(card,{...sent,context:{...sent.context,audience:['player','a']}})).toThrow('INVALID_DIVINATION_SCOPE');
+ // The player's own reading stays scoped to the player alone.
+ await u.drawDaily();expect(u.error.value).toBe('');
+ const own=calls.find(c=>c.context?.divination?.kind==='player');
+ expect(own.context.audience).toEqual(['player']);
+ expect(()=>server.terminalPlan(card,own)).not.toThrow();
+});
+
 it('history lists past days read-only while today stays independent',async()=>{
  const {u}=await fixture();const calls:any[]=[];
  fetchStub(calls,divinationOk);

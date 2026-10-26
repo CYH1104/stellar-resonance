@@ -39,7 +39,14 @@ export function terminalPlan(card,data){
  if(!Object.hasOwn(instructions,task)||!Array.isArray(ids)||ids.length>50||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!roster.some(c=>c.id===id))||typeof data.input!=='string'||data.input.length>2000||!data.persona||typeof data.persona.name!=='string'||!data.persona.name.trim()||JSON.stringify(data.context||{}).length>70000)throw modelError(400,'INVALID_TERMINAL_REQUEST');
  if(['friend','command'].includes(task)&&ids.length!==1||['invite','chat','command','tolerance'].includes(task)&&!ids.length)throw modelError(400,'INVALID_TERMINAL_REQUEST');
  if(task==='friend-create'&&(ids.length||!data.context?.contactTarget||!/^contact-[a-f0-9-]{36}$/.test(data.context.contactTarget.id)||typeof data.context.contactTarget.description!=='string'||!data.context.contactTarget.description.trim()||data.context.contactTarget.description.length>80||roster.some(a=>a.id===data.context.contactTarget.id)))throw modelError(400,'INVALID_TERMINAL_REQUEST');
- if(data.context?.audience!==undefined){const audience=data.context.audience;if(!Array.isArray(audience)||!audience.length||audience.length>50||new Set(audience).size!==audience.length||!audience.includes('player')||audience.some(id=>typeof id!=='string'||!id||id.length>128))throw modelError(400,'INVALID_TERMINAL_REQUEST');}
+ if(data.context?.audience!==undefined){const audience=data.context.audience;
+  if(!Array.isArray(audience)||!audience.length||audience.length>50||new Set(audience).size!==audience.length||audience.some(id=>typeof id!=='string'||!id||id.length>128))throw modelError(400,'INVALID_TERMINAL_REQUEST');
+  // Divination is the target actor's own sign, so its knowing scope is exactly that actor:
+  // ['player'] for a self reading and [npcId] for a peeked one. It is validated separately
+  // rather than forcing 'player' in — widening the scope would feed the player's private
+  // memories into an NPC reading. Every other terminal task keeps the shared player rule.
+  if(task==='divination'){if(audience.length!==1||audience[0]!==ids[0])throw modelError(400,'INVALID_DIVINATION_SCOPE');}
+  else if(!audience.includes('player'))throw modelError(400,'INVALID_TERMINAL_REQUEST');}
  const participantNames=data.context?.participantNames;
  const hasParticipantNames=participantNames!==undefined;
  if(task==='command'&&hasParticipantNames&&(!Array.isArray(participantNames)||participantNames.length<1||participantNames.length>8||participantNames.some(name=>typeof name!=='string'||!name.trim()||name.length>80)))throw modelError(400,'INVALID_TERMINAL_REQUEST');
