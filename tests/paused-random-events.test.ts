@@ -17,6 +17,10 @@ it('pauses random events even with old enabled settings or pending events; ordin
   vi.spyOn(IndexedDbRepository.prototype,'readApiCredentials').mockResolvedValue(undefined);
   vi.spyOn(IndexedDbRepository.prototype,'write').mockResolvedValue();
   vi.spyOn(IndexedDbRepository.prototype,'writeApiCredentials').mockResolvedValue();
+  vi.spyOn(IndexedDbRepository.prototype,'writeConfiguration').mockResolvedValue();
+  vi.spyOn(IndexedDbRepository.prototype,'readEditorDrafts').mockResolvedValue({});
+  vi.spyOn(IndexedDbRepository.prototype,'hasInterruptedRestore').mockResolvedValue(false);
+  vi.spyOn(IndexedDbRepository.prototype,'writeInputDraft').mockResolvedValue();
   vi.spyOn(HttpGateway.prototype,'bootstrap').mockResolvedValue({runtime:'local-card',dataset:'test',name:'测试',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true}});
   vi.spyOn(HttpGateway.prototype,'configure').mockResolvedValue({origin:'https://synthetic.example'});
   vi.spyOn(HttpGateway.prototype,'newGame').mockResolvedValue({dataset:'test',opening:'开场',initial:initialState('玩家')});

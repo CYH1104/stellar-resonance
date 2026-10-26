@@ -23,7 +23,24 @@ async function fixture(terminal=makeTerminal()){
  u.roomId.value='room';u.page.value='room';
  return {w,u,s};
 }
+const onlyScene=(room:TerminalShape['rooms'][number])=>room.afterparty?.scenes?.[0]||room.afterparty;
 const respondRound={number:1,king:'b',numbers:{player:1,a:2},command:'分享趣事',targets:[2],replies:[],phase:'respond' as const};
+it('gives drunkenness priority on round fifteen and retains the individual scene in backups',async()=>{
+ const terminal=makeTerminal();terminal.tolerances={player:10,a:1,b:10};for(let n=1;n<=15;n++)terminal.rooms[0].rounds.push({number:n,king:'player',numbers:{a:1,b:2},command:'分享趣事',targets:[1],replies:n===15?[]:[{id:'a',text:'完成',refused:false,penalty:''}],phase:n===15?'respond':'complete'});
+ const {w,u}=await fixture(terminal);const tasks:string[]=[];vi.stubGlobal('fetch',vi.fn(async(_url,options)=>{const body=JSON.parse(options.body);tasks.push(body.task);return Response.json(body.task==='react'?{betrayal:false,replies:[{id:'a',text:'不愿意',refused:true,penalty:'喝一杯'}]}:{text:longText,summary:'单独相处的摘要'});}));
+ await u.retryReact();expect(u.room.value!.endReason).toBe('drunk');expect(u.room.value!.drunk!.a).toBe(1);expect(tasks).toEqual(['react','afterparty']);
+ const restored=parseBackup(backup({version:1,preferences:w.preferences,sessions:[w.active!]})).sessions[0].terminal!.rooms[0];expect(restored.rounds).toHaveLength(15);expect(restored.afterparty!.scenes![0].participants).toEqual(['player','a']);expect(restored.afterparty!.scenes![0].text).toBe(longText);
+});
+it('ends a legacy sixteen-round active room on entry without changing its historical results',async()=>{
+ const terminal=makeTerminal();terminal.tolerances={player:10,a:10,b:10};for(let n=1;n<=16;n++)terminal.rooms[0].rounds.push({number:n,king:'player',numbers:{a:1,b:2},command:'旧指令',targets:[1],replies:[{id:'a',text:'旧结果',refused:false,penalty:''}],phase:'complete'});
+ const {u}=await fixture(terminal),fetch=vi.fn();vi.stubGlobal('fetch',fetch);await u.openRoom('room');expect(u.room.value!.endReason).toBe('round-limit');expect(u.room.value!.rounds).toHaveLength(16);expect(u.room.value!.rounds[0].replies[0].text).toBe('旧结果');expect(fetch).not.toHaveBeenCalled();
+});
+it('saves membership and valid welcome messages before retrying only the missing messages',async()=>{
+ const {w,u}=await fixture(),anchor=terminalAnchor(w.active!);w.active!.terminal!.conversations=[{id:'existing-group',title:'原本存在的群',members:['a','b'],ownerId:'a',adminIds:['b'],group:true,joined:false,announcement:'',messages:[],unread:0}];w.active!.terminal!.groupInvitations=[{id:'invite',groupId:'existing-group',by:'a',reason:'欢迎加入',status:'pending',anchor,at:'now'}];const requests:any[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(_url,options)=>{const body=JSON.parse(options.body);requests.push(body);return Response.json({messages:Array.from({length:requests.length===1?3:1},(_,i)=>({id:'a',text:'欢迎消息'+requests.length+'-'+i})),topic:'欢迎'});}));
+ await u.answerGroupInvitation('invite',true);expect(u.t.value.conversations[0].joined).toBe(true);expect(u.t.value.conversations[0].messages).toHaveLength(3);expect(u.t.value.groupInvitations![0].welcome!.status).toBe('failed');
+ await u.retryGroupWelcome('invite');expect(requests[1].context.welcomeMissing).toBe(1);expect(requests[1].context.conversation.messages).toHaveLength(3);expect(u.t.value.conversations[0].messages).toHaveLength(4);expect(u.t.value.groupInvitations![0].welcome!.status).toBe('ready');await u.retryGroupWelcome('invite');expect(requests).toHaveLength(2);
+});
 
 it('games list shows all seven games with six locked and keeps rooms reachable',async()=>{
  const {w,u}=await fixture();
@@ -38,6 +55,19 @@ it('games list shows all seven games with six locked and keeps rooms reachable',
   expect(html).toContain('每日占卜');
   expect(html).toContain('创建房间');expect(html).toContain('回看记录');expect(html).toContain('游戏室房间');
  }finally{spy.mockRestore();}
+});
+it('ends normally after the fifteenth settled round and never requests a drunk scene or draws round sixteen',async()=>{
+ const {u}=await fixture();u.t.value.tolerances={player:10,a:10,b:10};
+ for(let number=1;number<=15;number++)u.room.value!.rounds.push({number,king:'player',numbers:{a:1,b:2},command:'分享趣事',targets:[1],replies:number===15?[]:[{id:'a',text:'完成',refused:false,penalty:''}],phase:number===15?'respond':'complete'});
+ const calls:string[]=[];vi.stubGlobal('fetch',vi.fn(async(_url,options)=>{const body=JSON.parse(options.body);calls.push(body.task);return Response.json({betrayal:false,replies:[{id:'a',text:'我完成了',refused:false,penalty:''}]});}));
+ await u.retryReact();expect(u.error.value).toBe('');expect(u.room.value!.endReason).toBe('round-limit');expect(u.room.value!.afterparty).toBeUndefined();expect(calls).toEqual(['react']);
+ await u.startRound();expect(u.room.value!.rounds).toHaveLength(15);expect(calls).toEqual(['react']);
+});
+it('keeps completed individual scenes and retries only the failed actor without another settlement',async()=>{
+ const {u}=await fixture();u.t.value.tolerances={player:10,a:5,b:5};u.room.value!.endedAt=new Date().toISOString();u.room.value!.endReason='drunk';u.room.value!.endTriggers=['a','b'];u.room.value!.drunk={a:5,b:5};u.room.value!.afterparty={status:'pending',triggers:['a','b'],participants:['player','a','b']};
+ let good=false;const calls:any[]=[];vi.stubGlobal('fetch',vi.fn(async(_url,options)=>{const body=JSON.parse(options.body);calls.push(body);return Response.json({text:body.actorIds[0]==='a'&&!good?'未完成草稿':longText,summary:'独处摘要'});}));
+ await u.retryAfterparty('room');expect(u.room.value!.afterparty!.scenes!.map(s=>s.status)).toEqual(['failed','ready']);expect(calls.map(c=>c.actorIds)).toEqual([['a'],['b']]);expect(calls.map(c=>c.context.audience)).toEqual([['player','a'],['player','b']]);
+ const before=JSON.stringify(u.room.value!.drunk);good=true;await u.retryAfterparty('room','a');expect(calls.map(c=>c.actorIds)).toEqual([['a'],['b'],['a']]);expect(u.room.value!.afterparty!.status).toBe('ready');expect(JSON.stringify(u.room.value!.drunk)).toBe(before);
 });
 it('generates tolerances once per participant, persists them before the draw and only fills missing entries',async()=>{
  const {w,u}=await fixture();const calls:any[]=[];
@@ -73,7 +103,7 @@ it('rejects invalid tolerance results without saving or drawing, then succeeds o
  bad=false;await u.startRound();expect(u.error.value).toBe('');
  expect(u.t.value.tolerances).toEqual({player:5,a:5,b:5});expect(u.room.value!.rounds).toHaveLength(1);
 });
-it('counts fixed two-cup penalties once per stable event for NPC refusals and player refusals, never for completion',async()=>{
+it('counts fixed one-cup penalties once per stable event for NPC refusals and player refusals, never for completion',async()=>{
  const {u}=await fixture();
  u.t.value.tolerances={player:10,a:10,b:10};
  u.room.value!.rounds.push({...respondRound,king:'a',numbers:{player:1,b:2},targets:[1]});
@@ -81,13 +111,13 @@ it('counts fixed two-cup penalties once per stable event for NPC refusals and pl
  vi.stubGlobal('fetch',vi.fn(async(_url:string,options:any)=>{const data=JSON.parse(options.body);
   if(data.task==='game-interact')return Response.json({replies:data.actorIds.map((id:string)=>({id,text:'好呀。',refused:false,penalty:''}))});
   throw Error('unexpected task '+data.task);}));
- u.draft.value='我拒绝，喝两杯。';await u.playerReply(true);expect(u.error.value).toBe('');
- expect(u.room.value!.drunk?.player).toBe(2);
+ u.draft.value='我拒绝，喝一杯。';await u.playerReply(true);expect(u.error.value).toBe('');
+ expect(u.room.value!.drunk?.player).toBe(1);
  expect(u.room.value!.penaltyEvents).toHaveLength(1);
  // player completing a command adds nothing
  u.t.value.rooms[0].rounds.push({number:2,king:'b',numbers:{player:1,a:2},command:'分享趣事',targets:[1],replies:[],phase:'respond'});
  u.draft.value='我完成了。';await u.playerReply(false);expect(u.error.value).toBe('');
- expect(u.room.value!.drunk?.player).toBe(2);expect(u.room.value!.penaltyEvents).toHaveLength(1);
+ expect(u.room.value!.drunk?.player).toBe(1);expect(u.room.value!.penaltyEvents).toHaveLength(1);
  // idempotent: re-running the program accounting never double-counts
  const before=JSON.stringify(u.room.value!.drunk);syncKingDrunk(u.t.value,u.t.value.rooms[0]);
  expect(JSON.stringify(u.room.value!.drunk)).toBe(before);expect(u.room.value!.penaltyEvents).toHaveLength(1);
@@ -95,7 +125,7 @@ it('counts fixed two-cup penalties once per stable event for NPC refusals and pl
 it('ends the whole game when drunk reaches an odd tolerance and writes the afterparty once, without double counting on retry',async()=>{
  const {w,u}=await fixture();
  u.t.value.tolerances={player:10,a:5,b:10};
- u.room.value!.drunk={a:3};
+ u.room.value!.drunk={a:4};
  u.room.value!.rounds.push(respondRound);
  const calls:any[]=[];
  vi.stubGlobal('fetch',vi.fn(async(_url:string,options:any)=>{const data=JSON.parse(options.body);calls.push(data);
@@ -107,23 +137,23 @@ it('ends the whole game when drunk reaches an odd tolerance and writes the after
  expect(u.room.value!.endReason).toBe('drunk');
  expect(u.room.value!.endTriggers).toEqual(['a']);
  expect(u.room.value!.afterparty?.status).toBe('ready');
- expect(u.room.value!.afterparty!.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
+ expect(onlyScene(u.room.value!)!.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
  expect(u.room.value!.drunk?.a).toBe(5);
  expect(calls.filter(c=>c.task==='afterparty')).toHaveLength(1);
  expect(u.page.value).toBe('history');
  // memory keeps the full text in the room and the summary on game entries with participant knownBy
  const games=(w.active!.terminal!.memories||[]).flatMap(b=>b.games).filter(g=>g.id.startsWith('room:'));
- expect(games.length).toBeGreaterThan(0);expect(games.every(g=>g.afterparty==='散场复盘摘要')).toBe(true);
+ expect(games.length).toBeGreaterThan(0);expect(games.every(g=>!g.afterparty)).toBe(true);
  expect(games.every(g=>(g.knownBy||[]).includes('a')&&(g.knownBy||[]).includes('player'))).toBe(true);
- expect(JSON.stringify(w.active!.terminal!.memories)).toContain('国王游戏复盘：散场复盘摘要');
+ expect(JSON.stringify(w.active!.terminal!.memories)).toContain('醉后小剧场：散场复盘摘要');
  // further rounds and penalties are impossible after the end
  await expect(u.commit(t=>{t.rooms[0].rounds[0].replies.push({id:'b',text:'x',refused:false,penalty:''});})).rejects.toThrow('游戏已结束');
  expect(u.room.value!.penaltyEvents).toHaveLength(1);
 });
-it('merges multiple same-round triggers into one afterparty',async()=>{
+it('writes separate private scenes for multiple same-round triggers',async()=>{
  const {u}=await fixture();
  u.t.value.tolerances={player:10,a:5,b:10};
- u.room.value!.drunk={a:4,b:8};
+ u.room.value!.drunk={a:4,b:9};
  u.room.value!.rounds.push({number:1,king:'player',numbers:{a:1,b:2},command:'一起分享',targets:[1,2],replies:[],phase:'respond'});
  vi.stubGlobal('fetch',vi.fn(async(_url:string,options:any)=>{const data=JSON.parse(options.body);
   if(data.task==='react')return Response.json({betrayal:false,replies:data.actorIds.map((id:string)=>({id,text:'不接，罚酒我喝。',refused:true,penalty:'喝下罚酒。'}))});
@@ -132,7 +162,7 @@ it('merges multiple same-round triggers into one afterparty',async()=>{
  await u.retryReact();expect(u.error.value).toBe('');
  expect(u.room.value!.endTriggers).toEqual(['a','b']);
  expect(u.room.value!.afterparty?.status).toBe('ready');
- expect(u.room.value!.drunk).toEqual({a:6,b:10});
+ expect(u.room.value!.drunk).toEqual({a:5,b:10});
 });
 it('keeps the original text and error on failure and retry only rewrites the afterparty without re-counting cups',async()=>{
  const {u}=await fixture();
@@ -149,14 +179,14 @@ it('keeps the original text and error on failure and retry only rewrites the aft
  u.roomId.value='room';u.go('history');
  await u.retryAfterparty('room');expect(u.error.value).toContain('1200');
  expect(u.room.value!.afterparty?.status).toBe('failed');
- expect(u.room.value!.afterparty?.error).toContain('1200');
+ expect(onlyScene(u.room.value!)?.error).toContain('1200');
  expect(u.room.value!.drunk).toEqual({a:5});expect(u.room.value!.penaltyEvents).toEqual(['1:a']);
  expect(u.room.value!.rounds).toHaveLength(1);
  // a cancelled request also preserves state and records the failure
  good=true;
  await u.retryAfterparty('room');expect(u.error.value).toBe('');
  expect(u.room.value!.afterparty?.status).toBe('ready');
- expect(u.room.value!.afterparty?.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
+ expect(onlyScene(u.room.value!)?.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
  expect(calls.filter(c=>c.task==='afterparty')).toHaveLength(2);
 });
 it('manual end without drunk never requests an afterparty; zero-round manual ends stay silent',async()=>{
@@ -231,13 +261,13 @@ it('renders accessible drunk progress bars for participants only and disables lo
 it('ends immediately when a player refusal crosses the tolerance: no game-interact request, pending interaction stopped, participants snapshotted',async()=>{
  const {u}=await fixture();
  u.t.value.tolerances={player:4,a:10,b:10};
- u.t.value.rooms[0].drunk={player:2};
+ u.t.value.rooms[0].drunk={player:3};
  u.t.value.rooms[0].rounds.push({number:1,king:'a',numbers:{player:1,b:2},command:'分享趣事',targets:[1],replies:[],phase:'respond' as const});
  const calls:any[]=[];
  vi.stubGlobal('fetch',vi.fn(async(_x:string,o:any)=>{const data=JSON.parse(o.body);calls.push(data);
   if(data.task==='afterparty')return Response.json({text:longText,summary:'s'});
   throw Error('unexpected task '+data.task);}));
- u.draft.value='我拒绝，喝两杯。';await u.playerReply(true);expect(u.error.value).toBe('');
+ u.draft.value='我拒绝，喝一杯。';await u.playerReply(true);expect(u.error.value).toBe('');
  expect(u.room.value!.endedAt).toBeTruthy();
  expect(u.room.value!.endTriggers).toEqual(['player']);
  expect(calls.some(c=>c.task==='game-interact')).toBe(false);
@@ -254,7 +284,7 @@ it('scoped accounting never back-fills legacy saves, ended rooms, archived branc
  expect(legacy.drunkFrom).toBe(10);
  legacy.rounds.push({number:11,king:'a',numbers:{player:1,b:2},command:'x',targets:[2],replies:[{id:'b',text:'不',refused:true,penalty:'喝两杯'}],phase:'complete' as const});
  syncKingDrunk(t0,legacy);syncKingDrunk(t0,legacy);// retry never double-counts
- expect(legacy.drunk).toEqual({b:2});expect(legacy.penaltyEvents).toEqual(['11:b']);
+ expect(legacy.drunk).toEqual({b:1});expect(legacy.penaltyEvents).toEqual(['11:b']);
  // ended rooms are never modified
  legacy.endedAt=new Date().toISOString();legacy.drunkFrom=0;delete legacy.penaltyEvents;delete legacy.drunk;
  syncKingDrunk(t0,legacy);expect(legacy.drunk).toBeUndefined();expect(legacy.penaltyEvents).toBeUndefined();
@@ -292,7 +322,7 @@ it('afterparty requests carry only end-time participants and never leak other pr
  expect(u.room.value!.afterparty?.participants).toEqual(['player','a']);
  const games=(w.active!.terminal!.memories||[]).flatMap(x=>x.games).filter(g=>g.id.startsWith('room:'));
  expect(games.length).toBeGreaterThan(0);
- expect(games.every(g=>g.afterparty==='摘要'&&JSON.stringify(g.knownBy)===JSON.stringify(['player','a']))).toBe(true);
+ expect(games.every(g=>!g.afterparty)).toBe(true);const privateScene=(w.active!.terminal!.memories||[]).flatMap(b=>b.chats).find(c=>c.id.startsWith('afterparty:'));expect(privateScene?.knownBy).toEqual(['player','a']);expect(JSON.stringify(privateScene)).toContain('摘要');
 });
 it('keeps a short body as draft, sends it with the retry, and a cancelled retry preserves it',async()=>{
  const {u}=await fixture();
@@ -310,11 +340,11 @@ it('keeps a short body as draft, sends it with the retry, and a cancelled retry 
  await u.retryAfterparty('room');expect(u.error.value).toContain('AFTERPARTY_LENGTH');
  expect(u.room.value!.afterparty?.status).toBe('failed');
  // raw JSON is never stored as the body: the safe text field becomes the draft
- expect(u.room.value!.afterparty?.draft).toBe('短文草稿金丝雀。');
+ expect(onlyScene(u.room.value!)?.draft).toBe('短文草稿金丝雀。');
  // a cancelled retry keeps status and draft untouched
  vi.stubGlobal('fetch',vi.fn(async()=>{throw new Error('请求已停止。');}));
  await u.retryAfterparty('room');expect(u.error.value).toContain('无法连接');
- expect(u.room.value!.afterparty?.draft).toBe('短文草稿金丝雀。');
+ expect(onlyScene(u.room.value!)?.draft).toBe('短文草稿金丝雀。');
  expect(u.room.value!.afterparty?.status).toBe('failed');
  // the successful retry reuses the draft and satisfies the length validation
  vi.stubGlobal('fetch',vi.fn(async(_x:string,o:any)=>{const data=JSON.parse(o.body);bodies.push(data);
@@ -324,7 +354,7 @@ it('keeps a short body as draft, sends it with the retry, and a cancelled retry 
  await u.retryAfterparty('room');expect(u.error.value).toBe('');
  expect(bodies.filter(b=>b.task==='afterparty').at(-1)?.context.priorDraft).toBe('短文草稿金丝雀。');
  expect(u.room.value!.afterparty?.status).toBe('ready');
- expect(u.room.value!.afterparty?.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
+ expect(onlyScene(u.room.value!)?.text!.replace(/\s+/gu,'').length).toBeGreaterThanOrEqual(1200);
 });
 it('a late afterparty settlement never lands on another archive whose room shares the id',async()=>{
  const {w,u}=await fixture();
@@ -369,8 +399,8 @@ it('an async same-session branch switch stops both late afterparty success and f
  await pending;
  expect(u.error.value).not.toBe('');
  expect(u.t.value.rooms[0].afterparty?.status).toBe('pending');
- expect(u.t.value.rooms[0].afterparty?.text).toBeUndefined();
- expect(u.t.value.rooms[0].afterparty?.error).toBeUndefined();
+ expect(onlyScene(u.t.value.rooms[0])?.text).toBeUndefined();
+ expect(onlyScene(u.t.value.rooms[0])?.error).toBeUndefined();
  // late failure: switch back to the original branch first, then a failure there books normally
  w.active!.turns[0].selected=0;
  const put2=useDeferred();
@@ -380,7 +410,7 @@ it('an async same-session branch switch stops both late afterparty success and f
  await expect(failing).resolves.toBeUndefined();
  expect(u.error.value).toContain('AFTERPARTY_LENGTH');
  expect(u.t.value.rooms[0].afterparty?.status).toBe('failed');// on-branch failure still books normally
- expect(u.t.value.rooms[0].afterparty?.draft).toBe('短文。');
+ expect(onlyScene(u.t.value.rooms[0])?.draft).toBe('短文。');
  // late failure after branch switch: the 502 is dropped by the request guard, and the
  // failure bookkeeping must not land on the old branch either
  const put3=useDeferred();
@@ -391,6 +421,6 @@ it('an async same-session branch switch stops both late afterparty success and f
  await late;
  expect(u.error.value).not.toBe('');
  expect(u.t.value.rooms[0].afterparty?.status).toBe('failed');
- expect(u.t.value.rooms[0].afterparty?.text).toBeUndefined();
- expect(u.t.value.rooms[0].afterparty?.draft).toBe('短文。');// prior failure record untouched
+ expect(onlyScene(u.t.value.rooms[0])?.text).toBeUndefined();
+ expect(onlyScene(u.t.value.rooms[0])?.draft).toBe('短文。');// prior failure record untouched
 });

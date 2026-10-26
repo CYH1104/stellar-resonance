@@ -93,7 +93,7 @@ function forumPosts(value: unknown): ForumPost[] {
     return item;
   });
 }
-export function validateOutcome(value: unknown, state: WorldState,legacy=false): Outcome {
+export function validateOutcome(value: unknown, state: WorldState,legacy=false,terminalActors:{id:string;name?:string}[]=[]): Outcome {
   if (!record(value)) throw new Error('状态更新格式不正确');
   const v = value as Record<string, unknown>;
   if (Object.keys(v).some(k => !['openingScene','terminal','stateUpdate','mvu','player', 'characters', 'event', 'diceEvent', 'forum','theaters','suggestions'].includes(k))) throw new Error('状态更新包含未允许的字段');
@@ -120,7 +120,7 @@ export function validateOutcome(value: unknown, state: WorldState,legacy=false):
       }catch(error){if(error instanceof Error&&record(c))Object.assign(error,{actorId:c.id});throw error;}
     });
   }
-  if(v.terminal!==undefined)out.terminal=cleanTerminalBatch(v.terminal,[...mvuState.characters,...out.characters||[]]);
+  if(v.terminal!==undefined)out.terminal=cleanTerminalBatch(v.terminal,[...mvuState.characters,...out.characters||[],...terminalActors]);
   if (v.forum !== undefined) out.forum = forumPosts(v.forum);
   if(v.theaters!==undefined){out.theaters=cleanTheaterScenes(v.theaters);const actorIds=new Set([...state.characters,...out.characters||[],...(out.mvu?applyMvu(state,out.mvu).characters:[])].map(c=>c.id));for(const scene of out.theaters)if(scene.diary&&scene.diary.ownerId!=='player'&&!actorIds.has(scene.diary.ownerId))throw Error('日记精神体主人不存在');}
   return out;
@@ -139,7 +139,7 @@ export function stateAt(session: Session, before = session.turns.length,legacy=f
     const v = selected(turn); if (v?.status !== 'complete' || !v.outcome) continue;
     let stage='状态校验';
     try {
-      const outcome = validateOutcome(v.outcome, state,legacy);
+      const outcome = validateOutcome(v.outcome, state,legacy,session.terminal?.contacts);
       stage='骰点绑定';assertDiceEventBinding(outcome.diceEvent,turn.dice);
       stage='变量应用';
       let candidate=outcome.mvu?applyMvu(state,outcome.mvu,legacy):copy(state);
@@ -153,7 +153,7 @@ export function stateAt(session: Session, before = session.turns.length,legacy=f
 }
 export function encounteredCharacters(session:Session,before=session.turns.length){
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
-  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch(error){recordReplayIssue(session,turn,v,'已遇到角色',error);}}
+  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior,false,session.terminal?.contacts);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch(error){recordReplayIssue(session,turn,v,'已遇到角色',error);}}
   return stateAt(session,before).characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
@@ -169,7 +169,7 @@ export function visibleForum(session: Session, before = session.turns.length): F
     const variant = selected(turn);
     if (variant?.status !== 'complete' || !variant.outcome) return [];
     try {
-      const outcome = validateOutcome(variant.outcome, stateAt(session,index));
+      const outcome = validateOutcome(variant.outcome, stateAt(session,index),false,session.terminal?.contacts);
       return (outcome.forum || []).map(post => ({ ...post, key: `forum/${variant.id}/${post.id}`, turnId: turn.id, variantId: variant.id, round: index + 1, createdAt: variant.createdAt }));
     } catch { return []; }
   }).reverse();
@@ -235,7 +235,7 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   session.updatedAt=now();
 }
 export function finishVariant(session: Session, turnIndex: number, variant: Variant, outcome: unknown): void {
-  variant.text=unwrapStoryTags(stripReasoning(variant.text));const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex));assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
+  variant.text=unwrapStoryTags(stripReasoning(variant.text));const validated=validateOutcome(scrubModelData(outcome),stateAt(session,turnIndex),false,session.terminal?.contacts);assertDiceEventBinding(validated.diceEvent,session.turns[turnIndex].dice);
   if(validated.characters?.some(actor=>actor.affinity!==undefined&&!validAffinity(actor.affinity)))throw new Error('NPC 好感度必须在 -100 到 100 之间');
   variant.outcome=validated;variant.status='complete';prepareForumLikes(session);restoreSuggestions(session);
   const turn=session.turns[turnIndex],before=stateAt(session,turnIndex),after=stateAt(session,turnIndex+1);
@@ -266,13 +266,25 @@ export function backup(snapshot: Snapshot): string {
 }
 /** Explicit one-time migration. Preserve original snapshots/patches for audit,
  * replay each old branch under its original range, then store bounded snapshots. */
+export function stateAfterOutcome(before:WorldState,outcome:Outcome,override?:Variant['mvuOverride'],legacy=false):WorldState{
+ let next=outcome.mvu?applyMvu(before,outcome.mvu,legacy):copy(before);
+ Object.assign(next.player,outcome.player);
+ for(const change of outcome.characters||[]){const actor=next.characters.find(a=>a.id===change.id);if(actor){const {id,...patch}=change;Object.assign(actor,patch);}else next.characters.push(newDynamicActor(change,legacy));}
+ return override?applyMvu(next,override,legacy):next;
+}
 export function migrateAffinitySession(session:Session):void{
  if(session?.affinityMigration?.version===1||!session?.initial?.characters||!Array.isArray(session.turns))return;
  const source=copy(session),states=new Map<string,WorldState>();let needed=source.initial.characters.some(c=>typeof c.affinity==='number'&&c.affinity>100&&c.affinity<=200);
- for(let i=0;i<source.turns.length;i++)for(let j=0;j<source.turns[i].variants.length;j++){
-  const turn=source.turns[i],old=turn.selected;turn.selected=j;
-  if(turn.variants[j].status==='complete'&&turn.variants[j].outcome){const state=stateAt(source,i+1,true);states.set(i+':'+j,state);if(state.characters.some(c=>(c.affinity??0)>100&&(c.affinity??0)<=200))needed=true;}
-  turn.selected=old;
+ let prior=stateAt(source,0,true);
+ for(let i=0;i<source.turns.length;i++){
+  const turn=source.turns[i];let selectedState=prior;
+  for(let j=0;j<turn.variants.length;j++){
+   const variant=turn.variants[j];if(variant.status!=='complete'||!variant.outcome)continue;
+   let state=prior;try{const out=validateOutcome(variant.outcome,prior,true,session.terminal?.contacts);assertDiceEventBinding(out.diceEvent,turn.dice);state=stateAfterOutcome(prior,out,variant.mvuOverride,true);}catch{}
+   states.set(i+':'+j,state);if(state.characters.some(c=>(c.affinity??0)>100&&(c.affinity??0)<=200))needed=true;
+   if(j===turn.selected)selectedState=state;
+  }
+  prior=selectedState;
  }
  const records:{source:string;value:unknown}[]=[];
  if(needed){
@@ -307,7 +319,7 @@ const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'acces
 function inspect(value: unknown, depth = 0, path = ''): void {
   if (depth > 18) throw new Error('备份结构过深');
   if (!value || typeof value !== 'object') return;
-  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
+  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|groupInvitations\/\d+|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
   for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
 export interface SaveFailureLocation{sessionId?:string;turnId?:string;variantId?:string;round?:number}
@@ -342,6 +354,7 @@ export function parseBackup(text: string): Snapshot {
       actorPatch({ mentalPowerLevel:a.mentalPowerLevel,name: a.name, primaryGender: a.primaryGender, secondaryGender: a.secondaryGender,identity:a.identity,ability:a.ability, innerThought: a.innerThought,spiritAnimal:a.spiritAnimal,spiritThought:a.spiritThought, affinity: a.affinity, present: a.present });
     }
     if(s.initial.variables!==undefined)cleanJson(s.initial.variables);
+    let rollingState=stateAt(s,0);
     const turnIds = new Set<string>();
     for (const [index,t] of s.turns.entries()) {
       if (!t || typeof t.id !== 'string' || turnIds.has(t.id) || typeof t.input !== 'string' || !Array.isArray(t.variants) || !Number.isInteger(t.selected) || t.selected < 0 || (t.variants.length && t.selected >= t.variants.length)) throw new Error('消息版本不合法');
@@ -350,7 +363,9 @@ export function parseBackup(text: string): Snapshot {
       if(t.randomEvent&&['preparing','failed','pending'].includes(t.randomEvent.status)&&(t.variants.length||t!==s.turns.at(-1)))throw new Error('待决定的随机事件不能有正文或后续回合');
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
       for(const v of t.variants)if(v?.generationRequirements!==undefined){const requirements=v.generationRequirements;if(!record(requirements)||Object.keys(requirements).some(k=>!['stateEnabled','theaters'].includes(k))||typeof requirements.stateEnabled!=='boolean')throw Error('本轮生成配置不正确');v.generationRequirements={stateEnabled:requirements.stateEnabled,theaters:cleanTheaters(requirements.theaters)};}
-      for (const v of t.variants) {try{ if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,stateAt(s,index));assertDiceEventBinding(out.diceEvent,t.dice);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');const testSession=copy(s);testSession.turns[index].selected=t.variants.indexOf(v);delete testSession.turns[index].variants[t.variants.indexOf(v)].mvuOverride;applyMvu(stateAt(testSession,index+1),v.mvuOverride);} }catch(error){locateFailure(error,{sessionId:s.id,turnId:t.id,variantId:v?.id,round:index+1});} }
+      let nextState=rollingState;
+      for (const v of t.variants) {try{ if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts);assertDiceEventBinding(out.diceEvent,t.dice);if(v.status==='complete'&&v===t.variants[t.selected])nextState=stateAfterOutcome(rollingState,out,v.mvuOverride);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');stateAfterOutcome(rollingState,validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts),v.mvuOverride);} }catch(error){locateFailure(error,{sessionId:s.id,turnId:t.id,variantId:v?.id,round:index+1});} }
+      rollingState=nextState;
     }
     validateLedgerMetadata(s);
     if(s.hiddenActorCardIds!==undefined&&(!Array.isArray(s.hiddenActorCardIds)||s.hiddenActorCardIds.length>1000||s.hiddenActorCardIds.some(id=>!validActorId(id))))throw new Error('Invalid hidden actor cards');

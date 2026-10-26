@@ -25,6 +25,11 @@ beforeEach(()=>{
   vi.spyOn(HttpGateway.prototype,'memory').mockImplementation(async input=>normalizeMemoryResult({participants:[input.after.player.name],time:'未明确',location:'未明确',userActions:[input.input,input.event||'本轮行动'],charActions:[],gains:input.diceEvent?.direction==='positive'?[input.diceEvent.description]:[],losses:input.diceEvent?.direction==='negative'?[input.diceEvent.description]:[],commitments:[],affinityChanges:[]},input));
   vi.useFakeTimers();saved=undefined;privateSaved=undefined;scope=effectScope();
   vi.spyOn(IndexedDbRepository.prototype,'read').mockResolvedValue(undefined);
+  vi.spyOn(IndexedDbRepository.prototype,'readEditorDrafts').mockResolvedValue({});
+  vi.spyOn(IndexedDbRepository.prototype,'writeEditorDraft').mockResolvedValue();
+  vi.spyOn(IndexedDbRepository.prototype,'hasInterruptedRestore').mockResolvedValue(false);
+  vi.spyOn(IndexedDbRepository.prototype,'writeInputDraft').mockImplementation(async(id,text)=>{const session=saved?.sessions.find(s=>s.id===id);if(session)session.draftInput=text;});
+  vi.spyOn(IndexedDbRepository.prototype,'writeConfiguration').mockImplementation(async(preferences,value)=>{privateSaved=cleanLocalApiCredentials(value);saved={version:1,sessions:saved?.sessions||[],preferences:JSON.parse(JSON.stringify(preferences))};});
   vi.spyOn(IndexedDbRepository.prototype,'readApiCredentials').mockResolvedValue(undefined);
   vi.spyOn(IndexedDbRepository.prototype,'writeApiCredentials').mockImplementation(async value=>{privateSaved=cleanLocalApiCredentials(value);});
   vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async value=>{saved=JSON.parse(backup(value));});
@@ -37,13 +42,18 @@ beforeEach(()=>{
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function generateAndWait(w:ReturnType<typeof useWorkspace>,...args:Parameters<ReturnType<typeof useWorkspace>['generate']>){await w.generate(...args);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));}
 async function workspace(memoryInterval=1){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
-it('automatically saves direct story and terminal changes without a new generation',async()=>{
+it('retains the input and avoids a paid request when saving the sent turn fails',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('提交失败',{name:'玩家',appearance:'',background:'',personality:''},'');w.input.value='不能丢失的输入';
+ const generate=vi.spyOn(HttpGateway.prototype,'generate');vi.mocked(IndexedDbRepository.prototype.write).mockRejectedValueOnce(Error('空间不足'));await w.generate();
+ expect(w.input.value).toBe('不能丢失的输入');expect(w.active.value!.turns).toHaveLength(0);expect(generate).not.toHaveBeenCalled();expect(w.problem.value).toContain('空间不足');expect(w.busy.value).toBe(false);
+});
+it('requires business commits instead of a deep automatic snapshot save',async()=>{
  const w=await workspace();
  const session=newSession('自动保存',{name:'玩家',appearance:'',background:'',personality:''},'');
  w.sessions.value.push(session);await nextTick();await vi.advanceTimersByTimeAsync(501);
  const active=w.sessions.value[0];active.name='修改后的存档';
  active.terminal={version:1,avatar:'',friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[],bio:'新的简介'};
- await nextTick();expect(w.storageStatus.value).toBe('pending');await vi.advanceTimersByTimeAsync(501);
+ await nextTick();await vi.advanceTimersByTimeAsync(501);expect(saved).toBeUndefined();await w.save();
  expect(saved?.sessions[0].name).toBe('修改后的存档');expect(saved?.sessions[0].terminal?.bio).toBe('新的简介');
  expect(w.storageStatus.value).toBe('saved');expect(w.lastSaved.value).not.toBe('');
 });
@@ -70,20 +80,19 @@ it('reports save validation failures and retries after fixing the terminal state
  await nextTick();await vi.advanceTimersByTimeAsync(501);
  vi.mocked(IndexedDbRepository.prototype.write).mockImplementationOnce(async value=>{saved=parseBackup(backup(value));});
  w.sessions.value[0].terminal={version:1,avatar:'',friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[],bio:'x'.repeat(161)};
- await nextTick();await vi.advanceTimersByTimeAsync(501);
+ await nextTick();await vi.advanceTimersByTimeAsync(501);await w.save();
  expect(w.storageStatus.value).toBe('failed');expect(w.storageError.value).toContain('终端资料');
  w.sessions.value[0].terminal!.bio='修正';await w.save();
  expect(w.storageError.value).toBe('');expect(w.storageStatus.value).toBe('saved');
 });
-it('keeps newer edits pending when an older save finishes',async()=>{
+it('queues an explicit newer commit behind a pending save',async()=>{
  const w=await workspace();w.sessions.value.push(newSession('开始',{name:'玩家',appearance:'',background:'',personality:''},''));
  await nextTick();await vi.advanceTimersByTimeAsync(501);
  let release!:()=>void,started!:()=>void;
  const gate=new Promise<void>(resolve=>release=resolve),entered=new Promise<void>(resolve=>started=resolve);
  vi.mocked(IndexedDbRepository.prototype.write).mockImplementationOnce(async value=>{started();await gate;saved=JSON.parse(backup(value));});
  w.sessions.value[0].name='旧内容';const first=w.save();await entered;
- w.sessions.value[0].name='最新内容';await nextTick();release();await first;
- expect(w.storageStatus.value).toBe('pending');await vi.advanceTimersByTimeAsync(501);
+ w.sessions.value[0].name='最新内容';const latest=w.save();await nextTick();release();await Promise.all([first,latest]);
  expect(saved?.sessions[0].name).toBe('最新内容');expect(w.storageStatus.value).toBe('saved');
 });
 it('撤回一轮会还原状态、记忆和论坛并恢复用户输入，草稿覆盖需明确确认，刷新后仍保留',async()=>{
@@ -357,7 +366,7 @@ it('已保存地址或模型与当前配置不同，不自动确认；保存失�
   const first=await workspace();fill(first);await first.confirmAllApis();const previous=structuredClone(privateSaved!);const changed=structuredClone(saved!);changed.preferences.profiles[0].apiBaseUrl='https://changed.example/v1';
   vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(changed);vi.mocked(IndexedDbRepository.prototype.readApiCredentials).mockResolvedValue(previous);vi.mocked(HttpGateway.prototype.configure).mockClear();
   const reopened=await workspace();expect(reopened.apiReady.value).toBe(false);expect(vi.mocked(HttpGateway.prototype.configure).mock.calls.map(([p])=>p.id)).toEqual([]);
-  vi.mocked(IndexedDbRepository.prototype.writeApiCredentials).mockRejectedValue(new Error('本机写入失败'));await reopened.setRememberApiKeys(false);
+  vi.mocked(IndexedDbRepository.prototype.writeConfiguration).mockRejectedValue(new Error('本机写入失败'));await reopened.setRememberApiKeys(false);
   expect(reopened.problem.value).toBe('本机写入失败');expect(reopened.notice.value).not.toContain('已删除');
 });
 
@@ -513,8 +522,8 @@ it('原评论可手动重试AI，重复提示仅一次，不重发评论或生�
   reply.mockResolvedValue({authorId:'guide',authorName:'角色甲',content:'收到你的评论。'});await w.retryForumReply(key,parent.id);expect(session.forumActivity![key].replies).toHaveLength(2);expect(reply.mock.calls[1][0].comments.at(-1)?.content).toBe('我的评论');expect(w.forumReplyError.value).toBe('');await w.retryForumReply(key,parent.id);expect(reply).toHaveBeenCalledTimes(2);expect(session.forumActivity![key].replies).toHaveLength(2);
   w.preferences.forumReplyEnabled=false;await nextTick();await w.retryForumReply(key,'unknown');expect(reply).toHaveBeenCalledTimes(2);
 });
-it('布局修改通过现有自动保存恢复，重设不修改剧情和API',async()=>{
-  const w=await workspace();fill(w);await w.confirmAllApis();w.preferences.layout={left:320,right:400,panels:{player:{height:240},'theater-1':{width:310,height:420}}};await vi.advanceTimersByTimeAsync(650);expect(saved?.preferences.layout).toEqual(w.preferences.layout);vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(saved);const reopened=await workspace();expect(reopened.preferences.layout).toEqual(w.preferences.layout);expect(reopened.sessions.value).toEqual([]);expect(reopened.preferences.profiles[0].model).toBe('model-main');
+it('布局随明确保存设置恢复，不修改剧情和API',async()=>{
+  const w=await workspace();fill(w);await w.confirmAllApis();w.preferences.layout={left:320,right:400,panels:{player:{height:240},'theater-1':{width:310,height:420}}};await w.commitConfiguration(w.preferences,w.credentials,w.rememberApiKeys.value);expect(saved?.preferences.layout).toEqual(w.preferences.layout);vi.mocked(IndexedDbRepository.prototype.read).mockResolvedValue(saved);const reopened=await workspace();expect(reopened.preferences.layout).toEqual(w.preferences.layout);expect(reopened.sessions.value).toEqual([]);expect(reopened.preferences.profiles[0].model).toBe('model-main');
 });
 it('补全旧精神体日记时替换旧动作片段，保留主线正文和已有论坛',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('旧日记',{name:'玩家',appearance:'',personality:'',background:'',spiritAnimal:'白猫'},'');w.preferences.theaters![3]={slot:4,enabled:true,kind:'custom',title:'精神体日记',templateId:'spirit',instruction:'写第一人称日记'};

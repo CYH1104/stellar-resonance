@@ -23,6 +23,13 @@ async function fixture(s=session()){
  let u!:ReturnType<typeof usePersonalTerminal>;
  await renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}}));return {w,u};
 }
+it('opens existing private and group history while prose is generating without writing over its state',async()=>{
+ const s=session();s.terminal!.conversations=[{id:'dm',title:'好友甲',members:['contact-a'],group:false,announcement:'',unread:1,messages:[{id:'m1',sender:'contact-a',text:'先前的私聊',at:'now'}]},{id:'group',title:'旧群',members:['contact-a','npc-b'],group:true,ownerId:'npc-b',joined:true,announcement:'',unread:2,messages:[]}];
+ const {w,u}=await fixture(s);w.busy=true;const before=JSON.stringify(w.active!.terminal);vi.stubGlobal('fetch',vi.fn());
+ u.openConversation('group');expect(u.page.value).toBe('chat');expect(u.conversationId.value).toBe('group');
+ await u.openChat('contact-a');expect(u.page.value).toBe('chat');expect(u.messages.value[0].text).toBe('先前的私聊');
+ expect(JSON.stringify(w.active!.terminal)).toBe(before);expect(w.save).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();expect(w.busy).toBe(true);
+});
 it('reopens saved unfinished and completed game rounds without a request, redraw or lost interaction entry',async()=>{
  for(const phase of ['command','respond','complete'] as const){
   const s=session(),r=s.terminal!.rooms[0];r.rounds.push({number:1,king:'contact-a',numbers:{player:1,'npc-b':2},command:phase==='command'?'':'分享趣事',targets:phase==='command'?[]:[2],replies:phase==='complete'?[{id:'npc-b',text:'一件趣事',refused:false,penalty:''}]:[],phase,anchor:terminalAnchor(s)});

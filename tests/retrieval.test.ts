@@ -1,17 +1,17 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
-import { retrieve } from '../src/memory/retrieval';
+import { retrieve,disposeRetrieval } from '../src/memory/retrieval';
 import type { Memory } from '../src/domain/contracts';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {disposeRetrieval();vi.unstubAllGlobals();});
 it('Vue 响应式记忆的向量能跨 Worker 传递，更换模型或原文时不用旧向量', async () => {
-  let received: { items: { id: string; vector?: number[] }[] } | undefined;
+  let received: { id:number;items: { id: string; vector?: number[] }[] } | undefined;
   class TestWorker {
-    onmessage?: (event: { data: string[] }) => void;
+    onmessage?: (event: { data: {id:number;ids:string[]} }) => void;
     terminate() {}
     postMessage(value: unknown) {
       received = structuredClone(value) as typeof received;
-      queueMicrotask(() => this.onmessage?.({ data: received!.items.map(m => m.id) }));
+      queueMicrotask(() => this.onmessage?.({ data: {id:received!.id,ids:received!.items.map(m => m.id)} }));
     }
   }
   vi.stubGlobal('Worker', TestWorker);

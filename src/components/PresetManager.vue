@@ -3,7 +3,9 @@ import SaveStatus from './SaveStatus.vue';
 import {useAutoSave} from '../app/useAutoSave';
 import {withoutEmoji} from '../domain/displayText';
 import FileImportButton from './FileImportButton.vue';
-import {computed,ref,watch,nextTick} from 'vue';
+import {computed,ref,watch,nextTick,onScopeDispose} from 'vue';
+import {configurationEditors} from '../app/configurationEditors';
+import {registerBackupFlusher} from '../app/backupFlushers';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Preset,PresetPromptGroup} from '../domain/contracts';
 import {promptFolders,orderedPromptFolders} from '../domain/promptGroups';
@@ -54,14 +56,15 @@ async function saveGroup(){if(props.w.busy||!groupForm.value?.name.trim())return
 async function removeGroup(){if(props.w.busy||!deletingGroup.value)return;for(const p of props.w.presetEntries)if(p.group?.id===deletingGroup.value.id)p.group=null;await props.w.save();if(!props.w.problem){deletingGroup.value=undefined;selectedFolder.value='';}}
 const pinned=(p:Preset)=>pinnedPromptIds.includes(p.identifier||'');
 watch(()=>props.w.currentPreset,()=>{drafts.value={};originals.value={};expanded.value=[];query.value='';library.value='';groupForm.value=undefined;deletingGroup.value=undefined;ungroupedCollapsed.value=false;selectedFolder.value='';});
-function edit(p:Preset){
+async function edit(p:Preset){
   if(!drafts.value[p.id]){drafts.value[p.id]={role:'system',position:'before',depth:4,order:100,...JSON.parse(JSON.stringify(p))};originals.value[p.id]=JSON.parse(JSON.stringify(drafts.value[p.id]));}
+  const start=JSON.stringify(drafts.value[p.id]);try{const saved=await props.w.readEditorDraft('preset:'+p.id);if(saved&&drafts.value[p.id]&&JSON.stringify(drafts.value[p.id])===start)drafts.value[p.id]=cleanPreset(JSON.parse(saved));}catch(e){props.w.problem=e instanceof Error?e.message:'预设草稿读取失败';}
   if(!expanded.value.includes(p.id))expanded.value.push(p.id);
   if(p.group)patchGroup(p.group.id,{collapsed:false});else ungroupedCollapsed.value=false;
 }
 function fold(id:string){expanded.value=expanded.value.filter(value=>value!==id);}
 function toggle(p:Preset){if(expanded.value.includes(p.id))fold(p.id);else edit(p);}
-async function cancel(id:string){await autoSave.flush();if(autoSave.error.value)return;fold(id);delete drafts.value[id];delete originals.value[id];}
+async function cancel(id:string){autoSave.cancel();fold(id);delete drafts.value[id];delete originals.value[id];await props.w.saveEditorDraft('preset:'+id,null);}
 function expandAll(){ungroupedCollapsed.value=false;for(const folder of folders.value)if(folder.id!=='__ungrouped')patchGroup(folder.id,{collapsed:false});}
 function cleanedDraft(id:string){
   const target=props.w.presetEntries.find(p=>p.id===id),draft=drafts.value[id];
@@ -108,11 +111,15 @@ async function useCurrentPreset(){await autoSave.flush();if(autoSave.error.value
 function copyPrompt(p:Preset){if(props.w.busy||p.marker)return;const id=crypto.randomUUID(),q={...JSON.parse(JSON.stringify(p)),id,identifier:id,name:p.name+'（副本）',included:true};props.w.preferences.presets.push(q);edit(q);}
 function toggleAll(enabled:boolean){if(props.w.busy)return;for(const p of rows.value)p.enabled=enabled;}
 function removeSet(){props.w.removePresetSet();deleting.value=false;}
-const autoSave=useAutoSave(()=>drafts.value,async()=>{if(props.w.busy)return false;const changes=Object.keys(drafts.value).filter(id=>JSON.stringify(drafts.value[id])!==JSON.stringify(originals.value[id])).map(cleanedDraft).filter(c=>!!c);if(!changes.length)return true;for(const change of changes)Object.assign(change.target,change.value);props.w.problem='';await props.w.save();if(props.w.problem)throw Error(props.w.problem);for(const change of changes)originals.value[change.target.id]=JSON.parse(JSON.stringify(change.value));return true;},500,()=>props.w.busy);
+function stageDrafts(){for(const id of Object.keys(drafts.value)){const change=cleanedDraft(id);if(change){Object.assign(change.target,change.value);originals.value[id]=JSON.parse(JSON.stringify(change.value));}}}
+const editorDirty=computed(()=>Object.keys(drafts.value).some(id=>JSON.stringify(drafts.value[id])!==JSON.stringify(originals.value[id])));
+const unregister=configurationEditors()?.('preset-editor',{dirty:()=>editorDirty.value,save:async()=>{stageDrafts();},discard:async()=>{autoSave.cancel();const ids=Object.keys(drafts.value);drafts.value={};originals.value={};expanded.value=[];for(const id of ids)await props.w.saveEditorDraft('preset:'+id,null);}});if(unregister)onScopeDispose(unregister);
+const autoSave=useAutoSave(()=>drafts.value,async()=>{for(const [id,draft]of Object.entries(drafts.value))await props.w.saveEditorDraft('preset:'+id,JSON.stringify(draft));return true;},400,()=>props.w.loading||props.w.backupWorking);
+registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)throw Error(autoSave.error.value);});
 </script>
 <template>
   <section class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">
-    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button type="button" @click="autoSave.retry()">立即保存</button><button v-if="autoSave.error.value" :disabled="w.busy" @click="autoSave.retry()">重试保存</button></div></header>
+    <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button type="button" @click="saveAll">保存预设</button><button v-if="autoSave.error.value" :disabled="w.busy" @click="autoSave.retry()">重试保存</button></div></header>
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
     <p class="rail-note">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</p>

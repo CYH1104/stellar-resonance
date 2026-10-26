@@ -13,8 +13,9 @@ const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;rege
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);let formattedInput='';
 const cleanText=computed(()=>stripReasoning(props.text));
 const committed=computed(()=>committedRenderText(cleanText.value,props.streaming));
-watch(()=>[committed.value,props.streaming,JSON.stringify(props.regexRules),JSON.stringify(props.regexContext)],(next,previous,cleanup)=>{
- if(!committed.value.startsWith(formattedInput)||next[2]!==previous?.[2]||next[3]!==previous?.[3]){formatted.value=undefined;formattedInput='';}regexErrors.value=[];if(!props.regexRules?.some(r=>!r.disabled&&r.placement.includes(props.regexContext?.placement||2)&&(!r.markdownOnly&&!r.promptOnly||r.markdownOnly))){formatted.value=undefined;formattedInput='';return;}
+const renderSignature=computed(()=>JSON.stringify([committed.value,!!props.streaming,props.regexRules,props.regexContext]));
+watch(renderSignature,(signature,previousSignature,cleanup)=>{const next=JSON.parse(signature),previous=previousSignature?JSON.parse(previousSignature):undefined;
+ if(!committed.value.startsWith(formattedInput)||JSON.stringify(next[2])!==JSON.stringify(previous?.[2])||JSON.stringify(next[3])!==JSON.stringify(previous?.[3])){formatted.value=undefined;formattedInput='';}regexErrors.value=[];if(!props.regexRules?.some(r=>!r.disabled&&r.placement.includes(props.regexContext?.placement||2)&&(!r.markdownOnly&&!r.promptOnly||r.markdownOnly))){formatted.value=undefined;formattedInput='';return;}
  if(!committed.value)return;
  const input=committed.value,controller=new AbortController(),timer=setTimeout(()=>{void runRegex(input,props.regexRules||[],props.regexContext||{placement:2,scope:'display'},controller.signal).then(result=>{if(controller.signal.aborted)return;formatted.value=result.text;formattedInput=input;regexErrors.value=result.errors;}).catch(()=>{});},0);
  cleanup(()=>{clearTimeout(timer);controller.abort();});
@@ -22,12 +23,14 @@ watch(()=>[committed.value,props.streaming,JSON.stringify(props.regexRules),JSON
 // A worker result belongs to its input prefix, never to subsequently received text.
 const visibleText=computed(()=>formatted.value!==undefined&&cleanText.value.startsWith(formattedInput)?formatted.value+cleanText.value.slice(formattedInput.length):cleanText.value);
 const normalized=computed(()=>builtinOutput(visibleText.value,props.streaming,true));
-const chunks=computed(()=>renderChunks(normalized.value.prose,true));
+const chunks=computed(()=>renderChunks(normalized.value.prose,true).map(chunk=>({...chunk,blocks:chunk.kind==='html'?[]:storyBlocks(chunk.text,props.streaming)})));
+const opened=ref(new Set<number>());function toggleBlock(index:number,event:Event){const next=new Set(opened.value);if((event.target as HTMLDetailsElement).open)next.add(index);else next.delete(index);opened.value=next;}
 </script>
 <template><div class="story-content">
   <template v-for="(chunk,chunkIndex) in chunks" :key="chunkIndex">
-  <HtmlMessageFrame v-if="chunk.kind==='html'" :content="chunk.text" :context="htmlContext" :highlighted="highlighted" />
-  <template v-else v-for="(block,index) in storyBlocks(chunk.text,streaming)" :key="index">
+  <HtmlMessageFrame v-if="chunk.kind==='html'&&!streaming" :content="chunk.text" :context="htmlContext" :highlighted="highlighted" />
+  <p v-else-if="chunk.kind==='html'" class="narrative">正在接收页面内容…</p>
+  <template v-else v-for="(block,index) in chunk.blocks" :key="index">
     <p v-if="block.kind==='text'" class="narrative"><StoryInline :text="block.text" /></p>
     <section v-else-if="block.kind==='slate'" class="scene-slate" aria-label="场景信息">
       <div v-if="block.scene.sceneNo" class="scene-number">SCENE <span>{{block.scene.sceneNo}}</span></div>
@@ -39,7 +42,7 @@ const chunks=computed(()=>renderChunks(normalized.value.prose,true));
     <p v-else class="scene-pending" role="status">正在整理场景信息…</p>
   </template>
   </template>
-  <details v-for="(block,index) in normalized.blocks" :key="'builtin-'+index" class="builtin-output-card"><summary>{{block.title}}</summary><p class="narrative">{{block.text}}</p></details>
+  <details v-for="(block,index) in normalized.blocks" :key="'builtin-'+index" class="builtin-output-card" @toggle="toggleBlock(index,$event)"><summary>{{block.title}}</summary><p v-if="opened.has(index)" class="narrative">{{block.text}}</p></details>
   <p v-if="regexErrors.length" class="rail-note" role="status">{{regexErrors.join('；')}}</p>
   <p v-if="!chunks.length&&!normalized.blocks.length&&placeholder" class="narrative">{{placeholder}}</p>
 </div></template>

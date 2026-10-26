@@ -28,7 +28,7 @@ function navigate(event:KeyboardEvent){
 async function fetchModels(){
   if(!ready.value)return;
   clearTimeout(timer);const id=++requestId;controller?.abort();controller=new AbortController();loading.value=true;error.value='';
-  try{const result=await props.w.fetchModels(props.p,controller.signal,props.embedding?'embedding':undefined);if(id!==requestId)return;models.value=[...new Set(result)].sort();if(!props.p.model&&models.value.length)props.p.model=models.value[0];if(!result.length)error.value=props.embedding?'未找到可确认的向量模型，已隐藏其他及无法识别的模型。请确认服务商提供向量模型。':'未检测到可用模型，请检查接口后重新获取。';}
+  try{const result=await props.w.fetchModels(props.p,controller.signal,props.embedding?'embedding':undefined);if(id!==requestId)return;if(!Array.isArray(result)||result.some(m=>typeof m!=='string'||!m.trim()))throw Error('模型列表格式不正确，请重新获取。');models.value=[...new Set(result)].sort();if(!models.value.includes(props.p.model)){props.p.model='';search.value='';}if(!result.length)error.value=props.embedding?'未找到可确认的向量模型，已隐藏其他及无法识别的模型。请确认服务商提供向量模型。':'未检测到可用模型，请检查接口后重新获取。';}
   catch(e){if(id!==requestId)return;error.value=e instanceof Error?e.message:'模型获取失败，请检查接口后重试。';}
   finally{if(id===requestId){loading.value=false;fetched.value=true;}}
 }
@@ -45,7 +45,7 @@ async function fetchModels(){
   </div>
   <p v-if="error" class="rail-note" role="status">{{error}}</p>
   <small v-else-if="embedding&&!loading&&!fetched&&!ready">请先填写 URL 和 Key，再获取向量模型。</small>
-  <small v-if="models.length">已检测 {{models.length}} 个{{embedding?'向量':''}}模型，匹配 {{filtered.length}} 个。在模型框输入关键词即可筛选，选择后自动保存。</small>
+  <small v-if="models.length">已检测 {{models.length}} 个{{embedding?'向量':''}}模型，匹配 {{filtered.length}} 个。选择模型后点击保存生效。</small>
   <DismissibleNotice :message="error" error />
 </div></template>
 

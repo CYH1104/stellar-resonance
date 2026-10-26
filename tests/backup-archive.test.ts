@@ -98,3 +98,13 @@ it('serializes restore operations across pages and releases the lease after comp
  const first=new IndexedDbRepository(),second=new IndexedDbRepository();const release=await first.lockRestore();
  await expect(second.lockRestore()).rejects.toThrow('另一页面');await release();const next=await second.lockRestore();await next();
 });
+it('roundtrips independent long-text drafts through cloud, append import and overwrite recovery without activating them',async()=>{
+ await seed();const w=await workspace(),s=newSession('草稿',{name:'已确认的人设',appearance:'',background:'',personality:''},'');w.sessions.value.push(s);w.sessionId.value=s.id;await w.save();
+ await w.saveEditorDraft('session-persona:'+s.id,JSON.stringify({...s.persona,name:'尚未确认的人设'}));await w.saveEditorDraft('preset:prompt-a',JSON.stringify({content:'未确认预设'}));
+ const cloud=await w.createCloudWorkspaceBackup(),value=parseCloudSave(cloud).snapshot;
+ expect(value.archive!.editorDrafts!['session-persona:'+s.id]).toContain('尚未确认的人设');expect(value.sessions.find(next=>next.id===s.id)!.persona.name).toBe('已确认的人设');
+ expect(await w.importBackup(cloud)).toBe(true);const appended=w.sessions.value.find(next=>next.id!==s.id&&next.name===s.name+'（导入）')!;
+ expect(await w.readEditorDraft('session-persona:'+appended.id)).toContain('尚未确认的人设');
+ await w.saveEditorDraft('preset:prompt-a','新的本地草稿');await w.restoreCloudSave(cloud);expect(await w.readEditorDraft('preset:prompt-a')).toContain('未确认预设');
+ await w.undoCloudRestore();expect(await w.readEditorDraft('preset:prompt-a')).toBe('新的本地草稿');expect(w.sessions.value).toHaveLength(value.sessions.length*2);
+});

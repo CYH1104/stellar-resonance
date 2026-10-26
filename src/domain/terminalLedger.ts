@@ -5,7 +5,7 @@ import {factAudienceCovers,factLabel} from './knowledge.ts';
 
 export interface TerminalAnchor {key:string;turnId:string;variantId:string;path:string[]}
 export interface TerminalRoundMemory {anchor:TerminalAnchor;chats:{id:string;conversationId?:string;name:string;group:boolean;speakers:string[];summary?:string;topics:string[];changes:string[];knownBy?:string[]}[];games:{id:string;conversationId?:string;name:string;round:number;king:string;command:string;penalties:string;complete:boolean;endedAt?:string;interactions?:string;afterparty?:string;knownBy?:string[]}[]}
-export interface TerminalJob {id:string;anchor:TerminalAnchor;kind:'groups'|'messages'|'schedule';target?:string;status:'running'|'ready'|'failed';error?:string}
+export interface TerminalJob {repair?:import('./terminalFollowup').TerminalFollowupPlan;id:string;anchor:TerminalAnchor;kind:'groups'|'messages'|'schedule';target?:string;status:'running'|'ready'|'failed';error?:string}
 function hash(s:string){let n=2166136261;for(let i=0;i<s.length;i++)n=Math.imul(n^s.charCodeAt(i),16777619);return (n>>>0).toString(16);}
 function pathFor(s:Session,before=s.turns.length){return s.turns.slice(0,before).map(t=>{const v=t.variants[t.selected];return t.id+':'+(v?.id||'')+':'+hash(t.input+'\n'+(v?.text||''));});}
 export function terminalAnchor(s:Session,before=s.turns.length):TerminalAnchor {let index=before-1;while(index>=0&&s.turns[index].variants[s.turns[index].selected]?.status!=='complete')index--;const t=s.turns[index],v=t?.variants[t.selected],path=[hash(pathFor(s,index+1).join('|'))];return {key:t?t.id+':'+v.id+':'+hash(path.join('|')):'opening:'+hash(s.opening),turnId:t?.id||'',variantId:v?.id||'',path};}

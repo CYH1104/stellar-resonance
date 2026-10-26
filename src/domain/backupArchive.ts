@@ -6,6 +6,7 @@ import {cleanCharacterImages,imageUrl,type CharacterImage} from './characterImag
 export interface BackupPersona {id:string;name:string;persona:Persona;updatedAt:string;memo?:string;remark?:string;sourceSessionIds?:string[];avatarAppearance?:AvatarAppearance;useAsHomeImage?:boolean;portrait?:string;avatar?:string}
 export interface BackupArchive {
  version:1;
+ editorDrafts?:Record<string,string>;
  personas?:BackupPersona[];
  draft?:BackupPersona|null;
  masterPersona?:{name:string;department:string;spiritLevel:string;personaId?:string}|null;
@@ -34,8 +35,9 @@ export function cleanBackupPersona(v:unknown,draft=false):BackupPersona{
  return result;
 }
 export function cleanBackupArchive(v:unknown):BackupArchive{
- if(!object(v)||v.version!==1)fail();keys(v,['version','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
+ if(!object(v)||v.version!==1)fail();keys(v,['version','editorDrafts','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
  const result:BackupArchive={version:1};
+ if(v.editorDrafts!==undefined)result.editorDrafts=cleanEditorDrafts(v.editorDrafts);
  if(v.personas!==undefined){if(!Array.isArray(v.personas))fail();result.personas=v.personas.map((p:unknown)=>cleanBackupPersona(p));if(new Set(result.personas.map(p=>p.id)).size!==result.personas.length)fail();}
  if(v.draft!==undefined)result.draft=v.draft===null?null:cleanBackupPersona(v.draft,true);
  if(v.masterPersona!==undefined){if(v.masterPersona===null)result.masterPersona=null;else{const m=v.masterPersona;if(!object(m))fail();keys(m,['name','department','spiritLevel','personaId']);if(['name','department','spiritLevel'].some(k=>typeof m[k]!=='string')||m.personaId!==undefined&&!safeId(m.personaId))fail();result.masterPersona={...m} as NonNullable<BackupArchive['masterPersona']>;}}
@@ -49,12 +51,14 @@ export function cleanBackupArchive(v:unknown):BackupArchive{
 /** Session IDs change on append-import; archive identities must follow the same mapping. */
 export function remapBackupArchive(source:BackupArchive,sessionIds:Map<string,string>):BackupArchive{
  const next=cleanBackupArchive(source);
+ if(next.editorDrafts)next.editorDrafts=Object.fromEntries(Object.entries(next.editorDrafts).flatMap(([key,text])=>{if(!key.startsWith('session-persona:'))return [[key,text]];const mapped=sessionIds.get(key.slice('session-persona:'.length));return mapped?[['session-persona:'+mapped,text]]:[];}));
  const remap=(p:BackupPersona)=>{if(p.sourceSessionIds)p.sourceSessionIds=p.sourceSessionIds.flatMap(id=>sessionIds.has(id)?[sessionIds.get(id)!]:[]);};
  next.personas?.forEach(remap);if(next.draft)remap(next.draft);
  if(next.hiddenPersonaSessionIds)next.hiddenPersonaSessionIds=next.hiddenPersonaSessionIds.flatMap(id=>sessionIds.has(id)?[sessionIds.get(id)!]:[]);
  const master=next.masterPersona;if(master?.personaId?.startsWith('session/')){const id=sessionIds.get(master.personaId.slice(8));if(id)master.personaId='session/'+id;else delete master.personaId;}
  return next;
 }
+export function cleanEditorDrafts(raw:unknown):Record<string,string>{if(!object(raw)||Object.keys(raw).length>1000)fail();let size=0;const out:Record<string,string>={};for(const [key,text]of Object.entries(raw)){if(!/^(?:new-game|(?:session-persona|preset):[^\r\n]{1,200})$/.test(key)||typeof text!=='string'||text.length>600000)fail();size+=text.length;if(size>3000000)fail();out[key]=text;}return out;}
 export function cloudBackupArchive(source:BackupArchive):BackupArchive{
  const next=cleanBackupArchive(source);
  for(const p of [...next.personas||[],...next.draft?[next.draft]:[]]){delete p.portrait;delete p.avatar;}

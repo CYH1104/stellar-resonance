@@ -15,7 +15,7 @@ export function useAvatarAdjustment(w:ViewModel,report:(message:string)=>void){
   const sid=session.id,version=revision,previous=session.terminal.avatarView;
   const value={...avatarDraft.value};dirty=false;saving=true;
   session.terminal.avatarView=value;
-  try{await(savingTask=Promise.resolve(w.save()));if(w.storageStatus==='failed')throw Error('保存失败');}
+  try{await(savingTask=Promise.resolve(w.saveTerminal?w.saveTerminal(session):w.save()));if(w.storageStatus==='failed')throw Error('保存失败');}
   catch{if(w.active?.id===sid&&revision===version){session.terminal.avatarView=previous;avatarDraft.value=initial();lastError='头像位置未保存，请重试或下载备份。';report(lastError);}}
   finally{saving=false;savingTask=undefined;if(dirty)void flushAvatar();}
  }

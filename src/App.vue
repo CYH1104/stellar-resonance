@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import CloudBackupView from './components/CloudBackupView.vue';
+const CloudBackupView=defineAsyncComponent(()=>import('./components/CloudBackupView.vue'));
+import DialogShell from './components/DialogShell.vue';
+import {useConfigurationDraft} from './app/useConfigurationDraft';
+import {configurationEditorsKey} from './app/configurationEditors';
+import {provide,defineAsyncComponent} from 'vue';
+import {disposeRetrieval} from './memory/retrieval';
+onUnmounted(disposeRetrieval);
 import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
 import {localCharacterImage,localImageRevision} from './app/localCharacterImages';
 import {majorCharacter} from './domain/characterImages';
@@ -28,7 +34,7 @@ import type { Panel } from './domain/contracts';
 import HomeView from './components/HomeView.vue';
 
 import StoryView from './components/StoryView.vue';
-import FormatErrorsView from './components/FormatErrorsView.vue';
+const FormatErrorsView=defineAsyncComponent(()=>import('./components/FormatErrorsView.vue'));
 
 import StatusBar from './components/StatusBar.vue';
 
@@ -36,29 +42,29 @@ import StatusBar from './components/StatusBar.vue';
 import FloatingGroupChat from './components/FloatingGroupChat.vue';
 import TheaterRail from './components/TheaterRail.vue';
 
-import TheaterSettings from './components/TheaterSettings.vue';
+const TheaterSettings=defineAsyncComponent(()=>import('./components/TheaterSettings.vue'));
 
-import GameSettingsView from './components/GameSettingsView.vue';
+const GameSettingsView=defineAsyncComponent(()=>import('./components/GameSettingsView.vue'));
 
-import MemoryView from './components/MemoryView.vue';
+const MemoryView=defineAsyncComponent(()=>import('./components/MemoryView.vue'));
 
-import WorldView from './components/WorldView.vue';
+const WorldView=defineAsyncComponent(()=>import('./components/WorldView.vue'));
 
-import SettingsView from './components/SettingsView.vue';
+const SettingsView=defineAsyncComponent(()=>import('./components/SettingsView.vue'));
 
-import SavesView from './components/SavesView.vue';
+const SavesView=defineAsyncComponent(()=>import('./components/SavesView.vue'));
 
 import OpeningView from './components/OpeningView.vue';
 
-import PersonaLibrary from './components/PersonaLibrary.vue';
+const PersonaLibrary=defineAsyncComponent(()=>import('./components/PersonaLibrary.vue'));
 import {PersonaLibrary as PersonaRepository} from './storage/personaLibrary';
 
 import type {Persona} from './domain/contracts';
 
 import {setMasterPersona,masterPersonaKey} from './domain/masterPersona';
 
-import PresetManager from './components/PresetManager.vue';
-import WorldbookManager from './components/WorldbookManager.vue';
+const PresetManager=defineAsyncComponent(()=>import('./components/PresetManager.vue'));
+const WorldbookManager=defineAsyncComponent(()=>import('./components/WorldbookManager.vue'));
 
 import {restorePersonaMedia} from './storage/personaMedia';
 
@@ -74,6 +80,13 @@ async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;con
 
 
 const w = reactive(useWorkspace());
+const configuration=useConfigurationDraft(w);
+provide(configurationEditorsKey,configuration.registerEditor);
+const pendingConfigurationPanel=ref<Panel>();let pendingConfigurationAction:(()=>void)|undefined;let allowConfigurationNavigation=false;
+function guardNavigation(action:()=>void){if(allowConfigurationNavigation||!configuration.dirty.value)return false;pendingConfigurationAction=action;pendingConfigurationPanel.value=w.panel;return true;}
+function cancelConfigurationLeave(){pendingConfigurationPanel.value=undefined;pendingConfigurationAction=undefined;}
+watch(()=>w.panel,(target,old)=>{if(allowConfigurationNavigation||target===old||!configuration.dirty.value)return;pendingConfigurationPanel.value=target;allowConfigurationNavigation=true;w.panel=old;allowConfigurationNavigation=false;},{flush:'sync'});
+async function leaveConfiguration(save:boolean){if(save&&!await configuration.save())return;if(!save)await configuration.discard();const target=pendingConfigurationPanel.value,action=pendingConfigurationAction;pendingConfigurationPanel.value=undefined;pendingConfigurationAction=undefined;if(target){allowConfigurationNavigation=true;if(action)action();else w.panel=target;allowConfigurationNavigation=false;}}
 const saveToastExpired=ref(false);
 let saveToastTimer:ReturnType<typeof setTimeout>|undefined;
 watch(()=>[w.storageStatus,w.lastSaved,w.storageError],()=>{
@@ -152,13 +165,13 @@ const entry=ref<'opening'|'new'|'continue'>(embedded?'new':'opening');
 
 watch(()=>[w.panel,library.value,entry.value,w.active?.id],async()=>{await nextTick();window.dispatchEvent(new Event('academy:page-transition'));});
 
-function start(){if(!w.loading&&needsFirstSetup()){w.home();w.resetNewGameDraft();entry.value='new';void beginFirstSetup(++navigationSequence);return;}pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
+function start(){if(guardNavigation(start))return;if(!w.loading&&needsFirstSetup()){w.home();w.resetNewGameDraft();entry.value='new';void beginFirstSetup(++navigationSequence);return;}pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
 
-function resume(){pendingText='';library.value=false;w.home();entry.value='continue';}
+function resume(){if(guardNavigation(resume))return;pendingText='';library.value=false;w.home();entry.value='continue';}
 
-function settings(){library.value=false;w.home();entry.value='new';w.panel='settings';}
+function settings(){if(guardNavigation(settings))return;library.value=false;w.home();entry.value='new';w.panel='settings';}
 
-function opening(){if(w.workingPersona||w.creatingGame)return;if(embedded){window.dispatchEvent(new Event('academy:home'));return;}w.home();entry.value='opening';}
+function opening(){if(guardNavigation(opening))return;if(w.workingPersona||w.creatingGame)return;if(embedded){window.dispatchEvent(new Event('academy:home'));return;}w.home();entry.value='opening';}
 
 let navigationSequence=0;
 async function terminalNavigate(event:Event){
@@ -166,6 +179,7 @@ async function terminalNavigate(event:Event){
   const detail=(event as CustomEvent).detail;
 
   if(detail)detail.accepted=false;
+  if(detail&&guardNavigation(()=>void terminalNavigate(event))){detail.accepted=true;return;}
 
   if(!embedded||w.workingPersona||w.creatingGame||!detail)return;
 
@@ -242,7 +256,7 @@ onMounted(()=>{window.addEventListener('academy:navigate',terminalNavigate);wind
 
 onUnmounted(()=>{window.removeEventListener('academy:navigate',terminalNavigate);window.removeEventListener('academy:insert',insertCampusText);window.removeEventListener('academy:campus-access',campusAccess);});
 
-function navigate(panel:Panel){library.value=false;if(panel==='game-settings')w.settingsTab='theaters';if(panel==='map'&&embedded){window.dispatchEvent(new Event('academy:map'));return;}if(['memory','relations','theaters','status'].includes(panel)&&!w.active&&mainSession.value){w.open(mainSession.value.id);if(!w.active)return;}if(panel==='story')w.enterStory();else w.panel=panel;}
+function navigate(panel:Panel){if(guardNavigation(()=>navigate(panel)))return;library.value=false;if(panel==='game-settings')w.settingsTab='theaters';if(panel==='map'&&embedded){window.dispatchEvent(new Event('academy:map'));return;}if(['memory','relations','theaters','status'].includes(panel)&&!w.active&&mainSession.value){w.open(mainSession.value.id);if(!w.active)return;}if(panel==='story')w.enterStory();else w.panel=panel;}
 
 function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetNewGameDraft();Object.assign(w.newGameDraft.persona,persona);entry.value='new';library.value=false;}
 
@@ -251,16 +265,18 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><CompletionPulse :busy="w.busy" /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="w.notice" />
+  <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="configuration.dirty.value?configuration.save():w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><CompletionPulse :busy="w.busy" /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="['正在保存…','已保存在本机'].includes(w.notice)?'':w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />
 
   <div v-else class="app-shell" :inert="w.backupWorking||undefined"><FloatingGroupChat v-if="w.active" :visible="!library&&w.panel==='story'" :w="w" />
 
-    <WorkspaceNavigation :w="w" :embedded="embedded" @navigate="navigate" @start="start" @resume="resume" @home="opening" @reset="layout.reset()" @personas="library=true" />
+    <WorkspaceNavigation :w="w" :embedded="embedded" @navigate="navigate" @start="start" @resume="resume" @home="opening" @reset="layout.reset()" @personas="guardNavigation(()=>{library=true})||(library=true)" />
 
 
 
+    <div v-if="configuration.dirty.value" class="configuration-save-bar" role="status"><span>设置有未保存的修改</span><button :disabled="configuration.saving.value" @click="configuration.save()">保存设置</button><button :disabled="configuration.saving.value" @click="configuration.discard()">取消修改</button><span v-if="configuration.error.value" role="alert">{{configuration.error.value}}</span></div>
+    <DialogShell v-if="pendingConfigurationPanel" title="设置尚未保存" @close="cancelConfigurationLeave"><p>保存修改后再离开？</p><p v-if="configuration.error.value" role="alert">{{configuration.error.value}}</p><div class="actions"><button :disabled="configuration.saving.value" @click="leaveConfiguration(true)">保存并离开</button><button :disabled="configuration.saving.value" @click="leaveConfiguration(false)">放弃修改</button><button @click="cancelConfigurationLeave">继续编辑</button></div></DialogShell>
     <div ref="workspaceEl" class="workspace resizable-workspace" :style="layout.style.value" :class="{'game-layout':!!w.active&&!fullPage,'forum-focus':w.panel==='theaters','status-focus':w.panel==='status'}">
 
       <aside v-if="w.active&&!fullPage" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
@@ -283,7 +299,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <StoryView v-else-if="w.panel==='story'&&w.apiReady" :w="w" />
 
-            <SettingsView v-else-if="w.panel==='story'" :w="w" @saved="savedFirstApi" />
+            <SettingsView v-else-if="w.panel==='story'" :w="configuration.view" @saved="savedFirstApi" />
 
             <section v-else-if="!w.active&&['memory','relations','theaters','status'].includes(w.panel)" class="surface session-required"><h1>请先建立或继续一个会话</h1><p class="muted">这个功能会显示当前会话的资料。</p><div class="actions"><button @click="start">新建存档</button><button @click="resume">过往存档</button></div></section>
 
@@ -291,19 +307,19 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <WorldView v-else-if="w.panel==='relations' || w.panel==='map'" :w="w" :kind="w.panel" />
 
-            <TheaterSettings v-else-if="w.panel==='forum'" :w="w" />
+            <TheaterSettings v-else-if="w.panel==='forum'" :w="configuration.view" />
 
-            <GameSettingsView v-else-if="w.panel==='game-settings'" :w="w" />
+            <GameSettingsView v-else-if="w.panel==='game-settings'" :w="configuration.view" />
 
             <TheaterRail v-else-if="w.panel==='theaters'" :w="w" />
 
             <StatusBar v-else-if="w.panel==='status'" :w="w" />
 
-            <SettingsView v-else-if="w.panel==='settings'" :w="w" @saved="savedFirstApi" />
+            <SettingsView v-else-if="w.panel==='settings'" :w="configuration.view" @saved="savedFirstApi" />
 
-            <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div></header><PresetManager :w="w" /></section>
+            <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div></header><PresetManager :w="configuration.view" /></section>
 
-            <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="w" />
+            <WorldbookManager v-else-if="w.panel==='worldbooks'" :w="configuration.view" />
 
             <CloudBackupView v-else-if="w.panel==='cloud-backup'" :w="w" />
             <SavesView v-else-if="w.panel==='saves'" :w="w" />
@@ -327,5 +343,5 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 </template>
 
 
-<style scoped>.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)}.workspace-save-status button{pointer-events:auto} @media(max-width:768px){.workspace-save-status.mobile-save-expired{display:none}}</style>
+<style scoped>.configuration-save-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--surface);font-size:13px}.configuration-save-bar button{margin:0;padding:5px 12px}.terminal-followup-status{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0}.workspace-save-status{position:fixed;right:16px;bottom:8px;z-index:40;pointer-events:none;padding:3px 8px;border-radius:4px;background:var(--surface,#f5f1e9)}.workspace-save-status button{pointer-events:auto} @media(max-width:768px){.workspace-save-status.mobile-save-expired{display:none}}</style>
 
