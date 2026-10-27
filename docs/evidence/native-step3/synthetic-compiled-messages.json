@@ -1,0 +1,74 @@
+{
+  "normal": [
+    {
+      "role": "system",
+      "content": "FIRST User Step3Probe"
+    },
+    {
+      "role": "system",
+      "content": "Write Step3Probe's next reply in a fictional chat between Step3Probe and User."
+    },
+    {
+      "role": "system",
+      "content": "LORE_B\nLORE_A SECOND_TRIGGER"
+    },
+    {
+      "role": "system",
+      "content": "SYNTHETIC_PRIVATE_CANARY_8840"
+    },
+    {
+      "role": "system",
+      "content": "[Start a new Chat]"
+    },
+    {
+      "role": "assistant",
+      "content": "DEPTH_LORE"
+    },
+    {
+      "role": "assistant",
+      "content": "合成开场"
+    },
+    {
+      "role": "user",
+      "content": "gateword"
+    },
+    {
+      "role": "assistant",
+      "content": "DEPTH_PROOF"
+    }
+  ],
+  "regenerate": [
+    {
+      "role": "system",
+      "content": "FIRST User Step3Probe"
+    },
+    {
+      "role": "system",
+      "content": "Write Step3Probe's next reply in a fictional chat between Step3Probe and User."
+    },
+    {
+      "role": "system",
+      "content": "LORE_B\nLORE_A SECOND_TRIGGER"
+    },
+    {
+      "role": "system",
+      "content": "SYNTHETIC_PRIVATE_CANARY_8840"
+    },
+    {
+      "role": "system",
+      "content": "[Start a new Chat]"
+    },
+    {
+      "role": "assistant",
+      "content": "DEPTH_LORE"
+    },
+    {
+      "role": "assistant",
+      "content": "合成开场"
+    },
+    {
+      "role": "user",
+      "content": "gateword"
+    }
+  ]
+}

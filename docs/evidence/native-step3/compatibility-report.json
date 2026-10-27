@@ -1,0 +1,102 @@
+{
+  "phase": "step-3-native-compatibility-and-boundary-probe",
+  "pins": {
+    "phase": "step-2-isolated-transport-spike",
+    "academyBase": "03cdd39a8db4ab0463210053434711c23e182536",
+    "sillyTavern": {
+      "repository": "https://github.com/SillyTavern/SillyTavern.git",
+      "commit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+      "version": "1.19.0"
+    },
+    "helper": {
+      "repository": "https://github.com/N0VI028/JS-Slash-Runner.git",
+      "commit": "0af421068e7c03b6b0a71b68feb79d201164edeb",
+      "version": "4.11.3"
+    }
+  },
+  "presetSource": "upstream/default/content/presets/openai/Default.json",
+  "presetSha256": "3d375226d9cbb69bfa1fca6fb9a5a4bf33a54223edd7a969755c17f87661a00e",
+  "compatibilityChecks": [
+    {
+      "name": "official default raw preset imported",
+      "passed": true
+    },
+    {
+      "name": "native normal Generate dry-run assembled messages",
+      "passed": true
+    },
+    {
+      "name": "user/char macros expanded",
+      "passed": true
+    },
+    {
+      "name": "native experimental nested variable macro expanded",
+      "passed": true
+    },
+    {
+      "name": "preset relative ordering preserved",
+      "passed": true
+    },
+    {
+      "name": "preset disabled entry absent",
+      "passed": true
+    },
+    {
+      "name": "preset depth injection role preserved",
+      "passed": true
+    },
+    {
+      "name": "generation trigger excludes normal-only prompt during regenerate",
+      "passed": true
+    },
+    {
+      "name": "worldbook keyword and recursive entry triggered",
+      "passed": true
+    },
+    {
+      "name": "worldbook native ordering observed",
+      "passed": true
+    },
+    {
+      "name": "worldbook disabled/zero probability entries absent",
+      "passed": true
+    },
+    {
+      "name": "worldbook no-key input does not trigger",
+      "passed": true
+    },
+    {
+      "name": "worldbook budget cap excludes over-budget entries",
+      "passed": true
+    },
+    {
+      "name": "full native Generate applies worldbook depth role",
+      "passed": true
+    },
+    {
+      "name": "actual helper script runner executed variable API",
+      "passed": true
+    },
+    {
+      "name": "no model generation endpoint called",
+      "passed": true
+    }
+  ],
+  "scope": "native runtime in isolated browser; not an integrated private server compiler",
+  "helperTypedPresetRoundtripPreservesInjectionTrigger": false,
+  "vanillaExposure": {
+    "helperReadsPrivateCard": true,
+    "scriptReadsPrivateCard": true,
+    "scriptReadsParentDOM": true,
+    "scriptReadsSameOriginStorage": true,
+    "scriptCallsSameOriginAPI": true,
+    "scriptReenablesReasoning": true,
+    "defaultReasoningRequested": true
+  },
+  "privacyGatePassed": false,
+  "modelRequests": 0,
+  "externalBrowserNetworkBlocked": true,
+  "backgroundHordeStatusMocked": true,
+  "pageErrors": [],
+  "httpFailures": []
+}
