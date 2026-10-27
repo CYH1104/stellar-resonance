@@ -23,6 +23,7 @@ export function createNativeClient({origin, upstream, fetchImpl = fetch, onReque
       max_tokens:body.max_tokens, top_p:body.top_p,
       frequency_penalty:body.frequency_penalty, presence_penalty:body.presence_penalty,
       include_reasoning:false,
+      custom_include_body:JSON.stringify({include_reasoning:false}),
       custom_include_headers:JSON.stringify({Authorization:'Bearer synthetic-native-fixture'}),
     };
     onRequest({model:payload.model, messages:payload.messages.length, reasoningRequested:false});

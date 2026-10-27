@@ -1,0 +1,110 @@
+{
+  "scope": "isolated server-owned native compiler path; not full academy migration or unrestricted player helper compatibility",
+  "checks": [
+    {
+      "name": "public card contains public fields only",
+      "passed": true
+    },
+    {
+      "name": "raw prompt edit preserves native trigger and future fields",
+      "passed": true
+    },
+    {
+      "name": "raw settings edit preserves unknown extensions",
+      "passed": true
+    },
+    {
+      "name": "imported reasoning setting is locked off in effective view",
+      "passed": true
+    },
+    {
+      "name": "public override/script/key/messages attempts rejected",
+      "passed": true
+    },
+    {
+      "name": "invalid CSRF token rejected",
+      "passed": true
+    },
+    {
+      "name": "private/native/export/source routes not exposed",
+      "passed": true
+    },
+    {
+      "name": "public browser cannot fetch native worker via CSP",
+      "passed": true
+    },
+    {
+      "name": "visible response delivered",
+      "passed": true
+    },
+    {
+      "name": "private card and worldbook really participated in native compilation",
+      "passed": true
+    },
+    {
+      "name": "player preset script did not run inside private worker",
+      "passed": true
+    },
+    {
+      "name": "actual upstream request forcibly disabled reasoning",
+      "passed": true
+    },
+    {
+      "name": "private markers and thought fields never appeared in client responses/storage",
+      "passed": true
+    },
+    {
+      "name": "private helper object is not present in public page",
+      "passed": true
+    },
+    {
+      "name": "no uncaught public page error",
+      "passed": true
+    }
+  ],
+  "protectedPathGatePassed": true,
+  "originalVanillaGateChanged": false,
+  "realModel": false,
+  "trace": {
+    "privateCardInCompiled": true,
+    "privateLoreInCompiled": true,
+    "workerScriptsDisabled": true,
+    "upstreamReasoningRequested": [
+      false
+    ],
+    "requests": 1
+  },
+  "errors": [],
+  "deniedRoutes": [
+    {
+      "path": "/api/characters/all",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/api/worldinfo/get",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/api/compile",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/api/export",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/api/secrets/read",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    },
+    {
+      "path": "/experiments/native/private-worker.mjs",
+      "status": 404,
+      "body": "{\"code\":\"NOT_FOUND\"}"
+    }
+  ]
+}
