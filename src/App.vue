@@ -83,9 +83,12 @@ const w = reactive(useWorkspace());
 const configuration=useConfigurationDraft(w);
 provide(configurationEditorsKey,configuration.registerEditor);
 const pendingConfigurationPanel=ref<Panel>();let pendingConfigurationAction:(()=>void)|undefined;let allowConfigurationNavigation=false;
+// Read-only panels and the configuration editor itself neither edit nor discard the draft, so they must open even
+// while it is dirty; only leaving that area for a real panel still asks to save or discard.
+const draftFreePanels=new Set<Panel>(['format-errors','settings']);
 function guardNavigation(action:()=>void){if(allowConfigurationNavigation||!configuration.dirty.value)return false;pendingConfigurationAction=action;pendingConfigurationPanel.value=w.panel;return true;}
 function cancelConfigurationLeave(){pendingConfigurationPanel.value=undefined;pendingConfigurationAction=undefined;}
-watch(()=>w.panel,(target,old)=>{if(allowConfigurationNavigation||target===old||!configuration.dirty.value)return;pendingConfigurationPanel.value=target;allowConfigurationNavigation=true;w.panel=old;allowConfigurationNavigation=false;},{flush:'sync'});
+watch(()=>w.panel,(target,old)=>{if(allowConfigurationNavigation||target===old||draftFreePanels.has(target)||!configuration.dirty.value)return;pendingConfigurationPanel.value=target;allowConfigurationNavigation=true;w.panel=old;allowConfigurationNavigation=false;},{flush:'sync'});
 async function leaveConfiguration(save:boolean){if(save&&!await configuration.save())return;if(!save)await configuration.discard();const target=pendingConfigurationPanel.value,action=pendingConfigurationAction;pendingConfigurationPanel.value=undefined;pendingConfigurationAction=undefined;if(target){allowConfigurationNavigation=true;if(action)action();else w.panel=target;allowConfigurationNavigation=false;}}
 const saveToastExpired=ref(false);
 let saveToastTimer:ReturnType<typeof setTimeout>|undefined;
@@ -256,7 +259,7 @@ onMounted(()=>{window.addEventListener('academy:navigate',terminalNavigate);wind
 
 onUnmounted(()=>{window.removeEventListener('academy:navigate',terminalNavigate);window.removeEventListener('academy:insert',insertCampusText);window.removeEventListener('academy:campus-access',campusAccess);});
 
-function navigate(panel:Panel){if(guardNavigation(()=>navigate(panel)))return;library.value=false;if(panel==='game-settings')w.settingsTab='theaters';if(panel==='map'&&embedded){window.dispatchEvent(new Event('academy:map'));return;}if(['memory','relations','theaters','status'].includes(panel)&&!w.active&&mainSession.value){w.open(mainSession.value.id);if(!w.active)return;}if(panel==='story')w.enterStory();else w.panel=panel;}
+function navigate(panel:Panel){if(!draftFreePanels.has(panel)&&guardNavigation(()=>navigate(panel)))return;library.value=false;if(panel==='game-settings')w.settingsTab='theaters';if(panel==='map'&&embedded){window.dispatchEvent(new Event('academy:map'));return;}if(['memory','relations','theaters','status'].includes(panel)&&!w.active&&mainSession.value){w.open(mainSession.value.id);if(!w.active)return;}if(panel==='story')w.enterStory();else w.panel=panel;}
 
 function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetNewGameDraft();Object.assign(w.newGameDraft.persona,persona);entry.value='new';library.value=false;}
 

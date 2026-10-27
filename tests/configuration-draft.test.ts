@@ -32,3 +32,10 @@ it('worldbook membership edits stay in the draft and are committed with configur
  expect(base.preferences.worldbooks).toHaveLength(0);expect(base.active!.worldbookIds||[]).toEqual([]);expect(draft.view.boundWorldbookIds).toContain(id);
  expect(await draft.save()).toBe(true);await nextTick();expect(base.preferences.worldbooks).toHaveLength(1);expect(base.active!.worldbookIds).toContain(id);
 });
+it('flushes registered preset/worldbook editors before collecting the saved snapshot',async()=>{
+ const {base,draft}=setup();let pending=true;
+ draft.registerEditor('test-preset',{dirty:()=>pending,save:async()=>{draft.view.preferences.presets[0].content='本次输入的预设';pending=false;},discard:async()=>{pending=false;}});
+ expect(await draft.save()).toBe(true);
+ expect(base.preferences.presets[0].content).toBe('本次输入的预设');
+ expect(draft.dirty.value).toBe(false);
+});

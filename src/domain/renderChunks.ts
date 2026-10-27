@@ -61,10 +61,41 @@ function localChunks(source:string):RenderChunk[]{
  if(source.slice(cursor).trim())chunks.push({kind:'story',text:source.slice(cursor)});
  return chunks;
 }
+const styleSource=/<(style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const takeStyles=(text:string)=>{styleSource.lastIndex=0;return text.match(styleSource)||[];};
+const fenceOpening=/^[ \t]*```[^\n]*(?:\r?\n|$)/;
+const fencedHtml=/^([ \t]*```[^\n]*\r?\n)([\s\S]*\r?\n)([ \t]*```[ \t]*)$/;
+function injectStyles(text:string,styles:string[]){
+ if(!styles.length)return text;
+ const injected=styles.join('\n')+'\n',opening=fenceOpening.exec(text);
+ return opening?text.slice(0,opening[0].length)+injected+text.slice(opening[0].length):injected+text;
+}
+const fullDocument=/^\s*(?:<!doctype\s+html|<html\b)/i;
+/** What is left of a chunk once its own style blocks are ignored: the part the reader actually sees. */
+const visibleMarkup=(text:string)=>text.replace(styleSource,'').trim();
+/** A style block alone in its own frame renders nothing, and the markup it styles loses every rule. */
+function attachStyleBlocks(chunks:RenderChunk[]):RenderChunk[]{
+ const out:RenderChunk[]=[];const carried:string[]=[];
+ for(const chunk of chunks){
+  if(chunk.kind!=='html'){out.push(chunk);continue;}
+  // Fence markers hide the doctype from the checks below, so they all read what is inside the fence.
+  const fence=fencedHtml.exec(chunk.text),inner=fence?fence[2]!:chunk.text;
+  // A complete document owns its head: moving its styles would put them in front of the doctype and
+  // turn the page into a fragment, which drops html lang and every body attribute.
+  if(fullDocument.test(inner)){out.push(chunk);continue;}
+  const styles=takeStyles(chunk.text);
+  // A frame holding nothing but a style block renders blank; its rules belong to the markup after it.
+  if(!visibleMarkup(inner)){carried.push(...styles);continue;}
+  // Every other frame keeps the styles it already has, so a self-contained fence never makes its
+  // private rules visible to the fences and fragments that follow it.
+  out.push({kind:'html',text:injectStyles(chunk.text,carried)});
+ }
+ return out;
+}
 /** Each closed HTML fence owns a stable iframe; later fences do not reload earlier ones. */
 export function renderChunks(source:string,embedded=false):RenderChunk[]{
  const chunks:RenderChunk[]=[];const fence=/```[ \t]*html[^\n]*\r?\n[\s\S]*?^[ \t]*```[ \t]*(?:\r?\n|$)/gim;let start=0;
  const append=(text:string)=>{if(!text.trim())return;if(/^\s*(?:<!doctype\s+html|<html\b)/i.test(text))chunks.push({kind:'html',text});else chunks.push(...localChunks(text));};
  for(const match of source.matchAll(fence)){append(source.slice(start,match.index));chunks.push({kind:'html',text:match[0].trimEnd()});start=match.index!+match[0].length;}
- append(source.slice(start));return chunks;
+ append(source.slice(start));return attachStyleBlocks(chunks);
 }

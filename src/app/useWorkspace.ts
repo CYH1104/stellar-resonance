@@ -34,7 +34,7 @@ import {activeCommitments,buildRecallQuery,memoryContext,memoryReady,memorySigna
 import {factId,factLabel} from '../domain/knowledge';
 import {syncCharacterFacts} from '../domain/characterFacts';
 import {defaultJourneyName} from '../domain/journeyName';
-import { computed, reactive, ref, watch, nextTick, type UnwrapNestedRefs } from 'vue';
+import { computed, reactive, ref, watch, nextTick, onScopeDispose, type UnwrapNestedRefs } from 'vue';
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant, WorldState } from '../domain/contracts';
 import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, saveFailureLocation, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
@@ -46,11 +46,36 @@ import { blankPersona, mergePersonaDraft, normalizePersona } from '../domain/per
 import {activePromptEntries,importTavernPreset,exportTavernPreset,presetGroups,setId,cleanSampling,pinnedPromptIds,reorderPresetEntries,newPresetEntries} from '../domain/presets';
 import {defaultTheaters,visibleTheaters} from '../domain/theaters';
 import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyApi,taskApi,textApiTasks} from '../domain/apis';
+import {setHttpFailureSink,httpNoticeKeyOf,attachHttpNotice} from '../gateway/requestFailure';
+import {clearHttpNotices,noticeKeyFor,noticeTextFor,registerHttpNotice,showNotice,httpNoticeDuration} from './notices';
+import {safeLogText} from '../domain/logText';
+import {httpFailureNotice,httpFailureLog} from './httpFailureText';
+import {mergeConfiguration,mergeCredentials} from './configurationMerge';
+export interface ConfigurationCommitOptions{
+  /** Draft baseline; when present the write is re-merged against live state instead of replacing it. */
+  origin?:{preferences?:Preferences;credentials?:Record<string,string>};
+  /** Profile ids this save is allowed to confirm over the network. */
+  scope?:string[];
+}
 
 export function useWorkspace() {
   const repairReport=ref<{sessionId:string;turnId:string;rows:RepairComparison[];problem?:string}>();
   const developerTraces=ref<import('../domain/contracts').DeveloperTrace[]>([]);
   const formatErrors=useFormatErrors(()=>[...Object.values(credentials),readCloudToken('github'),readCloudToken('gitee')]);
+  function reportHttpFailureNotice(failure:import('../gateway/requestFailure').HttpFailure):string|undefined{
+    // Every channel that reports this failure must produce the same text and the same dedup key, so a raw code,
+    // message or task name is redacted before it can reach the top bar or the run log.
+    const secrets=[...Object.values(credentials),readCloudToken('github'),readCloudToken('gitee')];
+    const redact=(text:string)=>safeLogText(text,secrets,4000);
+    const notice=httpFailureNotice({...failure,task:redact(failure.task),...(failure.code!==undefined?{code:redact(failure.code)}:{}),message:redact(failure.message)});
+    if(!notice)return;
+    registerHttpNotice(notice.message,notice.key);
+    showNotice(notice.message,true,httpNoticeDuration,notice.key);
+    void formatErrors.record(httpFailureLog({...failure,task:redact(failure.task),...(failure.code!==undefined?{code:redact(failure.code)}:{}),message:redact(failure.message)}),'HTTP_ERROR',active.value?.id||'','','runtime').catch(()=>{});
+    return notice.key;
+  }
+  const disposeHttpFailureSink=setHttpFailureSink(reportHttpFailureNotice);
+  onScopeDispose(()=>{disposeHttpFailureSink();clearHttpNotices();});
   const hideFloors=ref((()=>{try{return accountStorage.getItem('academy:auto-hide-floors')!=='false';}catch{return true;}})());
   watch(hideFloors,value=>{try{accountStorage.setItem('academy:auto-hide-floors',String(value));}catch{}});
   const preferences=reactive<Preferences>({...defaults(),activePreset:'legacy',theaters:defaultTheaters()});
@@ -118,6 +143,8 @@ export function useWorkspace() {
     if(reportingSaveFailure)return;
     if(error instanceof Error&&error.name==='AbortError')return;
     const detail=error instanceof Error?error.message:String(error);if(!detail.trim())return;
+    // The HTTP sink already wrote this failure to the run log with its full sanitized detail.
+    if(noticeKeyFor(detail)!==undefined)return;
     const session=active.value,turn=session?.turns.at(-1);
     void formatErrors.record(detail,stage,session?.id||'',turn?.id||'','runtime',{...(activeCallId?{callId:activeCallId}:{})});
   }
@@ -146,19 +173,75 @@ export function useWorkspace() {
     const profiles=preferences.profiles.filter(p=>!!credentials[p.id]);
     return {version:1,remember:rememberApiKeys.value,keys:rememberApiKeys.value?Object.fromEntries(profiles.map(p=>[p.id,credentials[p.id]])):{},confirmed:rememberApiKeys.value?Object.fromEntries(profiles.filter(connectionReady).map(p=>[p.id,{apiBaseUrl:apiAddress(p.apiBaseUrl),model:p.model}])):{}};
   }
-  async function commitConfiguration(next:Preferences,keys:Record<string,string>,remember:boolean,bindings:{id:string;ids:string[];before?:string[]}[]=[]){
+  /** Bounded so one unreachable address can never hang a configuration save forever. */
+  const configureTimeoutMs=15000;
+  async function confirmConnection(p:Profile){
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),configureTimeoutMs);
+   try{await http.configure(copy(p),controller.signal);}
+   // The new Error keeps the failure's notice key so the UI resolves the canonical text instead of a second, longer
+   // copy of the same failure: the interface name is diagnostic detail, the sink already logged it with full context.
+   catch(e){throw attachHttpNotice(Error(controller.signal.aborted?`${p.name}：确认超时（${configureTimeoutMs/1000} 秒），接口地址无法连接，请修改或移除此接口后重试。`:`${p.name}：${e instanceof Error?e.message:'接口确认失败'}`),httpNoticeKeyOf(e));}
+   finally{clearTimeout(timer);}
+  }
+  /**
+   * `origin` is the draft's baseline; when it is given the write is re-merged against live state instead of replacing
+   * it, so a concurrent change to another interface or to a global setting is preserved instead of silently overwritten.
+   * `scope` names the interfaces this save may confirm; the rest keep their current state and never hit the network.
+   */
+  async function commitConfiguration(next:Preferences,keys:Record<string,string>,remember:boolean,bindings:{id:string;ids:string[];before?:string[]}[]=[],options:ConfigurationCommitOptions={}){
     if(!storageReady||backupWorking.value)throw Error('请等待存档载入或恢复完成');
-    const staged=copy(next),stagedKeys=copy(keys),confirmations:Record<string,string>={},confirmed:LocalApiCredentials['confirmed']={};
+    const baseline={preferences:copy(options.origin?.preferences||preferences),credentials:copy(options.origin?.credentials||credentials)};
+    const resolvePreferences=(draft:Preferences)=>mergeConfiguration(copy(preferences),baseline.preferences,draft);
+    const resolveKeys=(draft:Record<string,string>)=>mergeCredentials({...credentials},baseline.credentials,draft);
+    const validate=(staged:Preferences,stagedKeys:Record<string,string>)=>{
+      for(const p of staged.profiles){
+        if(p.model.length>150||(stagedKeys[p.id]||'').length>8192)throw Error(`${p.name}：模型名称或 Key 超过长度限制`);
+        const issues=apiFieldIssues(p,stagedKeys[p.id]||'').filter(x=>x!=='模型名称'&&x!=='Key'&&!(x==='API 地址'&&!p.apiBaseUrl?.trim()));
+        if(issues.length)throw Error(`${p.name}：${issues.join('、')}`);
+      }
+    };
+    let staged=resolvePreferences(next),stagedKeys=resolveKeys(keys);
+    validate(staged,stagedKeys);
+    // Connection inputs already committed before this save. Unchanged interfaces are never re-confirmed and never
+    // upgraded to "ready": an unrelated old auxiliary API that was never confirmed must not block saving everything else.
+    const previous=new Map(preferences.profiles.map(p=>[p.id,JSON.stringify([apiAddress(p.apiBaseUrl),p.model,credentials[p.id]||''])]));
+    // Address/model only: the key is compared against this save's own input, so unrelated credential changes cannot abort it.
+    const previousEndpoint=new Map(preferences.profiles.map(p=>[p.id,JSON.stringify([apiAddress(p.apiBaseUrl),p.model])]));
+    const confirmations:Record<string,string>={},confirmed:LocalApiCredentials['confirmed']={};
     for(const p of staged.profiles){
-      if(p.model.length>150||(stagedKeys[p.id]||'').length>8192)throw Error(`${p.name}：模型名称或 Key 超过长度限制`);
-      const issues=apiFieldIssues(p,stagedKeys[p.id]||'').filter(x=>x!=='模型名称'&&x!=='Key'&&!(x==='API 地址'&&!p.apiBaseUrl?.trim()));
-      if(issues.length)throw Error(`${p.name}：${issues.join('、')}`);
-      if(!apiFieldIssues(p,stagedKeys[p.id]||'').length){await http.configure(copy(p));confirmations[p.id]=JSON.stringify([apiAddress(p.apiBaseUrl),p.model,stagedKeys[p.id]||'']);confirmed[p.id]={apiBaseUrl:apiAddress(p.apiBaseUrl),model:p.model};}
+      if(apiFieldIssues(p,stagedKeys[p.id]||'').length)continue;
+      const signature=JSON.stringify([apiAddress(p.apiBaseUrl),p.model,stagedKeys[p.id]||'']);
+      // Only an exact existing approval may be carried over; a stale one would mark a different endpoint as ready.
+      const ready=approved[p.id]===signature,unchanged=previous.get(p.id)===signature,scoped=options.scope?options.scope.includes(p.id):!unchanged;
+      if(ready&&unchanged){confirmations[p.id]=signature;continue;}
+      // Whatever this save does not target must neither be requested nor change readiness, so an unrelated interface
+      // can never be confirmed or turned ready by someone else's save. Anything the save does target is confirmed even
+      // when its address, model and key are already committed: clicking "confirm" on it has to take effect.
+      if(!scoped)continue;
+      await confirmConnection(p);
+      // Late response guard: reject confirmations whose input changed while the request was in flight.
+      if((keys[p.id]||'')!==(stagedKeys[p.id]||''))throw Error(`${p.name}：Key 在保存期间已改变，请重新保存。`);
+      const live=preferences.profiles.find(x=>x.id===p.id);
+      const liveEndpoint=live?JSON.stringify([apiAddress(live.apiBaseUrl),live.model]):undefined;
+      if(!(liveEndpoint===undefined&&!previousEndpoint.has(p.id)||liveEndpoint!==undefined&&previousEndpoint.get(p.id)===liveEndpoint))throw Error(`${p.name}：接口在保存期间已被其他操作修改，请取消后重新编辑。`);
+      confirmations[p.id]=signature;
+    }
+    // Re-merged after the confirmations so anything that changed while they were in flight is preserved or refused.
+    staged=resolvePreferences(next);stagedKeys=resolveKeys(keys);
+    validate(staged,stagedKeys);
+    for(const p of staged.profiles){
+      const signature=JSON.stringify([apiAddress(p.apiBaseUrl),p.model,stagedKeys[p.id]||'']);
+      if(confirmations[p.id]===signature)confirmed[p.id]={apiBaseUrl:apiAddress(p.apiBaseUrl),model:p.model};
+      else delete confirmations[p.id];
     }
     const safe=cleanPreferences(staged),allowed=new Set(safe.profiles.map(p=>p.id));
     const saved:LocalApiCredentials={version:1,remember,keys:remember?Object.fromEntries(Object.entries(stagedKeys).filter(([id])=>allowed.has(id))):{},confirmed:remember?confirmed:{}};
     for(const binding of bindings){const session=sessions.value.find(s=>s.id===binding.id);if(!session||JSON.stringify(session.worldbookIds||[])!==JSON.stringify(binding.before||[]))throw Error('世界书绑定已改变，请重新编辑');}
-    const task=writes.catch(()=>{}).then(()=>repository.writeConfiguration(safe,saved,bindings));writes=task;
+    const liveBeforeWrite=JSON.stringify([preferences,credentials]);
+    const task=writes.catch(()=>{}).then(()=>{
+      if(JSON.stringify([preferences,credentials])!==liveBeforeWrite)throw Error('设置在等待保存时已改变，请重新保存；当前修改已保留。');
+      return repository.writeConfiguration(safe,saved,bindings);
+    });writes=task;
     storageStatus.value='saving';try{await task;}catch(e){storageStatus.value='failed';storageError.value=message(e);throw e;}
     Object.assign(preferences,safe);for(const binding of bindings)sessions.value.find(s=>s.id===binding.id)!.worldbookIds=copy(binding.ids);for(const id of Object.keys(credentials))delete credentials[id];Object.assign(credentials,Object.fromEntries(Object.entries(stagedKeys).filter(([id])=>allowed.has(id))));
     for(const id of Object.keys(approved))delete approved[id];Object.assign(approved,confirmations);rememberApiKeys.value=remember;apiStorageReady=true;storageStatus.value='saved';storageError.value='';lastSaved.value=now();notice.value='设置已保存；未填写模型的接口仍需补全后才能生成。';problem.value='';
@@ -184,7 +267,12 @@ export function useWorkspace() {
   async function readEditorDraft(id:string){await writes.catch(()=>{});return (await repository.readEditorDrafts())[id];}
   async function collectFullArchive(){const archive=await collectWorkspaceArchive(copy(newGameDraft)),drafts=await repository.readEditorDrafts();delete drafts['new-game'];if(Object.keys(drafts).length)archive.editorDrafts=drafts;return archive;}
   const lorebooks=useWorldbooks(preferences,active,()=>sessions.value,()=>busy.value||workingMemory.value||backupWorking.value,safePersist,s=>problem.value=s,s=>notice.value=s,download);
-  const message=(e:unknown)=> e instanceof Error ? (e.name==='AbortError'?'生成已停止，已收到的内容保留。':e.message) : '操作未完成，请重试。';
+  /** An already-reported HTTP failure keeps its canonical text everywhere, so one failure is one notice. */
+  const message=(e:unknown)=>{
+    const key=httpNoticeKeyOf(e),text=key?noticeTextFor(key):undefined;
+    if(text)return text;
+    return e instanceof Error ? (e.name==='AbortError'?'生成已停止，已收到的内容保留。':e.message) : '操作未完成，请重试。';
+  };
   async function boot() {
     try {const value=await repository.read();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}for(const session of value.sessions)for(const job of session.terminal?.jobs||[])if(job.status==='running'){job.status='failed';job.error='页面关闭时任务中断，可在终端中重试。';}sessions.value=value.sessions;for(const session of sessions.value)prepareForumLikes(session);Object.assign(preferences,value.preferences);}restoreInterrupted.value=await repository.hasInterruptedRestore();storageReady=true;notice.value=sessions.value.some(s=>s.affinityMigration?.records.length)?'本地存档已载入；旧版超过 100 的好感度已迁移到新范围，原始状态与补丁保留在导出备份的 affinityMigration 记录中，旧记忆待重整':sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
     catch(e){problem.value=message(e);notice.value='本地存储暂不可用，请勿覆盖旧数据';}
@@ -428,7 +516,7 @@ export function useWorkspace() {
       if(repairPlan&&request.continuation){request.continuation.repairPlan=repairPlan;request.state.characters.push(...copy(repairBefore!.characters.filter(c=>!request.state.characters.some(a=>a.id===c.id))));request.stateEnabled=repairNeedsState(repairPlan);request.theaterSettings=request.theaterSettings?.map(s=>({...s,enabled:repairPlan.theaterSlots.includes(s.slot)}));request.suggestionsEnabled=repairPlan.suggestions;}
       const regexRules=copy((requestPreferences.regexRules||[]).filter(r=>!r.setId||r.setId===currentPreset.value));
       if(!stateOnly&&!continuePartial)variant.generationRequirements={stateEnabled:request.stateEnabled!==false,theaters:copy(request.theaterSettings||defaultTheaters())};
-      if(regexRules.some(r=>!r.disabled&&(!r.markdownOnly||r.promptOnly))){const context={scope:'prompt' as const,user:session.persona.name,char:localService.value?.narratorName||'星穹学院'};const messages=[...request.history,{role:'user' as const,content:request.input}];const edited=session.turns.slice(Math.max(0,index-12),index).filter(t=>selected(t)?.status==='complete').flatMap(t=>[!!t.inputEdited,!!selected(t)?.edited]);edited.push(!!turn.inputEdited);for(let i=0;i<messages.length;i++){const item=messages[i];const transformed=await runRegex(item.content,regexRules,{...context,placement:item.role==='user'?1:2,edited:edited[i],depth:messages.length-1-i},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('；'));item.content=transformed.text;}request.input=messages.pop()!.content;request.history=messages;for(const entry of request.worldInfo||[]){const transformed=await runRegex(entry.content,regexRules,{...context,placement:5,depth:entry.depth},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('；'));entry.content=transformed.text;}}
+      if(regexRules.some(r=>!r.disabled&&(!r.markdownOnly||r.promptOnly))){const context={scope:'prompt' as const,user:session.persona.name,char:localService.value?.narratorName||'星穹学院'};const messages=[...request.history,{role:'user' as const,content:request.input}];const edited=session.turns.slice(Math.max(0,index-12),index).filter(t=>selected(t)?.status==='complete').flatMap(t=>[!!t.inputEdited,!!selected(t)?.edited]);edited.push(!!turn.inputEdited);for(let i=0;i<messages.length;i++){const item=messages[i];const transformed=await runRegex(item.content,regexRules,{...context,placement:item.role==='user'?1:2,edited:edited[i],depth:messages.length-1-i},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('、'));item.content=transformed.text;}request.input=messages.pop()!.content;request.history=messages;for(const entry of request.worldInfo||[]){const transformed=await runRegex(entry.content,regexRules,{...context,placement:5,depth:entry.depth},controller.signal);if(transformed.errors.length)callErrors.push('REGEX_WARNING：'+transformed.errors.join('、'));entry.content=transformed.text;}}
       generationPhase.value='等待模型返回（单次请求／重试最长10分钟）…';
       let branchRevision=0;stopBinding=watch(()=>({sessionId:sessionId.value,persona:session.persona,opening:session.opening,initial:session.initial,turns:session.turns.map((t,i)=>({id:t.id,input:t.input,selected:t.selected,variants:t.variants.map(v=>i<index?{id:v.id,text:v.text,status:v.status,outcome:v.outcome,mvuOverride:v.mvuOverride}:{id:v.id})}))}),()=>{branchRevision++;},{deep:true,flush:'sync'});const expectedRevision=branchRevision;
       for await(const event of gateway().generate(request,storyKey,controller.signal)) {
@@ -439,7 +527,7 @@ export function useWorkspace() {
         else if(event.type==='diagnostic'){recordDiagnostic(event.diagnostic);if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未完成更新；主接口的正文、小剧场和快捷回复已保存，原状态沿用。';if(event.diagnostic.code==='STATE_SIDE_SCENE_RETAINED')notice.value='模型遗漏了本轮已开启的部分小剧场，正文和有效内容已保存；可在回复操作中手动补全，不会自动再次调用。';if(event.diagnostic.code==='STATE_STORY_MISSING')notice.value='模型本轮仅返回状态，已有状态和有效小剧场已保存；没有收到剧情正文，可手动续写。';}
         else if(event.type==='progress'){generationPhase.value=event.phase==='hidden'?'中转站正在返回数据，目前尚无可展示正文（思考内容保持隐藏）…':event.phase==='receiving'?'正在接收正文和隐藏状态…':'等待模型返回…';}
         else if(event.type==='delta'){generationPhase.value='正在接收正文…';if(repairingState.value)continue;pendingDelta+=event.text;if(!streamTimer)streamTimer=setTimeout(flushStream,48);}
-        else if(event.type==='repair'){generationPhase.value='正文已保留，正在补修状态…';repairingState.value=true;continuationAttempt.value=event.attempt;notice.value=`正在补修状态 ${event.attempt}/${event.maxAttempts}：${event.reason}`;}
+        else if(event.type==='repair'){generationPhase.value='正文已保留，正在补修状态…';repairingState.value=true;continuationAttempt.value=event.attempt;notice.value=`正在补修状态${event.attempt}/${event.maxAttempts}：${event.reason}`;}
         else if(event.type==='continuation'){generationPhase.value='回复截断，正在自动续写…';repairingState.value=false;continuationAttempt.value=event.attempt;notice.value=`检测到截断，正在自动续写 ${event.attempt}/${event.maxAttempts}…`;}
         else if(event.type==='done'){
           flushStream();modelRaw=typeof event.raw==='string'?event.raw:'';let outcome=event.outcome;
@@ -449,7 +537,7 @@ export function useWorkspace() {
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
-      notice.value=terminalFollowupJob(session,index)?.status==='failed'?(terminalFollowupJob(session,index)?.error||'正文完成，终端部分未完成。'):'正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';
+      notice.value=terminalFollowupJob(session,index)?.status==='failed'?(terminalFollowupJob(session,index)?.error||'正文完成，终端部分未完成'):'正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
     }catch(e){if(!inputCommitted&&turnIndex===undefined){session.turns=session.turns.filter(t=>t!==turn);session.draftInput=turn.input;input.value=turn.input;inputDrafts.set(session.id,turn.input);}problem.value=message(e);callErrors.push(problem.value);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes,message(e));if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1)),problem:message(e)};}
     finally{flushStream();stopBinding?.();protectedGeneration=undefined;const logApplied=selected(turn)?.id===variant.id&&variant.status==='complete';const logAfter=logApplied?stateAt(session,index+1):logBefore;const variables=variableChangeLog(logBefore,logAfter,logApplied,variant.outcome?.stateUpdate?.affinityReviewedIds,logStateDetails(variant.outcome).map(d=>d.text),variant.outcome?.stateUpdate?.codes);const sections=generationSections({errors:callErrors,variant,outcome:variant.outcome,before:logBefore,after:logAfter,applied:logApplied,variables,recall:recallTrace,stateOnly,raw:modelRaw});void formatErrors.record(done?'本次生成完成。':problem.value||'本次生成未完成。',done?'GENERATION_COMPLETE':'GENERATION_INCOMPLETE',session.id,turn.id,'generation',{variantId:variant.id,round:index+1,variables,callId,sections}).catch(()=>{});busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;activeCallId='';if(inputCommitted&&!done){session.updatedAt=now();await safePersist();}if(recallTrace?.fallback&&!problem.value)notice.value=recallTrace.fallback;const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';if(inputCommitted&&variant.status==='complete'&&storageStatus.value==='saved')void scheduleMemoryWork(session).then(()=>{if(recallTrace?.fallback&&!problem.value)notice.value=recallTrace.fallback;});}
@@ -471,8 +559,8 @@ export function useWorkspace() {
       const state=stateAt(session,index+1);
       startGeneration(followupCallId);const raw=await http.terminal({task:'main-followup',sessionId:session.id,actorIds:[...new Set([...state.characters.map(a=>a.id),...(session.terminal?.contacts||[]).map(a=>a.id)])],input:session.turns[index].input.slice(0,2000),persona:copy(session.persona),context:{state:{characters:[...state.characters,...session.terminal?.contacts||[]]},repairContext:context,repairSlots:job.repair.groups.map(g=>({id:g.id,slots:g.slots})),groupEvidence,socialEvidence:job.repair.social?variant.text.slice(0,12000):''}},p,apiKey,signal) as import('../domain/terminalMain').TerminalMainBatch;
       signal.throwIfAborted();if(active.value?.id!==session.id||terminalAnchor(session,index+1).key!==binding||signature!==connectionSignature(profile(p.id)))throw Error('存档、分支或接口已变化，迟到终端结果未应用。');
-      const result=applyTerminalFollowup(session,index,job.id,raw);await persist();notice.value=result.status==='ready'?`正文完成，终端本次补齐 ${result.added} 条群消息。`:result.error||'正文完成，终端部分未完成。';if(result.status==='ready')markGenerationComplete(followupCallId);return result.status==='ready';
-    }catch(e){if(terminalAnchorActive(session,job.anchor)){job.status='failed';job.error='正文完成，终端部分未完成：'+message(e);await safePersist();notice.value=job.error;}return false;}
+      const result=applyTerminalFollowup(session,index,job.id,raw);await persist();notice.value=result.status==='ready'?`正文完成，终端本次补齐 ${result.added} 条群消息。`:result.error||'正文完成，终端部分未完成';if(result.status==='ready')markGenerationComplete(followupCallId);return result.status==='ready';
+    }catch(e){if(terminalAnchorActive(session,job.anchor)){job.status='failed';job.error='正文完成，终端部分未完成'+message(e);await safePersist();notice.value=job.error;}return false;}
     finally{finishGeneration(followupCallId);terminalBusy.value=false;}
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value||backupWorking.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
