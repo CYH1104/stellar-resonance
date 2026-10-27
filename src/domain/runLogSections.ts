@@ -41,7 +41,7 @@ export function modelOutputSection(raw?:string){
  if(typeof raw!=='string'||!raw.trim())return undefined;
  return section('modelOutput','模型原始输出',raw);
 }
-export function generationSections(input:{errors:string[];variant:Variant;outcome?:Outcome;before:WorldState;after:WorldState;applied:boolean;variables:VariableChangeLog;recall?:RecallTrace;stateOnly?:boolean;raw?:string}){
+export function generationSections(input:{errors:string[];variant:Variant;outcome?:Outcome;before:WorldState;after:WorldState;applied:boolean;variables:VariableChangeLog;recall?:RecallTrace;stateOnly?:boolean;raw?:string;completionInfo?:string}){
  const {errors,variant,outcome,before,after,applied,variables,recall,stateOnly,raw}=input;
  const sections:RunLogSection[]=[];
  const diagnostics=[...errors,...(outcome?.stateUpdate?.codes||[])];if(diagnostics.length)sections.push(section('errors','错误与校验',[...new Set(diagnostics)].join('\n')));
@@ -53,6 +53,7 @@ export function generationSections(input:{errors:string[];variant:Variant;outcom
  sections.push(section('variables','MVU 变量与状态差异',variables.applied?`实际状态差异 ${variables.total} 项；MVU 操作 ${mvu.length} 条`:'本次未应用状态。',{variables:{...variables,...(mvu.length?{details:[...variables.details,...mvu.slice(0,100).map((op,i)=>'MVU '+(i+1)+'：'+op)]}:{})}}));
  sections.push(terminalActivitySection(outcome,after));
  const modelOutput=modelOutputSection(raw);if(modelOutput)sections.push(modelOutput);
+ if(input.completionInfo)sections.push(section('note','上游结束信息',input.completionInfo));
  const vector=vectorSection(recall,stateOnly);if(vector)sections.push(vector);
  if(!applied)sections.push(section('note','保存说明','本次生成未应用为当前稿件，状态差异与正文按请求结束时的快照记录。'));
  return sections;

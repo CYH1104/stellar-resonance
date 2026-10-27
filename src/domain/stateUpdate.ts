@@ -1,6 +1,10 @@
 import type {Outcome} from './contracts';
 
 const explanations:Record<string,string>={
+  MODEL_OUTPUT_LIMIT:'模型达到本次输出上限，已保留正文，可继续续写',
+  MODEL_STREAM_INTERRUPTED:'输出连接中断，已保留正文和原状态，可继续续写',
+  MODEL_RESPONSE_INCOMPLETE:'本轮正文尚未完整，已保留内容，可继续续写',
+  MODEL_TIMEOUT:'本轮请求超时，已保留正文和原状态，可继续续写',
   STATE_COMPANION_RELOCATED:'已识别状态块内的论坛或小剧场，并独立保存到对应模块',
   STATE_REQUEST_MISMATCH:'状态协议版本或请求标识不匹配，未应用这份变量更新',
   STATE_PROTOCOL_CONFLICT:'出现重复状态或并行变量协议，未重复结算变量',

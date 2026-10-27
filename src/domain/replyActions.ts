@@ -3,7 +3,7 @@ import type {ViewModel} from '../app/useWorkspace';
 
 // Missing metadata in older saves is not evidence that prose needs continuation.
 export function canContinueProse(variant:Variant|undefined,enabled:boolean){
-  return !!enabled&&!!variant?.text.trim()&&variant.status==='incomplete'&&variant.outcome?.stateUpdate?.storyComplete===false;
+  return !!enabled&&!!variant?.text.trim()&&variant.outcome?.stateUpdate?.storyComplete===false;
 }
 
 export function bindRoundAction(w:Pick<ViewModel,'active'|'busy'|'problem'>,index:number,perform:(index:number)=>unknown){

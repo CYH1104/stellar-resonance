@@ -81,9 +81,20 @@ export async function* streamStory({card,state,options,messages,partial='',state
     // A preset may return only comments. Retry once with an explicit visible-story request.
     if(readError?.code==='MODEL_NO_VISIBLE_CONTENT'&&attempt===0&&maxAttempts>0&&!decoder.raw.trim()){reasoningFilter=new ReasoningFilter();continue;}
     if(readError)yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code:readError.code,attempt,stage:'rejected'}};
+    // Compatibility may recover missing fields, but it must not turn a known
+    // interrupted response into a successful turn. Keep the delivered prose and
+    // let the user explicitly continue; single-call mode never issues a retry.
+    if(options.singleStateCall&&!decoder.hasCompletionMarker()){
+      const code=lastStats?.finishReason==='length'?'MODEL_OUTPUT_LIMIT':lastStats?.finishReason==='content_filter'?'MODEL_REFUSAL':readError?(readError.code||'MODEL_STREAM_INTERRUPTED'):undefined;
+      if(code){
+        yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code,attempt,stage:'rejected'}};
+        if(options.captureFormatErrors&&decoder.raw.trim())yield {type:'format-error',code,raw:boundedModelRaw(decoder.raw)};
+        throw readError?.code===code?readError:modelError(502,code);
+      }
+    }
     if(['MODEL_OUTPUT_LIMIT','MODEL_REFUSAL','MODEL_RESPONSE_TOO_LARGE','MODEL_STATE_TOO_LARGE','INVALID_MODEL_PROFILE','MODEL_KEY_REQUIRED','MODEL_REASONING_UNCLOSED','MODEL_REASONING_ONLY','MODEL_NO_VISIBLE_CONTENT','MODEL_EMPTY_RESPONSE'].includes(readError?.code))throw readError;
     if(readError&&!decoder.raw.trim())throw readError;
-    try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(options.captureFormatErrors&&options.validationWarnings.length)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:decoder.raw};if(decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',code,stage:'accepted',attempt}};yield {type:'done',outcome,raw:boundedModelRaw(decoder.raw)};return;}
+    try{const outcome=decoder.finish(card,state,attempt>0&&!repairing?{...options,dice:undefined}:options);if(options.captureFormatErrors&&options.validationWarnings.length)yield {type:'format-error',code:'STATE_COMPAT_RECOVERED',raw:decoder.raw};if(lastStats||decoder.jsonInfo)yield {type:'diagnostic',diagnostic:{kind:'generation',...decoder.jsonInfo,...diagnosticStats(),attempt,stage:'accepted'}};for(const code of options.validationWarnings)yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code,stage:'accepted',attempt}};yield {type:'done',outcome,raw:boundedModelRaw(decoder.raw)};return;}
     catch(error){
       if(options.captureFormatErrors&&decoder.raw.trim())yield {type:'format-error',code:error.code||'INVALID_MODEL_STATE',raw:decoder.raw};
       yield {type:'diagnostic',diagnostic:{...(error.diagnostic||{kind:'generation'}),...diagnosticStats(),code:error.code,attempt,stage:'rejected'}};

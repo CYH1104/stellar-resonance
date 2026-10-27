@@ -1,6 +1,11 @@
 import {it,expect} from 'vitest';
 import {generationSections,orderedSections} from '../src/domain/runLogSections';
 import type {Variant,WorldState,Memory} from '../src/domain/contracts';
+it('shows finish metadata in ordinary logs without misclassifying it as an error',()=>{
+ const sections=generationSections({errors:[],variant:{id:'v',text:'正文',status:'complete',createdAt:''},before:state(),after:state(),applied:true,variables:{applied:true,total:0,changes:[],reviews:[],details:[],codes:[]},completionInfo:'上游结束原因：length\n请求输出上限：2000 tokens'});
+ expect(sections.find(s=>s.title==='上游结束信息')?.text).toContain('length');
+ expect(sections.some(s=>s.kind==='errors')).toBe(false);
+});
 const state=(name='玩家'):WorldState=>({player:{id:'player',name,present:true},characters:[{id:'a',name:'甲',present:true}]});
 it('orders errors first, then actual content, MVU, terminal activity and a real vector trace',()=>{
  const before=state(),after=state();after.characters[0].affinity=20;

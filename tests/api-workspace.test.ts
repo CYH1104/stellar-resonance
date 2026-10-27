@@ -251,6 +251,19 @@ it('完整回复可以续写，原完整稿保留，失败也不会覆盖原稿'
   generate.mockImplementationOnce(async function*(){yield {type:'delta',text:'未完成的延伸'};throw Error('合成连接中断');});
   await generateAndWait(w,undefined,0,true);expect(turn.variants).toHaveLength(3);expect(turn.variants[0]).toEqual(original);expect(turn.variants[1].status).toBe('complete');expect(turn.variants[2].status).toBe('incomplete');expect(w.problem.value).toContain('中断');
 });
+it('preserves cut prose as an explicitly unfinished draft and records the upstream finish reason',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('截断验收',{name:'玩家',appearance:'',personality:'',background:''},'');await w.formatErrors.clear();
+ const text='这一段尚未说完，隔着一层';
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){yield {type:'delta',text};yield {type:'diagnostic',diagnostic:{kind:'generation',attempt:0,stage:'rejected',code:'MODEL_OUTPUT_LIMIT',finishReason:'length',visibleChars:text.length,reasoningChars:123}};throw Error('模型达到输出上限');});
+ await generateAndWait(w,'继续');
+ const variant=w.active.value!.turns[0].variants[0];
+ expect(variant.text).toBe(text);expect(variant.status).toBe('incomplete');expect(variant.outcome?.stateUpdate?.storyComplete).toBe(false);
+ expect(w.active.value!.memories).toHaveLength(0);
+ const restored=parseBackup(backup(saved!));expect(restored.sessions[0].turns[0].variants[0].outcome?.stateUpdate?.storyComplete).toBe(false);
+ const log=await vi.waitFor(()=>{const entry=w.formatErrors.entries.value.find(row=>row.code==='GENERATION_INCOMPLETE');expect(entry).toBeTruthy();return entry!;});
+ expect(log.sections?.find(section=>section.title==='上游结束信息')?.text).toContain('length');
+ expect(log.sections?.find(section=>section.title==='上游结束信息')?.text).toContain('123');
+});
 function fill(w:ReturnType<typeof useWorkspace>,id='main'){
   if(id==='main')fill(w,'embed');
   Object.assign(w.preferences.profiles.find(p=>p.id===id)!,{apiBaseUrl:`https://${id}.synthetic.example/v1`,model:`model-${id}`});w.credentials[id]=`synthetic-key-${id}`;
@@ -425,7 +438,7 @@ it('三次续写未完成保留正文和原状态，不提交记忆或调用建�
     for(let attempt=1;attempt<=3;attempt++){yield{type:'continuation',attempt,maxAttempts:3};expect(w.continuationAttempt.value).toBe(attempt);expect(w.active.value?.turns[0].variants[0].status).toBe('incomplete');}
     throw new Error('已自动续写3次，仍未确认完整结束。');
   });
-  await generateAndWait(w,'行动');const v=w.active.value!.turns[0].variants[0];expect(v.text).toBe('保留的前半句。');expect(v.status).toBe('incomplete');expect(v.outcome).toBeUndefined();expect(JSON.stringify(w.state.value)).toBe(initial);expect(w.memories.value).toHaveLength(0);expect(utility).not.toHaveBeenCalled();expect(w.problem.value).toContain('3次');expect(w.continuationAttempt.value).toBe(0);expect(saved?.sessions[0].turns[0].variants[0].text).toBe(v.text);
+  await generateAndWait(w,'行动');const v=w.active.value!.turns[0].variants[0];expect(v.text).toBe('保留的前半句。');expect(v.status).toBe('incomplete');expect(v.outcome?.stateUpdate).toMatchObject({received:false,storyComplete:false});expect(v.outcome?.mvu).toBeUndefined();expect(JSON.stringify(w.state.value)).toBe(initial);expect(w.memories.value).toHaveLength(0);expect(utility).not.toHaveBeenCalled();expect(w.problem.value).toContain('3次');expect(w.continuationAttempt.value).toBe(0);expect(saved?.sessions[0].turns[0].variants[0].text).toBe(v.text);
 });
 it('手动续写复用原稿与原骰点，传递断点并且只在完成后记忆一次',async()=>{
   const w=await workspace();fill(w);await w.confirmAllApis();await w.create('测试',{name:'玩家',appearance:'',personality:'',background:''},'');w.preferences.diceEnabled=true;
