@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMessages,StoryDecoder} from '../server/ai.mjs';
-import {terminalMainPrompt} from '../server/terminal-main.mjs';
+import {terminalAutoPrompt} from '../server/terminal-main.mjs';
 import {streamStory} from '../server/story-stream.mjs';
 import {defaultTheaters} from '../src/domain/theaters.ts';
 const state={player:{id:'player',name:'玩家',present:true},characters:[{id:'a',name:'陆离',present:false},{id:'b',name:'卫锋',present:false}]};
@@ -11,17 +11,17 @@ const batch={groups:['g1','g2'].map(id=>({id,title:'教学'+id,members:['a','b']
 const settings=defaultTheaters().map(t=>({...t,enabled:false}));
 const options={singleStateCall:true,stateEnabled:false,terminalContext:context,theaterSettings:settings};
 const raw=b=>'正文保留。<SR_STATE>'+JSON.stringify({event:'训练安排',terminal:b})+'</SR_STATE><SR_DONE>';
-test('main prompt contains the complete terminal contract even when actor state is off',()=>{const built=buildMessages(card,{state,persona:{name:'玩家'},input:'训练',history:[],memories:[],presets:[],stateEnabled:false,suggestionsEnabled:false,theaterSettings:settings,terminalContext:context});const text=JSON.stringify(built.messages);for(const token of ['privateMessages','newGroupIds','4至6条','主API响应','friendIds'])assert.ok(text.includes(token),token);});
+test('prose prompt carries no terminal contract; the contract lives only in the independent task',()=>{const built=buildMessages(card,{state,persona:{name:'玩家'},input:'训练',history:[],memories:[],presets:[],stateEnabled:false,suggestionsEnabled:false,theaterSettings:settings});const body=JSON.stringify(built.messages);for(const token of ['privateMessages','newGroupIds','friendRequests','SR_STATE 之外的终端'])assert.ok(!body.includes(token),token);const auto=terminalAutoPrompt(context,state,{story:'正文已经确认。',input:'训练',allowSocial:true});for(const token of ['privateMessages','newGroupIds','4至6条','friendIds','独立请求'])assert.ok(auto.includes(token),token);});
 test('terminal companion survives canonical state adaptation without changing actor variables',()=>{const d=new StoryDecoder();assert.equal(d.push('正文保留。<SR_STATE>'+JSON.stringify({schemaVersion:'state-output-v1',requestId:'local-test',event:'训练',terminal:batch,presentCharacterIds:[],characters:[]})+'</SR_STATE><SR_DONE>'),'正文保留。');const out=d.finish(card,state,{...options,stateEnabled:true});assert.equal(out.terminal.groups.length,2);assert.equal(out.terminal.privateMessages[0].id,'a');assert.ok(!out.stateUpdate.codes.includes('STATE_PROTOCOL_CONFLICT'));});
-test('main prompt carries private chat facts and a knowledge boundary for prose, not only terminal output',()=>{
+test('independent terminal prompt carries private chat facts and a knowledge boundary, prose never receives them',()=>{
  const privateChats=[{participantId:'a',participantName:'陆离',knownBy:['player','a'],messages:[{sender:'player',text:'周六观星台见，你答应带星图。'},{sender:'a',text:'我记得，会带星图。'}],source:'terminal.conversations/p1',earlierTopic:{text:'旧约定：周六观星台',source:'terminal.memories/anchor/chats/p1'}}];
- const prompt=terminalMainPrompt({...context,privateChats},state);
- for(const token of ['私聊知情范围','不仅是终端输出','周六观星台','knownBy','不得自动知道','不能装作不知道','重复发送','earlierTopic'])assert.ok(prompt.includes(token),token);
+ const prompt=terminalAutoPrompt({...context,privateChats},state,{story:'',input:'继续',allowSocial:false});
+ for(const token of ['私聊知情范围','周六观星台','knownBy','不得自动知道','不能装作不知道','earlierTopic','终端上下文（数据）：'])assert.ok(prompt.includes(token),token);
  const data=JSON.parse(prompt.slice(prompt.lastIndexOf('终端上下文（数据）：')+'终端上下文（数据）：'.length));
  assert.equal(data.privateChats.length,1);assert.equal(data.privateChats[0].participantId,'a');assert.deepEqual(data.privateChats[0].knownBy,['player','a']);
- const built=buildMessages(card,{state,persona:{name:'玩家'},input:'继续',history:[],memories:[],presets:[],stateEnabled:false,suggestionsEnabled:false,theaterSettings:settings,terminalContext:{...context,privateChats}});
- assert.ok(JSON.stringify(built.messages).includes('周六观星台见，你答应带星图。'));
- assert.ok(JSON.stringify(built.messages).includes('不得自动知道'));
+ const built=buildMessages(card,{state,persona:{name:'玩家'},input:'继续',history:[],memories:[],presets:[],stateEnabled:false,suggestionsEnabled:false,theaterSettings:settings});
+ assert.ok(!JSON.stringify(built.messages).includes('周六观星台见，你答应带星图。'));
+ assert.ok(!JSON.stringify(built.messages).includes('不得自动知道'));
 });
 test('automatic communications are decoded from one response, with no follow-up model calls',async()=>{let calls=0;const events=[];for await(const e of streamStory({card,state,options,messages:[],firstResponse:Response.json({choices:[{message:{content:raw(batch)}}]}),signal:new AbortController().signal,fetchImpl:async()=>{calls++;throw Error('unexpected model call');}}))events.push(e);assert.equal(calls,0);assert.equal(events.at(-1).outcome.terminal.groups[0].messages.length,3);assert.equal(events.at(-1).raw,raw(batch));assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),'正文保留。');});
 test('missing or invalid companions retain prose and state without an automatic retry',async()=>{for(const [index,content] of [raw({...batch,groups:[]}),raw({...batch,privateMessages:[{id:'b',text:'陌生私信',topic:'未知'}]}),'正文保留。<SR_STATE>{"event":"训练"}</SR_STATE><SR_DONE>'].entries()){let calls=0;const events=[];for await(const e of streamStory({card,state,options,messages:[],firstResponse:Response.json({choices:[{message:{content}}]}),signal:new AbortController().signal,fetchImpl:async()=>{calls++;throw Error('unexpected retry');}}))events.push(e);assert.equal(calls,0);assert.equal(events.at(-1).type,'done');if(index===1){assert.equal(events.at(-1).outcome.terminal.groups.length,2);assert.equal(events.at(-1).outcome.terminal.privateMessages.length,1);}else if(index===0){assert.equal(events.at(-1).outcome.terminal.groups.length,0);assert.equal(events.at(-1).outcome.terminal.privateMessages.length,1);}else{assert.equal(events.at(-1).outcome.terminal,undefined);assert.ok(events.at(-1).outcome.stateUpdate.codes.includes('STATE_TERMINAL_MISSING'));}}});

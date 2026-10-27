@@ -31,6 +31,15 @@ export const suitName=(suit:TarotSuit)=>suit==='major'?'大阿尔卡纳':suits[s
 export function divinationDay(date=new Date()):string{
  return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
 }
+/** Absolute epoch ms of the next existing day boundary (Asia/Shanghai, fixed +08:00).
+ * Uses the same day key as the records, never the device's local midnight. */
+export function divinationDeadline(now=Date.now()){
+ const day=divinationDay(new Date(now));
+ const start=Date.parse(day+'T00:00:00+08:00');
+ if(!Number.isFinite(start))return now+86400000;
+ // Shanghai has no DST; one fixed day is exact.
+ return start+86400000>now?start+86400000:start+2*86400000;
+}
 function randomIndex(n:number){const b=new Uint32Array(1),limit=Math.floor(0x100000000/n)*n;do{crypto.getRandomValues(b);}while(b[0]>=limit);return b[0]%n;}
 /** Three distinct cards, each independently upright/reversed, positions 基调/关系/行动. */
 export function drawThreeCards(random:(n:number)=>number=randomIndex):DrawnCard[]{

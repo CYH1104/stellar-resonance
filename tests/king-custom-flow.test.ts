@@ -15,7 +15,7 @@ async function fixture(){
  s.terminal.contacts=[{id:'contact-king',name:'楚昭南',identity:'外校交换生',present:false},{id:'contact-target',name:'林晚',identity:'同班同学',present:false}];
  s.terminal.friends=['contact-king','contact-target'].map(id=>({id,status:'accepted',reply:'好',note:''}));
  s.terminal.rooms=[{id:'room',name:'自定义局',style:'日常',members:['player','contact-king','contact-target'],invitations:{'contact-king':'pending','contact-target':'pending'},rounds:[]}];
- const w=reactive({active:s,state:s.initial,preferences:defaults(),credentials:{},loading:false,busy:false,terminalBusy:false,theaters:[],storageStatus:'saved',save:async()=>{},connectionReady:()=>true,scopedRecall:async()=>[],indexTerminalNotes:()=>{}}) as unknown as ViewModel;
+ const w=reactive({active:s,state:s.initial,preferences:Object.assign(defaults(),{terminalProfile:'main'}),credentials:{},loading:false,busy:false,terminalBusy:false,theaters:[],storageStatus:'saved',save:async()=>{},connectionReady:()=>true,scopedRecall:async()=>[],indexTerminalNotes:()=>{}}) as unknown as ViewModel;
  let u!:ReturnType<typeof usePersonalTerminal>;
  await renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}}));
  u.roomId.value='room';

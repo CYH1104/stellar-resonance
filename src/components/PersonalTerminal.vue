@@ -14,17 +14,18 @@ import CharacterImageEditor from './CharacterImageEditor.vue';
 import {majorCharacter} from '../domain/characterImages';
 import {contactCharacterId} from '../app/contactCharacter';
 import AutoTextarea from './AutoTextarea.vue';
-import {targetActors,groupOwner,groupMemberIds,groupNeedsManagement,groupManagementReady,kingParticipants} from '../domain/personalTerminal';
+import {targetActors,groupOwner,groupMemberIds,groupNeedsManagement,groupManagementReady,kingParticipants,type KingRound} from '../domain/personalTerminal';
 import {divinationPositions,suitName,suitGlyph,type TerminalDivination} from '../domain/divination';
 import {messagePage,terminalMessageVisible,terminalAnchorActive} from '../domain/terminalLedger';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 import TerminalIcon from './TerminalIcon.vue';
+import DivinationCountdown from './DivinationCountdown.vue';
 import {nextTerminalCourse} from '../domain/terminalSchedule';
-const props=defineProps<{w:ViewModel}>();defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
+const props=withDefaults(defineProps<{w:ViewModel;active?:boolean}>(),{active:true});defineEmits<{close:[];'drag-start':[event:PointerEvent];'drag-move':[event:PointerEvent];'drag-end':[]}>();
 const u=reactive(usePersonalTerminal(props.w));
 const avatarDisplay=useImagePreview(()=>u.t.avatar);
 const syncVariant=computed(()=>{const turn=props.w.active?.turns.at(-1);return turn?.variants[turn.selected];});
-const pendingMainFollowup=computed(()=>props.w.active?.terminal?.jobs?.filter(j=>j.target==='main-followup'&&j.status!=='ready'&&terminalAnchorActive(props.w.active!,j.anchor))||[]);
+const pendingMainFollowup=computed(()=>props.w.active?.terminal?.jobs?.filter(j=>j.target==='auto'&&j.status!=='ready'&&terminalAnchorActive(props.w.active!,j.anchor))||[]);
 const syncSummary=computed(()=>terminalSyncSummary(syncWarnings.value,syncVariant.value?.outcome?.terminal?.report));
 const syncWarnings=computed(()=>props.w.active?.turns.at(-1)?.variants[props.w.active.turns.at(-1)!.selected]?.outcome?.stateUpdate?.codes?.filter(code=>code.startsWith('STATE_TERMINAL_'))||[]);
 const syncNoticeVisible=ref(false);let syncNoticeTimer:ReturnType<typeof setTimeout>|undefined;
@@ -50,15 +51,29 @@ const conversations=computed(()=>u.visibleConversations.filter(c=>c.joined!==fal
 const unconfirmedGroups=computed(()=>u.visibleConversations.filter(c=>groupNeedsManagement(c)));
 const messageTime=(at:string)=>/^\d{1,2}:\d{2}$/.test(at)?at:/^\d{4}-/.test(at)?new Date(at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'';
 const members=computed(()=>u.conversation?groupMemberIds(u.conversation):[]);
-const visibleRounds=(r:{rounds:{archived?:boolean;anchor?:any}[]})=>r.rounds.filter(x=>!x.archived&&(!x.anchor||!!props.w.active&&terminalAnchorActive(props.w.active,x.anchor)));
+// Both of these run on every render, so they are computed once per room/conversation
+// instead of being re-filtered inside the template for each row and each binding.
+const roundsByRoom=computed(()=>{
+ const session=props.w.active,rows=new Map<string,KingRound[]>();
+ for(const r of u.t.rooms)rows.set(r.id,r.rounds.filter(x=>!x.archived&&(!x.anchor||!!session&&terminalAnchorActive(session,x.anchor))));
+ return rows;
+});
+const lastMessageByConversation=computed(()=>{
+ const session=props.w.active,rows=new Map<string,{text:string;at:string}>();
+ for(const c of conversations.value){
+  const last=c.messages.filter(m=>!session||terminalMessageVisible(session,m)).at(-1);
+  rows.set(c.id,{text:last?.text||'暂无消息',at:last?.at||''});
+ }
+ return rows;
+});
 // Drunk/tolerance bars are shown for actual participants only: the player plus NPCs
  // whose invitation was accepted. Declined or waiting invitees are marked 未参加 and
  // never display a drunk state.
 const roomParticipants=computed(()=>u.room?kingParticipants(u.room):[]);
 const drunkStripVisible=computed(()=>roomParticipants.value.length>1||!!u.room&&!!u.room.endedAt);
-const endedRoomsWithHistory=computed(()=>u.t.rooms.filter(r=>r.endedAt&&visibleRounds(r).length));
-const endedRoomsEmpty=computed(()=>u.t.rooms.filter(r=>r.endedAt&&!visibleRounds(r).length));
-const currentVisibleRounds=computed(()=>u.room?visibleRounds(u.room):[]);
+const endedRoomsWithHistory=computed(()=>u.t.rooms.filter(r=>r.endedAt&&(roundsByRoom.value.get(r.id)?.length||0)));
+const endedRoomsEmpty=computed(()=>u.t.rooms.filter(r=>r.endedAt&&!(roundsByRoom.value.get(r.id)?.length||0)));
+const currentVisibleRounds=computed(()=>u.room?roundsByRoom.value.get(u.room.id)||[]:[]);
 const groupAvatarUrl=ref(''),groupAvatarInput=ref<HTMLInputElement>(),groupAvatarPosition=ref({x:50,y:50});
 async function groupAvatarChange(e:Event){const input=e.target as HTMLInputElement,file=input.files?.[0];if(file){await u.uploadGroupAvatar(file);if(!u.error)groupAvatarPosition.value={x:50,y:50};}input.value='';}
 function saveGroupAvatarUrl(){void u.setGroupAvatarUrl(groupAvatarUrl.value).then(()=>{if(!u.error)groupAvatarPosition.value={x:50,y:50};});}
@@ -73,8 +88,8 @@ watch(()=>u.friendId,()=>{friendAvatarUrl.value=u.friendId?nicknameImage(u.name(
 function saveFriendAvatar(){try{saveNicknameImage(u.name(u.friendId),friendAvatarUrl.value);friendAvatarMessage.value=friendAvatarUrl.value.trim()?'自定义头像已保存到本机。':'已恢复该角色的默认头像。';}catch(e){friendAvatarMessage.value=e instanceof Error?e.message:'头像保存失败。';}}
 const groupRole=(id:string)=>u.conversation&&groupOwner(u.conversation)===id?'群主':u.conversation?.adminIds?.includes(id)?'管理员':'成员';
 function member(id:string){if(id==='player'){u.go('account');return;}if(u.friends.some(f=>f.id===id))profile(id);else{u.go('add');}}
-const shownCourses=computed(()=>u.t.courses.filter(c=>u.week||!u.storyClock.day||c.day===u.storyClock.day).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time)));
-const nextCourse=computed(()=>nextTerminalCourse(u.t.courses,u.storyClock));
+const shownCourses=computed(()=>u.courses.filter(c=>u.week||!u.storyClock.day||c.day===u.storyClock.day).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time)));
+const nextCourse=computed(()=>nextTerminalCourse(u.courses,u.storyClock));
 const nav=computed(()=>['messages','chat','group-info','new-group','invite-group','legacy'].includes(u.page)?'messages':['friends','add','profile'].includes(u.page)?'friends':u.page==='home'?'home':['account','apps'].includes(u.page)?'account':'');
 function profile(id:string){u.friendId=id;u.note=u.t.friends.find(f=>f.id===id)?.note||'';u.go('profile');}
 function startRoom(){u.title='';u.picked=[];u.inviteNote='';u.go('new-room');}
@@ -104,13 +119,13 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <button class="pt-card pt-next" type="button" @click="u.go('courses')"><TerminalIcon name="calendar"/><div><small>下一节课</small><strong>{{nextCourse?.title||'暂无已知课程'}}</strong><p>{{nextCourse?`${nextCourse.time} · ${nextCourse.place}`:'打开课程表，读取剧情中的安排'}}</p></div><span>›</span></button>
   </template>
   <template v-else-if="u.page==='messages'">
-   <article v-for="job in pendingMainFollowup" :key="job.id" class="pt-card" role="status"><strong>正文完成，终端部分未完成</strong><p>{{job.error||'正在补齐本轮终端消息…'}}</p><button v-if="job.status!=='running'" type="button" :disabled="w.busy||w.terminalBusy||u.working" @click="w.retryTerminalFollowup(w.active!.turns.findIndex(t=>t.id===job.anchor.turnId))">重试补齐终端</button></article>
+   <article v-for="job in pendingMainFollowup" :key="job.id" class="pt-card" role="status"><strong>正文完成，终端部分未完成</strong><p>{{job.error||'正在补齐本轮终端消息…'}}</p><button v-if="job.status!=='running'&&w.terminalEnabled" type="button" :disabled="w.busy||w.terminalBusy||u.working" @click="w.retryTerminalJob(job.id)">重试补齐终端</button></article>
    <article v-for="i in u.incomingGroups" :key="i.id" class="pt-card pt-friend-request"><strong>{{u.name(i.by)}}邀请你加入{{u.t.conversations.find(c=>c.id===i.groupId)?.title||'群聊'}}</strong><p>{{i.reason}}</p><div class="pt-actions"><button type="button" :disabled="u.working||w.busy" @click="u.answerGroupInvitation(i.id,true)">同意加入</button><button type="button" :disabled="u.working||w.busy" @click="u.answerGroupInvitation(i.id,false)">拒绝</button></div></article>
    <article v-for="i in u.pendingGroupWelcomes" :key="'welcome:'+i.id" class="pt-card"><strong>{{u.t.conversations.find(c=>c.id===i.groupId)?.title}} · 已加入，欢迎消息待补</strong><p>{{i.welcome?.error||'成员资格已保存，可单独补齐欢迎消息。'}}</p><button type="button" :disabled="u.working||w.busy" @click="u.retryGroupWelcome(i.id)">补齐欢迎消息</button></article>
    <div class="pt-toolbar"><h2>通讯</h2><button v-if="unconfirmedGroups.length" type="button" :disabled="u.working" @click="u.completeGroupManagement">补全未确认群管理（{{unconfirmedGroups.length}}）</button><div class="pt-plus-wrap"><button type="button" aria-label="通讯操作" :aria-expanded="u.plusOpen" @click="u.plusOpen=!u.plusOpen">＋</button><div v-if="u.plusOpen" class="pt-plus-menu"><button type="button" @click="u.go('add')">添加好友</button><button type="button" @click="u.picked=[];u.title='';u.go('new-group')">发起群聊</button></div></div></div>
    <input v-model="u.search" aria-label="搜索会话" placeholder="搜索会话"><div class="pt-tabs"><button v-for="filter in [{id:'all',name:'全部'},{id:'private',name:'私聊'},{id:'group',name:'群聊'}] as const" :key="filter.id" type="button" :class="{active:u.conversationFilter===filter.id}" @click="u.conversationFilter=filter.id">{{filter.name}}</button></div>
    <p v-if="!u.visibleConversations.length" class="pt-empty">还没有会话<br>从好友资料发起私聊，或创建群聊。</p>
-   <button v-for="c in conversations" :key="c.id" class="pt-row" type="button" @click="u.openConversation(c.id)"><span class="pt-avatar"><GroupAvatar v-if="c.group" :conversation="c"/><CharacterAvatar v-else :w="w" :id="c.members[0]||''"/></span><div><strong>{{c.title}}</strong><small>{{c.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m)).at(-1)?.text||'暂无消息'}}</small><small v-if="c.origin==='story'">剧情群聊</small></div><time>{{messageTime(c.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m)).at(-1)?.at||'')}}</time><em v-if="c.unread">{{c.unread}}</em><span>›</span></button>
+   <button v-for="c in conversations" :key="c.id" class="pt-row" type="button" @click="u.openConversation(c.id)"><span class="pt-avatar"><GroupAvatar v-if="c.group" :conversation="c"/><CharacterAvatar v-else :w="w" :id="c.members[0]||''"/></span><div><strong>{{c.title}}</strong><small>{{lastMessageByConversation.get(c.id)?.text}}</small><small v-if="c.origin==='story'">剧情群聊</small></div><time>{{messageTime(lastMessageByConversation.get(c.id)?.at||'')}}</time><em v-if="c.unread">{{c.unread}}</em><span>›</span></button>
   </template>
   <template v-else-if="u.page==='chat'&&u.conversation">
    <div class="pt-chat-identity"><span class="pt-avatar"><GroupAvatar v-if="u.conversation.group" :conversation="u.conversation"/><CharacterAvatar v-else :w="w" :id="u.conversation.members[0]||''"/></span><div><strong>{{u.conversation.title}}</strong><small>{{u.conversation.group?`${members.length}位成员 · ${groupRole('player')}`:'私聊'}}</small></div><button type="button" @click="u.conversation.group?groupInfo():profile(u.conversation.members[0])">{{u.conversation.group?'群资料':'好友资料'}} ›</button></div>
@@ -169,7 +184,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
   </template>
   <template v-else-if="u.page==='history'&&u.room"><h2>{{u.room.name}}</h2><p v-if="u.room.endedAt">游戏已结束{{u.room.endReason==='round-limit'?' · 本局15轮已结算':''}}</p><div class="pt-drunk-strip" v-if="drunkStripVisible" aria-label="醉酒与耐受度"><span v-for="id in roomParticipants" :key="id"><small>{{u.name(id)}}</small><progress v-if="u.toleranceValue(id)!==undefined" :max="u.toleranceValue(id)" :value="u.room?.drunk?.[id]||0" :aria-label="u.name(id)+'醉酒度进度'"></progress><b>{{u.room?.drunk?.[id]||0}}/{{u.toleranceValue(id)??'?'}}</b></span></div><article v-if="u.room.afterparty" class="pt-card pt-afterparty"><h3>散场复盘</h3><template v-if="u.room.afterparty.scenes"><section v-for="scene in u.room.afterparty.scenes" :key="scene.actorId"><h4>{{u.name(scene.actorId)}} · 醉后独处</h4><template v-if="scene.status==='ready'"><p>{{scene.text}}</p><small>{{scene.summary}}</small></template><template v-else><p role="status">{{scene.error||'本篇待生成'}}</p><p v-if="scene.draft">{{scene.draft}}</p><button type="button" :disabled="u.working" @click="u.retryAfterparty(u.room!.id,scene.actorId)">只重试本篇</button></template></section></template><template v-else-if="u.room.afterparty.status==='ready'"><p>{{u.room.afterparty.text}}</p><small v-if="u.room.afterparty.summary">摘要：{{u.room.afterparty.summary}}</small></template><template v-else-if="u.room.afterparty.status==='failed'"><p role="alert">复盘生成失败：{{u.room.afterparty.error||'未知错误'}}</p><button type="button" :disabled="u.working" @click="u.retryAfterparty(u.room!.id)">重试生成复盘</button></template><template v-else><p role="status">复盘待生成，可稍后重试。</p><button type="button" :disabled="u.working" @click="u.retryAfterparty(u.room.id)">补写复盘</button></template></article><p v-if="!u.gameHistory.length" class="pt-empty">未开始，未生成回看</p><details v-for="r in [...u.gameHistory].reverse()" :key="r.number" class="pt-card"><summary>第{{r.number}}轮 · {{u.name(r.king)}} · {{r.phase==='complete'?'本轮已完成':u.room.endedAt?'未完成（游戏已结束）':'进行中'}}</summary><p>{{r.command||'尚未出令'}}</p><article v-for="i in r.interactions||[]" :key="i.id"><strong>{{w.active?.persona.name||'我'}}</strong><p>{{i.text}}</p><article v-for="reply in i.replies" :key="reply.id"><strong>{{u.name(reply.id)}}</strong><p>{{reply.text}}</p><p v-if="reply.refused">游戏惩罚：{{reply.penalty}}</p></article><small v-if="i.status!=='ready'">{{i.status==='stopped'||u.room.endedAt?'未完成（游戏已结束，互动已停止）':'角色后续回应待重试'}}</small></article><article v-for="reply in r.replies" :key="reply.id"><strong>{{u.name(reply.id)}}</strong><p>{{reply.text}}</p><p v-if="reply.refused">游戏惩罚：{{reply.penalty}}</p></article></details></template>
   <template v-else-if="u.page==='divination'">
-   <div class="pt-div-hero"><img class="pt-div-cat" :src="divinationCatImage" alt="占卜师黑猫 Rätselhaft"><div><h2>每日占卜</h2><p>Rätselhaft 已铺好塔罗桌</p><p class="pt-div-date">{{u.divinationToday}} · 北京时间</p></div></div>
+   <div class="pt-div-hero"><img class="pt-div-cat" :src="divinationCatImage" alt="占卜师黑猫 Rätselhaft"><div><h2>每日占卜</h2><p>Rätselhaft 已铺好塔罗桌</p><DivinationCountdown :deadline="u.divinationRefreshAt" :active="props.active" @expire="u.refreshDay"/></div></div>
    <div class="pt-tabs"><button type="button" :class="{active:divTab==='mine'}" @click="divTab='mine'">我的今日占卜</button><button type="button" :class="{active:divTab==='peek'}" @click="divTab='peek'">偷看角色运势</button></div>
    <template v-if="divTab==='mine'">
     <template v-if="u.myDivination">
@@ -201,14 +216,14 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    </template>
    <template v-if="u.visibleDivinationHistory.length">
     <h3>历史占卜（只读）</h3>
-    <details v-for="d in u.visibleDivinationHistory" :key="d.day+'|'+d.actorId" class="pt-card"><summary>{{d.day}} · {{d.actorId==='player'?'我':u.name(d.actorId)}} · {{d.cards.map(c=>c.name+(c.reversed?'（逆位）':'')).join('、')}}</summary>
+    <details v-for="d in u.visibleDivinationHistory" :key="d.day+'|'+d.actorId" class="pt-card"><summary>{{d.actorId==='player'?'我':u.name(d.actorId)}} · {{d.cards.map(c=>c.name+(c.reversed?'（逆位）':'')).join('、')}}</summary>
      <template v-if="d.reading.status==='ready'"><p v-for="[title,text] in readingBlocks(d)" :key="title"><b>{{title}}：</b>{{text}}</p><p v-if="d.reading.reaction&&d.actorId!=='player'"><b>TA 的反应：</b>{{d.reading.reaction}}</p></template>
      <template v-else><p v-if="d.reading.status==='failed'">解读未完成：{{d.reading.error||'生成失败'}}</p><p v-else>解读待生成。</p><p v-if="d.reading.draft" class="pt-muted">已保留草稿：{{d.reading.draft}}</p><button type="button" class="pt-gold" :disabled="u.working" @click="u.backfillDivination(d.day,d.actorId)">补写当天的解读（牌面不变）</button></template>
     </details>
     <button v-if="u.visibleDivinationHistory.length<u.divinationHistory.length" type="button" @click="u.divinationHistoryPage++">显示更早的记录</button>
    </template>
   </template>
-  <template v-else-if="u.page==='account'"><div class="pt-profile pt-my-profile"><span class="pt-avatar profile-avatar"><img v-if="u.t.avatar" :src="avatarDisplay" :style="u.avatarStyle" alt="我的头像"><TerminalIcon v-else name="user"/></span><h2>{{w.active?.persona.name||'我的终端'}}</h2><small>终端码：{{u.ownCode||'剧情尚未提供'}}</small><p>{{u.t.bio||'这个家伙很懒，还没有写个人简介喵~'}}</p></div><input ref="avatarInput" class="pt-avatar-file" type="file" accept="image/*" :disabled="u.working||w.busy" aria-label="导入头像文件" @change="avatarChange"><button type="button" :disabled="u.working||w.busy" @click="avatarInput?.click()">{{u.working?'处理中…':'导入文件'}}</button><template v-if="u.t.avatar"><p class="pt-muted">此处调整用于个人资料、聊天及群成员头像；拖动实时预览，松开后保存。</p><label>头像缩放<input type="range" min="1" max="2.5" step="0.05" :value="u.avatarDraft.scale" @input="u.adjustAvatar('scale',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label><label>水平位置<input type="range" min="-30" max="30" :value="u.avatarDraft.x" @input="u.adjustAvatar('x',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label><label>垂直位置<input type="range" min="-30" max="30" :value="u.avatarDraft.y" @input="u.adjustAvatar('y',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label></template><label>一句话简介<input v-model="u.bioDraft" aria-label="个人简介" maxlength="160" placeholder="这个家伙很懒，还没有写个人简介喵~"></label><button type="button" class="pt-primary" :disabled="u.working" @click="u.saveBio">保存资料</button><button v-if="u.t.avatar" type="button" :disabled="u.working" @click="u.run(()=>u.commit(t=>{t.avatar='';t.avatarView=undefined}))">恢复默认头像</button><p class="pt-muted">终端 API：{{u.terminalProfile?.name||'未配置'}}</p><button type="button" @click="w.panel='settings';$emit('close')">终端 API 设置 ›</button><button type="button" :disabled="u.working" @click="u.retryAutomatic">自动通讯同步说明</button></template>
+  <template v-else-if="u.page==='account'"><div class="pt-profile pt-my-profile"><span class="pt-avatar profile-avatar"><img v-if="u.t.avatar" :src="avatarDisplay" :style="u.avatarStyle" alt="我的头像"><TerminalIcon v-else name="user"/></span><h2>{{w.active?.persona.name||'我的终端'}}</h2><small>终端码：{{u.ownCode||'剧情尚未提供'}}</small><p>{{u.t.bio||'这个家伙很懒，还没有写个人简介喵~'}}</p></div><input ref="avatarInput" class="pt-avatar-file" type="file" accept="image/*" :disabled="u.working||w.busy" aria-label="导入头像文件" @change="avatarChange"><button type="button" :disabled="u.working||w.busy" @click="avatarInput?.click()">{{u.working?'处理中…':'导入文件'}}</button><template v-if="u.t.avatar"><p class="pt-muted">此处调整用于个人资料、聊天及群成员头像；拖动实时预览，松开后保存。</p><label>头像缩放<input type="range" min="1" max="2.5" step="0.05" :value="u.avatarDraft.scale" @input="u.adjustAvatar('scale',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label><label>水平位置<input type="range" min="-30" max="30" :value="u.avatarDraft.x" @input="u.adjustAvatar('x',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label><label>垂直位置<input type="range" min="-30" max="30" :value="u.avatarDraft.y" @input="u.adjustAvatar('y',Number(($event.target as HTMLInputElement).value))" @change="u.flushAvatar"></label></template><label>一句话简介<input v-model="u.bioDraft" aria-label="个人简介" maxlength="160" placeholder="这个家伙很懒，还没有写个人简介喵~"></label><button type="button" class="pt-primary" :disabled="u.working" @click="u.saveBio">保存资料</button><button v-if="u.t.avatar" type="button" :disabled="u.working" @click="u.run(()=>u.commit(t=>{t.avatar='';t.avatarView=undefined}))">恢复默认头像</button><p class="pt-muted">终端 API：{{u.terminalProfile?.name||'未配置'}}</p><div class="pt-order" role="group" aria-label="通讯顺序"><small>通讯顺序</small><button type="button" :class="{active:w.terminalOrder==='story-first'}" :disabled="w.busy||w.terminalBusy" @click="w.setTerminalOrder('story-first')">正文 → 终端</button><button type="button" :class="{active:w.terminalOrder==='terminal-first'}" :disabled="w.busy||w.terminalBusy" @click="w.setTerminalOrder('terminal-first')">终端 → 正文</button></div><p class="pt-muted">手机：{{w.terminalEnabled?'已开启':'已关闭'}} · 顺序只影响下一轮起的新通讯，已有记录不变。</p><button type="button" @click="w.panel='settings';$emit('close')">终端 API 设置 ›</button><button type="button" :disabled="u.working" @click="u.retryAutomatic">自动通讯同步说明</button></template>
 
  </main>
  <div v-if="u.endConfirm" class="pt-end-confirm" role="dialog" aria-modal="true" aria-label="结束游戏"><div class="pt-card"><p>结束这场游戏？已有记录会保留；未完成的轮次将停止，结束后不能继续本房间。</p><p v-if="u.endSaveFailed">结束状态未保存，请重试保存。</p><button type="button" :disabled="u.ending" @click="u.endConfirm=''">取消</button><button type="button" :disabled="u.ending" @click="u.endGame">{{u.ending?'正在保存…':u.endSaveFailed?'重试保存':u.working?'停止请求并结束':'确认结束'}}</button></div></div>

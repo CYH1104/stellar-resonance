@@ -41,6 +41,7 @@ onBeforeUnmount(()=>{document.removeEventListener('pointerdown',outside);window.
      <template v-else><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('start')">新建存档</button><button :disabled="blocked||w.busy||w.workingMemory" @click="close();emit('resume')">切换存档</button><button :disabled="blocked" @click="go('saves')">导入 / 导出</button></template>
     </div>
    </div>
+   <button v-if="w.terminalCapability" class="navigation-terminal" :aria-pressed="w.preferences.terminalEnabled===true" :disabled="blocked||(w.busy&&w.preferences.terminalEnabled!==true)" @click="w.setTerminalEnabled(w.preferences.terminalEnabled!==true)">手机终端 · {{w.preferences.terminalEnabled===true?(w.terminalEnabled?'已开启':'配置未就绪'):'已关闭'}}</button>
    <button :disabled="blocked" @click="go('cloud-backup')">云端备份</button>
    <button class="navigation-logs" @click="go('format-errors')">运行日志</button>
    <a class="navigation-manual" href="http://43.138.251.91:8809" target="_blank" rel="noopener noreferrer" @click="close">教程手册入口</a>

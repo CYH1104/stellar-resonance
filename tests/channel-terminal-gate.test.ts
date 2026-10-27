@@ -53,7 +53,7 @@ async function workspace(){
 it('stable channel never sends phone context and never calls the phone API',async()=>{
   capabilities={continue:true,keyRequired:true,embeddings:true,terminal:false,channel:'stable'};
   const w=await workspace();
-  expect(w.terminalEnabled.value).toBe(false);
+  expect(w.terminalCapability.value).toBe(false);expect(w.terminalEnabled.value).toBe(false);
   const requests:GenerateRequest[]=[];
   vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(request){
     requests.push(request);
@@ -63,16 +63,21 @@ it('stable channel never sends phone context and never calls the phone API',asyn
   const terminal=vi.spyOn(HttpGateway.prototype,'terminal');
   await w.generate('我走进教室。');
   await vi.waitFor(()=>expect(requests).toHaveLength(1));
-  expect(requests[0].terminalContext).toBeUndefined();
+  expect(JSON.stringify(requests[0])).not.toContain('terminalContext');
+  expect(requests[0].terminalFacts).toBeUndefined();
   expect(terminal).not.toHaveBeenCalled();
   // 手机专用数据（终端码）也不应该在稳定版新建的存档里出现。
   expect(w.active.value!.initial.variables?.终端码).toBeUndefined();
 });
 
-it('test channel keeps sending the phone context',async()=>{
+it('test channel separates the phone from prose: no explicit config means off',async()=>{
   capabilities={continue:true,keyRequired:true,embeddings:true,terminal:true,channel:'test'};
   const w=await workspace();
-  expect(w.terminalEnabled.value).toBe(true);
+  expect(w.terminalCapability.value).toBe(true);expect(w.terminalEnabled.value).toBe(false);
+  // 没有明确选择终端 API 时不允许开启，也不会静默回退主 API。
+  expect(await w.setTerminalEnabled(true)).toBe(false);
+  expect(w.preferences.terminalEnabled).not.toBe(true);
+  expect(w.problem.value).toContain('终端 API');
   const requests:GenerateRequest[]=[];
   vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(request){
     requests.push(request);
@@ -81,8 +86,28 @@ it('test channel keeps sending the phone context',async()=>{
   });
   await w.generate('我走进教室。');
   await vi.waitFor(()=>expect(requests).toHaveLength(1));
-  expect(requests[0].terminalContext).toBeDefined();
-  expect(w.active.value!.initial.variables?.终端码).toBeDefined();
+  expect(JSON.stringify(requests[0])).not.toContain('terminalContext');
+  expect(w.active.value!.initial.variables?.终端码).toBeUndefined();
+});
+
+it('enabling the phone requires an explicit, confirmed terminal API',async()=>{
+  capabilities={continue:true,keyRequired:true,embeddings:true,terminal:true,channel:'test'};
+  const w=await workspace();
+  const aux=w.preferences.profiles.find(p=>p.id==='aux')!;
+  Object.assign(aux,{apiBaseUrl:'https://aux.synthetic.example/v1',model:'model-aux'});
+  w.credentials.aux='synthetic-key-aux';
+  w.preferences.terminalProfile='aux';
+  w.problem.value='';
+  // 终端接口确认失败时不能开启。
+  vi.spyOn(HttpGateway.prototype,'configure').mockRejectedValueOnce(new Error('无法连接'));
+  expect(await w.setTerminalEnabled(true)).toBe(false);
+  expect(w.terminalEnabled.value).toBe(false);
+  await w.connectProfile(w.preferences.profiles.find(p=>p.id==='aux')!);
+  expect(await w.setTerminalEnabled(true)).toBe(true);
+  expect(w.terminalEnabled.value).toBe(true);
+  // 停用只关闭手机功能面，记录保留，正文仍可独立生成。
+  expect(await w.setTerminalEnabled(false)).toBe(true);
+  expect(w.terminalEnabled.value).toBe(false);
 });
 
 it('a failed phone follow-up is not retried on the stable channel',async()=>{

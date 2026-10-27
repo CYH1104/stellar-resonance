@@ -82,7 +82,7 @@ it('stable keeps legacy phone records but never sends their text to the embeddin
 it('the test channel still indexes the same legacy phone note, proving the gate is channel-specific',async()=>{
   capabilities={continue:true,keyRequired:true,embeddings:true,terminal:true,channel:'test'};
   const w=await seededArchive();
-  expect(w.terminalEnabled.value).toBe(true);
+  expect(w.terminalCapability.value).toBe(true);
   vi.mocked(HttpGateway.prototype.embed).mockClear();
   w.indexTerminalNotes();
   await vi.waitFor(()=>expect(canaryRequests().length).toBeGreaterThan(0));

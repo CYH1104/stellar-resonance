@@ -17,7 +17,7 @@ onMounted(()=>document.addEventListener('keydown',key));onBeforeUnmount(()=>docu
 </script>
 <template><div v-show="visible!==false" class="personal-terminal-host">
 <button ref="launcher" v-show="!open" type="button" class="terminal-launcher" :style="launcherDrag.style.value" aria-label="打开个人终端" title="点击打开；拖动调整位置" @pointerdown="launcherDrag.down" @pointermove="launcherDrag.move" @pointerup="launcherDrag.end" @pointercancel="launcherDrag.end" @lostpointercapture="launcherDrag.end" @click.capture="launcherDrag.click" @click="expand"><TerminalIcon name="star"/><span>终端</span></button>
-<div v-show="open" class="terminal-overlay"><div ref="dialog" role="dialog" aria-label="个人终端" class="terminal-device" :style="windowDrag.style.value"><PersonalTerminal v-if="mounted" :w="w" @close="minimize" @drag-start="windowDrag.down" @drag-move="windowDrag.move" @drag-end="windowDrag.end"/></div></div>
+<div v-show="open" class="terminal-overlay"><div ref="dialog" role="dialog" aria-label="个人终端" class="terminal-device" :style="windowDrag.style.value"><PersonalTerminal v-if="mounted" :w="w" :active="open&&visible!==false" @close="minimize" @drag-start="windowDrag.down" @drag-move="windowDrag.move" @drag-end="windowDrag.end"/></div></div>
 </div></template>
 <style scoped>
 .terminal-launcher{touch-action:none;user-select:none}

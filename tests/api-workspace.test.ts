@@ -14,7 +14,7 @@ import {ensureTerminalCodes} from '../src/app/terminalCodeRegistry';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables';
 import type {LocalService,Snapshot,GenerateRequest} from '../src/domain/contracts';
 import {emptyTerminal} from '../src/domain/personalTerminal';
-import {terminalAnchor,recordTerminalChat,syncTerminalMemoryNotes,isTerminalMemoryNote} from '../src/domain/terminalLedger';
+import {terminalAnchor,recordTerminalChat,syncTerminalMemoryNotes,isTerminalMemoryNote,terminalPrivateChats} from '../src/domain/terminalLedger';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
 const service:LocalService={runtime:'local-card',dataset:'test-world',name:'测试',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true}};
@@ -132,12 +132,14 @@ it('uses the current turn input to keep a named older private chat in the real g
  terminal.conversations.push({id:'ghost',title:'无关知情',group:false,members:['outsider'],announcement:'',unread:0,origin:'manual',joined:true,messages:[{id:'ghost-m',sender:'outsider',text:'其他分支的私聊不应出现。',at:'2026-01-10T00:02:00.000Z',anchor:{...activeAnchor,turnId:'ghost-turn'}}]});
  await w.generate('去找陆离确认旧约定');
  expect(captured).toHaveLength(2);
- const request=captured[1],chats=request.terminalContext?.privateChats||[];
+ const request=captured[1];
  expect(request.input).toBe('去找陆离确认旧约定');
- expect(chats).toHaveLength(8);
+ // 正文请求不再携带终端私聊上下文：这部分只由独立的终端请求消费。
+ expect(JSON.stringify(request)).not.toContain('terminalContext');
+ expect(terminalPrivateChats(s,2,'去找陆离确认旧约定')).toHaveLength(8);
+ const chats=terminalPrivateChats(s,2,'去找陆离确认旧约定');
  expect(chats[0]).toMatchObject({participantId:'npc0',participantName:'陆离',knownBy:['player','npc0']});
  expect(chats[0].messages.map(m=>m.text)).toEqual(expect.arrayContaining(['我答应周六带你去观星台。','我会带星图。','第一轮确认后的私聊仍可见。']));
- expect(chats[0].knownBy).toEqual(['player','npc0']);
  expect(chats.some(c=>c.participantId==='outsider')).toBe(false);
  expect(JSON.stringify(chats)).not.toContain('无关知情');
  expect(JSON.stringify(chats)).not.toContain('其他分支的私聊不应出现。');
@@ -156,9 +158,10 @@ it('远期私聊canary通过正文记忆召回并带知情标签，最近窗口�
  for(let i=0;i<9;i++)terminal.conversations.push({id:'p'+i,title:'角色'+i,group:false,members:['engineer'],announcement:'',unread:0,origin:'manual' as const,joined:true,messages:[{id:'om'+i,sender:'player',text:'别的私聊'+i,at:new Date(2026,2,i+1).toISOString()}]});
  await w.generate('那件藏在天文台地下室的信物是什么');
  expect(captured).toHaveLength(2);
- const request=captured[1],chats=request.terminalContext?.privateChats||[];
- // 最近窗口里没有canary原文
- expect(JSON.stringify(chats.map(c=>c.messages))).not.toContain('青铜罗盘');
+ const request=captured[1];
+ // 正文请求不再携带终端私聊原文，只通过带知情标签的记忆召回
+ expect(JSON.stringify(request)).not.toContain('terminalContext');
+ expect(JSON.stringify(request.terminalFacts||'')).not.toContain('青铜罗盘');
  // 正文记忆里召回canary并带知情标签
  expect(request.memories.some(t=>t.includes('青铜罗盘')&&t.includes('知情：player、guide'))).toBe(true);
  // A的scoped请求可召回，B的不含

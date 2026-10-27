@@ -271,7 +271,12 @@ it('an open page refreshes the day across Beijing midnight: yesterday moves to h
   let u!:ReturnType<typeof usePersonalTerminal>;
   const app=renderer.createApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}});app.mount({});
   expect(u.divinationToday.value).toBe('2026-10-26');
-  vi.advanceTimersByTime(60000);// 00:00 next Beijing day
+  // 只有一个日界线定时器，没有 30 秒日期轮询
+  expect(vi.getTimerCount()).toBe(1);
+  vi.advanceTimersByTime(30000);
+  expect(u.divinationToday.value).toBe('2026-10-26');
+  expect(vi.getTimerCount()).toBe(1);
+  vi.advanceTimersByTime(30000);// 00:00 next Beijing day
   expect(u.divinationToday.value).toBe('2026-10-27');
   // a record made before midnight is history now; the new day reads "not drawn yet"
   u.t.value.divinations=[{day:'2026-10-26',actorId:'player',cards:drawThreeCards(seqOf([0,1,0,2,3,1,4,5,0])),reading:{status:'failed',error:'x'},at:''}];
@@ -281,9 +286,9 @@ it('an open page refreshes the day across Beijing midnight: yesterday moves to h
  }finally{vi.useRealTimers();}
 });
 
-// ── a real click just after Beijing midnight uses the fresh day even though the
-// 30s interval has not ticked yet; page entry refreshes, backfill never moves the day ──
-it('clicks right after Beijing midnight use the fresh day before the 30s timer ticks',async()=>{
+// ── a real click just after Beijing midnight uses the fresh day even when the single
+// boundary timer was throttled; page entry refreshes, backfill never moves the day ──
+it('clicks right after Beijing midnight use the fresh day even if the boundary timer was throttled',async()=>{
  vi.useFakeTimers();vi.setSystemTime(new Date(Date.UTC(2026,9,26,15,59,0)));// 23:59 Beijing
  const renderer=createRenderer<any,any>({createElement:()=>({}),insert:()=>{},remove:()=>{},setElementText:()=>{},createText:()=>({}),setText:()=>{},createComment:()=>({}),parentNode:()=>null,nextSibling:()=>null,patchProp:()=>{}});
  try{
@@ -296,7 +301,7 @@ it('clicks right after Beijing midnight use the fresh day before the 30s timer t
   fetchStub(calls,divinationOk);
   await u.drawDaily();expect(u.error.value).toBe('');
   expect(findDivination(u.t.value,'2026-10-26','player')!.reading.status).toBe('ready');
-  // midnight passes by one second: the 30s interval has not ticked, the page is stale
+  // midnight passes by one second: the boundary timer was throttled, the page is stale until a calibration
   vi.setSystemTime(new Date(Date.UTC(2026,9,26,16,0,1)));
   vi.advanceTimersByTime(1000);
   expect(u.divinationToday.value).toBe('2026-10-26');

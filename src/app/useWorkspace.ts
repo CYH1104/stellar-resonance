@@ -4,10 +4,11 @@ import {remapBackupArchive,cleanBackupArchive} from '../domain/backupArchive';
 import {collectWorkspaceArchive,applyWorkspaceArchive} from '../storage/workspaceArchive';
 import {flushBackupEditors} from './backupFlushers';
 import {ensureTerminalCodes} from './terminalCodeRegistry';
-import {terminalMainContext,applyTerminalBatch} from '../domain/terminalMain';
+import {applyTerminalBatch} from '../domain/terminalMain';
+import {planTerminalAuto,applyTerminalAuto,terminalAutoJob,terminalAutoJobId,terminalJobFacts,terminalCommittedFacts,terminalSocialSignal,type TerminalAutoMode} from '../domain/terminalAuto';
 import {saveOnLeave} from './saveOnLeave';
-import {prepareTerminalFollowup,followupContext,applyTerminalFollowup,terminalFollowupJob} from '../domain/terminalFollowup';
-import {terminalAnchor,terminalAnchorActive} from '../domain/terminalLedger';
+import {terminalFollowupJob} from '../domain/terminalFollowup';
+import {terminalAnchor,terminalAnchorActive,terminalJobTurnIndex} from '../domain/terminalLedger';
 import {factAudienceCovers} from '../domain/knowledge';
 import {markGenerationComplete,startGeneration,finishGeneration} from './generationCompletion';
 import {terminalRecall,syncTerminalMemoryNotes,isTerminalMemoryNote,terminalLatestBucket,terminalNoteKey,terminalNoteIsPrivate,terminalSegmentCandidates,formatTerminalSegment,memoryChunks} from '../domain/terminalLedger';
@@ -45,7 +46,7 @@ import { HttpGateway } from '../gateway/http';
 import { blankPersona, mergePersonaDraft, normalizePersona } from '../domain/persona';
 import {activePromptEntries,importTavernPreset,exportTavernPreset,presetGroups,setId,cleanSampling,pinnedPromptIds,reorderPresetEntries,newPresetEntries} from '../domain/presets';
 import {defaultTheaters,visibleTheaters} from '../domain/theaters';
-import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyApi,taskApi,textApiTasks} from '../domain/apis';
+import {apiConfigurationIssues,apiFieldIssues,auxiliaryApis,requiredApis,storyApi,taskApi,terminalApiIssues,textApiTasks} from '../domain/apis';
 import {setHttpFailureSink,httpNoticeKeyOf,attachHttpNotice} from '../gateway/requestFailure';
 import {clearHttpNotices,noticeKeyFor,noticeTextFor,registerHttpNotice,showNotice,httpNoticeDuration} from './notices';
 import {safeLogText} from '../domain/logText';
@@ -162,10 +163,17 @@ export function useWorkspace() {
   const forum=computed(()=>active.value?visibleForum(active.value):[]);
   const theaters=computed(()=>active.value?visibleTheaters(active.value):[]);
   const canContinue=computed(()=>authorized.value&&gateway().capabilities.continue);
+  // 三个独立状态：服务端是否有手机功能面、用户是否开启、终端 API 是否明确配置并确认。
+  // 顶栏停用只关掉用户开关，不能把浮窗最小化当成停用，也不删任何历史记录。
+  const terminalCapability=computed(()=>gateway().capabilities.terminal!==false);
   // 手机终端的功能面由服务端通道决定：稳定版没有入口，也不发终端提示词、不做缺额补修和手机专用召回。
-  const terminalEnabled=computed(()=>gateway().capabilities.terminal!==false);
   const profile=(id:string):Profile=>preferences.profiles.find(p=>p.id===id) || preferences.profiles[0];
   const key=(p:Profile)=>credentials[p.id] || '';
+  const terminalProfile=computed(()=>taskApi(preferences,'terminal'));
+  const terminalIssues=computed(()=>terminalApiIssues(preferences,credentials,connectionReady));
+  const terminalConfigured=computed(()=>!!preferences.terminalProfile&&!!terminalProfile.value&&!terminalIssues.value.length);
+  const terminalEnabled=computed(()=>terminalCapability.value&&preferences.terminalEnabled===true&&terminalConfigured.value);
+  const terminalOrder=computed<TerminalAutoMode>(()=>preferences.terminalOrder==='terminal-first'?'terminal-first':'story-first');
   const fingerprint=(p:Profile)=>`${preferences.mode}:${p.apiBaseUrl||''}:${p.providerId}:${p.model}`;
   let protectedGeneration:{sessionId:string;turnId:string;variantId:string;checkpoint:Variant}|undefined;
   const snapshot=():Snapshot=>({version:1,sessions:sessions.value.map(s=>s.id===protectedGeneration?.sessionId?{...s,turns:s.turns.map(t=>t.id===protectedGeneration!.turnId?{...t,variants:t.variants.map(v=>v.id===protectedGeneration!.variantId?copy(protectedGeneration!.checkpoint):v)}:t)}:s),preferences:cleanPreferences(preferences)});
@@ -316,7 +324,112 @@ export function useWorkspace() {
       finally{busy.value=false;deletingSessionId.value='';deletionTask=undefined;}
     })();return deletionTask;
   }
-  function stop(){controller?.abort();}
+  function stop(){controller?.abort();stopTerminal();}
+  /**
+   * Every terminal request is bound to the epoch and the route it started with. Disabling the
+   * phone, switching the order or replacing the terminal interface bumps the epoch, so a reply
+   * that ignored the abort signal can never be written back, and re-enabling never revives an
+   * older request.
+   */
+  const terminalEpoch=ref(0);
+  /** The user's current terminal selection together with its full interface and key signature. */
+  const terminalRouteSignature=()=>`${preferences.terminalProfile||''}|${terminalProfile.value?connectionSignature(terminalProfile.value):''}`;
+  watch(terminalRouteSignature,()=>{terminalEpoch.value++;},{flush:'sync'});
+  let terminalController:AbortController|undefined;
+  function stopTerminal(){terminalController?.abort();terminalController=undefined;terminalEpoch.value++;}
+  /** Top-bar switch. Enabling requires an explicit, confirmed terminal API and an idle app;
+   * disabling stays available during generation — it aborts the terminal stage only, keeps every
+   * stored record and lets the prose continue. */
+  async function setTerminalEnabled(next:boolean):Promise<boolean>{
+    if(backupWorking.value)return false;
+    if(next){
+      if(busy.value||terminalBusy.value)return false;
+      if(!terminalCapability.value){problem.value='当前版本没有手机终端入口。';return false;}
+      if(!preferences.terminalProfile){problem.value='请先在「API 设置」里为终端 API 选择一个接口，再开启手机。';panel.value='settings';return false;}
+      const p=terminalProfile.value;
+      if(!p){problem.value='终端 API 引用不正确，请重新选择。';panel.value='settings';return false;}
+      if(!connectionReady(p)&&!await connectProfile(p)){problem.value='终端 API 尚未确认，手机没有开启。';panel.value='settings';return false;}
+      if(terminalIssues.value.length){problem.value=terminalIssues.value[0]||'终端 API 尚未就绪。';panel.value='settings';return false;}
+    }else stopTerminal();
+    preferences.terminalEnabled=next;terminalEpoch.value++;
+    await safePersist();
+    notice.value=next?'手机终端已开启；终端通讯使用单独接口，不再随正文生成。':'手机终端已停用；历史通讯全部保留，正文照常生成。';
+    return true;
+  }
+  async function setTerminalOrder(order:TerminalAutoMode){
+    if(busy.value||terminalBusy.value)return;
+    preferences.terminalOrder=order==='terminal-first'?'terminal-first':'story-first';
+    await safePersist();
+    notice.value=order==='terminal-first'?'已改为先产生终端通讯，正文再依据已确认的通讯推进。':'已改为先写正文，再依据本轮正文产生终端通讯。';
+  }
+  /** One independent terminal request per turn. Never falls back to the prose API and never
+   * writes a late response into another save, branch, interface, order or disabled phone. */
+  async function runTerminalStage(index:number,options:{automatic?:boolean;socialOnly?:boolean;mode?:TerminalAutoMode}={}):Promise<{ok:boolean;facts:string}>{
+    const session=active.value;
+    if(!terminalEnabled.value||!session||terminalBusy.value)return {ok:false,facts:''};
+    const p=terminalProfile.value,apiKey=p?key(p):'';
+    if(!p||!localService.value)return {ok:false,facts:''};
+    if(apiFieldIssues(p,apiKey).length||!connectionReady(p)){
+      if(!options.automatic){problem.value='终端 API 尚未确认，正文已保存，请配置后重试终端部分。';panel.value='settings';}
+      return {ok:false,facts:''};
+    }
+    // A retry keeps the stage the failed job actually executed, even if the order changed since.
+    const mode=options.mode??terminalOrder.value,socialOnly=options.socialOnly===true;
+    const jobId=terminalAutoJobId(session,index,mode,socialOnly);
+    const hadJob=!!terminalAutoJob(session,jobId);
+    const planned=planTerminalAuto(session,index,mode,{socialOnly});
+    if(!planned){
+      // 该阶段已经提交：把当时的通讯事实原样交回正文，不再调用模型、不再写消息。
+      const committed=terminalAutoJob(session,jobId);
+      return {ok:true,facts:committed?terminalJobFacts(session,committed):''};
+    }
+    const turn=session.turns[index],variant=turn.variants[turn.selected];
+    const boundary=socialOnly||mode==='story-first'?index+1:index;
+    const signature=terminalRouteSignature(),epoch=terminalEpoch.value,connection=new AbortController(),callId=uid();
+    // 迟到的回包即使忽略 abort 也必须作废：停用、换终端接口、切顺序、换存档、换分支都算。
+    const stale=()=>epoch!==terminalEpoch.value||signature!==terminalRouteSignature()||!terminalEnabled.value;
+    // 作废时不留一个可重试的幽灵任务；之前就存在的失败任务保留原错误。
+    const abandon=()=>{const live=active.value?.terminal?.jobs;const job=live?.find(j=>j.id===jobId);if(!live||!job||job.status==='ready')return;if(!hadJob)active.value!.terminal!.jobs=live.filter(j=>j!==job);else{job.status='failed';job.error='终端请求已作废：手机已停用或终端接口已改变。';}};
+    terminalController=connection;terminalBusy.value=true;startGeneration(callId);
+    try{
+      await persist();
+      const state=stateAt(session,boundary);
+      const contacts=session.terminal?.contacts||[];
+      const characters=[...(state.characters||[]),...contacts.filter(c=>!(state.characters||[]).some(a=>a.id===c.id))];
+      const actorIds=[...new Set(characters.map(a=>a.id).filter(id=>id!=='player'))];
+      const stageMode=socialOnly?'story-first':mode;
+      const batch=await http.terminal({task:'main-auto',sessionId:session.id,turnId:turn.id,mode:stageMode,actorIds,input:turn.input.slice(0,2000),persona:copy(session.persona),context:{state:{characters,player:state.player},mainContext:planned.context,story:(stageMode==='story-first'?variant?.text||'':'').slice(0,16000),allowSocial:planned.plan.social}},p,apiKey,connection.signal) as import('../domain/terminalMain').TerminalMainBatch;
+      connection.signal.throwIfAborted();
+      if(stale()){abandon();await safePersist();return {ok:false,facts:''};}
+      const current=active.value;
+      if(!current||current.id!==session.id){abandon();return {ok:false,facts:''};}
+      const liveTurn=session.turns[index];
+      if(!liveTurn||liveTurn.id!==turn.id||liveTurn.variants[liveTurn.selected]?.id!==variant?.id)throw Error('剧情分支已变化，迟到终端结果未应用。');
+      // 应用与落盘是一次事务：写不进去就把内存里的通讯、任务和派生记忆一起回滚，重试仍能落盘。
+      const before=copy(session.terminal),beforeMemories=copy(session.memories);
+      let result:ReturnType<typeof applyTerminalAuto>;
+      try{result=applyTerminalAuto(session,planned.plan,batch);await persist();}
+      catch(e){session.terminal=before;session.memories=beforeMemories;throw e;}
+      if(result.status==='ready')markGenerationComplete(callId);
+      if(!options.automatic)notice.value=result.status==='ready'?`终端本轮已保存 ${result.added} 条通讯。`:result.error||'终端部分未完成';
+      return {ok:result.status==='ready',facts:result.facts};
+    }catch(e){
+      // Keep the failed stage visible and retryable; only the active save may be touched.
+      if(active.value?.id===session.id){
+        if(stale()){abandon();await safePersist();}
+        else{
+          const job=terminalAutoJob(session,jobId);
+          if(job&&terminalAnchorActive(session,job.anchor)){
+            job.status='failed';
+            job.error=connection.signal.aborted?'终端请求已停止，本轮终端通讯未生成。':'终端部分未完成：'+message(e);
+            await safePersist();
+            if(!options.automatic)problem.value=job.error;
+          }
+        }
+      }
+      return {ok:false,facts:''};
+    }finally{finishGeneration(callId);if(terminalController===connection)terminalController=undefined;terminalBusy.value=false;}
+  }
   let memoryController:AbortController|undefined;const memoryQueue=new Set<Session>();
   function stopMemory(){memoryController?.abort();}
   function memoryLedger(session:Session,before=session.turns.length){const order=new Map(session.turns.map((t,i)=>[t.id,i]));return visibleMemories(session,before).slice().sort((a,b)=>(order.get(a.sourceTurn||'')??-1)-(order.get(b.sourceTurn||'')??-1));}
@@ -349,7 +462,8 @@ export function useWorkspace() {
   /** Terminal notes lose their vector whenever their text changes; rebuild instead of leaving them unreachable. */
   async function reindexTerminalNotes(session:Session,signal:AbortSignal){
     // 稳定版停用手机专用模型调用：旧存档里的手机记忆与向量原样保留，但不再为它们花额度重建索引。
-    if(!preferences.vectorEnabled||!terminalEnabled.value)return;
+    // 用户暂停手机时历史通讯仍是剧情事实，索引与召回照常保留，只有请求被停用。
+    if(!preferences.vectorEnabled||!terminalCapability.value)return;
     const stale=session.memories.filter(m=>isTerminalMemoryNote(m)&&!vectorCurrent(m,fingerprint(profile(preferences.embeddingProfile))));
     if(!stale.length)return;
     try{await encodeMemories(session,stale,signal);}
@@ -367,7 +481,7 @@ export function useWorkspace() {
      for(const d of derivedFacts(m,resolve))out.push({m,id:d.id,text:d.text});
     }else if(isTerminalMemoryNote(m)){
      // 稳定版不为手机专属内容建立或更新事实向量：这些文本不能成为向量模型的输入。
-     if(!terminalEnabled.value)continue;
+     if(!terminalCapability.value)continue;
      const b=session.terminal?.memories?.find(b=>b.anchor.key===terminalNoteKey(m));if(!b)continue;
      const priv=terminalNoteIsPrivate(m);
      for(const entry of [...b.chats,...b.games])if(('group' in entry&&!entry.group)===priv)out.push({m,id:m.id+'#seg:'+entry.id,text:formatTerminalSegment(entry)});
@@ -453,7 +567,7 @@ export function useWorkspace() {
     // loaded before the public/private split still gain their #private siblings before any
     // retrieval. Never touches real terminal records, only derived note texts and vectors.
     syncTerminalMemoryNotes(session);
-    const list=memoryLedger(session,before).filter(memoryReady).filter(m=>terminalEnabled.value?(!isTerminalMemoryNote(m)||m.terminalKey!==undefined):!isTerminalMemoryNote(m)).reverse();if(!list.length){trace?.({mode:'keyword',query:text,candidates:0,hits:[]});return [];}
+    const list=memoryLedger(session,before).filter(memoryReady).filter(m=>terminalCapability.value?(!isTerminalMemoryNote(m)||m.terminalKey!==undefined):!isTerminalMemoryNote(m)).reverse();if(!list.length){trace?.({mode:'keyword',query:text,candidates:0,hits:[]});return [];}
     const contextState=stateAt(session,before),recent=session.turns.slice(0,before).flatMap(t=>{const v=selected(t);return v?.status==='complete'&&v.outcome?[v.outcome.event]:[];});
     const query=contextual?buildRecallQuery(text,contextState,recent,memoryLedger(session,before).filter(m=>m.record&&memoryReady(m)).at(-1)?.record?.location):text;let vector:number[]|undefined,fallback='';const p=copy(profile(preferences.embeddingProfile));
     if(preferences.vectorEnabled&&(preferences.mode==='demo'||key(p)))try{vector=(await gateway().embed([query],p,key(p),controller?.signal||new AbortController().signal))[0];}catch(e){if(controller?.signal.aborted)throw e;fallback='向量接口不可用，已退回关键词检索';logRuntime(e,'记忆向量检索');notice.value='向量接口不可用，已退回关键词检索';}
@@ -507,11 +621,17 @@ export function useWorkspace() {
     protectedGeneration={sessionId:session.id,turnId:turn.id,variantId:variant.id,checkpoint:copy(variant)};busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false,inputCommitted=false;const callId=crypto.randomUUID();activeCallId=callId;const callErrors:string[]=[];let modelRaw='',completionInfo='',incompleteCode='MODEL_RESPONSE_INCOMPLETE';let recallTrace:RecallTrace|undefined;let stopBinding:(()=>void)|undefined;let streamTimer:ReturnType<typeof setTimeout>|undefined,pendingDelta='';const flushStream=()=>{clearTimeout(streamTimer);streamTimer=undefined;if(pendingDelta){variant.text+=pendingDelta;pendingDelta='';}};syncTerminalMemoryNotes(session);
     try {
       await persist();inputCommitted=true;
+      // 终端在前的顺序：先以已确认历史与本轮输入产生通讯，正文随后消费已确认的通讯事实。
+      let terminalFacts='';
+      if(!stateOnly&&!continuePartial&&terminalEnabled.value&&terminalOrder.value==='terminal-first')terminalFacts=(await runTerminalStage(index,{automatic:true})).facts;
+      // 续写与仅修状态不重开通讯：直接取回这一轮已提交阶段保存的事实，不调用终端模型、
+      // 不重复落库；事实随任务存进存档，页面重载后同样可恢复。
+      else if((continuePartial||stateOnly)&&terminalEnabled.value)terminalFacts=terminalCommittedFacts(session,index);
       const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index,true,trace=>{recallTrace=trace;});
       const lore=sessionLore(requestPreferences,session,index,turn.input,turn.id,localService.value?.narratorName||'星穹学院');
       worldbookRuntimeWarnings.value=lore.warnings;
       worldbookRuntimeDiagnostics.value=lore.diagnostics;
-      const request:GenerateRequest={...(!stateOnly&&terminalEnabled.value?{terminalContext:terminalMainContext(session,index,turn.input)}:{}),stateEnabled:requestPreferences.stateEnabled!==false,previousTheaters:visibleTheaters(session).filter(scene=>requestPreferences.theaters?.some(t=>t.enabled&&t.slot===scene.slot)).map(({round,...scene})=>({...scene,content:scene.content.slice(0,1200),...(scene.diary?{diary:{...scene.diary,content:scene.diary.content.slice(0,1200)}}:{}),...(scene.messages?{messages:scene.messages.slice(-6).map(m=>({...m,content:m.content.slice(0,400)}))}:{})})),worldInfo:lore.entries,suggestionsEnabled:requestPreferences.suggestionsEnabled!==false,randomEventInstruction:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?requestPreferences.randomEventInstruction:undefined,specialEvent:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:(()=>{const phone=terminalEnabled.value;const chunks=phone?[...terminalRecall(session,index)]:[];const latestKey=phone?terminalLatestBucket(session,index)?.anchor.key:'';for(const m of recalled)if(phone&&isTerminalMemoryNote(m)&&terminalNoteKey(m)!==latestKey)chunks.push(...memoryChunks(m.text));return [...chunks,...memoryContext(recalled.filter(m=>!isTerminalMemoryNote(m)),activeCommitments(memoryLedger(session,index)))].slice(0,8);})(),state:stateAt(session,index),dice:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.dice):undefined,profile:copy(p),presets:[],promptEntries:stateOnly?[]:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(requestPreferences.theaters)?.map(t=>t.kind==='group'?{...t,enabled:false}:t),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:(requestPreferences.theaters?.some(t=>t.slot===1&&t.enabled)?visibleForum(session,index):[]).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};
+      const request:GenerateRequest={...(terminalFacts?{terminalFacts}:{}),stateEnabled:requestPreferences.stateEnabled!==false,previousTheaters:visibleTheaters(session).filter(scene=>requestPreferences.theaters?.some(t=>t.enabled&&t.slot===scene.slot)).map(({round,...scene})=>({...scene,content:scene.content.slice(0,1200),...(scene.diary?{diary:{...scene.diary,content:scene.diary.content.slice(0,1200)}}:{}),...(scene.messages?{messages:scene.messages.slice(-6).map(m=>({...m,content:m.content.slice(0,400)}))}:{})})),worldInfo:lore.entries,suggestionsEnabled:requestPreferences.suggestionsEnabled!==false,randomEventInstruction:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?requestPreferences.randomEventInstruction:undefined,specialEvent:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:(()=>{const phone=terminalCapability.value;const chunks=phone?[...terminalRecall(session,index)]:[];const latestKey=phone?terminalLatestBucket(session,index)?.anchor.key:'';for(const m of recalled)if(phone&&isTerminalMemoryNote(m)&&terminalNoteKey(m)!==latestKey)chunks.push(...memoryChunks(m.text));return [...chunks,...memoryContext(recalled.filter(m=>!isTerminalMemoryNote(m)),activeCommitments(memoryLedger(session,index)))].slice(0,8);})(),state:stateAt(session,index),dice:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.dice):undefined,profile:copy(p),presets:[],promptEntries:stateOnly?[]:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(requestPreferences.theaters)?.map(t=>t.kind==='group'?{...t,enabled:false}:t),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:(requestPreferences.theaters?.some(t=>t.slot===1&&t.enabled)?visibleForum(session,index):[]).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};
       const repairPlan=stateOnly&&previousOutcome?missingRepairPlan(previousOutcome,repairBefore!,variant.generationRequirements?.theaters||requestPreferences.theaters,variant.generationRequirements?.stateEnabled??requestPreferences.stateEnabled!==false,requestPreferences.suggestionsEnabled!==false):undefined;
       if(repairPlan&&request.continuation){request.continuation.repairPlan=repairPlan;request.state.characters.push(...copy(repairBefore!.characters.filter(c=>!request.state.characters.some(a=>a.id===c.id))));request.stateEnabled=repairNeedsState(repairPlan);request.theaterSettings=request.theaterSettings?.map(s=>({...s,enabled:repairPlan.theaterSlots.includes(s.slot)}));request.suggestionsEnabled=repairPlan.suggestions;}
       const regexRules=copy((requestPreferences.regexRules||[]).filter(r=>!r.setId||r.setId===currentPreset.value));
@@ -537,35 +657,35 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
           flushStream();modelRaw=typeof event.raw==='string'?event.raw:'';let outcome=event.outcome;
           if(previousOutcome){outcome={...mergeRepairOutcome(previousOutcome,outcome,stateAt(session,index),repairBefore!,repairPlan),theaters:mergeRepairTheaters(previousOutcome.theaters,outcome.theaters,requestPreferences.theaters,repairBefore!)};}
           if(previousOutcome)outcome=reconcileRepairScenes(outcome,requestPreferences.theaters,stateAt(session,index+1));
-          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];await persist();done=true;if(!stateOnly){if(terminalEnabled.value)await retryTerminalFollowup(index,true,request.terminalContext);markGenerationComplete(callId);}
+          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal&&terminalEnabled.value)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];await persist();done=true;if(!stateOnly){if(terminalEnabled.value&&terminalOrder.value==='story-first')await runTerminalStage(index,{automatic:true});
+            // 终端在前的顺序里，社交动作只能在正文确认后核验：绑定同一轮、只出动作、
+            // 不重生成群聊或正文；正文没有接触/邀请信号时零额外请求。
+            else if(terminalEnabled.value&&terminalSocialSignal(session,index))await runTerminalStage(index,{automatic:true,socialOnly:true});
+            markGenerationComplete(callId);}
         }
       }
       if(!done)throw new Error('未收到完整回复，已保留部分内容。');
-      notice.value=terminalFollowupJob(session,index)?.status==='failed'?(terminalFollowupJob(session,index)?.error||'正文完成，终端部分未完成'):'正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';
+      notice.value=(()=>{const session=active.value;const job=session&&session.turns[index]?session.terminal?.jobs?.find(j=>j.target==='auto'&&j.anchor.turnId===session.turns[index].id&&j.status==='failed'):undefined;return job?(job.error||'正文完成，终端部分未完成'):'正文已保存，本轮记忆正在后台整理，完成后建立已启用的向量索引。';})();
       if(stateOnly&&!problem.value)notice.value='状态与记忆已保存。';
     }catch(e){flushStream();if(inputCommitted&&!stateOnly&&variant.status==='incomplete'&&variant.text.trim())variant.outcome={event:'本轮正文未完成，状态未更新',stateUpdate:{status:'retained',received:false,storyComplete:false,codes:[incompleteCode]}};if(!inputCommitted&&turnIndex===undefined){session.turns=session.turns.filter(t=>t!==turn);session.draftInput=turn.input;input.value=turn.input;inputDrafts.set(session.id,turn.input);}problem.value=message(e);callErrors.push(problem.value);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes,message(e));if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1)),problem:message(e)};}
     finally{flushStream();stopBinding?.();protectedGeneration=undefined;const logApplied=selected(turn)?.id===variant.id&&variant.status==='complete';const logAfter=logApplied?stateAt(session,index+1):logBefore;const variables=variableChangeLog(logBefore,logAfter,logApplied,variant.outcome?.stateUpdate?.affinityReviewedIds,logStateDetails(variant.outcome).map(d=>d.text),variant.outcome?.stateUpdate?.codes);const sections=generationSections({errors:callErrors,variant,outcome:variant.outcome,before:logBefore,after:logAfter,applied:logApplied,variables,recall:recallTrace,stateOnly,raw:modelRaw,completionInfo});void formatErrors.record(done?'本次生成完成。':problem.value||'本次生成未完成。',done?'GENERATION_COMPLETE':'GENERATION_INCOMPLETE',session.id,turn.id,'generation',{variantId:variant.id,round:index+1,variables,callId,sections}).catch(()=>{});busy.value=false;continuationAttempt.value=0;repairingState.value=false;controller=undefined;activeCallId='';if(inputCommitted&&!done){session.updatedAt=now();await safePersist();}if(recallTrace?.fallback&&!problem.value)notice.value=recallTrace.fallback;const last=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===variant.id);if(last?.indexError)notice.value='记忆已保存，向量索引待重试。';if(inputCommitted&&variant.status==='complete'&&storageStatus.value==='saved')void scheduleMemoryWork(session).then(()=>{if(recallTrace?.fallback&&!problem.value)notice.value=recallTrace.fallback;});}
   }
-  async function retryTerminalFollowup(index:number,automatic=false,original?:import('../domain/terminalMain').TerminalMainContext){
-    if(!terminalEnabled.value)return false;
-    const session=active.value;if(!session||!localService.value||backupWorking.value||terminalBusy.value||busy.value&&!automatic)return false;
-    const job=prepareTerminalFollowup(session,index,original);if(!job?.repair)return true;if(automatic&&job.repair.autoAttempted)return false;
-    const p=copy(taskApi(preferences,'terminal')||profile(preferences.mainProfile)),apiKey=key(p),signature=connectionSignature(p),binding=job.anchor.key;
-    const signal=automatic&&controller?controller.signal:new AbortController().signal,followupCallId=uid();
-    terminalBusy.value=true;
-    try{
-      await persist();
-      if(!connectionReady(p)||apiFieldIssues(p,apiKey).length)throw Error('终端 API 尚未确认，正文已保存，请配置后重试补齐。');
-      job.repair.autoAttempted||=automatic;job.status='running';job.error=undefined;await persist();
-      const context=followupContext(session,index,job),variant=session.turns[index].variants[session.turns[index].selected];
-      const groupEvidence=[];const budget=Math.max(80,Math.floor(12000/Math.max(1,job.repair.groups.length)));
-      for(const group of job.repair.groups){const audience=['player',...group.members],records=await recall(session,session.turns[index].input,index+1,false,undefined,audience);const c=session.terminal!.conversations.find(c=>c.id===group.id);groupEvidence.push({id:group.id,knownBy:audience,memories:records.map(m=>m.text).join('\n').slice(0,budget),history:(c?.messages||[]).filter(m=>factAudienceCovers(m.knownBy,audience)).slice(-4).map(m=>({sender:m.sender,text:m.text.slice(0,200)}))});}
-      const state=stateAt(session,index+1);
-      startGeneration(followupCallId);const raw=await http.terminal({task:'main-followup',sessionId:session.id,actorIds:[...new Set([...state.characters.map(a=>a.id),...(session.terminal?.contacts||[]).map(a=>a.id)])],input:session.turns[index].input.slice(0,2000),persona:copy(session.persona),context:{state:{characters:[...state.characters,...session.terminal?.contacts||[]]},repairContext:context,repairSlots:job.repair.groups.map(g=>({id:g.id,slots:g.slots})),groupEvidence,socialEvidence:job.repair.social?variant.text.slice(0,12000):''}},p,apiKey,signal) as import('../domain/terminalMain').TerminalMainBatch;
-      signal.throwIfAborted();if(active.value?.id!==session.id||terminalAnchor(session,index+1).key!==binding||signature!==connectionSignature(profile(p.id)))throw Error('存档、分支或接口已变化，迟到终端结果未应用。');
-      const result=applyTerminalFollowup(session,index,job.id,raw);await persist();notice.value=result.status==='ready'?`正文完成，终端本次补齐 ${result.added} 条群消息。`:result.error||'正文完成，终端部分未完成';if(result.status==='ready')markGenerationComplete(followupCallId);return result.status==='ready';
-    }catch(e){if(terminalAnchorActive(session,job.anchor)){job.status='failed';job.error='正文完成，终端部分未完成'+message(e);await safePersist();notice.value=job.error;}return false;}
-    finally{finishGeneration(followupCallId);terminalBusy.value=false;}
+  /** Manual retry of the terminal stage. It reuses the same coordinator, so a turn that
+   * already finished its terminal round is not generated twice. */
+  async function retryTerminalFollowup(index:number,_automatic=false){
+    if(!Number.isInteger(index)||index<0)return false;
+    const result=await runTerminalStage(index,{automatic:false});
+    return result.ok;
+  }
+  /** UI retry bound to the job's own executed stage instead of the knowledge anchor. */
+  async function retryTerminalJob(jobId:string):Promise<boolean>{
+    const session=active.value,job=session?.terminal?.jobs?.find(j=>j.id===jobId);
+    if(!session||!job)return false;
+    const index=terminalJobTurnIndex(session,job);
+    if(index<0||index>=session.turns.length)return false;
+    // 任务自身记录了它执行的阶段：之后切换顺序也不能把旧任务重跑到另一种阶段上。
+    const mode:TerminalAutoMode=job.mode==='terminal-first'?'terminal-first':'story-first';
+    return (await runTerminalStage(index,{automatic:false,socialOnly:job.mode==='social-review',mode})).ok;
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value||backupWorking.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}
   async function rewind(count:number){
@@ -703,7 +823,7 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
   function duplicatePresetSet(){if(busy.value||backupWorking.value)return;const sourcePreset=currentPreset.value;const rules=copy((preferences.regexRules||[]).filter(r=>r.setId===sourcePreset));const rows=copy(presetEntries.value),params=copy(presetParameters.value),id=uid(),name=(presetSets.value.find(s=>s.id===currentPreset.value)?.name||'预设')+'（副本）';preferences.presets.push(...rows.map(p=>({...p,id:uid(),setId:id,setName:name})));(preferences.presetParameters||={})[id]=params;(preferences.regexRules||=[]).push(...rules.map(r=>({...r,id:uid(),setId:id})));preferences.activePreset=id;}
   function removePresetEntry(id:string){if(busy.value||backupWorking.value)return;const p=presetEntries.value.find(p=>p.id===id);if(!p||pinnedPromptIds.includes(p.identifier||''))return;preferences.presets=preferences.presets.filter(p=>p.id!==id);}
   void boot();
-  return {commitConfiguration,saveTerminal,saveEditorDraft,readEditorDraft,flushInputDrafts,inputDraftStatus,inputDraftError,retryTerminalFollowup,terminalFollowupStatus:(index:number)=>active.value?terminalFollowupJob(active.value,index):undefined,restoreInterrupted,backupWorking,createCloudWorkspaceBackup,saveCurrentCloudBackup,restoreCloudSave,undoCloudRestore,storageError,terminalBusy,repairReport,replayWarnings,reviseMemoryRecord,migrationPreview,activateMemoryLedger,useLegacyMemory,restoreMemoryRevision,useMainForAll,storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,worldbookRuntimeDiagnostics,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,terminalEnabled,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,withdraw,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,indexTerminalNotes,scopedRecall:async(session:Session,text:string,audience:string[],trace?:(value:RecallTrace)=>void)=>terminalEnabled.value?recall(session,text,session.turns.length,true,trace,audience):[],exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
+  return {commitConfiguration,saveTerminal,saveEditorDraft,readEditorDraft,flushInputDrafts,inputDraftStatus,inputDraftError,retryTerminalFollowup,retryTerminalJob,terminalEpoch,runTerminalStage,setTerminalEnabled,setTerminalOrder,stopTerminal,terminalCapability,terminalProfile,terminalIssues,terminalConfigured,terminalOrder,terminalFollowupStatus:(index:number)=>active.value?terminalFollowupJob(active.value,index):undefined,restoreInterrupted,backupWorking,createCloudWorkspaceBackup,saveCurrentCloudBackup,restoreCloudSave,undoCloudRestore,storageError,terminalBusy,repairReport,replayWarnings,reviseMemoryRecord,migrationPreview,activateMemoryLedger,useLegacyMemory,restoreMemoryRevision,useMainForAll,storageStatus,developerTraces,memoryEntries,memoryNeedsRepair,chatRoundCount,effectiveMemoryCount,missingVectorCount,exportApiConfiguration,importApiConfiguration,hideFloors,formatErrors,...lorebooks,worldbookRuntimeWarnings,worldbookRuntimeDiagnostics,retryMemory,pendingMemoryCount,stopMemory,vectorStatus,retryForumReply,pendingRandomEvent,decideRandomEvent,workingForumReply,forumReplyPost,forumReplyError,stopForumReply,settingsTab,deleteSession,deletingSessionId,preferences,sessions,sessionId,panel,credentials,loading,authorized,busy,workingMemory,newGameDraft,workingPersona,creatingGame,personaNotice,resetNewGameDraft,assistPersona,stopPersona,notice,problem,input,lastSaved,active,state,memories,forum,theaters,presetEntries,presetSets,currentPreset,presetParameters,duplicatePresetSet,removePresetEntry,movePresetTo,presetWarnings,addPresetSet,addPresetEntry,removePresetSet,localService,rememberApiKeys,setRememberApiKeys,clearApiKeys,connectionReady,connectProfile,fetchModels,testProfile,generationPhase,generationStarted,auxiliaryProfiles,storyProfile,summaryProfile,personaProfile,apiSelectable,apiIssues,apiReady,configuringApis,continuationAttempt,repairingState,confirmAllApis,ensureApiConfiguration,enterStory,moveAuxiliary,canContinue,terminalEnabled,authorize,create,open,home,stop,generate,repairState:(index:number)=>generate(undefined,index,true,true),changeVariant,rewind,withdraw,edit,savePersona,loadPlace,toggleForumLike,replyToForum,saveMemory,removeMemory,indexMemories,searchMemory,indexTerminalNotes,scopedRecall:async(session:Session,text:string,audience:string[],trace?:(value:RecallTrace)=>void)=>terminalCapability.value?recall(session,text,session.turns.length,true,trace,audience):[],exportBackup,importBackup,exportBook,addProfile,removeProfile,importPreset,exportPreset,movePreset,save:safePersist};
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
 export type ViewModel = UnwrapNestedRefs<Workspace>;

@@ -1,7 +1,7 @@
 import type {Session} from './contracts';
 import type {TerminalMainBatch,TerminalMainContext,TerminalMainGroup} from './terminalMain.ts';
 import {terminalMainContext,cleanTerminalBatch} from './terminalMain.ts';
-import {terminalAnchor,terminalAnchorActive,audienceSnapshot,recordTerminalChat,syncTerminalMemoryNotes,type TerminalJob} from './terminalLedger.ts';
+import {terminalAnchor,terminalAnchorActive,terminalMessageId,audienceSnapshot,recordTerminalChat,syncTerminalMemoryNotes,type TerminalJob} from './terminalLedger.ts';
 import {emptyTerminal,groupAutoAdminLimit} from './personalTerminal.ts';
 import {terminalGroupMessages,completedStoryRounds,terminalCooldownBlocked} from './terminalPolicy.ts';
 import {applySocialActions} from './terminalSocial.ts';
@@ -53,7 +53,7 @@ export function applyTerminalFollowup(s:Session,index:number,jobId:string,raw:Te
   for(const [offset,message]of group.messages.slice(0,slots.length).entries()){
    const source=prefix(job.anchor.key,c.id)+slots[offset];if(c.messages.some(m=>m.source===source))continue;
    if(!c.members.includes(message.id))continue;
-   c.messages.push({id:source,source,sender:message.id,text:message.text,at:variant.createdAt,anchor:job.anchor,knownBy:audienceSnapshot(c.members)});c.unread++;added++;
+   c.messages.push({id:terminalMessageId(source),source,sender:message.id,text:message.text,at:variant.createdAt,anchor:job.anchor,knownBy:audienceSnapshot(c.members)});c.unread++;added++;
   }
   recordTerminalChat(t,job.anchor,c,group.messages.map(m=>names.get(m.id)||m.id),group.topic,[],audienceSnapshot(c.members));
  }
