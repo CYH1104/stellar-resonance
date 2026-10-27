@@ -1,0 +1,6 @@
+{
+  "phase": "step-2-isolated-transport-spike",
+  "academyBase": "03cdd39a8db4ab0463210053434711c23e182536",
+  "sillyTavern": {"repository":"https://github.com/SillyTavern/SillyTavern.git","commit":"06bde939fb1e9c4c8d8641d810f0a916b5bce127","version":"1.19.0"},
+  "helper": {"repository":"https://github.com/N0VI028/JS-Slash-Runner.git","commit":"0af421068e7c03b6b0a71b68feb79d201164edeb","version":"4.11.3"}
+}

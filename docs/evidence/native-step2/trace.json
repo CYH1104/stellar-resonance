@@ -1,0 +1,33 @@
+{
+  "phase": "step-2-isolated-transport-spike",
+  "nativeCommit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "helperCommit": "0af421068e7c03b6b0a71b68feb79d201164edeb",
+  "nativeRequests": [
+    {
+      "model": "native-fixture-model",
+      "messages": 9,
+      "reasoningRequested": false
+    },
+    {
+      "model": "native-fixture-model",
+      "messages": 2,
+      "reasoningRequested": false
+    }
+  ],
+  "fixtureRequests": [
+    {
+      "kind": "story",
+      "model": "native-fixture-model",
+      "messageCount": 9,
+      "requestDigest": "91e860391e490f385d7e1948a248eb663f946011c14980fb4f35689e9b5e182d",
+      "nativeAuthorization": true
+    },
+    {
+      "kind": "memory",
+      "model": "native-fixture-model",
+      "messageCount": 2,
+      "requestDigest": "9303f866dae2cf281df1b6e13c15ab6d79985ba3c99e492ed06abd607dd21851",
+      "nativeAuthorization": true
+    }
+  ]
+}

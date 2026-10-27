@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "source": "current Vue App -> real academy server -> real pinned native SillyTavern server -> loopback synthetic OpenAI fixture",
+  "browserApiMocking": false,
+  "realPaidModel": false,
+  "privateCardUsed": false,
+  "persistedStatus": "complete",
+  "nativeRequests": 2,
+  "fixtureRequests": 2,
+  "fixtureKinds": [
+    "story",
+    "memory"
+  ],
+  "generationRequests": 1,
+  "errors": [],
+  "apiFailures": [],
+  "scope": "transport spike only; native frontend prompt compilation/helper execution NOT validated"
+}
