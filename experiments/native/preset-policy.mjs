@@ -12,6 +12,10 @@ export function patchRawPreset(source,patch){
    for(const edit of value){if(!object(edit)||typeof edit.identifier!=='string'||seen.has(edit.identifier))throw Error('INVALID_PROMPT_PATCH');seen.add(edit.identifier);
     const index=result.prompts.findIndex(p=>p.identifier===edit.identifier);if(index<0)throw Error('UNKNOWN_PROMPT');
     result.prompts[index]=patchRawPreset(result.prompts[index],edit);
+    if(Object.hasOwn(edit,'enabled')){
+     if(typeof edit.enabled!=='boolean')throw Error('INVALID_PROMPT_PATCH');
+     for(const group of result.prompt_order||[])for(const entry of group.order||[])if(entry.identifier===edit.identifier)entry.enabled=edit.enabled;
+    }
    }
   }else if(object(value)&&object(result[key]))result[key]=patchRawPreset(result[key],value);
   else result[key]=structuredClone(value);

@@ -40,12 +40,14 @@ export async function createProtectedGateway({compiler,client,preset,port=8851,o
     raw=patchRawPreset(raw,value.changes);send(res,200,{preset:protectedRuntimePreset(raw)});return;
    }
    let input;try{input=validatePublicGeneration(value);}catch{return send(res,400,{code:'INVALID_REQUEST'});}
-   const compiled=await compiler.compile({...input,preset:raw,signal:abort.signal});await onPrivateCompile(compiled);
-   const upstream=await client.complete({messages:compiled.messages,model:'protected-fixture',temperature:0.7,max_tokens:1024,include_reasoning:true},abort.signal);
+   const effective=protectedRuntimePreset(raw);
+   const compiled=await compiler.compile({...input,preset:effective,signal:abort.signal});await onPrivateCompile(compiled);
+   const upstream=await client.complete({messages:compiled.messages,model:'protected-fixture',temperature:effective.temperature??0.7,max_tokens:effective.openai_max_tokens??1024,include_reasoning:false},abort.signal);
    if(!upstream.ok)return send(res,502,{code:'UPSTREAM_FAILED'});
    res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store'});
-   for await(const text of completionChunks(upstream,{signal:abort.signal})){if(text)res.write('data: '+JSON.stringify({type:'delta',text})+'\n\n');}
-   res.end('data: {"type":"done"}\n\n');
+   let finishReason='';
+   for await(const text of completionChunks(upstream,{signal:abort.signal,onProgress:stats=>{finishReason=stats.finishReason;}})){if(text)res.write('data: '+JSON.stringify({type:'delta',text})+'\n\n');}
+   res.end('data: '+JSON.stringify(finishReason==='stop'?{type:'done',finishReason}:{type:'error',code:'GENERATION_INCOMPLETE',complete:false,finishReason:finishReason||'unexpected_eof'})+'\n\n');
   }catch(error){if(res.destroyed)return;if(res.headersSent){res.end('data: {"type":"error","code":"GENERATION_FAILED"}\n\n');}else send(res,error.message?.startsWith('INVALID')||error.message?.includes('PRESET')?400:500,{code:'REQUEST_FAILED'});}
  });
  await new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,'127.0.0.1',ok);});origin=`http://127.0.0.1:${server.address().port}`;

@@ -13,14 +13,18 @@ try{
   const post=(path,body,token=session.csrf)=>fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify(body)});
   const card=await fetch('/api/public-card').then(r=>r.json());
   const before=await fetch('/api/preset').then(r=>r.json());
-  const patch=await post('/api/preset',{changes:{temperature:0.2,prompts:[{identifier:'protected-example',content:'EDITED_PUBLIC_ENTRY'}]}});const after=await patch.json();
+  const patch=await post('/api/preset',{changes:{temperature:0.2,openai_max_tokens:2048,prompts:[{identifier:'protected-example',content:'EDITED_PUBLIC_ENTRY'}]}});const after=await patch.json();
   const attacks=[];for(const extra of [{include_reasoning:true},{show_thoughts:true},{messages:[]},{script:'fetch("/api/export")'},{privateCard:true},{key:'synthetic'}]){const r=await post('/api/generate',{input:'询问安排',...extra});attacks.push(r.status);}
   const csrf=await post('/api/generate',{input:'询问安排'},'wrong-token');
   const blocked=[];for(const path of ['/api/characters/all','/api/worldinfo/get','/api/compile','/api/export','/api/secrets/read','/experiments/native/private-worker.mjs']){const r=await fetch(path);blocked.push({path,status:r.status,body:await r.text()});}
   let directNativeBlocked=false;try{await fetch('http://127.0.0.1:8850/api/characters/all',{method:'POST',body:'{}'});}catch{directNativeBlocked=true;}
   const reply=await post('/api/generate',{input:'询问训练安排。'});const text=await reply.text();
+  await post('/api/preset',{changes:{prompts:[{identifier:'protected-example',enabled:false}]}});
+  const disabled=await (await post('/api/generate',{input:'关闭条目验证'})).text();
+  await post('/api/preset',{changes:{prompts:[{identifier:'protected-example',enabled:true}]}});
+  const enabled=await (await post('/api/generate',{input:'重新开启验证'})).text();
   document.querySelector('#reply').textContent=text;
-  return {card,before,after,attacks,csrf:csrf.status,blocked,directNativeBlocked,replyStatus:reply.status,text,helperExposed:typeof globalThis.TavernHelper!=='undefined',storage:JSON.stringify({...localStorage})};
+  return {card,before,after,attacks,csrf:csrf.status,blocked,directNativeBlocked,replyStatus:reply.status,text,disabled,enabled,helperExposed:typeof globalThis.TavernHelper!=='undefined',storage:JSON.stringify({...localStorage})};
  });
  const checks=[];const check=(name,value)=>{checks.push({name,passed:!!value});assert.ok(value,name);};
  check('public card contains public fields only',JSON.stringify(Object.keys(result.card).sort())===JSON.stringify(['introduction','name']));
@@ -36,7 +40,9 @@ try{
  const trace=JSON.parse(await readFile(resolve(out,'trace.json'),'utf8'));
  check('private card and worldbook really participated in native compilation',trace.privateCardInCompiled&&trace.privateLoreInCompiled);
  check('player preset script did not run inside private worker',trace.workerScriptsDisabled);
- check('actual upstream request forcibly disabled reasoning',trace.requests===1&&trace.upstreamReasoningRequested.every(v=>v===false));
+ check('actual upstream request forcibly disabled reasoning',trace.requests===3&&trace.upstreamReasoningRequested.every(v=>v===false));
+ check('actual native upstream receives saved sampling',trace.sampling.length===3&&trace.sampling.every(v=>v.temperature===0.2&&v.max_tokens===2048));
+ check('actual native compilation follows disable and re-enable',JSON.stringify(trace.publicEntryInCompiled)==='[true,false,true]'&&result.disabled.includes('\"type\":\"done\"')&&result.enabled.includes('\"type\":\"done\"'));
  const captured=await page.content()+JSON.stringify(result);
  check('private markers and thought fields never appeared in client responses/storage',!/(PRIVATE_CARD_|PRIVATE_LORE_|HIDDEN_THOUGHT_|reasoning_content|<think>)/.test(captured));
  check('private helper object is not present in public page',!result.helperExposed);

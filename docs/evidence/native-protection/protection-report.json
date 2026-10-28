@@ -50,6 +50,14 @@
       "passed": true
     },
     {
+      "name": "actual native upstream receives saved sampling",
+      "passed": true
+    },
+    {
+      "name": "actual native compilation follows disable and re-enable",
+      "passed": true
+    },
+    {
       "name": "private markers and thought fields never appeared in client responses/storage",
       "passed": true
     },
@@ -70,9 +78,30 @@
     "privateLoreInCompiled": true,
     "workerScriptsDisabled": true,
     "upstreamReasoningRequested": [
+      false,
+      false,
       false
     ],
-    "requests": 1
+    "requests": 3,
+    "sampling": [
+      {
+        "temperature": 0.2,
+        "max_tokens": 2048
+      },
+      {
+        "temperature": 0.2,
+        "max_tokens": 2048
+      },
+      {
+        "temperature": 0.2,
+        "max_tokens": 2048
+      }
+    ],
+    "publicEntryInCompiled": [
+      true,
+      false,
+      true
+    ]
   },
   "errors": [],
   "deniedRoutes": [

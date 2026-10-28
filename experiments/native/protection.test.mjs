@@ -5,7 +5,7 @@ const original={temperature:1,show_thoughts:true,prompts:[{identifier:'a',conten
 test('editing sampling preserves every untouched raw field',()=>{const next=patchRawPreset(original,{temperature:0.4});assert.deepEqual({...next,temperature:1},original);assert.equal(original.temperature,1);});
 test('editing prompt text/enable preserves trigger, depth, unknown fields and ordering',()=>{
  const next=patchRawPreset(original,{prompts:[{identifier:'a',content:'new',enabled:false}]});
- assert.deepEqual(next.prompts[0].injection_trigger,['normal']);assert.equal(next.prompts[0].injection_depth,2);assert.deepEqual(next.prompts[0].extra,{future:true});assert.deepEqual(next.prompt_order,original.prompt_order);assert.deepEqual(next.extensions,original.extensions);assert.equal(original.prompts[0].content,'old');
+ assert.deepEqual(next.prompts[0].injection_trigger,['normal']);assert.equal(next.prompts[0].injection_depth,2);assert.deepEqual(next.prompts[0].extra,{future:true});assert.equal(next.prompt_order[0].order[0].enabled,false);assert.equal(original.prompt_order[0].order[0].enabled,true);assert.deepEqual(next.extensions,original.extensions);assert.equal(original.prompts[0].content,'old');
 });
 test('runtime reasoning policy cannot be enabled by imported preset and does not rewrite original',()=>{
  const effective=protectedRuntimePreset({...original,include_reasoning:true,request_thoughts:true,should_return_reasoning:true});for(const key of ['show_thoughts','include_reasoning','request_thoughts','should_return_reasoning'])assert.equal(effective[key],false);assert.equal(original.show_thoughts,true);assert.deepEqual(effective.prompts,original.prompts);

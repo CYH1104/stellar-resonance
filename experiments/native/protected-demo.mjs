@@ -17,10 +17,10 @@ const installed=resolve(runtime,'public/scripts/extensions/third-party/stellar-p
 const manifest=JSON.parse(await readFile(resolve(installed,'manifest.json'),'utf8'));manifest.auto_update=false;await writeFile(resolve(installed,'manifest.json'),JSON.stringify(manifest,null,2));
 const config=(await readFile(resolve(runtime,'default/config.yaml'),'utf8')).replace('  autoUpdate: true','  autoUpdate: false');await writeFile(resolve(dir,'config.yaml'),config);
 const privateCard='PRIVATE_CARD_'+randomUUID(),privateLore='PRIVATE_LORE_'+randomUUID(),hiddenThought='HIDDEN_THOUGHT_'+randomUUID();
-const trace={privateCardInCompiled:false,privateLoreInCompiled:false,workerScriptsDisabled:false,upstreamReasoningRequested:[],requests:0};
+const trace={privateCardInCompiled:false,privateLoreInCompiled:false,workerScriptsDisabled:false,upstreamReasoningRequested:[],requests:0,sampling:[],publicEntryInCompiled:[]};
 const fixture=createServer(async(req,res)=>{
  if(req.method!=='POST'||req.url!=='/v1/chat/completions'){res.writeHead(404).end();return;}
- let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);trace.requests++;trace.upstreamReasoningRequested.push(body.include_reasoning);await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
+ let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);trace.requests++;trace.sampling.push({temperature:body.temperature,max_tokens:body.max_tokens});trace.upstreamReasoningRequested.push(body.include_reasoning);await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
  const packets=[{reasoning_content:hiddenThought},{content:'<thi'},{content:'nk>'+privateCard+'</think>受保护正文：训练安排已确认。'}];
  res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
  for(const delta of packets)res.write('data: '+JSON.stringify({choices:[{delta,finish_reason:null}]})+'\n\n');res.end('data: '+JSON.stringify({choices:[{delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');
@@ -41,7 +41,7 @@ try{
  preset.extensions||={};preset.extensions.tavern_helper={scripts:[{type:'script',enabled:true,id:'forbidden-player-script',name:'不可执行的玩家脚本',content:'parent.__PLAYER_SCRIPT_EXECUTED__=true;'}]};preset.extensions.future_unknown={value:'keep-me'};
  const client=createNativeClient({origin:'http://127.0.0.1:8850',upstream:'http://127.0.0.1:8852/v1'});
  gateway=await createProtectedGateway({compiler,client,preset,port:8851,onPrivateCompile:async compiled=>{
-  const text=JSON.stringify(compiled.messages);trace.privateCardInCompiled=text.includes(privateCard);trace.privateLoreInCompiled=text.includes(privateLore);trace.workerScriptsDisabled=compiled.scriptsDisabled;await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
+  const text=JSON.stringify(compiled.messages);trace.publicEntryInCompiled.push(text.includes("EDITED_PUBLIC_ENTRY"));trace.privateCardInCompiled=text.includes(privateCard);trace.privateLoreInCompiled=text.includes(privateLore);trace.workerScriptsDisabled=compiled.scriptsDisabled;await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
  }});
  // Only booleans and public route names are exported as verification metadata.
  await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
