@@ -1,0 +1,31 @@
+{
+  "base": "3cd20e4dde66645d4875c5a959671cd3d60b9016",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 140,
+    "passed": 784,
+    "expectedFail": 1,
+    "total": 785,
+    "knownFailure": "Existing terminal-first action edit facts cache; unchanged"
+  },
+  "backend": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4,
+    "total": 441
+  },
+  "nativeTests": {
+    "passed": 16,
+    "failed": 0
+  },
+  "browserChecks": 48,
+  "uncaughtPageErrors": 0,
+  "serverConfigurationFiles": 0,
+  "realPaidModel": false,
+  "browserBusinessApiMocked": false,
+  "typecheck": true,
+  "build": true,
+  "privateDataRead": false,
+  "productionDeployed": false,
+  "fullMigrationComplete": false
+}

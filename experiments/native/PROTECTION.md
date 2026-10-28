@@ -21,6 +21,7 @@
 - `protectedRuntimePreset`对运行副本强制show_thoughts/include_reasoning/request_thoughts/should_return_reasoning=false，原始导入文件不被悄悄改写。
 - worker加载预设后再次关闭原生show_thoughts，并在编排完成后核验；玩家任意脚本根本不在私有worker执行。
 - native-client的受控custom出口固定include_reasoning=false；通过custom_include_body送到实际模拟上游。浏览器报告记录实际收到的上游参数false，而不只是看网页开关。
+- 完整预设导入后仍只允许既定服务端出口：运行副本清空custom_url/reverse_proxy和自定义请求覆盖，编排浏览器的模型后端请求被阻断（状态检查返回无连接），实际生成仍由Node调用受控出口；原始预设JSON保留这些字段。此措施不等于真实供应商已接入。
 - 使用现有真实completionChunks/ReasoningFilter在服务器下发前分离思考。模拟上游故意返回独立reasoning_content以及跨块的`<thi`/`nk>...私有标记...</think>`，客户端只收到可见正文；没有先显示再隐藏。
 
 这不表示所有提供商都能关闭模型内部思考或相关费用，也不保证识别任意无标记的正文复述。当前出口仍是本地custom模拟源，真实供应商的参数兼容需单独验证，不能直接向所有来源乱加同一个参数。

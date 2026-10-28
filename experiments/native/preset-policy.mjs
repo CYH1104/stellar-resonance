@@ -26,6 +26,9 @@ export function patchRawPreset(source,patch){
 export function protectedRuntimePreset(source){
  inspect(source);const result=structuredClone(source);
  result.show_thoughts=false;result.include_reasoning=false;result.request_thoughts=false;result.should_return_reasoning=false;
+ // Presets describe prompts/sampling, never the server-owned transport. Keep the raw file unchanged.
+ result.chat_completion_source='openai';result.custom_url='';result.reverse_proxy='';
+ result.custom_include_headers='';result.custom_include_body='';result.custom_exclude_body='';result.proxy_password='';
  return result;
 }
 

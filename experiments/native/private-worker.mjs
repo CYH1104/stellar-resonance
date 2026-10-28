@@ -10,7 +10,7 @@ export async function createPrivateCompiler({chromium,executablePath,origin,priv
  await page.route('**/*',route=>{const url=new URL(route.request().url());return ['http:','https:'].includes(url.protocol)&&url.origin!==origin?route.abort():route.continue();});
  await page.route('**/api/horde/**',r=>r.fulfill({json:[]}));
  // No generation can accidentally bypass the server's locked model exit.
- await page.route('**/api/backends/chat-completions/generate',r=>r.abort());
+ await page.route('**/api/backends/**',r=>new URL(r.request().url()).pathname.endsWith('/status')?r.fulfill({json:{result:'no_connection'}}):r.abort());
  try{
   await page.goto(origin);await page.waitForFunction(()=>typeof globalThis.TavernHelper==='object');
   await page.evaluate(async({privateCard,privateLore,characterName})=>{
@@ -40,7 +40,7 @@ export async function createPrivateCompiler({chromium,executablePath,origin,priv
     C.chat.splice(0,C.chat.length,...(chat?.length?chat:[{name:'User',is_user:true,is_system:false,mes:input,send_date:new Date().toISOString()}]));
     let messages;const handler=event=>{messages=event.chat;};C.eventSource.on(C.eventTypes.CHAT_COMPLETION_PROMPT_READY,handler);
     try{await S.Generate(generationType,{},true);}finally{C.eventSource.removeListener(C.eventTypes.CHAT_COMPLETION_PROMPT_READY,handler);}
-    if(O.oai_settings.show_thoughts!==false||!Array.isArray(messages)||!messages.length)throw Error('PRIVATE_COMPILATION_FAILED');
+    if(O.oai_settings.show_thoughts!==false||O.oai_settings.chat_completion_source!=='openai'||O.oai_settings.reverse_proxy||!Array.isArray(messages)||!messages.length)throw Error('PRIVATE_COMPILATION_FAILED');
     if(document.querySelector('iframe[name^="TH-script--"]')||globalThis.__PLAYER_SCRIPT_EXECUTED__===true)throw Error('PRIVATE_SCRIPT_EXECUTED');
     if(flags.global!==false||flags.presets.length||flags.characters.length)throw Error('PRIVATE_SCRIPT_POLICY_CHANGED');
     return {messages,requestReasoning:false,scriptsDisabled:true};

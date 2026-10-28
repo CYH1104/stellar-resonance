@@ -3998,12 +3998,12 @@ window.academyDraft=text=>{const el=document.getElementById('local-draft');el.va
 
         /* 角色图片加载失败(比如 URL 还没填/挂了)→ 退回深蓝占位字母 */
         root.addEventListener('error', e => {
-            const el = e.target;
-            if (!el || el.tagName !== 'IMG' || !el.parentElement) return;
+            const el = e.target, parent = el && el.parentElement;
+            if (!el || el.tagName !== 'IMG' || !parent || !parent.classList.contains('spl-chimg')) return;
             const ph = document.createElement('b');
             ph.textContent = el.dataset.init || '?';
-            el.parentElement.textContent = '';
-            el.parentElement.appendChild(ph);
+            parent.textContent = '';
+            parent.appendChild(ph);
         }, true);
 
         /* 窗口尺寸/横竖屏变化时,重新居中这一排卡片(位置用像素算,不重算会跑偏) */

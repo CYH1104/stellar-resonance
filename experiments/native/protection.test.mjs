@@ -10,6 +10,10 @@ test('editing prompt text/enable preserves trigger, depth, unknown fields and or
 test('runtime reasoning policy cannot be enabled by imported preset and does not rewrite original',()=>{
  const effective=protectedRuntimePreset({...original,include_reasoning:true,request_thoughts:true,should_return_reasoning:true});for(const key of ['show_thoughts','include_reasoning','request_thoughts','should_return_reasoning'])assert.equal(effective[key],false);assert.equal(original.show_thoughts,true);assert.deepEqual(effective.prompts,original.prompts);
 });
+test('raw imported transport URLs survive storage but cannot change the private worker transport',()=>{
+ const raw={...original,chat_completion_source:'custom',custom_url:'https://preset-transport.invalid',reverse_proxy:'http://127.0.0.1:12345',custom_include_body:'{"include_reasoning":true}'};
+ const effective=protectedRuntimePreset(raw);assert.equal(effective.chat_completion_source,'openai');assert.equal(effective.custom_url,'');assert.equal(effective.reverse_proxy,'');assert.equal(effective.custom_include_body,'');assert.equal(raw.custom_url,'https://preset-transport.invalid');
+});
 test('prototype pollution and ambiguous/unknown prompt edits fail closed',()=>{
  assert.throws(()=>patchRawPreset(original,JSON.parse('{"__proto__":{"admin":true}}')));assert.throws(()=>patchRawPreset(original,{prompts:[{identifier:'missing',content:'x'}]}));assert.throws(()=>patchRawPreset(original,{prompts:[{identifier:'a'},{identifier:'a'}]}));assert.equal({}.admin,undefined);
 });

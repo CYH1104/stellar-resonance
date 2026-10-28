@@ -68,7 +68,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   const relayPolicy=createRelayPolicy(resolve(accountDir,'relay-policy.json'),{required:authRequired});
   fetchImpl=relayPolicy.guard(fetchImpl);
   const editorGateway=await createEditorGateway({projectRoot:runtimeRoot,privateDir:dataDir,editorPort,accounts,relayPolicy,editorCookie,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
-  const capabilities={continue:true,keyRequired:true,embeddings:true,terminal:terminalEnabled,channel};
+  const capabilities={continue:true,keyRequired:true,embeddings:true,terminal:terminalEnabled,channel,...(nativeRuntime?{native:true}:{})};
 
   const theaterShares=createTheaterShares(resolve(dataDir,'theater-shares'));
   const sessions=new Map(),cookieName=`stellar_${projectId}${cookieSuffix}`,accountCookie=`academy_account_${projectId}${cookieSuffix}`;
@@ -107,7 +107,6 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     try{
       const accountToken=accountTokenOf(request);
       const account=accounts?.user(accountToken);
-      const requestFetch=nativeRuntime?nativeRuntime.fetchForAccount(account):fetchImpl;
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/${age===null?'':`; Max-Age=${age}`}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts,channel,terminal:terminalEnabled,instanceName:instanceLabel,port:currentPort,release:releaseId});return;}
@@ -153,6 +152,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/cloud-backup'&&request.method==='POST'){session(request);const data=await body(request,12*1024*1024);json(response,200,await cloudBackup(data));return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
+        const requestFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{nativePreset:data.nativePreset}):fetchImpl;
         if(path==='/api/native-config'&&nativeRuntime){json(response,200,await nativeRuntime.configure(account,data));return;}
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
         if(path==='/api/terminal-code'){
@@ -241,7 +241,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
         if(path==='/api/generate'){
           if(nativeRuntime)data.singleStateCall=true;
-          const storyFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{generationType:data.generationType||'normal'}):requestFetch;
+          const storyFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{generationType:data.generationType||'normal',nativePreset:data.nativePreset}):requestFetch;
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           // 正文请求不再携带终端上下文：手机通讯走独立的 /api/personal-terminal 任务。
           // 旧页面仍可能带上该字段，直接丢弃而不是报错。

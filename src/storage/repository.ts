@@ -6,6 +6,7 @@ import {snapshotRows,rowsSnapshot,validateRowKeys,rowKey,rowValue,terminalRows,t
 import {validateTerminal} from '../domain/personalTerminal';
 import {isTerminalMemoryNote} from '../domain/terminalLedger';
 import {cleanEditorDrafts} from '../domain/backupArchive';
+import {cleanNativePresetConfig,type NativePresetConfig} from '../domain/nativePreset';
 export class IndexedDbRepository implements Repository {
   private connection?: Promise<IDBDatabase>;
   private loaded=false;
@@ -71,6 +72,14 @@ export class IndexedDbRepository implements Repository {
   async writeInputDraft(sessionId:string,text:string){if(typeof text!=='string'||text.length>16000)throw Error('输入草稿不正确');const key=rowKey('session',sessionId),row=rowValue(this.rows,key);row.value.draftInput=text;await this.commitRows(new Map([[key,JSON.stringify(row)]]));}
   async readEditorDrafts():Promise<Record<string,string>>{const db=await this.open();return new Promise((resolve,reject)=>{const q=db.transaction('workspace').objectStore('workspace').get('editor-drafts');q.onsuccess=()=>{try{resolve(cleanEditorDrafts(q.result||{}));}catch(e){reject(e);}};q.onerror=()=>reject(Error('编辑草稿读取失败'));});}
   async writeEditorDraft(key:string,text:string|null){cleanEditorDrafts({[key]:text??''});await this.commitRows(new Map(),false,{editorChange:{key,text}});}
+  /** Same revision/restore transaction as the workspace; no second server/localStorage authority. */
+  async writeNativePreset(value:NativePresetConfig|null,expected:NativePresetConfig|null|undefined,preferences:Snapshot['preferences']){
+    const next=this.rows.has(rowKey('workspace'))?new Map():snapshotRows({version:1,sessions:[],preferences});
+    const root=rowValue(next.size?next:this.rows,rowKey('workspace'));
+    if(JSON.stringify(root.archive?.nativePreset)!==JSON.stringify(expected))throw Error('原生预设已被其他操作修改，请重新打开编辑。');
+    root.archive={...root.archive,version:1,nativePreset:value===null?null:cleanNativePresetConfig(value)};
+    next.set(rowKey('workspace'),JSON.stringify(root));await this.commitRows(next);
+  }
   async writeConfiguration(preferences:Snapshot['preferences'],credentials:LocalApiCredentials,bindings:{id:string;ids:string[];before?:string[]}[]=[]){const safe=parseBackup(backup({version:1,sessions:[],preferences})).preferences;const rows=this.rows.has(rowKey('workspace'))?new Map([[rowKey('preferences'),JSON.stringify(safe)]]):snapshotRows({version:1,sessions:[],preferences:safe});for(const binding of bindings){const key=rowKey('session',binding.id),row=rowValue(this.rows,key);if(JSON.stringify(row.value.worldbookIds||[])!==JSON.stringify(binding.before||[]))throw Error('世界书绑定已改变，请重新编辑');if(!binding.ids.every(id=>(safe.worldbooks||[]).some(b=>b.id===id)))throw Error('世界书绑定无效');row.value.worldbookIds=binding.ids;rows.set(key,JSON.stringify(row));}await this.commitRows(rows,false,{credentials:cleanLocalApiCredentials(credentials)});}
   async writeTerminalSession(session:import('../domain/contracts').Session){
     if(!session.terminal)return;validateTerminal(session.terminal);

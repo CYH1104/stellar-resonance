@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NativePresetSettings from './NativePresetSettings.vue';
 import SaveStatus from './SaveStatus.vue';
 import {useAutoSave} from '../app/useAutoSave';
 import {withoutEmoji} from '../domain/displayText';
@@ -118,7 +119,8 @@ const autoSave=useAutoSave(()=>drafts.value,async()=>{for(const [id,draft]of Obj
 registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)throw Error(autoSave.error.value);});
 </script>
 <template>
-  <section class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">
+  <NativePresetSettings v-if="w.localService?.capabilities.native" :w="w"/>
+  <section v-else class="surface preset-manager" @dragover.prevent @drop.prevent="dropPreset">
     <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button type="button" @click="saveAll">保存预设</button><button v-if="autoSave.error.value" :disabled="w.busy" @click="autoSave.retry()">重试保存</button></div></header>
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
