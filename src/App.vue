@@ -268,7 +268,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
 
 <template>
-  <section v-if="w.unsafeNativeDrafts" class="surface" role="alert"><p>旧预设草稿含凭据，已暂停写入和模型调用。清理仅移除此草稿，已保存预设、剧情和其他草稿保留。</p><button type="button" :disabled="w.loading" @click="w.clearUnsafeNativeDrafts">清理旧预设草稿</button></section>
+  <section v-if="w.unsafeNativeDrafts" class="surface" role="alert"><p>旧预设草稿含凭据或无法校验，已暂停写入和模型调用。清理仅移除此草稿，已保存预设、剧情和其他草稿保留。</p><button type="button" :disabled="w.loading" @click="w.clearUnsafeNativeDrafts">清理旧预设草稿</button></section>
   <div class="workspace-save-status" :class="{'mobile-save-expired':saveToastExpired}"><button type="button" :disabled="w.loading||w.storageStatus==='saving'" @click="configuration.dirty.value?configuration.save():w.save()">立即保存</button><SaveStatus :status="w.storageStatus" :saved-at="w.lastSaved" :error="w.storageError" /></div><NoticeHost /><CompletionPulse :busy="w.busy" /><DismissibleNotice :message="w.problem" error /><DismissibleNotice :message="['正在保存…','已保存在本机'].includes(w.notice)?'':w.notice" />
 
   <OpeningView v-if="entry==='opening'" :w="w" @start="start" @continue="resume" @settings="settings" />

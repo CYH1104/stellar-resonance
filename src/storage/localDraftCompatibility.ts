@@ -5,7 +5,7 @@ export const nativeDraftKey='preset:native-runtime';
 /** Projection only: original bytes stay untouched until an explicit cleanup transaction. */
 export function localEditorDrafts(raw:unknown){
  const safe=cleanEditorDraftShape(raw);let blocked=false;
- if(safe[nativeDraftKey]!==undefined)try{assertNativePresetDraftSafe(safe[nativeDraftKey]);}catch(e){if((e as {code?:string}).code!=='NATIVE_DRAFT_CREDENTIALS')throw e;delete safe[nativeDraftKey];blocked=true;}
+ if(safe[nativeDraftKey]!==undefined)try{assertNativePresetDraftSafe(safe[nativeDraftKey]);}catch(e){if(!['NATIVE_DRAFT_CREDENTIALS','NATIVE_DRAFT_UNVERIFIED'].includes((e as {code?:string}).code||''))throw e;delete safe[nativeDraftKey];blocked=true;}
  return {safe,blocked};
 }
 export function localSnapshot(raw:any){

@@ -1,0 +1,24 @@
+{
+  "scope": "damaged draft regression and local quarantine",
+  "checks": [
+    "ordinary unfinished raw draft persists without activation",
+    "worldbook editor cannot overwrite an unapplied preset raw draft",
+    "ordinary unfinished text restores exactly in its original editor",
+    "invalid raw save leaves active preset unchanged",
+    "already persisted malformed root does not prevent story loading",
+    "explicit cleanup preserves story and ordinary draft in both legacy locations"
+  ],
+  "errors": [],
+  "paidModel": false,
+  "mockedBusinessApi": false,
+  "draftContainsCanary": false,
+  "saveAlerts": [
+    "Expected ',' or '}' after property value in JSON at position 101 (line 1 column 102)",
+    "主 API「主 API」需要填写：API 地址、模型名称、Key收起",
+    ""
+  ],
+  "actualDownloadContainsCanary": false,
+  "cloudContainsCanary": false,
+  "securityPassed": true,
+  "pageErrors": 0
+}

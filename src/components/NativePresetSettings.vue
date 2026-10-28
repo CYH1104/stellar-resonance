@@ -43,7 +43,7 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
 <template>
  <section class="surface preset-manager native-preset-settings">
   <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="blocked" @change="importFile"/><button type="button" :disabled="blocked||!draft" @click="save">保存预设</button><button type="button" :disabled="blocked||!dirty" @click="cancel">取消修改</button><button type="button" :disabled="!saved" @click="exportFile">导出预设</button></div></header>
-  <p role="status">{{dirty?'有未保存的修改':saved?'预设已保存在本机，完整备份包含此预设。':'正在载入预设…'}}</p>
+  <p role="status">{{dirty?'有未保存的修改':saved?'预设已保存在本机，完整备份包含此预设。':'正在载入预设…'}}</p><p v-if="draft?.worldbooks" class="rail-note">保存会同时提交预设与世界书草稿。</p>
   <p v-if="problem||autoSave.error.value" class="error" role="alert">{{problem||autoSave.error.value}}</p>
   <template v-if="draft">
    <div class="field-grid"><label>当前预设<select aria-label="当前原生预设" :value="draft.id||'default'" :disabled="blocked" @change="update(value=>selectNativePreset(value,($event.target as HTMLSelectElement).value))"><option v-for="item in items" :key="item.id" :value="item.id">{{item.name}}</option></select></label><label>预设名称<input :value="draft.name||'默认预设'" aria-label="原生预设名称" maxlength="100" :disabled="blocked" @change="update(value=>({...value,name:($event.target as HTMLInputElement).value}))"/></label></div>

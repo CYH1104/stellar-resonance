@@ -5,7 +5,7 @@ export interface Commitment {id:string;participants:string[];content:string;dead
 export interface AffinityChange {id:string;name:string;before?:number;after:number;delta?:number;reason:string}
 export interface StateChange {id:string;name:string;field:string;before:string;after:string}
 export interface RoundMemory {version:1;participants:string[];time:string;location:string;userActions:string[];charActions:{name:string;actions:string[]}[];gains:string[];losses:string[];commitments:Commitment[];affinityChanges:AffinityChange[];stateChanges:StateChange[];facts?:ScopedFact[]}
-export interface MemoryRequest {turnId:string;variantId:string;input:string;story:string;event?:string;diceEvent?:DiceEvent;before:WorldState;after:WorldState;priorCommitments:Commitment[]}
+export interface MemoryRequest {sessionId?:string;turnId:string;variantId:string;input:string;story:string;event?:string;diceEvent?:DiceEvent;before:WorldState;after:WorldState;priorCommitments:Commitment[]}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function text(v:unknown,max=500,required=true):string {if(typeof v!=='string')throw Error('记忆字段格式不正确');const s=stripReasoning(v).trim();if(s.length>max||required&&!s||/<\/?(?:Slate|Scene_NO|Scene_Title|EN_Title|Quote|Location|Ti|SR_STATE|SR_DONE)\b/i.test(s))throw Error('记忆字段不完整或含排版标签');return s;}
 function list(v:unknown,max=32,size=500){if(!Array.isArray(v)||v.length>max)throw Error('记忆列表格式不正确');return v.map(s=>text(s,size));}

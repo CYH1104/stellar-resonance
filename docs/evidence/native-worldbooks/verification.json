@@ -1,0 +1,50 @@
+{
+  "baseline": "011544cbd406988657b8ecfd608c3af57a9de0c5",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 144,
+    "passed": 825,
+    "expectedFail": 1,
+    "total": 826
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 17,
+    "failed": 0
+  },
+  "typecheck": true,
+  "build": true,
+  "browser": {
+    "academy": 48,
+    "presetLibrary": 17,
+    "worldbooks": 22,
+    "draftSafetyControls": 6
+  },
+  "damagedDraft": {
+    "persisted": false,
+    "actualDownload": false,
+    "cloudEncoded": false,
+    "legacyCleanup": true
+  },
+  "paidModel": false,
+  "productionDeployed": false,
+  "temporaryPortsStopped": [
+    8861,
+    8862,
+    8863,
+    8864,
+    8865,
+    8866
+  ],
+  "remaining": [
+    "native timed effects and old academy_scope adapter",
+    "advanced editor and complete task protocol migration",
+    "real providers and player helper bridge",
+    "production lifecycle and Linux",
+    "four pre-existing terminal bugs"
+  ]
+}

@@ -1,39 +1,38 @@
 /** Player-owned raw preset only. Private author cards and credentials never belong here. */
-export const nativePresetTasks={story:'正文',memory:'记忆',terminal:'终端',persona:'人设辅助','random-event':'随机事件',forum:'论坛',summary:'总结',suggestions:'建议'} as const;
-export type NativePresetTask=keyof typeof nativePresetTasks;
+import {nativePresetTasks,nativeTaskForRequest,type NativePresetTask} from './nativeTasks.ts';
+import {nativeCredentialFields as credentials,cleanNativeJson as json} from './nativeJson.ts';
+import {cleanNativeWorldbooks,type NativeWorldbooks} from './nativeWorldbooks.ts';
+export {nativePresetTasks,type NativePresetTask} from './nativeTasks.ts';
 export interface NativePresetItem {id:string;name:string;preset:Record<string,any>}
-export interface NativePresetConfig {version:1;preset:Record<string,any>;id?:string;name?:string;presets?:NativePresetItem[];taskPresets?:Partial<Record<NativePresetTask,string>>}
+export interface NativePresetConfig {version:1;preset:Record<string,any>;id?:string;name?:string;presets?:NativePresetItem[];taskPresets?:Partial<Record<NativePresetTask,string>>;worldbooks?:NativeWorldbooks}
 const object=(value:unknown):value is Record<string,any>=>!!value&&typeof value==='object'&&!Array.isArray(value);
-const forbidden=new Set(['__proto__','prototype','constructor']);
-const credentials=new Set(['api_key','apikey','authorization','access_token','accesstoken','github_token','gitee_token','password','proxy_password','secret','secret_key','custom_include_headers']);
-/** Check even incomplete JSON drafts before persistence or backup transfer. */
-export function assertNativePresetDraftSafe(text:string){
- let parsed:any;try{parsed=JSON.parse(text);}catch{}
+function unverifiedDraft():never{throw Object.assign(Error('预设草稿封装损坏或无法校验，请清理该草稿后再保存或备份。'),{code:'NATIVE_DRAFT_UNVERIFIED'});}
+/** Tokens are scanned outside string values, so escaped JSON is never mistaken for decoded fields. */
+function draftProperties(text:string){
+ const fields:{key:string;after:number}[]=[];
+ for(let i=0;i<text.length;i++)if(text[i]==='"'){
+  const start=i;let closed=false;
+  for(i++;i<text.length;i++){if(text[i]==='\\'){i++;continue;}if(text[i]==='"'){closed=true;break;}}
+  if(!closed)break;let after=i+1;while(/\s/.test(text[after]||'')&&after<text.length)after++;
+  if(text[after]!==':')continue;try{fields.push({key:JSON.parse(text.slice(start,i+1)),after:after+1});}catch{}
+ }
+ return fields;
+}
+/** Ordinary unfinished raw JSON is recoverable; undecodable envelopes are never transferable. */
+export function assertNativePresetDraftSafe(text:string,depth=0){
+ if(typeof text!=='string'||depth>16)unverifiedDraft();
+ let parsed:any,decoded=false;try{parsed=JSON.parse(text);decoded=true;}catch{}
+ const fields=draftProperties(text);
+ const envelope=fields.some(({key,after})=>key==='rawText'||key==='schema'&&/^\s*"native-preset-draft/.test(text.slice(after)))||object(parsed)&&typeof parsed.schema==='string'&&parsed.schema.startsWith('native-preset-draft');
+ if(!decoded&&envelope)unverifiedDraft();
+ if(typeof parsed==='string')assertNativePresetDraftSafe(parsed,depth+1);
  if(object(parsed)&&typeof parsed.schema==='string'&&parsed.schema.startsWith('native-preset-draft')){
-  if(parsed.schema!=='native-preset-draft-v1'||Object.keys(parsed).some(k=>!['schema','config','rawText'].includes(k))||typeof parsed.rawText!=='string')invalid();
-  assertNativePresetDraftSafe(JSON.stringify(parsed.config));assertNativePresetDraftSafe(parsed.rawText);
+  if(parsed.schema!=='native-preset-draft-v1'||Object.keys(parsed).some(k=>!['schema','config','rawText'].includes(k))||!object(parsed.config)||typeof parsed.rawText!=='string')unverifiedDraft();
+  assertNativePresetDraftSafe(JSON.stringify(parsed.config),depth+1);assertNativePresetDraftSafe(parsed.rawText,depth+1);
  }
- for(const match of text.matchAll(/("(?:[^"\\]|\\.)*")\s*:/g)){
-  let key:string;try{key=JSON.parse(match[1]);}catch{continue;}
-  if(credentials.has(key.toLowerCase())&&!/^\s*(?:""|null|false)\s*(?:[,}]|$)/.test(text.slice(match.index!+match[0].length)))throw Object.assign(Error('预设草稿含凭据字段，请移除后再保存或备份。'),{code:'NATIVE_DRAFT_CREDENTIALS'});
- }
+ for(const {key,after}of fields)if((credentials.has(key.toLowerCase())||key.toLowerCase()==='key'&&!/^\s*\[/.test(text.slice(after)))&&!/^\s*(?:""|null|false)\s*(?:[,}]|$)/.test(text.slice(after)))throw Object.assign(Error('预设草稿含凭据字段，请移除后再保存或备份。'),{code:'NATIVE_DRAFT_CREDENTIALS'});
 }
 function invalid():never{throw Error('原生预设格式不支持或版本过新，原数据未修改。');}
-function json(value:unknown,depth=0):any{
- if(depth>24)invalid();
- if(value===null||typeof value==='boolean')return value;
- if(typeof value==='number'){if(!Number.isFinite(value))invalid();return value;}
- if(typeof value==='string'){if(value.length>600000)invalid();return value;}
- if(Array.isArray(value)){if(value.length>5000)invalid();return value.map(v=>json(v,depth+1));}
- if(!object(value)||Object.keys(value).length>2000)invalid();
- const result:Record<string,any>={};
- for(const [key,item]of Object.entries(value)){
-  if(forbidden.has(key))invalid();
-  if(credentials.has(key.toLowerCase())&&item!==''&&item!==null&&item!==false)throw Error('预设含接口凭据或自定义请求头，请移除后导入；密钥请保留在 API 设置中。');
-  result[key]=json(item,depth+1);
- }
- return result;
-}
 function cleanPreset(value:unknown):Record<string,any>{
  if(!object(value))invalid();const preset=json(value);
  if(JSON.stringify(preset).length>500000||!Array.isArray(preset.prompts)||preset.prompts.length>1000||!Array.isArray(preset.prompt_order))invalid();
@@ -48,7 +47,7 @@ function cleanPreset(value:unknown):Record<string,any>{
  return preset;
 }
 export function cleanNativePresetConfig(value:unknown):NativePresetConfig{
- if(!object(value)||value.version!==1||Object.keys(value).some(k=>!['version','preset','id','name','presets','taskPresets'].includes(k)))invalid();
+ if(!object(value)||value.version!==1||Object.keys(value).some(k=>!['version','preset','id','name','presets','taskPresets','worldbooks'].includes(k)))invalid();
  const validId=(id:unknown):id is string=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(id);
  const validName=(name:unknown):name is string=>typeof name==='string'&&!!name.trim()&&name.length<=100;
  if(value.id!==undefined&&!validId(value.id)||value.name!==undefined&&!validName(value.name))invalid();
@@ -56,6 +55,7 @@ export function cleanNativePresetConfig(value:unknown):NativePresetConfig{
  const ids=new Set([value.id||'default']);
  if(value.presets!==undefined){if(!Array.isArray(value.presets)||value.presets.length>19)invalid();result.presets=value.presets.map((item:unknown)=>{if(!object(item)||Object.keys(item).some(k=>!['id','name','preset'].includes(k))||!validId(item.id)||!validName(item.name)||ids.has(item.id))invalid();ids.add(item.id);return {id:item.id,name:item.name,preset:cleanPreset(item.preset)};});}
  if(value.taskPresets!==undefined){if(!object(value.taskPresets))invalid();result.taskPresets={};for(const [task,id]of Object.entries(value.taskPresets)){if(!Object.hasOwn(nativePresetTasks,task)||typeof id!=='string'||!ids.has(id))invalid();result.taskPresets[task as NativePresetTask]=id;}}
+ if(value.worldbooks!==undefined)result.worldbooks=cleanNativeWorldbooks(value.worldbooks);
  if(JSON.stringify(result).length>500000)invalid();return result;
 }
 export function nativePresetList(value:NativePresetConfig):NativePresetItem[]{const safe=cleanNativePresetConfig(value);return [{id:safe.id||'default',name:safe.name||'默认预设',preset:safe.preset},...safe.presets||[]];}
@@ -74,15 +74,15 @@ export function removeNativePreset(value:NativePresetConfig,id:string):NativePre
 }
 /** Send only a snapshot of the chosen raw preset, never the entire library. */
 export function nativePresetForRequest(value:NativePresetConfig,path:string,body:any):NativePresetConfig{
- const safe=cleanNativePresetConfig(value),task=({'generate':'story','personal-terminal':'terminal','memory':'memory','persona':'persona','random-event':'random-event','forum-reply':'forum','utility':body?.task} as Record<string,string>)[path] as NativePresetTask|undefined;
+ const safe=cleanNativePresetConfig(value),task=nativeTaskForRequest(path,body);
  const id=task?safe.taskPresets?.[task]:undefined,preset=id?nativePresetList(safe).find(item=>item.id===id)!.preset:safe.preset;
  return {version:1,preset};
 }
 export function encodeNativePresetDraft(config:NativePresetConfig,rawText:string){const text=JSON.stringify({schema:'native-preset-draft-v1',config:cleanNativePresetConfig(config),rawText});assertNativePresetDraftSafe(text);return text;}
 export function decodeNativePresetDraft(text:string,base:NativePresetConfig){
- assertNativePresetDraftSafe(text);const raw=JSON.parse(text);
+ assertNativePresetDraftSafe(text);let raw:any;try{raw=JSON.parse(text);}catch{return {config:cleanNativePresetConfig(base),rawText:text};}
  if(object(raw)&&raw.schema==='native-preset-draft-v1')return {config:cleanNativePresetConfig(raw.config),rawText:raw.rawText as string};
- return {config:cleanNativePresetConfig({...base,preset:raw}),rawText:JSON.stringify(raw,null,2)};
+ try{return {config:cleanNativePresetConfig({...base,preset:raw}),rawText:JSON.stringify(raw,null,2)};}catch{return {config:cleanNativePresetConfig(base),rawText:text};}
 }
 /** Update the existing native identifiers; all untouched upstream/extension fields survive. */
 export function editNativePreset(source:NativePresetConfig,changes:{temperature?:number;openai_max_tokens?:number;prompts?:{identifier:string;content?:string;enabled?:boolean}[]}):NativePresetConfig{

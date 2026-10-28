@@ -55,7 +55,7 @@ export class IndexedDbRepository implements Repository {
   private async commitRows(next:SnapshotRows,replace=false,options:{recoveryFor?:string;completeRestore?:boolean;credentials?:LocalApiCredentials;editorChange?:{key:string;text:string|null};editorDrafts?:Record<string,string>;newGameDraft?:string}={}){
     const db=await this.open(),oldRows=this.rows;
     const cleaning=options.editorChange?.key===nativeDraftKey;
-    if(this.unsafeNativeDrafts&&!cleaning)throw Error('旧预设草稿含凭据，请先点击“清理旧预设草稿”；原存档仍保留。');
+    if(this.unsafeNativeDrafts&&!cleaning)throw Error('旧预设草稿含凭据或无法校验，请先点击“清理旧预设草稿”；原存档仍保留。');
     if(cleaning&&oldRows.has(rowKey('workspace'))){const root=rowValue(oldRows,rowKey('workspace'));if(root.archive?.editorDrafts&&localEditorDrafts(root.archive.editorDrafts).blocked){const drafts=cleanEditorDraftShape(root.archive.editorDrafts);if(options.editorChange!.text===null)delete drafts[nativeDraftKey];else drafts[nativeDraftKey]=options.editorChange!.text;root.archive.editorDrafts=cleanEditorDrafts(drafts);next=new Map(next);next.set(rowKey('workspace'),JSON.stringify(root));}}
     await new Promise<void>((resolve,reject)=>{
       const tx=db.transaction(['workspace','records'],'readwrite'),workspace=tx.objectStore('workspace'),records=tx.objectStore('records'),state=workspace.get('record-state'),lock=workspace.get('restore-lock'),pending=workspace.get('restore-pending'),editors=options.editorChange||options.editorDrafts||options.newGameDraft?workspace.get('editor-drafts'):undefined;let done=0,reason='',revision=0;
@@ -80,6 +80,8 @@ export class IndexedDbRepository implements Repository {
   async writeEditorDraft(key:string,text:string|null){cleanEditorDrafts({[key]:text??''});await this.commitRows(new Map(),false,{editorChange:{key,text}});}
   /** Same revision/restore transaction as the workspace; no second server/localStorage authority. */
   async writeNativePreset(value:NativePresetConfig|null,expected:NativePresetConfig|null|undefined,preferences:Snapshot['preferences']){
+    // Validate the same transfer representation before activating raw extension fields.
+    if(value!==null)parseBackup(backup({version:1,sessions:[],preferences,archive:{version:1,nativePreset:value}}));
     const next=this.rows.has(rowKey('workspace'))?new Map():snapshotRows({version:1,sessions:[],preferences});
     const root=rowValue(next.size?next:this.rows,rowKey('workspace'));
     if(JSON.stringify(root.archive?.nativePreset)!==JSON.stringify(expected))throw Error('原生预设已被其他操作修改，请重新打开编辑。');

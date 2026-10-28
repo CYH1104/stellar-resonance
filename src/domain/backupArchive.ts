@@ -54,6 +54,7 @@ export function cleanBackupArchive(v:unknown):BackupArchive{
 /** Session IDs change on append-import; archive identities must follow the same mapping. */
 export function remapBackupArchive(source:BackupArchive,sessionIds:Map<string,string>):BackupArchive{
  const next=cleanBackupArchive(source);
+ if(next.nativePreset?.worldbooks){const books=next.nativePreset.worldbooks;books.sessionBooks=Object.fromEntries([...sessionIds].map(([old,id])=>[id,books.sessionBooks?.[old]??books.taskBooks?.story??books.defaultIds]));}
  if(next.editorDrafts)next.editorDrafts=Object.fromEntries(Object.entries(next.editorDrafts).flatMap(([key,text])=>{if(!key.startsWith('session-persona:'))return [[key,text]];const mapped=sessionIds.get(key.slice('session-persona:'.length));return mapped?[['session-persona:'+mapped,text]]:[];}));
  const remap=(p:BackupPersona)=>{if(p.sourceSessionIds)p.sourceSessionIds=p.sourceSessionIds.flatMap(id=>sessionIds.has(id)?[sessionIds.get(id)!]:[]);};
  next.personas?.forEach(remap);if(next.draft)remap(next.draft);
@@ -66,6 +67,7 @@ export function cleanEditorDraftShape(raw:unknown):Record<string,string>{if(!obj
 export function cleanEditorDrafts(raw:unknown):Record<string,string>{const out=cleanEditorDraftShape(raw);if(out['preset:native-runtime']!==undefined)assertNativePresetDraftSafe(out['preset:native-runtime']);return out;}
 export function cloudBackupArchive(source:BackupArchive):BackupArchive{
  const next=cleanBackupArchive(source);
+ if(next.nativePreset?.worldbooks&&/(?:data:image\/|blob:https?:)/i.test(JSON.stringify(next.nativePreset.worldbooks)))throw Error('原生世界书包含本机图片内容，请改为图片 URL 后上传；完整原文可先下载到本机。');
  for(const p of [...next.personas||[],...next.draft?[next.draft]:[]]){delete p.portrait;delete p.avatar;}
  if(next.nicknameImages)next.nicknameImages=Object.fromEntries(Object.entries(next.nicknameImages).filter(([,url])=>/^https?:\/\//i.test(url)));
  if(next.characterImages)next.characterImages=Object.fromEntries(Object.entries(next.characterImages).filter(([,v])=>/^https?:\/\//i.test(v.url)));

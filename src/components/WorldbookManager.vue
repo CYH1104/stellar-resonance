@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import {configurationEditors} from '../app/configurationEditors';
+import NativeWorldbookSettings from './NativeWorldbookSettings.vue';
 import {withoutEmoji} from '../domain/displayText';
 import FileImportButton from './FileImportButton.vue';
 import LoreScopeEditor from './LoreScopeEditor.vue';
@@ -9,6 +10,7 @@ import type {ViewModel} from '../app/useWorkspace';
 import {newWorldEntry,worldbookWarnings,worldEntryWarnings,worldEntryGroup,setWorldEntryGroup,resolveWorldbooks,WORLD_FILE_LIMIT,type Worldbook,type WorldEntry,type LoreGroup,loreDiagnosticLabel} from '../domain/worldbooks';
 import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel}>();
+const showLegacy=ref(false);
 const importSearch=ref('');
 const reviewRows=computed(()=>(props.w.worldbookImportPending?.rows||[]).filter(row=>!importSearch.value.trim()||JSON.stringify(row.entry).toLowerCase().includes(importSearch.value.trim().toLowerCase())));
 const query=ref(''),entryDraft=ref<WorldEntry>(),entryBookId=ref(''),bookDraft=ref<Worldbook>(),deletingBook=ref<Worldbook>(),deletingEntry=ref<WorldEntry>(),testInput=ref(''),preview=ref<string[]>();
@@ -36,7 +38,10 @@ async function closeEntry(){entryDraft.value=undefined;}
 const unregister=configurationEditors()?.('worldbook-editor',{dirty:()=>!!entryDraft.value||!!bookDraft.value,save:async()=>{saveEntry();saveBook();if(props.w.problem)throw Error(props.w.problem);},discard:async()=>{entryDraft.value=undefined;bookDraft.value=undefined;}});if(unregister)onScopeDispose(unregister);
 </script>
 <template>
-  <section class="surface worldbook-page" @pointermove="moveEntry" @pointerup="finishEntry()" @pointercancel="finishEntry(true)" @click.capture="guardClick">
+  <NativeWorldbookSettings v-if="w.localService?.capabilities.native&&!showLegacy" :w="w" @legacy="showLegacy=true"/>
+  <section v-else class="surface worldbook-page" @pointermove="moveEntry" @pointerup="finishEntry()" @pointercancel="finishEntry(true)" @click.capture="guardClick">
+    <button v-if="w.localService?.capabilities.native" @click="showLegacy=false">返回原生世界书</button>
+    <p v-if="w.localService?.capabilities.native&&w.nativePreset?.worldbooks" class="worldbook-warning">原生调用使用原生页面的绑定。这里的编辑和触发测试只作用于旧版资料；可导出后在原生页面导入，带旧版角色作用范围的条目暂不参与原生调用。</p>
     <header class="page-heading"><h1>世界书</h1><span class="tag">服务器内置设定已保留</span></header>
     <details v-if="w.worldbookRuntimeWarnings.length" class="worldbook-warning"><summary>最近一次剧情的世界书提示</summary><ul><li v-for="line in w.worldbookRuntimeWarnings" :key="line">{{line}}</li></ul></details>
     <details v-if="w.worldbookRuntimeDiagnostics?.length" class="worldbook-warning"><summary>最近一次请求的用户世界书触发结果</summary><p>这里记录生成请求组装时的结果；不会额外调用模型。测试触发使用当前测试输入，抽选种子不同可能产生不同结果。</p><ul><li v-for="d in w.worldbookRuntimeDiagnostics" :key="d.id">{{d.book}}／{{d.title}}：{{loreDiagnosticLabel(d.status)}}<span v-if="d.detail"> · {{d.detail}}</span></li></ul></details>
