@@ -1,0 +1,41 @@
+{
+  "checks": [
+    "synthetic account login",
+    "unsaved library and bindings do not activate",
+    "entire unsaved library restores after refresh",
+    "explicit save persists both presets and bindings",
+    "bound preset deletion is rejected",
+    "cancel restores active preset and both task bindings",
+    "raw import adds a preset without replacing the two existing entries",
+    "invalid editor credentials never persist",
+    "actual story and memory complete on disk",
+    "native upstream uses independent story and memory presets",
+    "actual download includes every preset and task binding",
+    "download excludes API credentials",
+    "legacy unsafe root does not prevent loading story/persona",
+    "explicit cleanup preserves all saved presets and story",
+    "unsafe root draft removed and ordinary draft preserved",
+    "mobile preset library fits viewport",
+    "no uncaught browser errors"
+  ],
+  "errors": [],
+  "paidModel": false,
+  "scope": "real UI + pinned native compiler + synthetic upstream",
+  "sampling": [
+    {
+      "kind": "story",
+      "who": "甲",
+      "temperature": 0.2,
+      "max_tokens": 2048,
+      "reasoning": false
+    },
+    {
+      "kind": "memory",
+      "who": "甲",
+      "temperature": 0.8,
+      "max_tokens": 3072,
+      "reasoning": false
+    }
+  ],
+  "passed": true
+}

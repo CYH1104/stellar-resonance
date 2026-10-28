@@ -61,7 +61,9 @@ export function remapBackupArchive(source:BackupArchive,sessionIds:Map<string,st
  const master=next.masterPersona;if(master?.personaId?.startsWith('session/')){const id=sessionIds.get(master.personaId.slice(8));if(id)master.personaId='session/'+id;else delete master.personaId;}
  return next;
 }
-export function cleanEditorDrafts(raw:unknown):Record<string,string>{if(!object(raw)||Object.keys(raw).length>1000)fail();let size=0;const out:Record<string,string>={};for(const [key,text]of Object.entries(raw)){if(!/^(?:new-game|(?:session-persona|preset):[^\r\n]{1,200})$/.test(key)||typeof text!=='string'||text.length>600000)fail();if(key==='preset:native-runtime')assertNativePresetDraftSafe(text);size+=text.length;if(size>3000000)fail();out[key]=text;}return out;}
+/** Local legacy inspection may read shape-valid bytes; transfer validation remains stricter. */
+export function cleanEditorDraftShape(raw:unknown):Record<string,string>{if(!object(raw)||Object.keys(raw).length>1000)fail();let size=0;const out:Record<string,string>={};for(const [key,text]of Object.entries(raw)){if(!/^(?:new-game|(?:session-persona|preset):[^\r\n]{1,200})$/.test(key)||typeof text!=='string'||text.length>600000)fail();size+=text.length;if(size>3000000)fail();out[key]=text;}return out;}
+export function cleanEditorDrafts(raw:unknown):Record<string,string>{const out=cleanEditorDraftShape(raw);if(out['preset:native-runtime']!==undefined)assertNativePresetDraftSafe(out['preset:native-runtime']);return out;}
 export function cloudBackupArchive(source:BackupArchive):BackupArchive{
  const next=cleanBackupArchive(source);
  for(const p of [...next.personas||[],...next.draft?[next.draft]:[]]){delete p.portrait;delete p.avatar;}

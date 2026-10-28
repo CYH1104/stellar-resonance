@@ -5,14 +5,17 @@ import {accountDatabase} from './accountScope';
 import {snapshotRows,rowsSnapshot,validateRowKeys,rowKey,rowValue,terminalRows,type SnapshotRows,recordFormat} from './recordSnapshot';
 import {validateTerminal} from '../domain/personalTerminal';
 import {isTerminalMemoryNote} from '../domain/terminalLedger';
-import {cleanEditorDrafts} from '../domain/backupArchive';
+import {cleanEditorDrafts,cleanEditorDraftShape} from '../domain/backupArchive';
 import {cleanNativePresetConfig,type NativePresetConfig} from '../domain/nativePreset';
+import {localEditorDrafts,localSnapshot,nativeDraftKey} from './localDraftCompatibility';
 export class IndexedDbRepository implements Repository {
   private connection?: Promise<IDBDatabase>;
   private loaded=false;
   private restoreOwner?:string;
   private revision?:number;
   private rows:SnapshotRows=new Map();
+  private unsafeNativeDrafts=false;
+  hasUnsafeNativeDrafts(){return this.unsafeNativeDrafts;}
   constructor(private name = accountDatabase('stellar-resonance-v1')) {}
   private open(): Promise<IDBDatabase> {
     if(this.connection)return this.connection;
@@ -23,10 +26,10 @@ export class IndexedDbRepository implements Repository {
         const tx=request.transaction!;if(failed){tx.abort();return;}
         const db=request.result;if(!db.objectStoreNames.contains('workspace'))db.createObjectStore('workspace');
         if(!db.objectStoreNames.contains('records'))db.createObjectStore('records');
-        const workspace=tx.objectStore('workspace'),records=tx.objectStore('records'),old=workspace.get('snapshot');
-        old.onsuccess=()=>{try{
-          const value=old.result?parseBackup(old.result):undefined;
-          if(value){const rows=snapshotRows(value);validateRowKeys(rows);for(const [key,text]of rows)records.put(text,key);workspace.put(old.result,'legacy-snapshot-before-records');const editors={...(value.archive?.editorDrafts||{}),...(value.archive?.newGameDraft?{'new-game':JSON.stringify(value.archive.newGameDraft)}:{})};if(Object.keys(editors).length)workspace.put(cleanEditorDrafts(editors),'editor-drafts');}
+        const workspace=tx.objectStore('workspace'),records=tx.objectStore('records'),old=workspace.get('snapshot'),priorEditors=workspace.get('editor-drafts');let reads=0;
+        old.onsuccess=priorEditors.onsuccess=()=>{if(++reads!==2)return;try{
+          const original=old.result?JSON.parse(old.result):undefined,value=original?localSnapshot(original).value:undefined;
+          if(value){const preserved=original.archive?.editorDrafts!==undefined?{...value,archive:{...value.archive,version:1 as const,editorDrafts:cleanEditorDraftShape(original.archive.editorDrafts)}}:value;const rows=snapshotRows(preserved);validateRowKeys(rows);for(const [key,text]of rows)records.put(text,key);workspace.put(old.result,'legacy-snapshot-before-records');const editors={...(preserved.archive?.editorDrafts||{}),...(value.archive?.newGameDraft?{'new-game':JSON.stringify(value.archive.newGameDraft)}:{}),...cleanEditorDraftShape(priorEditors.result||{})};if(Object.keys(editors).length)workspace.put(cleanEditorDraftShape(editors),'editor-drafts');}
           workspace.put({format:recordFormat,revision:0,initialized:!!value},'record-state');
         }catch{tx.abort();}};
       };
@@ -41,8 +44,8 @@ export class IndexedDbRepository implements Repository {
   async read(): Promise<Snapshot | undefined> {
     const db = await this.open();
     return new Promise((resolve,reject) => {
-      const tx = db.transaction(['workspace','records'],'readonly'),state=tx.objectStore('workspace').get('record-state'),keys=tx.objectStore('records').getAllKeys(),values=tx.objectStore('records').getAll();
-      tx.oncomplete=()=>{try{if(state.result?.format!==recordFormat||!Number.isSafeInteger(state.result.revision))throw Error('存档记录版本不兼容');const rows=new Map(keys.result.map((key,i)=>[String(key),values.result[i] as string]));validateRowKeys(rows);const raw=rowsSnapshot(rows),value=raw?parseBackup(backup(raw)):undefined;this.rows=rows;this.revision=state.result.revision;this.loaded=true;resolve(value);}catch(e){reject(e);}};
+      const tx = db.transaction(['workspace','records'],'readonly'),state=tx.objectStore('workspace').get('record-state'),editors=tx.objectStore('workspace').get('editor-drafts'),keys=tx.objectStore('records').getAllKeys(),values=tx.objectStore('records').getAll();
+      tx.oncomplete=()=>{try{if(state.result?.format!==recordFormat||!Number.isSafeInteger(state.result.revision))throw Error('存档记录版本不兼容');const rows=new Map(keys.result.map((key,i)=>[String(key),values.result[i] as string]));validateRowKeys(rows);const raw=rowsSnapshot(rows),result=raw?localSnapshot(raw):undefined;this.unsafeNativeDrafts=!!result?.blocked||localEditorDrafts(editors.result||{}).blocked;this.rows=rows;this.revision=state.result.revision;this.loaded=true;resolve(result?.value);}catch(e){reject(e);}};
       tx.onerror=tx.onabort=()=>reject(new Error('本地存档读取失败'));
     });
   }
@@ -51,6 +54,9 @@ export class IndexedDbRepository implements Repository {
   }
   private async commitRows(next:SnapshotRows,replace=false,options:{recoveryFor?:string;completeRestore?:boolean;credentials?:LocalApiCredentials;editorChange?:{key:string;text:string|null};editorDrafts?:Record<string,string>;newGameDraft?:string}={}){
     const db=await this.open(),oldRows=this.rows;
+    const cleaning=options.editorChange?.key===nativeDraftKey;
+    if(this.unsafeNativeDrafts&&!cleaning)throw Error('旧预设草稿含凭据，请先点击“清理旧预设草稿”；原存档仍保留。');
+    if(cleaning&&oldRows.has(rowKey('workspace'))){const root=rowValue(oldRows,rowKey('workspace'));if(root.archive?.editorDrafts&&localEditorDrafts(root.archive.editorDrafts).blocked){const drafts=cleanEditorDraftShape(root.archive.editorDrafts);if(options.editorChange!.text===null)delete drafts[nativeDraftKey];else drafts[nativeDraftKey]=options.editorChange!.text;root.archive.editorDrafts=cleanEditorDrafts(drafts);next=new Map(next);next.set(rowKey('workspace'),JSON.stringify(root));}}
     await new Promise<void>((resolve,reject)=>{
       const tx=db.transaction(['workspace','records'],'readwrite'),workspace=tx.objectStore('workspace'),records=tx.objectStore('records'),state=workspace.get('record-state'),lock=workspace.get('restore-lock'),pending=workspace.get('restore-pending'),editors=options.editorChange||options.editorDrafts||options.newGameDraft?workspace.get('editor-drafts'):undefined;let done=0,reason='',revision=0;
       const commit=()=>{if(++done!==(editors?4:3))return;try{const meta=state.result,owner=this.restoreOwner;
@@ -62,15 +68,15 @@ export class IndexedDbRepository implements Repository {
         if(replace)for(const key of oldRows.keys())if(!next.has(key))records.delete(key);
         revision=meta.revision+1;workspace.put({format:recordFormat,revision,initialized:next.has(rowKey('workspace'))||oldRows.has(rowKey('workspace'))||!!options.credentials||!!options.editorChange},'record-state');
         if(options.credentials)workspace.put(options.credentials,'api-credentials');
-        if(editors){const old=cleanEditorDrafts(editors.result||{}),drafts:Record<string,string>=options.editorDrafts?{...options.editorDrafts,...(old['new-game']?{'new-game':old['new-game']}:{})}:{...old};if(options.newGameDraft!==undefined)drafts['new-game']=options.newGameDraft;if(options.editorChange){if(options.editorChange.text===null)delete drafts[options.editorChange.key];else drafts[options.editorChange.key]=options.editorChange.text;}workspace.put(cleanEditorDrafts(drafts),'editor-drafts');}
+        if(editors){const old=cleanEditorDraftShape(editors.result||{}),drafts:Record<string,string>=options.editorDrafts?{...options.editorDrafts,...(old['new-game']?{'new-game':old['new-game']}:{})}:{...old};if(options.newGameDraft!==undefined)drafts['new-game']=options.newGameDraft;if(options.editorChange){if(options.editorChange.text===null)delete drafts[options.editorChange.key];else drafts[options.editorChange.key]=options.editorChange.text;}workspace.put(cleanEditorDrafts(drafts),'editor-drafts');}
         if(options.completeRestore)workspace.delete('restore-pending');
         }catch(e){reason=e instanceof Error?e.message:'本地写入失败';tx.abort();}
       };state.onsuccess=lock.onsuccess=pending.onsuccess=commit;if(editors)editors.onsuccess=commit;
-      tx.oncomplete=()=>{this.rows=replace?new Map(next):next.size?new Map([...oldRows,...next]):oldRows;this.revision=revision;this.loaded=true;resolve();};tx.onerror=tx.onabort=()=>reject(Error(reason||'本地保存失败，请导出备份并检查存储空间'));
+      tx.oncomplete=()=>{this.rows=replace?new Map(next):next.size?new Map([...oldRows,...next]):oldRows;this.revision=revision;this.loaded=true;if(cleaning)this.unsafeNativeDrafts=false;resolve();};tx.onerror=tx.onabort=()=>reject(Error(reason||'本地保存失败，请导出备份并检查存储空间'));
     });
   }
   async writeInputDraft(sessionId:string,text:string){if(typeof text!=='string'||text.length>16000)throw Error('输入草稿不正确');const key=rowKey('session',sessionId),row=rowValue(this.rows,key);row.value.draftInput=text;await this.commitRows(new Map([[key,JSON.stringify(row)]]));}
-  async readEditorDrafts():Promise<Record<string,string>>{const db=await this.open();return new Promise((resolve,reject)=>{const q=db.transaction('workspace').objectStore('workspace').get('editor-drafts');q.onsuccess=()=>{try{resolve(cleanEditorDrafts(q.result||{}));}catch(e){reject(e);}};q.onerror=()=>reject(Error('编辑草稿读取失败'));});}
+  async readEditorDrafts():Promise<Record<string,string>>{const db=await this.open();return new Promise((resolve,reject)=>{const q=db.transaction('workspace').objectStore('workspace').get('editor-drafts');q.onsuccess=()=>{try{const result=localEditorDrafts(q.result||{});this.unsafeNativeDrafts||=result.blocked;resolve(result.safe);}catch(e){reject(e);}};q.onerror=()=>reject(Error('编辑草稿读取失败'));});}
   async writeEditorDraft(key:string,text:string|null){cleanEditorDrafts({[key]:text??''});await this.commitRows(new Map(),false,{editorChange:{key,text}});}
   /** Same revision/restore transaction as the workspace; no second server/localStorage authority. */
   async writeNativePreset(value:NativePresetConfig|null,expected:NativePresetConfig|null|undefined,preferences:Snapshot['preferences']){

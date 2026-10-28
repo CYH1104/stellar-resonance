@@ -1,13 +1,14 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {IDBFactory} from 'fake-indexeddb';
 import {effectScope} from 'vue';
-import {cleanNativePresetConfig,editNativePreset,type NativePresetConfig} from '../src/domain/nativePreset';
+import {cleanNativePresetConfig,editNativePreset,addNativePreset,type NativePresetConfig} from '../src/domain/nativePreset';
 import {cleanBackupArchive} from '../src/domain/backupArchive';
 import {backup,parseBackup,defaults,newSession} from '../src/domain/story';
 import {createCloudSave,parseCloudSave} from '../src/domain/cloudBackup';
 import {useWorkspace} from '../src/app/useWorkspace';
 import {HttpGateway} from '../src/gateway/http';
 import {IndexedDbRepository} from '../src/storage/repository';
+import {accountDatabase} from '../src/storage/accountScope';
 const raw=(temperature:number):NativePresetConfig=>({version:1,preset:{temperature,openai_max_tokens:2048,show_thoughts:true,prompts:[{identifier:'a',role:'system',content:'原始\n内容',enabled:true,injection_depth:2,injection_trigger:['normal'],future:{untouched:true}}],prompt_order:[{character_id:100001,order:[{identifier:'a',enabled:true}]}],extensions:{future:{keep:['one',2]}},proxy_password:''}});
 let scope:ReturnType<typeof effectScope>|undefined;
 beforeEach(()=>{vi.stubGlobal('indexedDB',new IDBFactory());const data=new Map();vi.stubGlobal('localStorage',{getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v),removeItem:(k:string)=>data.delete(k)});vi.stubGlobal('window',new EventTarget());vi.stubGlobal('__ACADEMY_ACCOUNT__',{id:'native-backup-'+crypto.randomUUID()});vi.spyOn(HttpGateway.prototype,'bootstrap').mockResolvedValue(undefined);});
@@ -64,4 +65,13 @@ it('blocks credential-bearing complete and incomplete native drafts on every arc
   expect(()=>createCloudSave({version:1,sessions:[],preferences:defaults(),archive},defaults())).toThrow('凭据');
  }
  expect(cleanBackupArchive({version:1,editorDrafts:{'preset:native-runtime':'{"proxy_password":"","prompts":['}}).editorDrafts).toBeDefined();
+});
+it('restores a complete preset library and its task bindings atomically, including the pre-overwrite copy',async()=>{
+ const w=await workspace(),a=cleanNativePresetConfig({...addNativePreset(raw(.2),raw(.8).preset,'手机','phone'),taskPresets:{story:'default',terminal:'phone'}});await w.saveNativePreset(a);const cloud=await w.createCloudWorkspaceBackup();
+ const b=addNativePreset(a,raw(.6).preset,'新副本','extra');await w.saveNativePreset(b);await w.restoreCloudSave(cloud);expect(w.nativePreset.value).toEqual(a);expect((await new IndexedDbRepository().readCloudRecovery('workspace'))!.archive!.nativePreset).toEqual(b);await w.undoCloudRestore();expect(w.nativePreset.value).toEqual(b);expect((await new IndexedDbRepository().read())!.archive!.nativePreset).toEqual(b);
+});
+it('boots an unsafe legacy root, preserves a newer safe editor draft and resumes initial native migration after explicit cleanup',async()=>{
+ const repo=new IndexedDbRepository(),value={version:1 as const,sessions:[newSession('旧人设保留',{name:'旧人设',appearance:'',background:'',personality:''},'')],preferences:defaults(),archive:{version:1 as const,editorDrafts:{'preset:ordinary':'普通草稿'}}};await repo.read();await repo.write(value);const safeDraft=JSON.stringify(raw(.4).preset);await repo.writeEditorDraft('preset:native-runtime',safeDraft);
+ const db=await new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open(accountDatabase('stellar-resonance-v1'),2);q.onsuccess=()=>resolve(q.result);q.onerror=reject;});await new Promise<void>((resolve,reject)=>{const t=db.transaction('records','readwrite'),store=t.objectStore('records'),q=store.get('["workspace"]');q.onsuccess=()=>{const root=JSON.parse(q.result);root.archive.editorDrafts['preset:native-runtime']='{"api_key":"SYNTHETIC_OLD_KEY"}';store.put(JSON.stringify(root),'["workspace"]');};t.oncomplete=()=>resolve();t.onerror=reject;});db.close();
+ scope=effectScope();const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));expect(w.unsafeNativeDrafts.value).toBe(true);expect(w.sessions.value[0].persona.name).toBe('旧人设');await expect(w.createCloudWorkspaceBackup()).rejects.toThrow('清理旧预设草稿');w.nativeDefaultPreset.value=raw(.3);await w.clearUnsafeNativeDrafts();expect(w.unsafeNativeDrafts.value).toBe(false);expect(w.nativePreset.value).toEqual(raw(.3));expect(await w.readEditorDraft('preset:native-runtime')).toBe(safeDraft);expect(await w.readEditorDraft('preset:ordinary')).toBe('普通草稿');expect((await w.createCloudWorkspaceBackup())).not.toContain('SYNTHETIC_OLD_KEY');
 });

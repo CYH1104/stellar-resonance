@@ -1,0 +1,24 @@
+import {it,expect,vi,afterEach} from 'vitest';
+import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
+import {IndexedDbRepository} from '../src/storage/repository';
+import {defaults,newSession,backup} from '../src/domain/story';
+const key='preset:native-runtime',unsafe='{"api_key":"SYNTHETIC_LEGACY_KEY"}',ordinary={'preset:ordinary':'普通草稿必须保留','session-persona:old':'旧人设草稿'};
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
+async function open(name:string,version?:number){return new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open(name,version);q.onupgradeneeded=()=>{if(!q.result.objectStoreNames.contains('workspace'))q.result.createObjectStore('workspace');};q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});}
+async function stored(name:string){const db=await open(name);return new Promise<any>((resolve,reject)=>{const t=db.transaction(['workspace','records']),editors=t.objectStore('workspace').get('editor-drafts'),root=t.objectStore('records').get('["workspace"]');t.oncomplete=()=>{db.close();resolve({editors:editors.result,root:root.result});};t.onerror=reject;});}
+async function seed(version:number,where:'root'|'editor'|'both'){
+ vi.stubGlobal('indexedDB',new IDBFactory());const name='legacy-'+crypto.randomUUID(),session=newSession('升级前原存档',{name:'合成用户',appearance:'',background:'',personality:''},'');
+ const value={version:1 as const,sessions:[session],preferences:defaults(),archive:{version:1 as const,editorDrafts:{...ordinary,...(where!=='editor'?{[key]:unsafe}:{})}}};
+ if(version===1){const db=await open(name,1);await new Promise<void>((resolve,reject)=>{const t=db.transaction('workspace','readwrite');t.objectStore('workspace').put(JSON.stringify(value),'snapshot');if(where!=='root')t.objectStore('workspace').put({...ordinary,[key]:unsafe},'editor-drafts');t.oncomplete=()=>resolve();t.onerror=reject;});db.close();}
+ else {const repo=new IndexedDbRepository(name);await repo.read();await repo.write({...value,archive:{version:1,editorDrafts:ordinary}});const db=await open(name);await new Promise<void>((resolve,reject)=>{const t=db.transaction(['workspace','records'],'readwrite');if(where!=='root')t.objectStore('workspace').put({...ordinary,[key]:unsafe},'editor-drafts');if(where!=='editor'){const root=t.objectStore('records').get('["workspace"]');root.onsuccess=()=>{const raw=JSON.parse(root.result);raw.archive.editorDrafts[key]=unsafe;t.objectStore('records').put(JSON.stringify(raw),'["workspace"]');};}t.oncomplete=()=>resolve();t.onerror=reject;});db.close();}
+ return {name,value};
+}
+for(const version of [1,2])for(const where of ['root','editor','both'] as const)it(`loads legacy v${version} ${where}, retains original bytes until explicit cleanup and preserves all other data`,async()=>{
+ const {name}=await seed(version,where),repo=new IndexedDbRepository(name),loaded=await repo.read();expect(loaded!.sessions[0].name).toBe('升级前原存档');expect(repo.hasUnsafeNativeDrafts()).toBe(true);expect((await repo.readEditorDrafts())[key]).toBeUndefined();expect((await stored(name)).root+(JSON.stringify((await stored(name)).editors)||'')).toContain('SYNTHETIC_LEGACY_KEY');
+ await expect(repo.write(loaded!)).rejects.toThrow('清理旧预设草稿');await repo.writeEditorDraft(key,null);expect(repo.hasUnsafeNativeDrafts()).toBe(false);expect(await repo.readEditorDrafts()).toMatchObject(ordinary);const next=(await new IndexedDbRepository(name).read())!;expect(next.sessions).toEqual(loaded!.sessions);expect(backup(next)).not.toContain('SYNTHETIC_LEGACY_KEY');expect((await stored(name)).root+(JSON.stringify((await stored(name)).editors)||'')).not.toContain('SYNTHETIC_LEGACY_KEY');await repo.write(next);
+});
+it('cleanup is atomic on disk failure and respects the same stale-page and restore lease protections',async()=>{
+ const {name}=await seed(2,'both'),repo=new IndexedDbRepository(name),other=new IndexedDbRepository(name);await repo.read();await other.read();const release=await other.lockRestore();try{await expect(repo.writeEditorDraft(key,null)).rejects.toThrow('其他页面');expect(repo.hasUnsafeNativeDrafts()).toBe(true);}finally{await release();}
+ const put=IDBObjectStore.prototype.put,mock=vi.spyOn(IDBObjectStore.prototype,'put').mockImplementation(function(this:IDBObjectStore,value,k){if(k==='editor-drafts')throw Error('模拟空间不足');return put.call(this,value,k);});await expect(repo.writeEditorDraft(key,null)).rejects.toThrow('空间不足');expect(repo.hasUnsafeNativeDrafts()).toBe(true);expect((await stored(name)).root).toContain('SYNTHETIC_LEGACY_KEY');mock.mockRestore();
+ await repo.writeEditorDraft(key,null);await expect(other.writeEditorDraft(key,null)).rejects.toThrow('其他页面');expect((await new IndexedDbRepository(name).read())!.sessions[0].name).toBe('升级前原存档');
+});

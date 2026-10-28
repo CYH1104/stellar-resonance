@@ -1,0 +1,32 @@
+{
+  "baseline": "e20ec8b4dd0aa6a83f2eecc69e4ee1e65c20f01f",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 142,
+    "passed": 798,
+    "expectedFail": 1
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 16,
+    "failed": 0
+  },
+  "typecheck": true,
+  "build": true,
+  "browserExisting": 48,
+  "browserLibrary": 17,
+  "paidModel": false,
+  "productionDeployed": false,
+  "temporaryPortsStopped": [
+    8861,
+    8862,
+    8863,
+    8864,
+    8865,
+    8866
+  ]
+}
