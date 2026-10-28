@@ -23,12 +23,23 @@ export function assertNativePresetDraftSafe(text:string,depth=0){
  if(typeof text!=='string'||depth>16)unverifiedDraft();
  let parsed:any,decoded=false;try{parsed=JSON.parse(text);decoded=true;}catch{}
  const fields=draftProperties(text);
- const envelope=fields.some(({key,after})=>key==='rawText'||key==='schema'&&/^\s*"native-preset-draft/.test(text.slice(after)))||object(parsed)&&typeof parsed.schema==='string'&&parsed.schema.startsWith('native-preset-draft');
+ const envelope=fields.some(({key,after})=>key.toLowerCase()==='rawtext'||key==='schema'&&/^\s*"native-preset-draft/.test(text.slice(after)))||object(parsed)&&typeof parsed.schema==='string'&&parsed.schema.startsWith('native-preset-draft');
  if(!decoded&&envelope)unverifiedDraft();
  if(typeof parsed==='string')assertNativePresetDraftSafe(parsed,depth+1);
- if(object(parsed)&&typeof parsed.schema==='string'&&parsed.schema.startsWith('native-preset-draft')){
-  if(parsed.schema!=='native-preset-draft-v1'||Object.keys(parsed).some(k=>!['schema','config','rawText'].includes(k))||!object(parsed.config)||typeof parsed.rawText!=='string')unverifiedDraft();
-  assertNativePresetDraftSafe(JSON.stringify(parsed.config),depth+1);assertNativePresetDraftSafe(parsed.rawText,depth+1);
+ // Read every original value, including duplicate properties JSON.parse would overwrite.
+ for(const {key,after}of fields)if(key.toLowerCase()==='rawtext'){
+  let start=after;while(start<text.length&&/\s/.test(text[start]))start++;
+  if(text[start]!=='"')unverifiedDraft();let end=start+1;
+  for(;end<text.length;end++){if(text[end]==='\\'){end++;continue;}if(text[end]==='"')break;}
+  if(end>=text.length)unverifiedDraft();
+  assertNativePresetDraftSafe(JSON.parse(text.slice(start,end+1)),depth+1);
+ }
+ // Serialized editor text is checked wherever it occurs, independent of its schema tag.
+ const pending:unknown[]=decoded?[parsed]:[];
+ while(pending.length){
+  const node=pending.pop();if(!node||typeof node!=='object')continue;
+  if(object(node)&&typeof node.schema==='string'&&node.schema.startsWith('native-preset-draft')&&(node.schema!=='native-preset-draft-v1'||Object.keys(node).some(k=>!['schema','config','rawText'].includes(k))||!object(node.config)||typeof node.rawText!=='string'))unverifiedDraft();
+  for(const value of Object.values(node))if(value&&typeof value==='object')pending.push(value);
  }
  for(const {key,after}of fields)if((credentials.has(key.toLowerCase())||key.toLowerCase()==='key'&&!/^\s*\[/.test(text.slice(after)))&&!/^\s*(?:""|null|false)\s*(?:[,}]|$)/.test(text.slice(after)))throw Object.assign(Error('预设草稿含凭据字段，请移除后再保存或备份。'),{code:'NATIVE_DRAFT_CREDENTIALS'});
 }

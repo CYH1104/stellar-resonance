@@ -2,7 +2,7 @@
 import {computed,ref,watch,onScopeDispose} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {cleanNativePresetConfig,encodeNativePresetDraft,decodeNativePresetDraft,type NativePresetConfig} from '../domain/nativePreset';
-import {cleanNativeWorldbook,emptyNativeWorldbooks,removeNativeWorldbook,type NativeWorldbooks} from '../domain/nativeWorldbooks';
+import {cleanNativeWorldbook,readNativeWorldbookFile,emptyNativeWorldbooks,removeNativeWorldbook,type NativeWorldbooks} from '../domain/nativeWorldbooks';
 import {nativePresetTasks,type NativePresetTask} from '../domain/nativeTasks';
 import {configurationEditors} from '../app/configurationEditors';
 import {registerBackupFlusher} from '../app/backupFlushers';
@@ -19,7 +19,7 @@ watch(saved,async()=>{if(dirty.value||committing.value)return;ready.value=false;
 const autoSave=useAutoSave(()=>ready.value&&dirty.value?JSON.stringify(draft.value):'',async()=>{await props.w.saveEditorDraft(key,dirty.value?encodeNativePresetDraft(draft.value!,JSON.stringify(draft.value!.preset,null,2)):null);return true;},400,()=>!ready.value||props.w.loading||props.w.backupWorking||props.w.unsafeNativeDrafts||pendingPresetRaw.value);
 function edit(action:(books:NativeWorldbooks)=>void){if(!draft.value||blocked.value||pendingPresetRaw.value)return;try{const next=cleanNativePresetConfig(draft.value);next.worldbooks??=emptyNativeWorldbooks();action(next.worldbooks);draft.value=cleanNativePresetConfig(next);problem.value='';}catch(e){problem.value=e instanceof Error?e.message:'世界书未修改';}}
 function add(name='新世界书',raw:unknown={entries:{}}){const id=crypto.randomUUID();edit(books=>{books.books.push({id,name:name.slice(0,100)||'新世界书',worldbook:cleanNativeWorldbook(raw)});});if(library.value?.books.some(b=>b.id===id))selected.value=id;}
-async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file){if(file.size>500000)throw Error('原生配置当前最多保存 500000 字符，请缩小文件后导入。');add(file.name.replace(/\.json$/i,''),JSON.parse(await file.text()));}}catch(e){problem.value=e instanceof Error?e.message:'世界书文件无法读取';}finally{input.value='';}}
+async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file)add(file.name.replace(/\.json$/i,''),await readNativeWorldbookFile(file));}catch(e){problem.value=e instanceof Error?e.message:'世界书文件无法读取';}finally{input.value='';}}
 async function save(){if(!draft.value||blocked.value)return;committing.value=true;problem.value='';try{if(pendingPresetRaw.value)throw Error('请先在预设页处理尚未应用的完整 JSON 草稿。');if(JSON.stringify(saved.value)!==baseline.value)throw Error('配置已被其他操作修改，请取消后重新编辑。');const value=cleanNativePresetConfig(draft.value);value.worldbooks??=emptyNativeWorldbooks();await props.w.saveNativePreset(value);draft.value=value;baseline.value=JSON.stringify(value);await props.w.saveEditorDraft(key,null);}catch(e){problem.value=e instanceof Error?e.message:'世界书未保存';}finally{committing.value=false;}}
 async function cancel(){autoSave.cancel();revision++;reset();await props.w.saveEditorDraft(key,null);}
 function exportFile(){if(!book.value)return;try{const raw=cleanNativeWorldbook(book.value.worldbook),url=URL.createObjectURL(new Blob([JSON.stringify(raw,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=book.value.name+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){problem.value=e instanceof Error?e.message:'世界书无法导出';}}

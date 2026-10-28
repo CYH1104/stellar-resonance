@@ -1,0 +1,55 @@
+{
+  "baseline": "944539e59e348dfab3d6010c1129bf591d8ae675",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 145,
+    "passed": 842,
+    "expectedFail": 1,
+    "total": 843
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 17,
+    "failed": 0
+  },
+  "typecheck": true,
+  "build": true,
+  "browser": {
+    "academy": 48,
+    "presetLibrary": 17,
+    "worldbooks": 22,
+    "draftSafetyControls": 6
+  },
+  "regressions": {
+    "originalIndependentDomainAssertions": 7,
+    "totalBoundaryTests": 11,
+    "legacyCompleteWrapperCases": 6,
+    "completeWrapperPersistence": false,
+    "completeWrapperDownload": false,
+    "completeWrapperCloud": false,
+    "chineseCharacters": 180099,
+    "chineseUtf8Bytes": 540109,
+    "chineseImportedSavedAndReloaded": true,
+    "legacyCleanupPreservesOtherData": true
+  },
+  "paidModel": false,
+  "productionDeployed": false,
+  "temporaryPortsStopped": [
+    8861,
+    8862,
+    8863,
+    8864,
+    8865,
+    8866
+  ],
+  "notes": [
+    "Only final model uses a fixed local fixture; no real provider or paid calls.",
+    "Cloud encoding was exercised; no synthetic backup uploaded to a hosted repository.",
+    "No persistent schema change. Existing full backup, restore and strict transfer validation retained.",
+    "Known expected failure and disclosed migration gaps remain."
+  ]
+}

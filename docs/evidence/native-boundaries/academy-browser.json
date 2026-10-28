@@ -1,0 +1,222 @@
+{
+  "passed": true,
+  "checks": [
+    "account 甲 authenticated",
+    "account 乙 authenticated",
+    "account 甲 config saved through existing preset page",
+    "account 乙 config saved through existing preset page",
+    "native preset fits mobile content width",
+    "legacy image fallback keeps its parent and leaves Vue avatars alone 乙",
+    "native preset draft does not activate before save",
+    "unsaved native preset draft survives reload",
+    "cancel restores committed native preset",
+    "legacy image fallback keeps its parent and leaves Vue avatars alone 甲",
+    "account 乙 complete persisted",
+    "account 乙 state applied",
+    "account 乙 memory recorded",
+    "account 乙 API responses succeeded",
+    "account 乙 no private markers",
+    "account 乙 refresh restored",
+    "account 乙 no page errors",
+    "account 甲 complete persisted",
+    "account 甲 state applied",
+    "account 甲 memory recorded",
+    "account 甲 API responses succeeded",
+    "account 甲 no private markers",
+    "account 甲 refresh restored",
+    "account 甲 no page errors",
+    "regenerate creates second saved variant",
+    "variant selection persisted",
+    "rewind removes round and saves",
+    "stop retains partial draft as incomplete",
+    "output limit retains partial draft as incomplete",
+    "partial drafts survive reload",
+    "complete backup round-trip preserves incomplete drafts",
+    "complete local backup preserves native preset and unknown fields",
+    "cloud backup preserves same native preset",
+    "download-all-data contains committed native preset",
+    "download excludes synthetic API credentials",
+    "actual file input import retains native configuration",
+    "server config is migration-only and rejects a second authority",
+    "caller cannot choose config owner",
+    "anonymous native config denied",
+    "same browser switching account hides previous local save",
+    "same browser switching account does not inherit previous native config",
+    "expected model requests without retries",
+    "regenerate-only native prompt fires once",
+    "native account variables do not mix",
+    "separate worker identities",
+    "private native context participated",
+    "actual upstream account sampling",
+    "no late page errors during download/import/account switching"
+  ],
+  "trace": {
+    "requests": [
+      {
+        "kind": "story",
+        "who": "乙",
+        "temperature": 0.8,
+        "max_tokens": 3072,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "乙",
+        "temperature": 0.8,
+        "max_tokens": 3072,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      }
+    ],
+    "compiles": [
+      {
+        "key": "014a28fa6f8097b7543d712fc29e5ea07bcbcd3c113adad4f64babc346f56f1f",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": false,
+        "hasB": true,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "014a28fa6f8097b7543d712fc29e5ea07bcbcd3c113adad4f64babc346f56f1f",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": false,
+        "hasB": true,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": true,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      },
+      {
+        "key": "7fa285e16422fca56b7c831917bc7bc69edc767949ad46eb587904d495f09faa",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false,
+        "worldStory": false,
+        "worldMemory": false,
+        "worldDisabled": false,
+        "worldUnused": false
+      }
+    ]
+  },
+  "realPaidModel": false,
+  "frontend": "existing built academy Vue UI",
+  "mockedBrowserApi": false
+}

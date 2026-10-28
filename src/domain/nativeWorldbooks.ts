@@ -2,6 +2,13 @@ import {cleanNativeJson} from './nativeJson.ts';
 import {nativePresetTasks,nativeTaskForRequest,type NativePresetTask} from './nativeTasks.ts';
 export interface NativeWorldbook {id:string;name:string;worldbook:Record<string,any>}
 export interface NativeWorldbooks {version:1;books:NativeWorldbook[];defaultIds:string[];taskBooks?:Partial<Record<NativePresetTask,string[]>>;sessionBooks?:Record<string,string[]>}
+/** File allocation guard in bytes, separate from the stored JSON character budget. */
+export const NATIVE_WORLD_FILE_LIMIT_BYTES=5*1024*1024;
+export async function readNativeWorldbookFile(file:{size:number;text:()=>Promise<string>}){
+ if(!Number.isSafeInteger(file.size)||file.size<0)throw Error('世界书文件信息不正确。');
+ if(file.size>NATIVE_WORLD_FILE_LIMIT_BYTES)throw Error('单份世界书文件不能超过 5 MB。');
+ return cleanNativeWorldbook(JSON.parse((await file.text()).replace(/^\uFEFF/,'')));
+}
 const object=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function invalid():never{throw Error('原生世界书格式、版本或绑定不受支持，原数据未修改。');}
 export const emptyNativeWorldbooks=():NativeWorldbooks=>({version:1,books:[],defaultIds:[]});
