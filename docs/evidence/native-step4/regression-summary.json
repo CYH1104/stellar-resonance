@@ -1,0 +1,38 @@
+{
+  "command": "npm run test:server",
+  "totals": [
+    "ℹ tests 441",
+    "ℹ pass 429",
+    "ℹ fail 8",
+    "ℹ cancelled 0",
+    "ℹ skipped 4"
+  ],
+  "failedTests": [
+    "a running instance keeps serving its own snapshot while the shared build is replaced",
+    "the same runtime content resolves to one immutable snapshot instead of a new copy",
+    "editor logins on two ports never overwrite or log each other out",
+    "an ordinary restart keeps the confirmed release even after the shared tree was rebuilt",
+    "preparing new builds never deletes the snapshot a running process is serving",
+    "a new instance is seeded with every stable private worldbook and then evolves independently",
+    "a book already edited in the target instance is never overwritten by the stable copy",
+    "a symlinked entry never pulls files from outside the private directory into the instance"
+  ],
+  "baselineComparison": {
+    "commit": "6cd444f",
+    "channelInstance": "5/7 fail: same EPERM snapshot rename and boot failure",
+    "worldbookRepeat": "3/3 fail: same boot failures",
+    "sandboxEscalationChangedResult": false
+  },
+  "newNativeTests": {
+    "passed": 14,
+    "failed": 0
+  },
+  "targetedRegression": {
+    "passed": 72,
+    "failed": 0
+  },
+  "build": "npm run build passed; sync-generated terminal source restored",
+  "realPaidModel": false,
+  "browserChecks": 35,
+  "finalTargeted": 52
+}

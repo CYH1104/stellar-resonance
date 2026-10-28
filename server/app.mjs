@@ -42,7 +42,7 @@ import {stripReasoning} from '../src/domain/reasoning.ts';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg'};
 const safeString=(value,max)=>typeof value==='string'&&value.length<=max;
 
-export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',privateDir=resolve(projectRoot,'server/private'),accountDirectory,invitesRequired=true,editorPort=8808,channel='test',instanceName='',releaseDir='',identityRoot=''}){
+export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,card,host='127.0.0.1',publicOrigin='',authRequired=host!=='127.0.0.1',privateDir=resolve(projectRoot,'server/private'),accountDirectory,invitesRequired=true,editorPort=8808,channel='test',instanceName='',releaseDir='',identityRoot='',nativeRuntime}){
   let external;
   if(publicOrigin){external=new URL(publicOrigin);if(!['http:','https:'].includes(external.protocol)||external.username||external.password||external.pathname!=='/'||external.search||external.hash)throw Error('INVALID_PUBLIC_ORIGIN');}
   if(host!=='127.0.0.1'&&(!external||!authRequired))throw Error('PUBLIC_SERVER_REQUIRES_ORIGIN_AND_AUTH');
@@ -107,6 +107,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
     try{
       const accountToken=accountTokenOf(request);
       const account=accounts?.user(accountToken);
+      const requestFetch=nativeRuntime?nativeRuntime.fetchForAccount(account):fetchImpl;
       const setAccountCookie=(value,age=604800)=>response.setHeader('Set-Cookie',`${accountCookie}=${value}; HttpOnly; SameSite=Strict; Path=/${age===null?'':`; Max-Age=${age}`}${external?.protocol==='https:'?'; Secure':''}`);
       response.setHeader('Cache-Control','no-store');
       if(path==='/api/health'&&request.method==='GET'){json(response,200,{app:'stellar-resonance-local',version:'0.20.5',runtime:'local-card',dataset,projectId,instance,pid:process.pid,accountsRequired:!!accounts,channel,terminal:terminalEnabled,instanceName:instanceLabel,port:currentPort,release:releaseId});return;}
@@ -152,6 +153,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/cloud-backup'&&request.method==='POST'){session(request);const data=await body(request,12*1024*1024);json(response,200,await cloudBackup(data));return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
+        if(path==='/api/native-config'&&nativeRuntime){json(response,200,await nativeRuntime.configure(account,data));return;}
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
         if(path==='/api/terminal-code'){
           if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
@@ -184,10 +186,10 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           await relayPolicy.assert(selected.url);accounts?.recordRelay(current.accountId,selected.url,'probe');
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]),started=performance.now();
           if(data.kind==='embedding'){
-            const {vectors}=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:['连接测试'],signal,fetchImpl});
+            const {vectors}=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:['连接测试'],signal,fetchImpl:requestFetch});
             signal.throwIfAborted();json(response,200,{kind:'embedding',durationMs:Math.round(performance.now()-started),dimensions:vectors[0].length});
           }else{
-            const upstream=await openCompletion({connection:selected,profile:{...data.profile,temperature:0.7,maxTokens:512,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key:data.key,messages:[{role:'user',content:internalPrompt('app.3')}],signal,fetchImpl});
+            const upstream=await openCompletion({connection:selected,profile:{...data.profile,temperature:0.7,maxTokens:512,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key:data.key,messages:[{role:'user',content:internalPrompt('app.3')}],signal,fetchImpl:requestFetch});
             let visibleChars=0;for await(const chunk of completionChunks(upstream,{signal})){visibleChars+=chunk.length;}
             signal.throwIfAborted();if(!visibleChars)throw modelError(502,'MODEL_EMPTY_RESPONSE');
             json(response,200,{kind:'text',durationMs:Math.round(performance.now()-started),visibleChars});
@@ -204,14 +206,14 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           let content='',corrected='';
           const isAfterparty=plan.task==='afterparty',taskMaxTokens=isAfterparty?4000:6000,taskContentCap=isAfterparty?24000:48000;
           try{
-          const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:plan.messages,signal,fetchImpl});
+          const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:plan.messages,signal,fetchImpl:requestFetch});
           for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>taskContentCap)throw modelError(502,'INVALID_TERMINAL_RESULT');}
           signal.throwIfAborted();let result;
           try{result=parseTerminalResult(content,plan);}
           catch(error){
             if(!error?.retryable||signal.aborted)throw error;
             const correction=[...plan.messages,{role:'assistant',content:content.slice(0,16000)},{role:'user',content:`上一次回复未通过格式检查（${error.reason}）。仍使用同一组已锁定目标，不得改选、重新抽签或泄露任何姓名/编号映射；请严格只输出系统要求的 JSON。`}];
-            const retryUpstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:correction,signal,fetchImpl});
+            const retryUpstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:taskMaxTokens},key:data.key,messages:correction,signal,fetchImpl:requestFetch});
             for await(const chunk of completionChunks(retryUpstream,{signal})){corrected+=chunk;if(corrected.length>taskContentCap)throw modelError(502,'INVALID_TERMINAL_RESULT');}
             signal.throwIfAborted();
             try{result=parseTerminalResult(corrected,plan);}catch(next){next.raw=combinedRaw(content,corrected);throw next;}
@@ -219,7 +221,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           let raw=combinedRaw(content,corrected);
           if(plan.task==='react'){
             const review=terminalFollowupPlan(source,data,'review',{command:data.input,result});
-            const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl});
+            const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl:requestFetch});
             let checked='';for await(const part of completionChunks(upstream,{signal})){checked+=part;if(checked.length>4000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
             try{signal.throwIfAborted();parseTerminalResult(checked,review);}catch(error){error.raw=terminalRaw(checked);throw error;}
             raw=clipRaw(raw+'\n\n[复核]\n'+checked,48000);
@@ -232,12 +234,14 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const selected=await connection(current,data),messages=buildPersonaMessages(source,data.wish,data.draft);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl:requestFetch});
           let content='';for await(const chunk of completionChunks(upstream,{signal})){signal.throwIfAborted();content+=chunk;if(content.length>16000)throw modelError(502,'INVALID_PERSONA_RESULT');}
           signal.throwIfAborted();json(response,200,{persona:parsePersonaResult(content)});return;
         }
         if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
         if(path==='/api/generate'){
+          if(nativeRuntime)data.singleStateCall=true;
+          const storyFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{generationType:data.generationType||'normal'}):requestFetch;
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           // 正文请求不再携带终端上下文：手机通讯走独立的 /api/personal-terminal 任务。
           // 旧页面仍可能带上该字段，直接丢弃而不是报错。
@@ -254,44 +258,44 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const initialMessages=stateOnly?repairedMessages(messages,partial,generationCard,state,{requestId,theaterSettings,persona:data.persona,dice,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,input:data.input,worldInfo:repairLore,repairPlan}):partial?continuedMessages(messages,partial,state.player.name):messages;
           const developerStarted=performance.now();
-          const upstream=await openCompletion({connection:selected,key:generation.key,profile:generation.profile,messages:initialMessages,signal:firstSignal,fetchImpl});
+          const upstream=await openCompletion({connection:selected,key:generation.key,profile:generation.profile,messages:initialMessages,signal:firstSignal,fetchImpl:storyFetch});
           response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
           if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'request',model:generation.profile.model,stateAuxiliary:false,presets:presetDiagnostics,profile:generation.profile})})}\n\n`);
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
           const validationCodes=[];const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
-          try{for await(const event of streamStory({card:generationCard,state,options:{requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
+          try{for await(const event of streamStory({card:generationCard,state,options:{requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl:storyFetch,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
           catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...upstreamStatusField(error),...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
           finally{clearInterval(heartbeat);}
           return;
         }
         if(path==='/api/random-event'){
           const selected=await connection(current,data),messages=randomEventMessages(source,data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:{...data.profile,maxTokens:Math.min(data.profile.maxTokens,2000)},messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_RANDOM_EVENT_RESULT');}signal.throwIfAborted();json(response,200,parseRandomEvent(content,data.kind));return;
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:{...data.profile,maxTokens:Math.min(data.profile.maxTokens,2000)},messages,signal,fetchImpl:requestFetch});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>8000)throw modelError(502,'INVALID_RANDOM_EVENT_RESULT');}signal.throwIfAborted();json(response,200,parseRandomEvent(content,data.kind));return;
         }
         if(path==='/api/forum-reply'){
           const selected=await connection(current,data),thread=data.minReplies!==undefined,plan=thread?forumThreadMessages(source,data):forumReplyMessages(source,data),{speaker,messages}=plan;
           const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:thread?{...data.profile,maxTokens:Math.max(data.profile.maxTokens,3000)}:data.profile,messages,signal,fetchImpl});let content='';
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:thread?{...data.profile,maxTokens:Math.max(data.profile.maxTokens,3000)}:data.profile,messages,signal,fetchImpl:requestFetch});let content='';
           for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(thread?60000:8000))throw modelError(502,'INVALID_FORUM_REPLY_RESULT');}
           signal.throwIfAborted();json(response,200,thread?parseForumThread(content,plan):parseForumReply(content,speaker));return;
         }
         if(path==='/api/memory'){
           const selected=await connection(current,data),batch=data.rounds!==undefined,{input,inputs,messages}=batch?batchMemoryMessages(data.rounds):memoryMessages(data);const controller=new AbortController();response.on('close',()=>controller.abort());const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(batch?150000:20000))throw modelError(502,'INVALID_MEMORY_RESULT');}
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages,signal,fetchImpl:requestFetch});let content='';for await(const chunk of completionChunks(upstream,{signal})){content+=chunk;if(content.length>(batch?150000:20000))throw modelError(502,'INVALID_MEMORY_RESULT');}
           signal.throwIfAborted();json(response,200,batch?{records:parseBatchMemoryResult(content,inputs)}:{record:parseMemoryResult(content,input)});return;
         }
         if(path==='/api/utility'){
           if(!['summary','suggestions'].includes(data.task)||!Array.isArray(data.texts)||data.texts.length>10||data.texts.some(t=>!safeString(t,100000)))throw modelError(400,'INVALID_UTILITY');
           const selected=await connection(current,data),signal=AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS);
           const instruction=data.task==='summary'?internalPrompt('app.2'):internalPrompt("app.1");
-          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(data.texts)}],signal,fetchImpl});
+          const upstream=await openCompletion({connection:selected,key:data.key,profile:data.profile,messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(data.texts)}],signal,fetchImpl:requestFetch});
           let result='';for await(const chunk of completionChunks(upstream,{signal})){result+=chunk;if(result.length>12000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');}
           json(response,200,{items:data.task==='summary'?[result.trim()]:result.split('\n').map(s=>s.replace(/^\s*[-*\d.、)]+\s*/,'').trim()).filter(Boolean).slice(0,4)});return;
         }
         if(path==='/api/embeddings'){
           const selected=await connection(current,data),controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
-          const result=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:data.texts,signal,fetchImpl});signal.throwIfAborted();json(response,200,result);return;
+          const result=await requestEmbeddings({connection:selected,profile:data.profile,key:data.key,texts:data.texts,signal,fetchImpl:requestFetch});signal.throwIfAborted();json(response,200,result);return;
         }
         throw modelError(404,'API_NOT_FOUND');
       }

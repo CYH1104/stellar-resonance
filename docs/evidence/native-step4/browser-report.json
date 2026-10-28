@@ -1,0 +1,177 @@
+{
+  "passed": true,
+  "checks": [
+    "account 甲 authenticated",
+    "account 乙 authenticated",
+    "account 乙 config saved",
+    "account 甲 config saved",
+    "account 乙 complete persisted",
+    "account 乙 state applied",
+    "account 乙 memory recorded",
+    "account 乙 API responses succeeded",
+    "account 乙 no private markers",
+    "account 乙 refresh restored",
+    "account 乙 no page errors",
+    "account 甲 complete persisted",
+    "account 甲 state applied",
+    "account 甲 memory recorded",
+    "account 甲 API responses succeeded",
+    "account 甲 no private markers",
+    "account 甲 refresh restored",
+    "account 甲 no page errors",
+    "regenerate creates second saved variant",
+    "variant selection persisted",
+    "rewind removes round and saves",
+    "stop retains partial draft as incomplete",
+    "output limit retains partial draft as incomplete",
+    "partial drafts survive reload",
+    "complete backup round-trip preserves incomplete drafts",
+    "caller cannot choose config owner",
+    "anonymous native config denied",
+    "same browser switching account hides previous local save",
+    "same browser switching account receives correct server config",
+    "expected model requests without retries",
+    "regenerate-only native prompt fires once",
+    "native account variables do not mix",
+    "separate worker identities",
+    "private native context participated",
+    "actual upstream account sampling"
+  ],
+  "trace": {
+    "requests": [
+      {
+        "kind": "story",
+        "who": "乙",
+        "temperature": 0.8,
+        "max_tokens": 3072,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "乙",
+        "temperature": 0.8,
+        "max_tokens": 3072,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "memory",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      },
+      {
+        "kind": "story",
+        "who": "甲",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "reasoning": false
+      }
+    ],
+    "compiles": [
+      {
+        "key": "55d4e89a24eb6175b4b09a346c36dd84253e0e3bec6e15d71e9150d85fb9debe",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": false,
+        "hasB": true,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "55d4e89a24eb6175b4b09a346c36dd84253e0e3bec6e15d71e9150d85fb9debe",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": false,
+        "hasB": true,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": true
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false
+      },
+      {
+        "key": "ed3c9923528c9edb71e1a8bc2917fd8149f34c013ede2e43b2e1af24c891f112",
+        "privateCard": true,
+        "privateLore": true,
+        "scriptsDisabled": true,
+        "hasA": true,
+        "hasB": false,
+        "regeneratePrompt": false
+      }
+    ]
+  },
+  "realPaidModel": false,
+  "frontend": "existing built academy Vue UI",
+  "mockedBrowserApi": false
+}
