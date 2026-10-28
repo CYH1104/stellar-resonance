@@ -56,3 +56,12 @@ it('HTTP requests contain a saved native snapshot while ordinary deployments ret
  const gateway=new HttpGateway(()=>config);gateway.capabilities.native=true;await gateway.utility('summary',['synthetic'],defaults().profiles[0],'not-backed-up',new AbortController().signal);expect(calls[0].nativePreset).toEqual(config);
  gateway.capabilities.native=false;await gateway.utility('summary',['synthetic'],defaults().profiles[0],'not-backed-up',new AbortController().signal);expect(calls[1].nativePreset).toBeUndefined();
 });
+it('blocks credential-bearing complete and incomplete native drafts on every archive path',()=>{
+ for(const text of ['{"api_key":"synthetic"}', '{"Authorization":"Bearer synthetic', '{"custom_include_headers":"synthetic"}', '{"\\u0061pi_key":"synthetic"}']){
+  const archive={version:1 as const,editorDrafts:{'preset:native-runtime':text}};
+  expect(()=>cleanBackupArchive(archive)).toThrow('凭据');
+  expect(()=>backup({version:1,sessions:[],preferences:defaults(),archive})).toThrow('凭据');
+  expect(()=>createCloudSave({version:1,sessions:[],preferences:defaults(),archive},defaults())).toThrow('凭据');
+ }
+ expect(cleanBackupArchive({version:1,editorDrafts:{'preset:native-runtime':'{"proxy_password":"","prompts":['}}).editorDrafts).toBeDefined();
+});

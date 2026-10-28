@@ -2,7 +2,7 @@ import type {Persona} from './contracts';
 import {normalizePersona,blankPersona} from './persona.ts';
 import {cleanAvatarAppearance,type AvatarAppearance} from './avatarAppearance.ts';
 import {cleanCharacterImages,imageUrl,type CharacterImage} from './characterImages.ts';
-import {cleanNativePresetConfig,type NativePresetConfig} from './nativePreset.ts';
+import {cleanNativePresetConfig,assertNativePresetDraftSafe,type NativePresetConfig} from './nativePreset.ts';
 
 export interface BackupPersona {id:string;name:string;persona:Persona;updatedAt:string;memo?:string;remark?:string;sourceSessionIds?:string[];avatarAppearance?:AvatarAppearance;useAsHomeImage?:boolean;portrait?:string;avatar?:string}
 export interface BackupArchive {
@@ -61,7 +61,7 @@ export function remapBackupArchive(source:BackupArchive,sessionIds:Map<string,st
  const master=next.masterPersona;if(master?.personaId?.startsWith('session/')){const id=sessionIds.get(master.personaId.slice(8));if(id)master.personaId='session/'+id;else delete master.personaId;}
  return next;
 }
-export function cleanEditorDrafts(raw:unknown):Record<string,string>{if(!object(raw)||Object.keys(raw).length>1000)fail();let size=0;const out:Record<string,string>={};for(const [key,text]of Object.entries(raw)){if(!/^(?:new-game|(?:session-persona|preset):[^\r\n]{1,200})$/.test(key)||typeof text!=='string'||text.length>600000)fail();size+=text.length;if(size>3000000)fail();out[key]=text;}return out;}
+export function cleanEditorDrafts(raw:unknown):Record<string,string>{if(!object(raw)||Object.keys(raw).length>1000)fail();let size=0;const out:Record<string,string>={};for(const [key,text]of Object.entries(raw)){if(!/^(?:new-game|(?:session-persona|preset):[^\r\n]{1,200})$/.test(key)||typeof text!=='string'||text.length>600000)fail();if(key==='preset:native-runtime')assertNativePresetDraftSafe(text);size+=text.length;if(size>3000000)fail();out[key]=text;}return out;}
 export function cloudBackupArchive(source:BackupArchive):BackupArchive{
  const next=cleanBackupArchive(source);
  for(const p of [...next.personas||[],...next.draft?[next.draft]:[]]){delete p.portrait;delete p.avatar;}

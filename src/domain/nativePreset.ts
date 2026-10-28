@@ -3,6 +3,13 @@ export interface NativePresetConfig {version:1;preset:Record<string,any>}
 const object=(value:unknown):value is Record<string,any>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const forbidden=new Set(['__proto__','prototype','constructor']);
 const credentials=new Set(['api_key','apikey','authorization','access_token','accesstoken','github_token','gitee_token','password','proxy_password','secret','secret_key','custom_include_headers']);
+/** Check even incomplete JSON drafts before persistence or backup transfer. */
+export function assertNativePresetDraftSafe(text:string){
+ for(const match of text.matchAll(/("(?:[^"\\]|\\.)*")\s*:/g)){
+  let key:string;try{key=JSON.parse(match[1]);}catch{continue;}
+  if(credentials.has(key.toLowerCase())&&!/^\s*(?:""|null|false)\s*(?:[,}]|$)/.test(text.slice(match.index!+match[0].length)))throw Error('预设草稿含凭据字段，请移除后再保存或备份。');
+ }
+}
 function invalid():never{throw Error('原生预设格式不支持或版本过新，原数据未修改。');}
 function json(value:unknown,depth=0):any{
  if(depth>24)invalid();

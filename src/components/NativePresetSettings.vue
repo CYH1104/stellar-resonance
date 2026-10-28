@@ -20,7 +20,7 @@ function reset(){if(!saved.value)return;draft.value=cleanNativePresetConfig(save
 let load=0;
 watch(saved,async()=>{
  if(dirty.value||committing.value)return;ready.value=false;reset();const revision=++load,stamp=baseline.value;
- try{const text=await props.w.readEditorDraft(draftKey);if(revision===load&&baseline.value===stamp&&text){rawText.value=text;draft.value=cleanNativePresetConfig({version:1,preset:JSON.parse(text)});}}
+ try{const text=await props.w.readEditorDraft(draftKey);if(revision===load&&baseline.value===stamp&&text){rawText.value=text;draft.value=cleanNativePresetConfig({version:1,preset:JSON.parse(text)});rawText.value=JSON.stringify(draft.value.preset,null,2);}}
  catch(e){problem.value=e instanceof Error?e.message:'草稿读取失败';}
  finally{if(revision===load)ready.value=true;}
 },{immediate:true});
@@ -32,7 +32,7 @@ async function save(){if(!draft.value||blocked.value)return;problem.value='';com
 }catch(e){problem.value=e instanceof Error?e.message:'预设未保存';}finally{committing.value=false;}}
 async function cancel(){autoSave.cancel();load++;reset();await props.w.saveEditorDraft(draftKey,null);}
 async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file){draft.value=cleanNativePresetConfig({version:1,preset:JSON.parse(await file.text())});rawText.value=JSON.stringify(draft.value.preset,null,2);problem.value='';}}catch(e){problem.value=e instanceof Error?e.message:'文件无法读取';}finally{input.value='';}}
-function applyRaw(){try{draft.value=cleanNativePresetConfig({version:1,preset:JSON.parse(rawText.value)});problem.value='';}catch(e){problem.value=e instanceof Error?e.message:'预设格式不正确';}}
+function applyRaw(){try{draft.value=cleanNativePresetConfig({version:1,preset:JSON.parse(rawText.value)});rawText.value=JSON.stringify(draft.value.preset,null,2);problem.value='';}catch(e){problem.value=e instanceof Error?e.message:'预设格式不正确';}}
 function exportFile(){if(!saved.value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(saved.value.preset,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='原生预设.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const unregister=configurationEditors()?.('native-preset',{dirty:()=>dirty.value,save:async()=>{await save();if(problem.value)throw Error(problem.value);},discard:cancel});if(unregister)onScopeDispose(unregister);
 registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)throw Error(autoSave.error.value);});
