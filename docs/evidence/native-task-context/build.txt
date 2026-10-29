@@ -44,7 +44,7 @@ dist/assets/PersonalTerminal-A244l_Ox.js         125.77 kB │ gzip:  38.35 kB
 dist/assets/index-ZFVStqLv.js                    506.08 kB │ gzip: 172.46 kB
 
 ✓ built in 886ms
-[plugin builtin:vite-reporter] 
+[plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting

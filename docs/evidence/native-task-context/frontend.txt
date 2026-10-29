@@ -11,4 +11,3 @@ npm notice run vitest run
 
     Isolate  150 workers spawned · ~299ms startup each (spawn + environment, per file)
              at least ~2.69s faster with isolate: false — reuses workers across files instead of one per file
-
