@@ -1,0 +1,19 @@
+{
+  "baseline": "754e4dddb8a6ce88dc24a6d36b5b0b1d04ccd90a",
+  "branch": "rebuild/sillytavern-native",
+  "targetedTests": {"passed":18,"failed":0},
+  "frontend": {"files":148,"passed":860,"expectedFail":1,"total":861},
+  "server": {"passed":437,"failed":0,"skipped":4},
+  "native": {"passed":19,"failed":0,"skipped":0},
+  "unchangedIndependentRegression": {"passed":2,"failed":0},
+  "typecheck":true,
+  "build":true,
+  "browser": {"academy":48,"worldbooks":26,"worldEffects":27,"uncaughtPageErrors":0},
+  "fractionalWeights": {"importedAndSaved":1.5,"editedAndExported":2.125,"nativeCompilation":true},
+  "newPersistentFields":[],
+  "dataPaths":["local download","local file import","cloud encode/decode","workspace overwrite","pre-overwrite recovery and undo"],
+  "businessApiMocked":false,
+  "paidModel":false,
+  "hostedSyntheticBackupUpload":false,
+  "productionDeployed":false
+}
