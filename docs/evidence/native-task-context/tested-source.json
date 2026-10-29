@@ -1,0 +1,56 @@
+{
+  "base": "01e324bb3d4c7b787e8b92ed32f55ab2eca64648",
+  "normalization": "CRLF to LF only",
+  "comparisons": [
+    {
+      "file": "experiments/native/account-runtime.mjs",
+      "implementation": "021c99a283a462b2869afd62551e9cca3f1cbc7159f24f3629056b6b7a7dd4fc",
+      "frozenTest": "021c99a283a462b2869afd62551e9cca3f1cbc7159f24f3629056b6b7a7dd4fc"
+    },
+    {
+      "file": "experiments/native/private-worker.mjs",
+      "implementation": "62c0914ab549e431cbd00f31b26e48bf0d34a0b93e6e5a99c63cc5174f6966d7",
+      "frozenTest": "62c0914ab549e431cbd00f31b26e48bf0d34a0b93e6e5a99c63cc5174f6966d7"
+    },
+    {
+      "file": "server/app.mjs",
+      "implementation": "d77bee775babb93b74d0527cf23ce3e42494fb2a92ebf5b7f8803dd21fa359a9",
+      "frozenTest": "d77bee775babb93b74d0527cf23ce3e42494fb2a92ebf5b7f8803dd21fa359a9"
+    },
+    {
+      "file": "src/app/useWorkspace.ts",
+      "implementation": "9da25355a72346f9baa6fd7884ae2fbc60bc1d6b3173e52c53ff0a98fa6d4f27",
+      "frozenTest": "9da25355a72346f9baa6fd7884ae2fbc60bc1d6b3173e52c53ff0a98fa6d4f27"
+    },
+    {
+      "file": "src/domain/contracts.ts",
+      "implementation": "6c35698f0fd1b4cb7b4ea5677fe94274f5f37126a9b45ace0575c6a6f35737f2",
+      "frozenTest": "6c35698f0fd1b4cb7b4ea5677fe94274f5f37126a9b45ace0575c6a6f35737f2"
+    },
+    {
+      "file": "src/domain/memories.ts",
+      "implementation": "cfad779bb629af3612b2662d8f8d37e48fec934dc426c54b4511826b51290b11",
+      "frozenTest": "cfad779bb629af3612b2662d8f8d37e48fec934dc426c54b4511826b51290b11"
+    },
+    {
+      "file": "src/domain/nativeWorldbooks.ts",
+      "implementation": "84fd8c0740622b97554b82435ce267a18161c62d29ad09149a2164597928a35e",
+      "frozenTest": "84fd8c0740622b97554b82435ce267a18161c62d29ad09149a2164597928a35e"
+    },
+    {
+      "file": "src/gateway/http.ts",
+      "implementation": "6dff5414c5501085088ca7d3170f628e649eb61304b05256f2112e2f3fce1c45",
+      "frozenTest": "6dff5414c5501085088ca7d3170f628e649eb61304b05256f2112e2f3fce1c45"
+    },
+    {
+      "file": "server/native-task-context.mjs",
+      "implementation": "3c4ea713d04039a0b5e58b9d5ba1fc35914cf74ac54618d8c84dba063ebe2bdb",
+      "frozenTest": "3c4ea713d04039a0b5e58b9d5ba1fc35914cf74ac54618d8c84dba063ebe2bdb"
+    },
+    {
+      "file": "src/domain/taskSource.ts",
+      "implementation": "be756003395c83342c2a4f1eafd80e9befa6b63f8bcb9e55be9050f3a6f15a1e",
+      "frozenTest": "be756003395c83342c2a4f1eafd80e9befa6b63f8bcb9e55be9050f3a6f15a1e"
+    }
+  ]
+}

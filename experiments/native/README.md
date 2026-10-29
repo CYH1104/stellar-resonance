@@ -82,3 +82,7 @@ native-client只接受固定回环原生服务和回环模拟上游，不转发�
 createAccountRuntime 可显式接入 request-relay.mjs，通过请求专属一次性票据转发到策略批准的 OpenAI 兼容服务；真实 API Key 不进入原生编排页面。未配置 relay 时保留原模拟环境限制。academy-demo 可设置 NATIVE_REQUEST_RELAY=1 验证该链路，最终模型仍是合成服务；request-relay-browser.mjs 验证双账号接口／模型／凭据路由，terminal-isolation-browser.mjs 保留51项业务检查。原生专项命令 node --test experiments/native/*.test.mjs（指定固定 NATIVE_RUNTIME 运行原生类专项）。
 
 真实提供商、其他协议、任务上下文完整接线、生产worker生命周期及启动入口仍未完成，不要部署到现有8807／9000。用户已明确先完善再部署，独立9100预览已停用。详见 docs/handoffs/2026-10-30-native-request-relay.md。
+
+## 2026-10-30：任务来源及玩家宏
+
+补齐论坛/记忆等任务的来源绑定、批量角色范围和原生玩家姓名/人设投影，无来源任务清空旧投影。独立复核发现并修复仅取消响应读取时的上游连接与票据泄漏；原始失败证据保留。新增 task-source-browser.mjs 在实际学院/原生/出口链路验证16项，原51项业务回归保留，最终提供商仍为合成模型。前端902、后端444（4跳过）、原生33、类型检查与构建通过。详见 docs/handoffs/2026-10-30-native-task-context.md；后续优先响应格式兼容和worker生命周期，仍暂缓部署。

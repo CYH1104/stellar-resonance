@@ -1,0 +1,80 @@
+{
+  "checks": [
+    "isolated synthetic account authenticated",
+    "two actual source rounds and their automatic memories complete",
+    "forum replies pass the real parser and preserve main prose",
+    "forum sends original save and branch instead of an active-save guess",
+    "native forum macro and scoped worldbook match source A",
+    "two-round batch returns two records while another save is active",
+    "batch uses exactly one final model request",
+    "batch native player persona and worldbook stay on source A while B is active",
+    "new-persona response passes actual business parser",
+    "new-persona native macros use the draft and no old save books",
+    "unbound utility passes actual parser",
+    "unbound utility clears the previous task player and persona",
+    "same worker accepts source A again after unbound tasks",
+    "reused native worker restores only the requested source",
+    "task and default bindings are used only for genuinely unbound tasks",
+    "no uncaught browser errors"
+  ],
+  "errors": [],
+  "businessApiMocked": false,
+  "syntheticFinalProvider": true,
+  "paidModel": false,
+  "passed": true,
+  "requestSources": [
+    {
+      "path": "/api/memory",
+      "sessionId": "cfa0db9e-99c7-4223-8f2f-b41b430c5e10",
+      "turnId": "adaa3d13-3aa8-4820-b5c9-3101050d9234",
+      "variantId": "3a14cd64-4cd6-4bd9-89a0-ea5b3f01f56a",
+      "books": [
+        "a"
+      ]
+    },
+    {
+      "path": "/api/memory",
+      "sessionId": "cfa0db9e-99c7-4223-8f2f-b41b430c5e10",
+      "turnId": "23cda43c-b607-4eb2-a7fe-590f4d015f4a",
+      "variantId": "ed1b677a-391d-4358-87dd-1f0109a3f2a1",
+      "books": [
+        "a"
+      ]
+    },
+    {
+      "path": "/api/forum-reply",
+      "sessionId": "cfa0db9e-99c7-4223-8f2f-b41b430c5e10",
+      "turnId": "23cda43c-b607-4eb2-a7fe-590f4d015f4a",
+      "variantId": "ed1b677a-391d-4358-87dd-1f0109a3f2a1",
+      "books": [
+        "a"
+      ]
+    },
+    {
+      "path": "/api/memory",
+      "sessionId": "cfa0db9e-99c7-4223-8f2f-b41b430c5e10",
+      "books": [
+        "a"
+      ]
+    },
+    {
+      "path": "/api/persona",
+      "books": [
+        "task"
+      ]
+    },
+    {
+      "path": "/api/utility",
+      "books": [
+        "task"
+      ]
+    },
+    {
+      "path": "/api/memory",
+      "sessionId": "cfa0db9e-99c7-4223-8f2f-b41b430c5e10",
+      "books": [
+        "a"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import {cleanNativeTaskProjection} from '../../server/native-task-context.mjs';
 import {protectedRuntimePreset} from './preset-policy.mjs';
 import {loopbackOrigin} from './native-client.mjs';
 import {randomUUID} from 'node:crypto';
@@ -30,25 +31,26 @@ export async function createPrivateCompiler({chromium,executablePath,origin,priv
   },{privateCard,privateLore,characterName:'PrivateAcademy-'+randomUUID()});
  }catch(error){await browser.close();throw moduleFailure||error;}
  let queue=Promise.resolve();
- async function compile({input,preset,worldbooks:requestedWorldbooks,worldState:requestedState,worldActors=[],signal,messages:history,generationType='normal'}){
+ async function compile({input,preset,worldbooks:requestedWorldbooks,worldState:requestedState,worldActors=[],taskContext,signal,messages:history,generationType='normal'}){
   const worldState=requestedState===undefined?undefined:cleanNativeWorldSeed(requestedState),worldbooks=projectNativeWorldScopes(cleanNativeWorldbookRequest(requestedWorldbooks),worldActors);assertNativeWorldbooksRuntime(worldbooks,{effects:!!worldState,scope:true});
-  const effective=protectedRuntimePreset(preset);
+  const effective=protectedRuntimePreset(preset),projection=cleanNativeTaskProjection(taskContext);
    if(history){const identifier='academy-task-context';if(effective.prompts.some(p=>p.identifier===identifier))throw Error('RESERVED_PROMPT_ID');effective.prompts.push({identifier,name:'学院任务协议',role:'system',content:history.filter(m=>m.role==='system').map(m=>m.content).join('\n\n'),system_prompt:false,injection_position:1,injection_depth:0,injection_order:0,injection_trigger:[]});for(const group of effective.prompt_order)group.order.push({identifier,enabled:true});}
    const task=queue.catch(()=>{}).then(async()=>{
    signal?.throwIfAborted();
-   const result=await page.evaluate(async({input,effective,history,generationType,worldbooks,worldState})=>{
+   const result=await page.evaluate(async({input,effective,history,generationType,worldbooks,worldState,projection})=>{
     const H=TavernHelper,C=SillyTavern.getContext(),O=await import('/scripts/openai.js'),S=await import('/script.js');
     const flags=C.extensionSettings.tavern_helper.script.enabled;
     if(flags.global!==false||flags.presets.length||flags.characters.length)throw Error('PRIVATE_SCRIPT_POLICY_CHANGED');
     await H.importRawPreset('PrivateRuntime',JSON.stringify(effective));H.loadPreset('PrivateRuntime');await O.getPresetApplicationPromise();
+    const P=await import('/scripts/power-user.js');S.setUserName(projection.userName,{toastPersonaNameChange:false});P.power_user.persona_description=projection.persona;
     O.oai_settings.show_thoughts=false;
     const names=worldbooks.map(book=>'PlayerRuntime-'+book.id);await H.rebindGlobalWorldbooks(['PrivateAcademyLore']);
     for(const old of H.getWorldbookNames().filter(name=>name.startsWith('PlayerRuntime-')&&!names.includes(name)))if(!await H.deleteWorldbook(old))throw Error('NATIVE_WORLD_PROJECTION_CLEANUP_FAILED');
     for(const book of worldbooks){const name='PlayerRuntime-'+book.id;await H.createOrReplaceWorldbook(name,[],{render:'immediate'});if(!await H.importRawWorldbook(name,JSON.stringify(book.worldbook)))throw Error('NATIVE_WORLD_IMPORT_FAILED');}
     // Every compile replaces the projection bindings, including an explicitly empty selection.
     await H.rebindGlobalWorldbooks(['PrivateAcademyLore',...names]);
-    const chat=history?.filter(m=>m.role!=='system').map(m=>({name:m.role==='assistant'?'学院':'User',is_user:m.role==='user',is_system:false,mes:m.content,send_date:new Date().toISOString()}));
-    C.chat.splice(0,C.chat.length,...(chat?.length?chat:[{name:'User',is_user:true,is_system:false,mes:input,send_date:new Date().toISOString()}]));
+    const chat=history?.filter(m=>m.role!=='system').map(m=>({name:m.role==='assistant'?'学院':projection.userName,is_user:m.role==='user',is_system:false,mes:m.content,send_date:new Date().toISOString()}));
+    C.chat.splice(0,C.chat.length,...(chat?.length?chat:[{name:projection.userName,is_user:true,is_system:false,mes:input,send_date:new Date().toISOString()}]));
     S.updateChatMetadata({timedWorldInfo:worldState?structuredClone(worldState.effects):{}},false);
     if(worldState)globalThis.__ACADEMY_NATIVE_WORLD_PROJECTION__={messageCount:worldState.messageCount};
     let messages;const handler=event=>{messages=event.chat;};C.eventSource.on(C.eventTypes.CHAT_COMPLETION_PROMPT_READY,handler);
@@ -60,7 +62,7 @@ export async function createPrivateCompiler({chromium,executablePath,origin,priv
     const effects=Object.fromEntries(['sticky','cooldown'].map(kind=>[kind,Object.fromEntries(Object.entries(timed[kind]||{}).filter(([key])=>names.has(key.slice(0,key.lastIndexOf('.')))))]));
     return {messages,requestReasoning:false,scriptsDisabled:true,...(worldState?{effects}:{})};
     }finally{C.eventSource.removeListener(C.eventTypes.CHAT_COMPLETION_PROMPT_READY,handler);delete globalThis.__ACADEMY_NATIVE_WORLD_PROJECTION__;delete S.chat_metadata.timedWorldInfo;}
-   },{input,effective,history,generationType,worldbooks,worldState});
+   },{input,effective,history,generationType,worldbooks,worldState,projection});
    signal?.throwIfAborted();return {...result,...(worldState?{effects:cleanNativeEffects(result.effects)}:{})};
   });queue=task;return task;
  }

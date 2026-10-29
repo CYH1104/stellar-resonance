@@ -55,3 +55,26 @@ it('manual terminal requests share the saved native preset and worldbook snapsho
 it('failed restore retains the current raw worldbooks and complete pre-overwrite copy',async()=>{
  const w=await workspace(),a=config();await w.saveNativePreset(a);const incoming=config();incoming.worldbooks!.books[0].worldbook.entries[0].content='incoming';const source=newSession('FAIL_NATIVE_WORLDBOOK_RESTORE',{name:'new',appearance:'',background:'',personality:''},''),file=createCloudSave({version:1,sessions:[source],preferences:defaults(),archive:{version:1,nativePreset:incoming}},defaults()),write=IndexedDbRepository.prototype.write;vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async function(this:IndexedDbRepository,value,...args){if(value.sessions.some(s=>s.name==='FAIL_NATIVE_WORLDBOOK_RESTORE'))throw Error('simulated-disk-failure');return write.call(this,value,...args);});await expect(w.restoreCloudSave(file)).rejects.toThrow('simulated-disk-failure');expect(w.nativePreset.value).toEqual(a);expect((await new IndexedDbRepository().readCloudRecovery('workspace'))!.archive!.nativePreset).toEqual(a);
 });
+
+it.each([false,true])('forum orchestration preserves source identity and rejects a late persona change: %s',async changePersona=>{
+ vi.mocked(HttpGateway.prototype.bootstrap).mockResolvedValue({runtime:'local-card',dataset:'test-world',name:'test',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true,native:true}});
+ vi.spyOn(HttpGateway.prototype,'configure').mockResolvedValue({origin:'https://synthetic.example'});
+ const w=await workspace(),s=w.active.value!;s.sourceDataset='test-world';s.turns.push({id:'source-turn',input:'行动',selected:0,variants:[{id:'source-variant',text:'正文',status:'complete',createdAt:'2026-10-30T00:00:00.000Z',outcome:{event:'公开动态',forum:[{id:'post',authorName:'楼主',content:'公开帖子'}]}}]});
+ for(const p of w.preferences.profiles){p.apiBaseUrl='https://synthetic.example/v1';p.model='synthetic';w.credentials[p.id]='synthetic';}await w.confirmAllApis();w.preferences.forumReplyEnabled=true;w.preferences.forumReplyProfile='main';
+ let finish!:(value:any)=>void;const reply=vi.spyOn(HttpGateway.prototype,'forumReply').mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const {visibleForum}=await import('../src/domain/story');const pending=w.replyToForum(visibleForum(s)[0].key,'公开评论');await vi.waitFor(()=>expect(reply).toHaveBeenCalledTimes(1));expect(reply.mock.calls[0][0]).toMatchObject({sessionId:s.id,turnId:'source-turn',variantId:'source-variant',state:{player:{name:s.persona.name}}});
+ if(changePersona)s.persona.background='在途修改后的人设';finish(Array.from({length:5},(_,i)=>({authorId:'npc'+i,authorName:'发言人'+i,content:'回复'+i})));await pending;
+ expect(JSON.stringify(s).includes('回复0')).toBe(!changePersona);if(changePersona)expect(w.forumReplyError.value).toContain('人设');
+});
+
+it('a pending round summary cannot overwrite memories after its source persona changes',async()=>{
+ vi.mocked(HttpGateway.prototype.bootstrap).mockResolvedValue({runtime:'local-card',dataset:'test-world',name:'test',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true,native:true}});
+ vi.spyOn(HttpGateway.prototype,'configure').mockResolvedValue({origin:'https://synthetic.example'});
+ const w=await workspace(),s=w.active.value!;w.preferences.vectorEnabled=false;
+ for(const p of w.preferences.profiles){p.apiBaseUrl='https://synthetic.example/v1';p.model='synthetic';w.credentials[p.id]='synthetic';}await w.confirmAllApis();
+ s.turns.push({id:'memory-turn',input:'行动',selected:0,variants:[{id:'memory-variant',text:'正文',status:'complete',createdAt:'2026-10-30T00:00:00.000Z',outcome:{event:'事件'}}]});
+ let finish!:(value:any)=>void;const memory=vi.spyOn(HttpGateway.prototype,'memory').mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const pending=w.retryMemory();await vi.waitFor(()=>expect(memory).toHaveBeenCalledTimes(1));expect(memory.mock.calls[0][0].persona).toEqual(s.persona);s.persona.background='在途修改后的人设';
+ finish({participants:['玩家'],time:'未明确',location:'未明确',userActions:['SUMMARY_SHOULD_NOT_COMMIT'],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]});await pending;
+ expect(JSON.stringify(s.memories)).not.toContain('SUMMARY_SHOULD_NOT_COMMIT');expect(s.memories.some(m=>m.status==='ready')).toBe(false);expect(w.problem.value).toContain('改变');
+});

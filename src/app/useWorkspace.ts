@@ -1,3 +1,4 @@
+import {taskPersonaSignature} from '../domain/taskSource';
 import {nativeWorldSeed,nativeWorldCheckpoint} from '../domain/nativeWorldState';
 import {mergeNativeWorldbooks,assertNativeWorldStateMerge} from '../domain/nativeWorldbooks';
 import {cleanNativePresetConfig,type NativePresetConfig} from '../domain/nativePreset';
@@ -454,7 +455,7 @@ export function useWorkspace() {
   function memoryLedger(session:Session,before=session.turns.length){const order=new Map(session.turns.map((t,i)=>[t.id,i]));return visibleMemories(session,before).slice().sort((a,b)=>(order.get(a.sourceTurn||'')??-1)-(order.get(b.sourceTurn||'')??-1));}
   function roundMemoryInput(session:Session,index:number):MemoryRequest{
     const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)throw new Error('只能整理已完成的剧情。');
-    return {sessionId:session.id,turnId:turn.id,variantId:v.id,input:turn.input,story:v.text,event:v.outcome.event,diceEvent:copy(v.outcome.diceEvent),before:memoryState(stateAt(session,index)),after:memoryState(stateAt(session,index+1)),priorCommitments:activeCommitments(memoryLedger(session,index))};
+    return {persona:copy(session.persona),sessionId:session.id,turnId:turn.id,variantId:v.id,input:turn.input,story:v.text,event:v.outcome.event,diceEvent:copy(v.outcome.diceEvent),before:memoryState(stateAt(session,index)),after:memoryState(stateAt(session,index+1)),priorCommitments:activeCommitments(memoryLedger(session,index))};
   }
   function memoryNeedsWork(session:Session,index:number){const turn=session.turns[index],v=turn&&selected(turn);if(!v||v.status!=='complete'||!v.outcome)return false;const m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===turn.id&&m.sourceVariant===v.id);return !m||!memoryReady(m)||session.memoryEngine==='candidate'&&!m.source||m.sourceFingerprint!==memorySignature(roundMemoryInput(session,index));}
   const pendingMemoryCount=computed(()=>active.value?active.value.turns.filter((_,i)=>memoryNeedsWork(active.value!,i)).length:0);
@@ -523,7 +524,7 @@ export function useWorkspace() {
    }
   }
   async function writeRoundMemory(session:Session,index:number,signal:AbortSignal){
-    const request=copy(roundMemoryInput(session,index)),sourceFingerprint=memorySignature(request),p=copy(summaryProfile.value!);
+    const request=copy(roundMemoryInput(session,index)),sourceFingerprint=memorySignature(request),personaSignature=taskPersonaSignature(request.persona),p=copy(summaryProfile.value!);
     let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===request.turnId&&m.sourceVariant===request.variantId);
     if(m?.record&&memoryReady(m)&&m.sourceFingerprint===sourceFingerprint){if(session.memoryEngine==='candidate'&&!m.source){m.source=sourceFor(session,request);try{await persist();}catch(e){delete m.source;throw e;}}return;}
     if(!m){m={id:uid(),kind:'event',text:'本轮记忆待整理。',createdAt:now(),sourceTurn:request.turnId,sourceVariant:request.variantId};session.memories.push(m);m=session.memories.find(x=>x.id===m!.id)!;}
@@ -531,17 +532,17 @@ export function useWorkspace() {
     try{
       if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存记忆整理 API。');
       const signature=connectionSignature(p),memoryDiagnostics:string[]=[],result=normalizeMemoryResult(await gateway().memory(request,p,key(p),signal),request,memoryDiagnostics);if(memoryDiagnostics.length)recordDiagnostic({kind:'memory-audience',sessionId:session.id,turnId:request.turnId,issues:memoryDiagnostics});signal.throwIfAborted();
-      if(!sessions.value.includes(session)||!visibleSourceStillMatches(session,request.turnId,request.variantId)||memorySignature(roundMemoryInput(session,index))!==sourceFingerprint||signature!==connectionSignature(profile(p.id)))throw new Error('剧情或接口已改变，本次记忆未应用。');
+      if(!sessions.value.includes(session)||!visibleSourceStillMatches(session,request.turnId,request.variantId)||memorySignature(roundMemoryInput(session,index))!==sourceFingerprint||taskPersonaSignature(session.persona)!==personaSignature||signature!==connectionSignature(profile(p.id)))throw new Error('剧情或接口已改变，本次记忆未应用。');
       if(target.record)captureRevision(target);target.source=sourceFor(session,request);target.sourceFingerprint=sourceFingerprint;target.revision||=1;target.record=result;target.status='ready';target.text=memoryText(target);delete target.error;delete target.indexError;taskFor(session,request).status='ready';
       try{await persist();}catch(e){Object.keys(target).forEach(k=>delete (target as any)[k]);Object.assign(target,originalTarget);throw e;}
     }catch(e){if(!target.record)target.status=signal.aborted?'pending':'failed';target.error=signal.aborted?'记忆整理已停止。':'记忆整理失败，请补记。';await safePersist();throw e;}
     if(preferences.vectorEnabled){try{await encodeMemories(session,[target],signal);await indexFactVectors(session,signal);}catch(e){if(!signal.aborted)logRuntime(e,'记忆索引');target.indexError=signal.aborted?'索引已停止。':'索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}}
   }
   async function writeMemoryBatch(session:Session,indices:number[],signal:AbortSignal){
-    const requests=indices.map(index=>copy(roundMemoryInput(session,index))),fingerprints=requests.map(memorySignature),p=copy(summaryProfile.value!);
+    const requests=indices.map(index=>copy(roundMemoryInput(session,index))),fingerprints=requests.map(memorySignature),personaSignature=taskPersonaSignature(session.persona),p=copy(summaryProfile.value!);
     if(localService.value&&(!connectionReady(p)||apiFieldIssues(p,key(p)).length))throw new Error('请先保存记忆整理 API。');
     const signature=connectionSignature(p),records=await gateway().memoryBatch(requests,{...p,maxTokens:Math.min(32000,Math.max(p.maxTokens,requests.length*1200))},key(p),signal);signal.throwIfAborted();
-    if(records.length!==requests.length||!sessions.value.includes(session)||signature!==connectionSignature(profile(p.id))||requests.some((r,i)=>!visibleSourceStillMatches(session,r.turnId,r.variantId)||memorySignature(roundMemoryInput(session,indices[i]))!==fingerprints[i]))throw new Error('剧情或接口已改变，本批记忆未应用。');
+    if(records.length!==requests.length||!sessions.value.includes(session)||taskPersonaSignature(session.persona)!==personaSignature||signature!==connectionSignature(profile(p.id))||requests.some((r,i)=>!visibleSourceStillMatches(session,r.turnId,r.variantId)||memorySignature(roundMemoryInput(session,indices[i]))!==fingerprints[i]))throw new Error('剧情或接口已改变，本批记忆未应用。');
     const commitments=new Map();const batchDiagnostics:string[]=[];const normalized=records.map((r,i)=>{for(const c of requests[i].priorCommitments)if(!commitments.has(c.id))commitments.set(c.id,c);const record=normalizeMemoryResult(r,{...requests[i],priorCommitments:[...commitments.values()]},batchDiagnostics);for(const c of record.commitments)commitments.set(c.id,c);return record;});if(batchDiagnostics.length)recordDiagnostic({kind:'memory-audience',sessionId:session.id,issues:batchDiagnostics});
     const originalMemories=copy(session.memories);const targets=normalized.map((record,i)=>{const r=requests[i];let m=session.memories.find(m=>m.kind==='event'&&m.sourceTurn===r.turnId&&m.sourceVariant===r.variantId);if(!m){m={id:uid(),kind:'event',text:'',createdAt:now(),sourceTurn:r.turnId,sourceVariant:r.variantId};session.memories.push(m);}if(m.record)captureRevision(m);m.source=sourceFor(session,r);m.revision||=1;m.record=record;m.status='ready';m.sourceFingerprint=fingerprints[i];m.text=memoryText(m);delete m.vector;delete m.error;delete m.indexError;taskFor(session,r).status='ready';return m;});
     try{await persist();}catch(e){session.memories=originalMemories;throw e;}if(preferences.vectorEnabled)try{await encodeMemories(session,targets,signal);await indexFactVectors(session,signal);}catch(e){for(const m of targets)m.indexError='索引失败，记忆文字已保留。';await safePersist();if(signal.aborted)throw e;notice.value='记忆已保存，向量索引待重试。';}
@@ -609,7 +610,7 @@ export function useWorkspace() {
     turn.randomEvent={status:'preparing',kind};busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在生成随机事件…';const current=new AbortController();let prepared=false;controller=current;await safePersist();
     try{
       const separate=preferences.randomEventProfile&&preferences.randomEventProfile!==preferences.mainProfile&&p.id!==storyProfile.value?.id;
-      const proposal=localService.value&&separate?await http.randomEvent({instruction:preferences.randomEventInstruction,kind,persona:copy(session.persona),input:turn.input,history:session.turns.slice(Math.max(0,index-6),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input.slice(-12000)},{role:'assistant' as const,content:v.text.slice(-12000)}]:[];}),presentCharacterIds:stateAt(session,index).characters.filter(c=>c.present).map(c=>c.id)},p,key(p),current.signal):{kind,title:kind,description:'Create a concrete event of this category grounded in the current scene and enact it in this response.'};
+      const proposal=localService.value&&separate?await http.randomEvent({sessionId:session.id,turnId:turn.id,state:copy(stateAt(session,index)),instruction:preferences.randomEventInstruction,kind,persona:copy(session.persona),input:turn.input,history:session.turns.slice(Math.max(0,index-6),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input.slice(-12000)},{role:'assistant' as const,content:v.text.slice(-12000)}]:[];}),presentCharacterIds:stateAt(session,index).characters.filter(c=>c.present).map(c=>c.id)},p,key(p),current.signal):{kind,title:kind,description:'Create a concrete event of this category grounded in the current scene and enact it in this response.'};
       current.signal.throwIfAborted();turn.randomEvent={status:'accepted',proposal};turn.dice=rollDice();prepared=true;return true;
     }catch(e){turn.randomEvent={status:'failed',kind};problem.value=message(e);notice.value='事件候选未完成，正文尚未生成。可重试或跳过本轮事件。';}
     finally{busy.value=prepared;if(controller===current)controller=undefined;await safePersist();}
@@ -743,10 +744,10 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
     forumReplyPost.value=keyValue;forumReplyError.value='';const p=copy(profile(preferences.forumReplyProfile||preferences.mainProfile));
     if(!localService.value||apiFieldIssues(p,key(p)).length||!connectionReady(p)){forumReplyError.value='你的评论已保存。请先保存所选论坛回复 API 的配置。';return true;}
     const comments=[...(selectedPost.comments||[]).map(c=>({authorName:c.authorName,content:c.content})),...activity.replies.slice(0,parent+1).map(r=>({authorName:r.kind==='ai'?r.authorName!:session.persona.name,content:r.text}))].slice(-12);
-    const signature=connectionSignature(p),current=new AbortController();forumController=current;workingForumReply.value=keyValue;
+    const signature=connectionSignature(p),personaSignature=taskPersonaSignature(session.persona),current=new AbortController();forumController=current;workingForumReply.value=keyValue;
     try{
-      const reply=await http.forumReply({persona:copy(session.persona),state:copy(state.value),userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments,minReplies:5,participantNames:[...new Set([...(selectedPost.comments||[]).map(c=>c.authorName),...activity.replies.filter(r=>r.kind==='ai'&&r.authorName).map(r=>r.authorName!)])].slice(0,100)},p,key(p),current.signal);
-      current.signal.throwIfAborted();if(!sessions.value.some(s=>s.id===session.id)||signature!==connectionSignature(profile(p.id)))throw new Error('存档或接口已改变，本次回复未应用。');
+      const reply=await http.forumReply({sessionId:session.id,turnId:selectedPost.turnId,variantId:selectedPost.variantId,persona:copy(session.persona),state:copy(stateAt(session)),userName:session.persona.name,post:{authorName:selectedPost.authorName,content:selectedPost.content},comments,minReplies:5,participantNames:[...new Set([...(selectedPost.comments||[]).map(c=>c.authorName),...activity.replies.filter(r=>r.kind==='ai'&&r.authorName).map(r=>r.authorName!)])].slice(0,100)},p,key(p),current.signal);
+      current.signal.throwIfAborted();if(!sessions.value.some(s=>s.id===session.id)||taskPersonaSignature(session.persona)!==personaSignature||signature!==connectionSignature(profile(p.id)))throw new Error('存档、人设或接口已改变，本次回复未应用。');
       if(Array.isArray(reply))addForumAIReplies(session,keyValue,replyId,reply);else addForumAIReply(session,keyValue,replyId,reply);await persist();notice.value=Array.isArray(reply)?`角色／NPC 已回复 ${reply.length} 条`:'角色／NPC 已回复你的评论';
     }catch(e){const detail=current.signal.aborted?'AI 回复已停止。':message(e);forumReplyError.value=detail+(/评论已(?:保留|保存)/.test(detail)?'':' 你的评论已保留。');}
     finally{if(forumController===current){forumController=undefined;workingForumReply.value='';}}return true;

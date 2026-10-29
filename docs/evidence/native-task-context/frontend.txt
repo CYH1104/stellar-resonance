@@ -1,0 +1,14 @@
+npm notice run stellar-resonance-frontend@0.20.5 test
+npm notice run vitest run
+
+ RUN  v5.0.4 D:/QQ/QQ文件/星穹学院终端/.integration/native-migration
+
+
+ Test Files  150 passed (150)
+      Tests  902 passed (902)
+   Start at  04:26:50
+   Duration  20.00s (transform 51%, tests 26%, import 22%, worker 1%)
+
+    Isolate  150 workers spawned · ~299ms startup each (spawn + environment, per file)
+             at least ~2.69s faster with isolate: false — reuses workers across files instead of one per file
+

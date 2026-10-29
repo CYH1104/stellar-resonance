@@ -56,7 +56,7 @@ export interface Gateway {
   generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent>;
   memoryBatch(inputs:import('./memories').MemoryRequest[],profile:Profile,key:string,signal:AbortSignal):Promise<import('./memories').RoundMemory[]>;
   memory(input:import('./memories').MemoryRequest,profile:Profile,key:string,signal:AbortSignal):Promise<import('./memories').RoundMemory>;
-  utility(task: 'summary' | 'suggestions', texts: string[], profile: Profile, key: string, signal: AbortSignal): Promise<string[]>;
+  utility(task: 'summary' | 'suggestions', texts: string[], profile: Profile, key: string, signal: AbortSignal,source?:import('./taskSource').TaskSource): Promise<string[]>;
   embed(texts: string[], profile: Profile, key: string, signal: AbortSignal): Promise<number[][]>;
 }
 export interface Repository { read(): Promise<Snapshot | undefined>; write(value: Snapshot): Promise<void> }

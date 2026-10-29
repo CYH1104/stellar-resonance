@@ -1,0 +1,41 @@
+✔ legacy config is read-only for migration and isolated by account and dataVersion (18.0304ms)
+✔ native account transport preserves partial prose and never marks limit or EOF complete (31.1501ms)
+✔ generation snapshots player configuration before awaiting a worker and never writes server settings (5.1173ms)
+✔ worldbooks are validated and snapshotted before waiting for a worker, and empty selection clears the next task (5.7936ms)
+✔ spike refuses external runtime and fixture origins (1.2836ms)
+✔ native request preserves CSRF/session, abort, sampling and locks reasoning off (26.2575ms)
+✔ unexpected URLs never escape the isolated native transport (0.5453ms)
+✔ already aborted request does not initialize a native session (0.4506ms)
+✔ native SSE without Content-Type is validated and preserved byte for byte (2.2749ms)
+✔ native HTML or JSON error content is not disguised as SSE (2.2944ms)
+✔ gateway snapshots settings across compilation and distinguishes stop, limit, filter and EOF without retries (140.9179ms)
+✔ editing sampling preserves every untouched raw field (2.0781ms)
+✔ editing prompt text/enable preserves trigger, depth, unknown fields and ordering (1.3728ms)
+✔ runtime reasoning policy cannot be enabled by imported preset and does not rewrite original (0.2453ms)
+✔ raw imported transport URLs survive storage but cannot change the private worker transport (0.1944ms)
+✔ prototype pollution and ambiguous/unknown prompt edits fail closed (0.3778ms)
+✔ public generation cannot supply full messages, private slots, keys, scripts or reasoning flags (0.2101ms)
+✔ native relay requires a destination policy and valid limits (2.0281ms)
+✔ concurrent tickets preserve distinct URL model and credentials and reject replays (77.7953ms)
+✔ a replay during an active request cannot cancel the legitimate ticket owner (19.3672ms)
+✔ unapproved destinations missing credentials and mismatched models never reach a provider (10.1994ms)
+✔ destination policy is checked again at claim and reasoning override is rejected (11.9814ms)
+✔ headers are snapshotted before asynchronous authorization and pending capacity is bounded (9.4752ms)
+✔ unused tickets expire and parent cancellation removes both pending and active requests (47.8217ms)
+✔ provider HTTP failures preserve status and content without retries (6.0736ms)
+✔ real HTTP redirects cannot forward credentials to a second destination (9.0101ms)
+✔ account routing uses selected request URLs and keys but sends only opaque tickets to native workers (74.9701ms)
+✔ request snapshots survive worker startup and all rejected native paths release their bindings (12.8387ms)
+✔ native client forwards a relay ticket without accepting a real credential as a ticket (1.4854ms)
+✔ native task user/persona projection is snapshotted before worker initialization and clears on an unbound request (5.7329ms)
+✔ cancelling only the response reader promptly aborts provider work and releases its ticket (179.8048ms)
+✔ unknown or modified native WI source cannot be adapted (1.3749ms)
+✔ the pinned native timed class cannot apply a guessed private hash or collide across book identities (9.3245ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 513.461

@@ -30,3 +30,10 @@ test('native client forwards a relay ticket without accepting a real credential 
  await client.complete({model:'m',messages:[]},undefined,{relayTicket:ticket});const payload=JSON.parse(calls[1].options.body);assert.equal(JSON.parse(payload.custom_include_headers).Authorization,'Bearer '+ticket);assert.equal(payload.custom_url,'http://127.0.0.1:8832/v1');assert.equal(payload.include_reasoning,false);
  await assert.rejects(client.complete({},undefined,{relayTicket:'actual-user-key'}),/INVALID_NATIVE_RELAY_TICKET/);assert.equal(calls.length,2);
 });
+
+test('native task user/persona projection is snapshotted before worker initialization and clears on an unbound request',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'native-task-projection-'));let enter,release;const entered=new Promise(r=>enter=r),gate=new Promise(r=>release=r),seen=[];
+ const runtime=createAccountRuntime({directory,defaultPreset:config.preset,createWorker:async()=>{enter();await gate;return {compiler:{compile:async input=>{seen.push(input.taskContext);return {messages:[],scriptsDisabled:true};}},client:{complete:async()=>new Response(sse,{headers:{'Content-Type':'text/event-stream'}})},close:async()=>{}};}});
+ try{const projection={userName:'源玩家',persona:'源人设'},pending=runtime.fetchForAccount({id:'a'},{nativePreset:config,taskContext:projection})('https://native-verification.invalid/v1/chat/completions',request());await entered;projection.userName='错误存档';projection.persona='错误人设';release();await(await pending).text();await(await runtime.fetchForAccount({id:'a'},{nativePreset:config})('https://native-verification.invalid/v1/chat/completions',request())).text();assert.deepEqual(seen,[{userName:'源玩家',persona:'源人设'},{userName:'User',persona:''}]);
+ }finally{release();await runtime.close();await rm(directory,{recursive:true,force:true});}
+});

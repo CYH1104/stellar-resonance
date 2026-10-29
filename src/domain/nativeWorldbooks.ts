@@ -50,7 +50,7 @@ export function cleanNativeWorldbooks(value:unknown):NativeWorldbooks{
  if(JSON.stringify(result).length>500000)invalid();return result;
 }
 export function nativeWorldbooksForRequest(value:NativeWorldbooks|undefined,path:string,body:any,sessionId?:string):NativeWorldbook[]{
- if(!value||path==='probe')return [];const safe=cleanNativeWorldbooks(value),task=nativeTaskForRequest(path,body),ids=sessionId&&safe.sessionBooks?.[sessionId]!==undefined?safe.sessionBooks[sessionId]:task&&safe.taskBooks?.[task]!==undefined?safe.taskBooks[task]!:safe.defaultIds;
+ if(!value||path==='probe')return [];const safe=cleanNativeWorldbooks(value),task=nativeTaskForRequest(path,body),ids=sessionId&&safe.sessionBooks&&Object.hasOwn(safe.sessionBooks,sessionId)?safe.sessionBooks[sessionId]:task&&safe.taskBooks?.[task]!==undefined?safe.taskBooks[task]!:safe.defaultIds;
  const books=ids.map(id=>safe.books.find(b=>b.id===id)!);assertNativeWorldbooksRuntime(books,{effects:path==='generate'&&!!body?.nativeWorldState,scope:true});return books;
 }
 export function assertNativeWorldbooksRuntime(books:NativeWorldbook[],support:{effects?:boolean;scope?:boolean}={}){for(const book of books){assertNativeWorldbookOptions(book.worldbook,true);for(const entry of Object.values(book.worldbook.entries) as Record<string,any>[]){if(entry.disable===true)continue;

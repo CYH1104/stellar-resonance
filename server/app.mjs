@@ -1,3 +1,5 @@
+import {nativeTaskActors,nativeTaskProjection} from './native-task-context.mjs';
+import {sourceSessionForRequest} from '../src/domain/taskSource.ts';
 import {createCloudBackup} from './cloud-backup.mjs';
 const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.upstreamStatus>=100&&error.upstreamStatus<=599?{upstreamStatus:error.upstreamStatus}:{};
 import {majorCharacter} from '../src/domain/characterImages.ts';
@@ -152,8 +154,9 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       if(path==='/api/cloud-backup'&&request.method==='POST'){session(request);const data=await body(request,12*1024*1024);json(response,200,await cloudBackup(data));return;}
       if(path.startsWith('/api/')){
         if(request.method!=='POST')throw modelError(405,'POST_REQUIRED');const current=session(request),data=await body(request);
-        const actorList=[data.state?.characters,data.before?.characters,data.context?.state?.characters].find(Array.isArray)||[],worldActors=actorList.filter(a=>a&&typeof a.id==='string'&&typeof a.name==='string').map(a=>({id:a.id,name:a.name}));
-        const requestFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{nativePreset:data.nativePreset,nativeWorldbooks:data.nativeWorldbooks,worldActors}):fetchImpl;
+        if(nativeRuntime)sourceSessionForRequest(path.slice('/api/'.length),data);
+        const worldActors=nativeRuntime?nativeTaskActors(data,source.characters):[],taskContext=nativeRuntime?nativeTaskProjection(data):undefined;
+        const requestFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{nativePreset:data.nativePreset,nativeWorldbooks:data.nativeWorldbooks,worldActors,taskContext}):fetchImpl;
         if(path==='/api/native-config'&&nativeRuntime){json(response,200,await nativeRuntime.configure(account,data));return;}
         if(path==='/api/theater-shares'||path==='/api/theater-shares/lookup'){json(response,200,await theaterShares(path.endsWith('/lookup')?'lookup':'create',data,account?.id||'local'));return;}
         if(path==='/api/terminal-code'){
@@ -242,7 +245,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
         if(path==='/api/generate'){
           if(nativeRuntime)data.singleStateCall=true;
-          let nativeWorldInfo;const storyFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{generationType:data.generationType||'normal',nativePreset:data.nativePreset,nativeWorldbooks:data.nativeWorldbooks,nativeWorldState:data.nativeWorldState,worldActors,onProjection:effects=>{nativeWorldInfo??=effects;}}):requestFetch;
+          let nativeWorldInfo;const storyFetch=nativeRuntime?nativeRuntime.fetchForAccount(account,{generationType:data.generationType||'normal',nativePreset:data.nativePreset,nativeWorldbooks:data.nativeWorldbooks,nativeWorldState:data.nativeWorldState,worldActors,taskContext,onProjection:effects=>{nativeWorldInfo??=effects;}}):requestFetch;
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           // 正文请求不再携带终端上下文：手机通讯走独立的 /api/personal-terminal 任务。
           // 旧页面仍可能带上该字段，直接丢弃而不是报错。
