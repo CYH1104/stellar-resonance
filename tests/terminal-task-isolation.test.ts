@@ -76,3 +76,32 @@ it('editing a continued reply still permits independently confirmed pre-prose fa
  const s=inheritedSession();s.terminal!.jobs!.push({id:terminalAutoJobId(s,0,'terminal-first'),kind:'messages',target:'auto',anchor:terminalAnchor(s,0),status:'ready',turnId:'turn',variantId:'v1',mode:'terminal-first',facts:'PRE_PROSE_FACT'});
  editMessage(s,0,'assistant','已改写的正文');expect(terminalCommittedFacts(s,0)).toBe('PRE_PROSE_FACT');
 });
+
+function legacyContext(edited=false){const s=inheritedSession();delete s.terminal!.jobs!.find(j=>j.target==='continuation-context')!.contextVersion;if(edited)s.turns[0].variants[2].edited=true;return s;}
+it('previously edited legacy projections are ignored across local and cloud recovery without deleting records',async()=>{
+ const s=legacyContext(true),jobs=copy(s.terminal!.jobs),value={version:1 as const,sessions:[s],preferences:defaults()};
+ expect(terminalCommittedFacts(s,0)).toBe('');expect(s.terminal!.jobs).toEqual(jobs);const oldFile=JSON.parse(backup(value));delete oldFile.archive.terminalContextVersion;expect(terminalCommittedFacts(parseBackup(JSON.stringify(oldFile)).sessions[0],0)).toBe('');
+ const {createCloudSave,parseCloudSave}=await import('../src/domain/cloudBackup');
+ for(const restored of [parseBackup(backup(value)),parseCloudSave(createCloudSave(value,defaults())).snapshot]){expect(restored.archive?.terminalContextVersion).toBe(1);expect(terminalCommittedFacts(restored.sessions[0],0)).toBe('');expect(restored.sessions[0].terminal!.jobs).toEqual(jobs);}
+});
+it('legacy unedited contexts remain reusable and an identical save preserves them',()=>{
+ const s=legacyContext();expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');editMessage(s,0,'assistant',s.turns[0].variants[2].text);expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');expect(s.terminal!.jobs!.find(j=>j.target==='continuation-context')!.contextVersion).toBe(1);
+});
+it('an identical save cannot certify an already edited legacy projection',()=>{
+ const s=legacyContext(true);editMessage(s,0,'assistant',s.turns[0].variants[2].text);expect(terminalCommittedFacts(s,0)).toBe('');expect(s.terminal!.jobs!.find(j=>j.target==='continuation-context')!.contextVersion).toBeUndefined();
+});
+it('a new continuation from an edited source with fresh post-story facts keeps its valid context across backups',async()=>{
+ const s=session();s.turns[0].selected=1;editMessage(s,0,'assistant','改写后已确认正文');s.terminal!.jobs=[{id:terminalAutoJobId(s,0,'story-first'),kind:'messages',target:'auto',anchor:terminalAnchor(s),status:'ready',turnId:'turn',variantId:'v2',mode:'story-first',facts:'FRESH_FACT'}];
+ s.turns[0].variants.push({...copy(s.turns[0].variants[1]),id:'v3',status:'incomplete'});s.turns[0].selected=2;carryTerminalFacts(s,0,'v2');s.turns[0].variants[2].text+=' 正常追加';s.turns[0].variants[2].status='complete';expect(s.turns[0].variants[2].edited).toBe(true);
+ const value={version:1 as const,sessions:[s],preferences:defaults()},{createCloudSave,parseCloudSave}=await import('../src/domain/cloudBackup');
+ for(const restored of [parseBackup(backup(value)),parseCloudSave(createCloudSave(value,defaults())).snapshot]){expect(restored.archive?.terminalContextVersion).toBe(1);expect(terminalCommittedFacts(restored.sessions[0],0)).toBe('FRESH_FACT');}
+});
+it('versioned contexts require their backup marker and reject future markers before import or export',()=>{
+ const value=JSON.parse(backup({version:1,sessions:[inheritedSession()],preferences:defaults()}));expect(value.archive.terminalContextVersion).toBe(1);
+ const missing=copy(value);delete missing.archive.terminalContextVersion;expect(()=>parseBackup(JSON.stringify(missing))).toThrow('兼容标记');
+ const future=copy(value);future.archive.terminalContextVersion=2;expect(()=>parseBackup(JSON.stringify(future))).toThrow();expect(()=>backup(future)).toThrow();
+});
+it('future context provenance and provenance attached to an unrelated task stop import and export',()=>{
+ const value=JSON.parse(backup({version:1,sessions:[inheritedSession()],preferences:defaults()}));
+ for(const change of ['version','target']){const bad=copy(value),job=bad.sessions[0].terminal.jobs.find((j:any)=>j.target==='continuation-context');if(change==='version')job.contextVersion=2;else job.target='auto';expect(()=>parseBackup(JSON.stringify(bad))).toThrow();expect(()=>backup(bad)).toThrow();}
+});

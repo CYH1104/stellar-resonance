@@ -125,7 +125,9 @@ export function terminalFactsJob(s:Session,index:number,sourceVariantId?:string)
  const source=sourceVariantId===undefined?turn.selected:turn.variants.findIndex(v=>v.id===sourceVariantId);if(source<0)return;
  const view=source===turn.selected?s:{...s,turns:s.turns.map((t,i)=>i===index?{...t,selected:source}:t)};
  const context=terminalAutoJob(view,continuationContextId(view,index));
- if(context?.status==='ready'&&terminalAnchorActive(view,context.anchor))return context;
+ // Older clients could edit this reply without invalidating the projection. Keep its records,
+ // but do not trust an edited legacy projection when no edit-aware provenance is present.
+ if(context?.status==='ready'&&terminalAnchorActive(view,context.anchor)&&(context.contextVersion===1||context.contextVersion===undefined&&!turn.variants[source].edited))return context;
  // The selected variant's post-prose stage is more specific than an older shared pre-prose cache.
  for(const mode of ['story-first','terminal-first'] as const){const job=terminalAutoStageJob(view,index,mode);if(job?.status==='ready')return job;}
  // Older merged stages have no mode. Require the selected source variant and active boundary.
@@ -140,7 +142,7 @@ export function terminalCommittedFacts(s:Session,index:number,sourceVariantId?:s
 export function carryTerminalFacts(s:Session,index:number,sourceVariantId:string){
  const turn=s.turns[index],source=terminalFactsJob(s,index,sourceVariantId);if(!turn||!source||!s.terminal)return;
  const id=continuationContextId(s,index);if(terminalAutoJob(s,id))return;
- (s.terminal.jobs||=[]).push({id,kind:'messages',target:'continuation-context',anchor:terminalAnchor(s,index),turnId:turn.id,variantId:turn.variants[turn.selected].id,status:'ready',facts:terminalJobFacts(s,source)||undefined});
+ (s.terminal.jobs||=[]).push({id,kind:'messages',target:'continuation-context',contextVersion:1,anchor:terminalAnchor(s,index),turnId:turn.id,variantId:turn.variants[turn.selected].id,status:'ready',facts:terminalJobFacts(s,source)||undefined});
 }
 
 /** Build the plan for one turn. Returns undefined when this turn needs no terminal work

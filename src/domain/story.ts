@@ -1,5 +1,5 @@
 import {cleanNativeWorldCheckpoint} from './nativeWorldState.ts';
-import {hasTerminalTaskContract} from './terminalTaskContract.ts';
+import {hasTerminalTaskContract,hasVersionedTerminalContext} from './terminalTaskContract.ts';
 import {cleanBackupArchive,assertBackupSnapshotFields} from './backupArchive.ts';
 import {cleanSceneSnapshot} from './storyScene.ts';
 import {cleanCharacterImages} from './characterImages.ts';
@@ -234,8 +234,9 @@ export function editMessage(session: Session, index: number, role: 'user' | 'ass
   if(role==='user'){turn.input=text.trim();turn.inputEdited=true;for(const v of turn.variants)delete v.repairAudit;if(!turn.variants.length&&turn.randomEvent?.status==='pending')turn.randomEvent={status:'preparing',kind:turn.randomEvent.proposal.kind};}
   else {
     const variant=selected(turn);if(!variant)throw new Error('稿件不存在');const clean=stripReasoning(text.trim());if(!clean.trim())throw new Error('消息不能为空');
-    if(clean!==variant.text)for(const job of session.terminal?.jobs||[])if(job.target==='continuation-context'&&job.turnId===turn.id&&job.variantId===variant.id&&job.status==='ready'){
-      job.status='failed';job.error='正文已手动修改，旧续写通讯上下文已失效。';
+    for(const job of session.terminal?.jobs||[])if(job.target==='continuation-context'&&job.turnId===turn.id&&job.variantId===variant.id&&job.status==='ready'){
+      if(clean!==variant.text){job.status='failed';job.error='正文已手动修改，旧续写通讯上下文已失效。';}
+      else if(!variant.edited&&job.contextVersion===undefined)job.contextVersion=1;
     }
     variant.text=clean;variant.edited=true;delete variant.repairAudit;
   }
@@ -271,8 +272,8 @@ export function keywordScore(text: string, query: string): number {
 export function backup(snapshot: Snapshot): string {
   assertBackupSnapshotFields(snapshot);
   const sessions=sanitizeSessions(copy(snapshot.sessions));let native=false;for(const s of sessions)for(const t of s.turns)for(const v of t.variants)if(v.nativeWorldInfo!==undefined){if(v.status!=='complete')throw Error('未完成回复不能提交世界书跨轮状态');v.nativeWorldInfo=cleanNativeWorldCheckpoint(v.nativeWorldInfo);native=true;}
-  const baseArchive=snapshot.archive?cleanBackupArchive(snapshot.archive):undefined,tasks=hasTerminalTaskContract(sessions);
-  const archive=native||tasks?cleanBackupArchive({...baseArchive,version:1,...(native?{nativeWorldInfoVersion:1}:{}),...(tasks?{terminalTaskVersion:1}:{})}):baseArchive;
+  const baseArchive=snapshot.archive?cleanBackupArchive(snapshot.archive):undefined,tasks=hasTerminalTaskContract(sessions),contexts=hasVersionedTerminalContext(sessions)||sessions.some(s=>s.terminal?.jobs?.some(j=>j.target==='continuation-context'));
+  const archive=native||tasks?cleanBackupArchive({...baseArchive,version:1,...(native?{nativeWorldInfoVersion:1}:{}),...(tasks?{terminalTaskVersion:1}:{}),...(contexts?{terminalContextVersion:1}:{})}):baseArchive;
   return JSON.stringify({version:archive?2:1,sessions,preferences:cleanPreferences(snapshot.preferences),...(archive?{archive}:{})},null,2);
 }
 /** Explicit one-time migration. Preserve original snapshots/patches for audit,
@@ -357,7 +358,7 @@ export function parseBackup(text: string): Snapshot {
   const ids = new Set<string>();
   for (const s of value.sessions) {try{
     if (!s || typeof s.id !== 'string' || ids.has(s.id) || typeof s.name !== 'string' || typeof s.opening !== 'string' || !s.persona || typeof s.persona.name !== 'string' || !Array.isArray(s.turns) || !Array.isArray(s.memories) || !Array.isArray(s.suggestions) || !s.initial || !Array.isArray(s.initial.characters)) throw new Error('存档内容不完整');
-    if(s.terminal!==undefined){validateTerminal(s.terminal);if(hasTerminalTaskContract([s])&&value.archive?.terminalTaskVersion!==1)throw Error('终端任务身份缺少兼容标记，请使用支持此版本的完整备份。');}
+    if(s.terminal!==undefined){validateTerminal(s.terminal);if(hasTerminalTaskContract([s])&&value.archive?.terminalTaskVersion!==1)throw Error('终端任务身份缺少兼容标记，请使用支持此版本的完整备份。');if(hasVersionedTerminalContext([s])&&value.archive?.terminalContextVersion!==1)throw Error('终端续写上下文缺少兼容标记，请使用支持此版本的完整备份。');}
     ids.add(s.id);
     s.persona=normalizePersona(s.persona,false);
     if(s.worldbookIds!==undefined)s.worldbookIds=cleanWorldbookIds(s.worldbookIds);

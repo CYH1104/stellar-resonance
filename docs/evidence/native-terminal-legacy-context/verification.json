@@ -1,0 +1,86 @@
+{
+  "baseline": "a4b62a4ce4de0fefd80f1b8b95da8f37ed431703",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 149,
+    "passed": 889,
+    "failed": 0,
+    "expectedFail": 0
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0
+  },
+  "targeted": {
+    "passed": 25,
+    "failed": 0
+  },
+  "independentSuite": {
+    "totalPassed": 36,
+    "failed": 0,
+    "relatedExistingAndNewCases": 25,
+    "priorReviewCases": 9,
+    "olderReaderRejectionCases": 2,
+    "reviewAssertionsUnchanged": true,
+    "legacyFactoryPinnedToActualBa3d7f7CarryHelper": true
+  },
+  "typecheck": true,
+  "build": true,
+  "browser": {
+    "checks": 51,
+    "uncaughtPageErrors": 0,
+    "productDomClicks": false,
+    "actualUpstreamExcludesStaleLegacyFacts": true
+  },
+  "newPersistentFields": [
+    "TerminalJob.contextVersion",
+    "BackupArchive.terminalContextVersion"
+  ],
+  "newDatabase": false,
+  "legacyUneditedContextsReusable": true,
+  "legacyEditedUnprovenContextsIgnoredWithoutDeletingRecords": true,
+  "validEditedSourceContinuationReusable": true,
+  "newFieldsRetainedAcross": [
+    "actual complete download",
+    "actual downloaded file append import with remapped save IDs",
+    "cloud encode/decode",
+    "workspace overwrite",
+    "complete pre-overwrite recovery",
+    "undo overwrite",
+    "actual IndexedDB reload"
+  ],
+  "olderUnmarkedFilesSupported": true,
+  "missingOrFutureMarkersRejected": true,
+  "futureContextVersionRejected": true,
+  "olderLocalAndCloudReadersRejectNewFiles": true,
+  "backupOperationsTerminalCalls": 0,
+  "businessApiMocked": false,
+  "syntheticFinalModel": true,
+  "storageFaultInjected": true,
+  "paidModel": false,
+  "hostedSyntheticBackupUpload": false,
+  "productionDeployed": false,
+  "testPortsStopped": [
+    8991,
+    8992,
+    8993,
+    8994,
+    8995,
+    8996
+  ],
+  "testedSourceSha256": {
+    "src/domain/backupArchive.ts": "badf120b17c28576324bf0ece1dc93dd5045c5c9d68b00c03d473273d16ecf79",
+    "src/domain/personalTerminal.ts": "f311c2b439a151a4224322f61d362a9818cd6affe2cc9841eab97f54dbbb48f1",
+    "src/domain/story.ts": "14234acc6225303dd4e702498ecaf0c9433bb7dfbaaadf280463594d5f2f75da",
+    "src/domain/terminalAuto.ts": "9d72a1b7b5ba0173ed583a5457662b7d4ca012651a5f9eb3982024e9b9be4eaf",
+    "src/domain/terminalLedger.ts": "de88d150a117383c8b372194f3bde00ac48d7dfa164471825f9604cc8d83cf45",
+    "src/domain/terminalTaskContract.ts": "7832d519e73a913847ea2bdd0215392226300634014bbe1e2b683fdf16680908",
+    "tests/terminal-task-isolation.test.ts": "8e33d686e730b68dc1dcf7c9ca6231d5a4be6f57772bf85b5c76e413c63feebb"
+  }
+}

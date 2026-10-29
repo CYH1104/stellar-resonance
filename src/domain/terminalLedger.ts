@@ -17,7 +17,7 @@ export interface TerminalRoundMemory {anchor:TerminalAnchor;chats:{id:string;con
 /** `turnId`/`variantId`/`mode` are the executed target of the stage. The anchor is only the
  * knowledge boundary (terminal-first anchors the previously confirmed turn), so a retry button
  * must never derive the turn from the anchor. Older jobs omit them and are resolved separately. */
-export interface TerminalJob {repair?:import('./terminalFollowup').TerminalFollowupPlan;id:string;anchor:TerminalAnchor;kind:'groups'|'messages'|'schedule';target?:string;status:'running'|'ready'|'failed';error?:string;turnId?:string;variantId?:string;mode?:'story-first'|'terminal-first'|'social-review';/** Committed facts of a finished stage, replayed to a prose retry or reload. */facts?:string}
+export interface TerminalJob {repair?:import('./terminalFollowup').TerminalFollowupPlan;id:string;anchor:TerminalAnchor;kind:'groups'|'messages'|'schedule';target?:string;status:'running'|'ready'|'failed';error?:string;turnId?:string;variantId?:string;mode?:'story-first'|'terminal-first'|'social-review';/** Created under edit-aware continuation invalidation; older edited projections are unproven. */contextVersion?:1;/** Committed facts of a finished stage, replayed to a prose retry or reload. */facts?:string}
 function hash(s:string){let n=2166136261;for(let i=0;i<s.length;i++)n=Math.imul(n^s.charCodeAt(i),16777619);return (n>>>0).toString(16);}
 /** Stable, short id for one terminal message. `source` still carries the full composite key
  * used for de-duplication; the id is only an opaque handle and must stay far below the
