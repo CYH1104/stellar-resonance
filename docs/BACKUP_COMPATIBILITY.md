@@ -80,3 +80,7 @@ archive 包含独立人设、完整人设文字、备注、备忘录、编辑草
 回滚终端保存失败时，只撤销该次同步应用实际修改且尚未被独立编辑覆盖的记忆，保留同期新增、编辑或删除的用户记忆。失败任务仍可重试，成功任务不会再次生成通讯。图片／密钥／日志排除策略不变。
 
 本次回归见 `tests/terminal-task-isolation.test.ts`、`tests/codex-terminal-review-round3.test.ts` 和 `experiments/native/terminal-isolation-browser.mjs`；包含真实 IndexedDB 故障注入、覆盖／撤销和下载后导入检查。详见 `docs/handoffs/2026-10-30-terminal-task-isolation.md`。
+
+## 2026-10-30：手动改写后的续写投影失效
+
+手动修改正文后，仅该稿件的 ready continuation-context 改用既有 failed 状态，原事实和来源记录保留。无新增字段、库或格式版本，terminalTaskVersion:1 不变。完整本地／云编码与解析保留失效状态；实测覆盖恢复、刷新后继续生成不会重新注入旧事实。相同正文保存、正常续写和有效正文前事实继续复用。编辑及备份本身不调用模型；手改分支再次生成时按现有顺序执行一次新的正文后阶段。验证见 docs/handoffs/2026-10-30-terminal-edited-context-fix.md。

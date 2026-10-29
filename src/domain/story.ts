@@ -232,7 +232,13 @@ export function selectVariant(session: Session, index: number, variant: number):
 export function editMessage(session: Session, index: number, role: 'user' | 'assistant', text: string): void {
   const turn = session.turns[index]; if (!turn || !text.trim()) throw new Error('消息不能为空');
   if(role==='user'){turn.input=text.trim();turn.inputEdited=true;for(const v of turn.variants)delete v.repairAudit;if(!turn.variants.length&&turn.randomEvent?.status==='pending')turn.randomEvent={status:'preparing',kind:turn.randomEvent.proposal.kind};}
-  else {const variant=selected(turn);if(!variant)throw new Error('稿件不存在');const clean=stripReasoning(text.trim());if(!clean.trim())throw new Error('消息不能为空');variant.text=clean;variant.edited=true;delete variant.repairAudit;}
+  else {
+    const variant=selected(turn);if(!variant)throw new Error('稿件不存在');const clean=stripReasoning(text.trim());if(!clean.trim())throw new Error('消息不能为空');
+    if(clean!==variant.text)for(const job of session.terminal?.jobs||[])if(job.target==='continuation-context'&&job.turnId===turn.id&&job.variantId===variant.id&&job.status==='ready'){
+      job.status='failed';job.error='正文已手动修改，旧续写通讯上下文已失效。';
+    }
+    variant.text=clean;variant.edited=true;delete variant.repairAudit;
+  }
   for(const memory of session.memories)if(memory.kind==='event'&&memory.sourceTurn===turn.id){if(memory.record)session.memoryArchive=[...(session.memoryArchive||[]),copy(memory)];memory.status='pending';delete memory.record;delete memory.vector;delete memory.factVectors;delete memory.sourceFingerprint;}
   session.updatedAt=now();
 }

@@ -1,0 +1,65 @@
+{
+  "baseline": "ba3d7f704f6c6e4061185a9bdfba12f35d8c0d6a",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 149,
+    "passed": 883,
+    "failed": 0,
+    "expectedFail": 0
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0
+  },
+  "targeted": {
+    "passed": 19,
+    "failed": 0
+  },
+  "independentUnchangedRegression": {
+    "baselinePassed": 1,
+    "baselineFailed": 1,
+    "fixedPassed": 2,
+    "fixedFailed": 0,
+    "testSha256": "8682be3bb1b995dfe5875977b6473bd3affde71708fd7a2b85d4d9dd8d8450fe"
+  },
+  "typecheck": true,
+  "build": true,
+  "browser": {
+    "workspaceBusinessFlowChecks": 32,
+    "uncaughtPageErrors": 0,
+    "productDomClicks": false
+  },
+  "newPersistentFields": [],
+  "newDatabase": false,
+  "taskCompatibilityMarkerUnchanged": 1,
+  "manualEditInvalidationBackupRoundTrip": true,
+  "sameTextAndNormalAppendPreserveContext": true,
+  "originalTerminalRecordsRetained": true,
+  "validPreProseFactsRetained": true,
+  "manualEditAndBackupModelCalls": 0,
+  "editedBranchNextGenerationFreshTerminalStages": 1,
+  "businessApiMocked": false,
+  "syntheticFinalModel": true,
+  "storageFaultInjected": true,
+  "paidModel": false,
+  "hostedSyntheticBackupUpload": false,
+  "productionDeployed": false,
+  "testPortsStopped": [
+    8991,
+    8992,
+    8993,
+    8994,
+    8995,
+    8996
+  ],
+  "testedSourceSha256": {
+    "src/domain/story.ts": "6c8adbe18922f3454015e1481549e6df6839d0ea257bdd295ec566c11127109f",
+    "tests/terminal-task-isolation.test.ts": "d78ee2aaaa325a8d92ac595ebe7953a0a335620332bf258bc3b5cc345e45d47b"
+  }
+}

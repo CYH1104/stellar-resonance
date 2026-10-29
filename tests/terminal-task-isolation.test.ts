@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {newSession,defaults,backup,parseBackup,copy} from '../src/domain/story';
+import {newSession,defaults,backup,parseBackup,copy,editMessage} from '../src/domain/story';
 import {emptyTerminal} from '../src/domain/personalTerminal';
 import {terminalAnchor,terminalOrigin} from '../src/domain/terminalLedger';
 import {terminalAutoJobId,terminalAutoStageJob,terminalCommittedFacts,carryTerminalFacts} from '../src/domain/terminalAuto';
@@ -52,4 +52,27 @@ it('memory rollback restores its own changed note but preserves a later edit to 
  const s=session(),before=[{id:'derived',text:'previous',kind:'note' as const,createdAt:'2026-10-28T00:00:00.000Z'}],applied=[{...before[0],text:'terminal result'}];
  s.memories=copy(applied);rollbackTerminalMemories(s,before,applied);expect(s.memories).toEqual(before);
  s.memories=[{...applied[0],text:'later user edit'}];rollbackTerminalMemories(s,before,applied);expect(s.memories[0].text).toBe('later user edit');
+});
+function inheritedSession(){
+ const s=session();s.turns[0].selected=1;s.terminal!.jobs=[{id:terminalAutoJobId(s,0,'story-first'),kind:'messages',target:'auto',anchor:terminalAnchor(s),status:'ready',turnId:'turn',variantId:'v2',mode:'story-first',facts:'SECOND_FACT'}];
+ s.turns[0].variants.push({...copy(s.turns[0].variants[1]),id:'v3',status:'incomplete'});s.turns[0].selected=2;carryTerminalFacts(s,0,'v2');s.turns[0].variants[2].text+=' 正常追加';s.turns[0].variants[2].status='complete';return s;
+}
+it('manual prose editing invalidates only that variant continuation context without deleting history',()=>{
+ const s=inheritedSession(),original=copy(s.terminal!.jobs![0]);expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');
+ editMessage(s,0,'assistant','完全改写后的正文');expect(terminalCommittedFacts(s,0)).toBe('');
+ expect(s.terminal!.jobs![0]).toEqual(original);expect(s.terminal!.jobs!.find(j=>j.target==='continuation-context')).toMatchObject({status:'failed',facts:'SECOND_FACT'});
+ s.turns[0].selected=1;expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');
+});
+it('normal appends and saving identical prose keep the inherited context reusable',()=>{
+ const s=inheritedSession();editMessage(s,0,'assistant',s.turns[0].variants[2].text);expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');
+ s.turns[0].variants[2].text+=' 又一段正常续写';expect(terminalCommittedFacts(s,0)).toBe('SECOND_FACT');
+});
+it('manual edit invalidation survives local and cloud backup recovery',async()=>{
+ const s=inheritedSession();editMessage(s,0,'assistant','已改写的正文');const value={version:1 as const,sessions:[s],preferences:defaults()},local=parseBackup(backup(value));
+ const {createCloudSave,parseCloudSave}=await import('../src/domain/cloudBackup');const cloud=parseCloudSave(createCloudSave(value,defaults())).snapshot;
+ for(const restored of [local.sessions[0],cloud.sessions[0]]){expect(terminalCommittedFacts(restored,0)).toBe('');expect(restored.terminal!.jobs!.find(j=>j.target==='continuation-context')).toMatchObject({status:'failed',facts:'SECOND_FACT'});}
+});
+it('editing a continued reply still permits independently confirmed pre-prose facts',()=>{
+ const s=inheritedSession();s.terminal!.jobs!.push({id:terminalAutoJobId(s,0,'terminal-first'),kind:'messages',target:'auto',anchor:terminalAnchor(s,0),status:'ready',turnId:'turn',variantId:'v1',mode:'terminal-first',facts:'PRE_PROSE_FACT'});
+ editMessage(s,0,'assistant','已改写的正文');expect(terminalCommittedFacts(s,0)).toBe('PRE_PROSE_FACT');
 });
