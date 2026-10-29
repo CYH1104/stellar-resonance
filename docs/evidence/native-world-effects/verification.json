@@ -1,0 +1,64 @@
+{
+  "baseline": "e84028f36c2b0454ad195627c9fb52bbdb2676fc",
+  "branch": "rebuild/sillytavern-native",
+  "frontend": {
+    "files": 148,
+    "passed": 858,
+    "expectedFail": 1,
+    "total": 859
+  },
+  "server": {
+    "passed": 437,
+    "failed": 0,
+    "skipped": 4
+  },
+  "native": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typecheck": true,
+  "build": true,
+  "browser": {
+    "native-world-effects": 27,
+    "native-step4": 48,
+    "native-library": 17,
+    "native-draft-safety": 6,
+    "native-worldbooks": 22,
+    "native-boundaries": null
+  },
+  "newPersistentFields": [
+    "Variant.nativeWorldInfo",
+    "BackupArchive.nativeWorldInfoVersion"
+  ],
+  "dataPaths": [
+    "local download",
+    "cloud encode/decode",
+    "actual downloaded file import",
+    "workspace overwrite",
+    "complete pre-overwrite recovery/undo",
+    "disk failure retention",
+    "cross-page revision protection"
+  ],
+  "runtimeScope": "player worldbooks, story task only",
+  "paidModel": false,
+  "productionDeployed": false,
+  "temporaryPortsStopped": [
+    8861,
+    8862,
+    8863,
+    8864,
+    8865,
+    8866
+  ],
+  "notes": [
+    "Only final model uses a local fixture; business APIs were not mocked.",
+    "No hosted synthetic backup upload; cloud codecs were exercised.",
+    "Incomplete/failed turns do not advance canonical counters.",
+    "Old raw options remain readable; stricter checks apply to explicit save/execution.",
+    "Checkpoint-bearing conflicting book-ID append merges stop before mutation."
+  ],
+  "newDomainAndWorkspaceTests": 16,
+  "continuationInterruptedCopyRetainsOriginalCheckpoint": true,
+  "scopedNativeDecoratorPreserved": true
+}

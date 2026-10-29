@@ -1,0 +1,28 @@
+{
+  "baseCommit": "944539e59e348dfab3d6010c1129bf591d8ae675",
+  "scope": "complete wrapper credentials and Chinese file import regressions",
+  "errors": [],
+  "paidModel": false,
+  "mockedBusinessApi": false,
+  "fileSize": {
+    "characters": 180099,
+    "bytes": 540109
+  },
+  "codecAcceptsBook": true,
+  "chineseImportAccepted": true,
+  "chineseImportAlerts": [
+    "主 API「主 API」需要填写：API 地址、模型名称、Key收起",
+    ""
+  ],
+  "chineseSavedAndReloaded": true,
+  "wrapperDraftContainsMarker": false,
+  "wrapperSaveAlerts": [
+    "原生预设格式不支持或版本过新，原数据未修改。",
+    "主 API「主 API」需要填写：API 地址、模型名称、Key收起",
+    ""
+  ],
+  "wrapperDownloadContainsMarker": false,
+  "wrapperCloudContainsMarker": false,
+  "legacyWrapperCleanupPreservedOtherData": true,
+  "pageErrors": 0
+}

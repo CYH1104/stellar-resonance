@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {protectedRuntimePreset} from './preset-policy.mjs';
+import {cleanNativeWorldSeed,cleanNativeEffects} from '../../src/domain/nativeWorldState.ts';
 import {cleanNativePresetConfig} from '../../src/domain/nativePreset.ts';
 import {cleanNativeWorldbookRequest,assertNativeWorldbooksRuntime} from '../../src/domain/nativeWorldbooks.ts';
 import {completionChunks} from '../../server/ai.mjs';
@@ -19,16 +20,17 @@ export function createAccountRuntime({directory,defaultPreset,createWorker,maxWo
   const saved=cleanNativePresetConfig(await read(key)),defaults=cleanNativePresetConfig({version:1,preset:defaultPreset});
   return {preset:saved.preset,defaultPreset:defaults.preset};
  }
- function fetchForAccount(account,{generationType='normal',nativePreset,nativeWorldbooks}={}){return async(url,init={})=>{
+ function fetchForAccount(account,{generationType='normal',nativePreset,nativeWorldbooks,nativeWorldState,worldActors,onProjection=()=>{}}={}){return async(url,init={})=>{
   const key=keyOf(account);
   if(!['normal','regenerate','continue'].includes(generationType))throw fail('INVALID_GENERATION_TYPE');
   if(String(url)!=='https://native-verification.invalid/v1/chat/completions'||init.method!=='POST')throw fail('NATIVE_EXPERIMENT_ENDPOINT_ONLY');
   init.signal?.throwIfAborted();if(!nativePreset)throw fail('NATIVE_PRESET_REQUIRED');
-  let preset,worldbooks;try{preset=protectedRuntimePreset(cleanNativePresetConfig(nativePreset).preset);worldbooks=cleanNativeWorldbookRequest(nativeWorldbooks);}catch{throw fail('INVALID_NATIVE_CONFIG');}const body=JSON.parse(init.body);
-  assertNativeWorldbooksRuntime(worldbooks);
+  let preset,worldbooks;const worldState=nativeWorldState===undefined?undefined:cleanNativeWorldSeed(nativeWorldState),actors=structuredClone(worldActors||[]);try{preset=protectedRuntimePreset(cleanNativePresetConfig(nativePreset).preset);worldbooks=cleanNativeWorldbookRequest(nativeWorldbooks);}catch{throw fail('INVALID_NATIVE_CONFIG');}const body=JSON.parse(init.body);
+  assertNativeWorldbooksRuntime(worldbooks,{effects:!!worldState,scope:true});
   if(!workers.has(key)){if(workers.size>=maxWorkers)throw fail('NATIVE_WORKER_LIMIT',503);const promise=Promise.resolve().then(()=>createWorker(key));workers.set(key,promise);promise.catch(()=>workers.delete(key));}
   const worker=await workers.get(key);init.signal?.throwIfAborted();
-  const compiled=await worker.compiler.compile({input:body.messages.at(-1)?.content||'继续',messages:body.messages,preset,worldbooks,generationType,signal:init.signal});
+  const compiled=await worker.compiler.compile({input:body.messages.at(-1)?.content||'继续',messages:body.messages,preset,worldbooks,worldState,worldActors:actors,generationType,signal:init.signal});
+  if(worldState)onProjection(cleanNativeEffects(compiled.effects));
   onRequest({key,privateCard:JSON.stringify(compiled.messages).includes('PRIVATE_CARD_'),privateLore:JSON.stringify(compiled.messages).includes('PRIVATE_LORE_'),scriptsDisabled:compiled.scriptsDisabled},compiled.messages);
   const response=await worker.client.complete({...body,messages:compiled.messages,temperature:preset.temperature??body.temperature,max_tokens:preset.openai_max_tokens??body.max_tokens,include_reasoning:false},init.signal);
   if(!response.ok)return response;

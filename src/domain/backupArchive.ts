@@ -7,6 +7,7 @@ import {cleanNativePresetConfig,assertNativePresetDraftSafe,type NativePresetCon
 export interface BackupPersona {id:string;name:string;persona:Persona;updatedAt:string;memo?:string;remark?:string;sourceSessionIds?:string[];avatarAppearance?:AvatarAppearance;useAsHomeImage?:boolean;portrait?:string;avatar?:string}
 export interface BackupArchive {
  version:1;
+ nativeWorldInfoVersion?:1;
  nativePreset?:NativePresetConfig|null;
  editorDrafts?:Record<string,string>;
  personas?:BackupPersona[];
@@ -37,8 +38,9 @@ export function cleanBackupPersona(v:unknown,draft=false):BackupPersona{
  return result;
 }
 export function cleanBackupArchive(v:unknown):BackupArchive{
- if(!object(v)||v.version!==1)fail();keys(v,['version','nativePreset','editorDrafts','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
+ if(!object(v)||v.version!==1)fail();keys(v,['version','nativeWorldInfoVersion','nativePreset','editorDrafts','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
  const result:BackupArchive={version:1};
+ if(v.nativeWorldInfoVersion!==undefined){if(v.nativeWorldInfoVersion!==1)fail();result.nativeWorldInfoVersion=1;}
  if(v.nativePreset!==undefined)result.nativePreset=v.nativePreset===null?null:cleanNativePresetConfig(v.nativePreset);
  if(v.editorDrafts!==undefined)result.editorDrafts=cleanEditorDrafts(v.editorDrafts);
  if(v.personas!==undefined){if(!Array.isArray(v.personas))fail();result.personas=v.personas.map((p:unknown)=>cleanBackupPersona(p));if(new Set(result.personas.map(p=>p.id)).size!==result.personas.length)fail();}

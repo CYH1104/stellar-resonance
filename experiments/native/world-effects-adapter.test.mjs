@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {resolve} from 'node:path';import vm from 'node:vm';
+import {projectNativeWorldInfoModule} from './world-effects-adapter.mjs';
+test('unknown or modified native WI source cannot be adapted',()=>{assert.throws(()=>projectNativeWorldInfoModule('unrecognized source'),/PIN_MISMATCH/);});
+test('the pinned native timed class cannot apply a guessed private hash or collide across book identities',{skip:!process.env.NATIVE_RUNTIME},async()=>{
+ const source=projectNativeWorldInfoModule(await readFile(resolve(process.env.NATIVE_RUNTIME,'public/scripts/world-info.js'),'utf8')),start=source.indexOf('class WorldInfoTimedEffects {'),end=source.indexOf('\nexport function getWorldInfoSettings()',start);assert.ok(start>0&&end>start);
+ const metadata={timedWorldInfo:{sticky:{'PlayerRuntime-own.0':{hash:42,start:2,end:8,protected:false}},cooldown:{}}},sandbox={chat_metadata:metadata,__ACADEMY_NATIVE_WORLD_PROJECTION__:{messageCount:4},console:{log(){},debug(){}}};vm.createContext(sandbox);vm.runInContext(source.slice(start,end)+';globalThis.NativeEffects=WorldInfoTimedEffects;',sandbox);
+ const own={world:'PlayerRuntime-own',uid:0,hash:42,sticky:6},privateEntry={world:'PrivateAcademyLore',uid:0,hash:42,sticky:6},effects=new sandbox.NativeEffects([], [privateEntry,own],false);effects.checkTimedEffects();assert.equal(effects.isEffectActive('sticky',own),true);assert.equal(effects.isEffectActive('sticky',privateEntry),false);
+ metadata.timedWorldInfo.sticky={'PlayerRuntime-spoof.0':{hash:42,start:2,end:8,protected:false}};const spoof=new sandbox.NativeEffects([], [privateEntry],false);spoof.checkTimedEffects();assert.equal(spoof.isEffectActive('sticky',privateEntry),false);
+});

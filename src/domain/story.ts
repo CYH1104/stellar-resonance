@@ -1,3 +1,4 @@
+import {cleanNativeWorldCheckpoint} from './nativeWorldState.ts';
 import {cleanBackupArchive,assertBackupSnapshotFields} from './backupArchive.ts';
 import {cleanSceneSnapshot} from './storyScene.ts';
 import {cleanCharacterImages} from './characterImages.ts';
@@ -262,7 +263,9 @@ export function keywordScore(text: string, query: string): number {
 }
 export function backup(snapshot: Snapshot): string {
   assertBackupSnapshotFields(snapshot);
-  return JSON.stringify({ version: snapshot.archive?2:1, sessions: sanitizeSessions(copy(snapshot.sessions)), preferences: cleanPreferences(snapshot.preferences),...(snapshot.archive?{archive:cleanBackupArchive(snapshot.archive)}:{}) }, null, 2);
+  const sessions=sanitizeSessions(copy(snapshot.sessions));let native=false;for(const s of sessions)for(const t of s.turns)for(const v of t.variants)if(v.nativeWorldInfo!==undefined){if(v.status!=='complete')throw Error('未完成回复不能提交世界书跨轮状态');v.nativeWorldInfo=cleanNativeWorldCheckpoint(v.nativeWorldInfo);native=true;}
+  const archive=native?cleanBackupArchive({...snapshot.archive,version:1,nativeWorldInfoVersion:1}):snapshot.archive?cleanBackupArchive(snapshot.archive):undefined;
+  return JSON.stringify({version:archive?2:1,sessions,preferences:cleanPreferences(snapshot.preferences),...(archive?{archive}:{})},null,2);
 }
 /** Explicit one-time migration. Preserve original snapshots/patches for audit,
  * replay each old branch under its original range, then store bounded snapshots. */
@@ -365,7 +368,7 @@ export function parseBackup(text: string): Snapshot {
       if (t.dice) { if (t.dice.rulesVersion !== 'd100-v1' || diceGrade(t.dice.value) !== t.dice.grade) throw new Error('骰子记录不合法'); }
       for(const v of t.variants)if(v?.generationRequirements!==undefined){const requirements=v.generationRequirements;if(!record(requirements)||Object.keys(requirements).some(k=>!['stateEnabled','theaters'].includes(k))||typeof requirements.stateEnabled!=='boolean')throw Error('本轮生成配置不正确');v.generationRequirements={stateEnabled:requirements.stateEnabled,theaters:cleanTheaters(requirements.theaters)};}
       let nextState=rollingState;
-      for (const v of t.variants) {try{ if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts);assertDiceEventBinding(out.diceEvent,t.dice);if(v.status==='complete'&&v===t.variants[t.selected])nextState=stateAfterOutcome(rollingState,out,v.mvuOverride);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');stateAfterOutcome(rollingState,validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts),v.mvuOverride);} }catch(error){locateFailure(error,{sessionId:s.id,turnId:t.id,variantId:v?.id,round:index+1});} }
+      for (const v of t.variants) {try{ if(v?.nativeWorldInfo!==undefined){if(value.archive?.nativeWorldInfoVersion!==1||v.status!=='complete')throw Error('世界书跨轮状态缺少兼容标记或回复尚未完成');v.nativeWorldInfo=cleanNativeWorldCheckpoint(v.nativeWorldInfo);} if (!v || typeof v.id !== 'string' || typeof v.text !== 'string' || !['complete','incomplete'].includes(v.status)) throw new Error('回复格式不正确'); if(v.repairAudit!==undefined)validateRepairAudit(v.repairAudit,v.id); if (v.outcome) {const out=validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts);assertDiceEventBinding(out.diceEvent,t.dice);if(v.status==='complete'&&v===t.variants[t.selected])nextState=stateAfterOutcome(rollingState,out,v.mvuOverride);} if(v.mvuOverride){if(v.status!=='complete'||!v.outcome)throw new Error('Invalid MVU override');stateAfterOutcome(rollingState,validateOutcome(v.outcome,rollingState,false,s.terminal?.contacts),v.mvuOverride);} }catch(error){locateFailure(error,{sessionId:s.id,turnId:t.id,variantId:v?.id,round:index+1});} }
       rollingState=nextState;
     }
     validateLedgerMetadata(s);

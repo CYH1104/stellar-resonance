@@ -1,7 +1,7 @@
 import {it,expect,vi,beforeEach,afterEach} from 'vitest';
 import {effectScope} from 'vue';
 import {IDBFactory} from 'fake-indexeddb';
-import {cleanNativeWorldbooks,nativeWorldbooksForRequest,mergeNativeWorldbooks,removeNativeWorldbook} from '../src/domain/nativeWorldbooks';
+import {cleanNativeWorldbooks,projectNativeWorldScopes,nativeWorldbooksForRequest,mergeNativeWorldbooks,removeNativeWorldbook} from '../src/domain/nativeWorldbooks';
 import {cleanNativePresetConfig} from '../src/domain/nativePreset';
 import {backup,parseBackup,defaults,newSession} from '../src/domain/story';
 import {createCloudSave,parseCloudSave} from '../src/domain/cloudBackup';
@@ -27,7 +27,7 @@ it('keeps unsupported timed effects in storage but refuses execution explicitly 
  const b=books();b.books[0].worldbook.entries[0].sticky=2;expect(cleanNativeWorldbooks(b).books[0].worldbook.entries[0].sticky).toBe(2);expect(()=>nativeWorldbooksForRequest(b,'generate',{})).toThrow('跨轮效果');b.books[0].worldbook.entries[0].disable=true;expect(nativeWorldbooksForRequest(b,'generate',{})).toHaveLength(1);
 });
 it('does not widen legacy character scopes or accept colliding native UIDs',()=>{
- const b=books();b.books[0].worldbook.extensions={academy_scope:{mode:'characters',characterIds:['npc']}};expect(cleanNativeWorldbooks(b)).toEqual(b);expect(()=>nativeWorldbooksForRequest(b,'generate',{})).toThrow('角色作用范围');b.books[0].worldbook.entries[0].disable=true;expect(nativeWorldbooksForRequest(b,'generate',{})).toHaveLength(1);
+ const b=books();b.books[0].worldbook.extensions={academy_scope:{mode:'characters',characterIds:['npc']}};expect(cleanNativeWorldbooks(b)).toEqual(b);expect(nativeWorldbooksForRequest(b,'generate',{})).toHaveLength(1);expect(()=>projectNativeWorldScopes(b.books)).toThrow('未登记');expect(projectNativeWorldScopes(b.books,[{id:'npc',name:'NPC'}])[0].worldbook.entries[0].content).toContain('only to these NPCs');b.books[0].worldbook.entries[0].disable=true;expect(nativeWorldbooksForRequest(b,'generate',{})).toHaveLength(1);
  const duplicate=books();duplicate.books[0].worldbook.entries['00']={...duplicate.books[0].worldbook.entries[0]};expect(()=>cleanNativeWorldbooks(duplicate)).toThrow();
 });
 it('round trips all raw books and bindings through actual workspace backup, overwrite and pre-overwrite recovery',async()=>{
