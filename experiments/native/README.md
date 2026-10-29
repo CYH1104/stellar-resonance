@@ -76,3 +76,9 @@ native-client只接受固定回环原生服务和回环模拟上游，不转发�
 ## 后续
 
 第三步固定同一版本进行原生预设、世界书、宏和代表性助手脚本验证；重点证明私有设定不进入浏览器。不能因为本步骤通路成功就宣称整个酒馆运行时已经迁移。
+
+## 2026-10-30：按请求出口验证
+
+createAccountRuntime 可显式接入 request-relay.mjs，通过请求专属一次性票据转发到策略批准的 OpenAI 兼容服务；真实 API Key 不进入原生编排页面。未配置 relay 时保留原模拟环境限制。academy-demo 可设置 NATIVE_REQUEST_RELAY=1 验证该链路，最终模型仍是合成服务；request-relay-browser.mjs 验证双账号接口／模型／凭据路由，terminal-isolation-browser.mjs 保留51项业务检查。原生专项命令 node --test experiments/native/*.test.mjs（指定固定 NATIVE_RUNTIME 运行原生类专项）。
+
+真实提供商、其他协议、任务上下文完整接线、生产worker生命周期及启动入口仍未完成，不要部署到现有8807／9000。用户已明确先完善再部署，独立9100预览已停用。详见 docs/handoffs/2026-10-30-native-request-relay.md。

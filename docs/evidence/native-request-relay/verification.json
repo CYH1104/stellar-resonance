@@ -1,0 +1,52 @@
+{
+  "baseline": "03463c49319e0453c8d90a600cc3e88f0abedbbb",
+  "branch": "rebuild/sillytavern-native",
+  "native": {
+    "passed": 31,
+    "failed": 0,
+    "skipped": 0,
+    "existingCases": 19,
+    "newCases": 12
+  },
+  "browser": {
+    "existingTerminalChecksThroughNewRelay": 51,
+    "newAccountRoutingChecks": 16,
+    "uncaughtPageErrors": 0
+  },
+  "businessApiMocked": false,
+  "syntheticFinalProviders": true,
+  "realProviderTested": false,
+  "paidModel": false,
+  "newPersistentFields": [],
+  "newDatabase": false,
+  "credentialsPersistedByRelay": false,
+  "opaqueSingleUseTickets": true,
+  "selectedUrlModelCredentialSnapshot": true,
+  "reasoningRequested": false,
+  "automaticTransportRetries": 0,
+  "redirectsFollowed": false,
+  "serverPreview": {
+    "running": false,
+    "autoStartEnabled": false,
+    "addedFirewallRuleRemoved": true,
+    "existing8807And9000Unchanged": true
+  },
+  "productionNativeDeployed": false,
+  "testPortsStopped": [
+    8991,
+    8992,
+    8993,
+    8994,
+    8995,
+    8996
+  ],
+  "normalizedSourceSha256": {
+    "account-runtime.mjs": "8ab6fc9077bc3bd39b5bb99ea1a4b2d902cb554ee978f49d3ce3730b2b2304ec",
+    "native-client.mjs": "3628de323c22ac92572c996e5b9e78be0c23d6c7b579816406ca17516cdedf01",
+    "request-relay.mjs": "53958e16ff9882764a3001513999686dcb7b0a0d6f4d991930656bdc54c59d38",
+    "request-relay.test.mjs": "7d67b6e2e4131b37742104b06d9ef266c019395b2d643f360852c5dd22046c9a",
+    "request-routing.test.mjs": "71dda1530095dd1ed9d0fae44304982316e25bfe379f6e5d7985131f8fce9759",
+    "academy-demo.mjs": "8e117fae0cb3739a200ad9e1f1e912a944a99760fa279985a8850316f5f52e9e",
+    "request-relay-browser.mjs": "96a23c8c2952875d133a732a94cc1ce35275bb17a6839a1859356f228d9f2b03"
+  }
+}

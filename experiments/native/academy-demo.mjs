@@ -8,6 +8,8 @@ import {createNativeClient} from './native-client.mjs';
 import {createPrivateCompiler} from './private-worker.mjs';
 import {createLocalServer} from '../../server/app.mjs';
 import {createAccountRuntime} from './account-runtime.mjs';
+import {createNativeRequestRelay} from './request-relay.mjs';
+import {createRelayPolicy} from '../../server/relay-policy.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..'),dir=resolve(root,'.integration/native-step4');await mkdir(dir,{recursive:true});
 const runtime=resolve(process.env.NATIVE_RUNTIME||resolve(root,'../stellar-native-runtime-20261028')),helper=resolve(process.env.NATIVE_HELPER||resolve(root,'../stellar-native-helper-20261028'));
@@ -17,7 +19,7 @@ if(!process.env.PLAYWRIGHT_MODULE)throw Error('PLAYWRIGHT_MODULE_REQUIRED');cons
 const installed=resolve(runtime,'public/scripts/extensions/third-party/stellar-pinned-helper');await mkdir(installed,{recursive:true});for(const name of ['dist','lib','i18n','manifest.json'])await cp(resolve(helper,name),resolve(installed,name),{recursive:true});
 const manifest=JSON.parse(await readFile(resolve(installed,'manifest.json'),'utf8'));manifest.auto_update=false;await writeFile(resolve(installed,'manifest.json'),JSON.stringify(manifest,null,2));
 const config=(await readFile(resolve(runtime,'default/config.yaml'),'utf8')).replace('  autoUpdate: true','  autoUpdate: false');await writeFile(resolve(dir,'config.yaml'),config);
-const trace={requests:[],compiles:[]};await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace));
+const trace={requests:[],compiles:[],routes:[]};await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace));
 const failedTerminalInputs=new Set();
 const fixture=createServer(async(req,res)=>{
  if(req.method!=='POST'||req.url!=='/v1/chat/completions'){res.writeHead(404).end();return;}
@@ -41,8 +43,15 @@ const fixture=createServer(async(req,res)=>{
  res.end('data: '+JSON.stringify({choices:[{delta:{},finish_reason:mode==='length'?'length':'stop'}]})+'\n\ndata: [DONE]\n\n');
 });await new Promise(ok=>fixture.listen(8862,'127.0.0.1',ok));
 const preset=JSON.parse(await readFile(resolve(runtime,'default/content/presets/openai/Default.json'),'utf8'));
+const requestRelay=process.env.NATIVE_REQUEST_RELAY==='1'?createNativeRequestRelay({authorize:createRelayPolicy(resolve(dir,'accounts/relay-policy.json')).assert,fetchImpl:async(url,init)=>{
+ const target=new URL(url),route=target.hostname==='native-route-a.invalid'?'A':target.hostname==='native-route-b.invalid'?'B':target.hostname==='native-verification.invalid'?'legacy':'';
+ const auth=new Headers(init.headers).get('Authorization'),credential=auth==='Bearer SYNTHETIC_NATIVE_KEY_A'?'A':auth==='Bearer SYNTHETIC_NATIVE_KEY_B'?'B':['Bearer synthetic-only','Bearer replacement-synthetic-key'].includes(auth)?'legacy':'';
+ if(!route||route!==credential||target.pathname!=='/v1/chat/completions')throw Error('EXTERNAL_MODEL_BLOCKED');
+ const actor=JSON.stringify(JSON.parse(init.body).messages).includes('测试乙')?'B':'A';trace.routes.push({route,credential,actor,model:JSON.parse(init.body).model,reasoningRequested:JSON.parse(init.body).include_reasoning});await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
+ return fetch('http://127.0.0.1:8862/v1/chat/completions',init);
+}}):undefined;await requestRelay?.start();
 let index=0;
-const runtimeBridge=createAccountRuntime({directory:resolve(dir,'configs'),defaultPreset:preset,onRequest:(item,messages)=>{const text=JSON.stringify(messages);trace.compiles.push({...item,hasA:text.includes('ACCOUNT_CONFIG_0'),hasB:text.includes('ACCOUNT_CONFIG_1'),regeneratePrompt:text.includes('REGEN_ONLY_PROBE'),worldStory:text.includes('NATIVE_WORLD_STORY_CANARY'),worldMemory:text.includes('NATIVE_WORLD_MEMORY_CANARY'),worldDisabled:text.includes('NATIVE_WORLD_DISABLED_CANARY'),worldUnused:text.includes('NATIVE_WORLD_UNUSED_CANARY'),worldSticky:text.includes('NATIVE_WORLD_STICKY_CANARY'),worldCooldown:text.includes('NATIVE_WORLD_COOLDOWN_CANARY'),worldDelay:text.includes('NATIVE_WORLD_DELAY_CANARY'),scopeBounded:text.includes('only to these NPCs')});},createWorker:async key=>{
+const runtimeBridge=createAccountRuntime({directory:resolve(dir,'configs'),defaultPreset:preset,requestRelay,onRequest:(item,messages)=>{const text=JSON.stringify(messages);trace.compiles.push({...item,hasA:text.includes('ACCOUNT_CONFIG_0'),hasB:text.includes('ACCOUNT_CONFIG_1'),regeneratePrompt:text.includes('REGEN_ONLY_PROBE'),worldStory:text.includes('NATIVE_WORLD_STORY_CANARY'),worldMemory:text.includes('NATIVE_WORLD_MEMORY_CANARY'),worldDisabled:text.includes('NATIVE_WORLD_DISABLED_CANARY'),worldUnused:text.includes('NATIVE_WORLD_UNUSED_CANARY'),worldSticky:text.includes('NATIVE_WORLD_STICKY_CANARY'),worldCooldown:text.includes('NATIVE_WORLD_COOLDOWN_CANARY'),worldDelay:text.includes('NATIVE_WORLD_DELAY_CANARY'),scopeBounded:text.includes('only to these NPCs')});},createWorker:async key=>{
  const workerDir=resolve(dir,'workers',key),port=8864+index++;await mkdir(workerDir,{recursive:true});
  await writeFile(resolve(workerDir,'config.yaml'),config);
  const native=spawn(process.execPath,['server.js','--configPath',resolve(workerDir,'config.yaml'),'--dataRoot',resolve(workerDir,'data'),'--port',String(port),'--listen','false','--browserLaunchEnabled','false'],{cwd:runtime,windowsHide:true,stdio:'ignore'});
@@ -50,12 +59,12 @@ const runtimeBridge=createAccountRuntime({directory:resolve(dir,'configs'),defau
   let ready=false;for(let i=0;i<120;i++){if(native.exitCode!==null)throw Error('NATIVE_START_FAILED');try{if((await fetch(`http://127.0.0.1:${port}/csrf-token`,{signal:AbortSignal.timeout(1000)})).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,500));}if(!ready)throw Error('NATIVE_START_TIMEOUT');
   const settingsPath=resolve(workerDir,'data/default-user/settings.json'),settings=JSON.parse(await readFile(settingsPath,'utf8'));settings.extension_settings||={};settings.extension_settings.tavern_helper={script:{enabled:{global:false,presets:[],characters:[]},scripts:[]},listener:{enabled:false}};await writeFile(settingsPath,JSON.stringify(settings));
   compiler=await createPrivateCompiler({chromium,executablePath:process.env.CHROMIUM_PATH,origin:`http://127.0.0.1:${port}`,privateCard:'PRIVATE_CARD_'+randomUUID(),privateLore:'PRIVATE_LORE_'+randomUUID()});
-  return {compiler,client:createNativeClient({origin:`http://127.0.0.1:${port}`,upstream:'http://127.0.0.1:8862/v1'}),async close(){await compiler.close();native.kill();}};
+  return {compiler,client:createNativeClient({origin:`http://127.0.0.1:${port}`,upstream:requestRelay?.upstream||'http://127.0.0.1:8862/v1'}),async close(){await compiler.close();native.kill();}};
  }catch(e){await compiler?.close();native.kill();throw e;}
 }});
-const accountsDir=resolve(dir,'accounts');await mkdir(accountsDir,{recursive:true});await writeFile(resolve(accountsDir,'relay-policy.json'),JSON.stringify({version:1,origins:['https://native-verification.invalid']}));
+const accountsDir=resolve(dir,'accounts');await mkdir(accountsDir,{recursive:true});await writeFile(resolve(accountsDir,'relay-policy.json'),JSON.stringify({version:1,origins:['https://native-verification.invalid','https://native-route-a.invalid','https://native-route-b.invalid']}));
 const card=JSON.parse(await readFile(resolve(root,'server/example/feature-demo.json'),'utf8'));
 const academy=await createLocalServer({projectRoot:root,port:8861,host:'127.0.0.1',authRequired:true,invitesRequired:false,editorPort:0,card,privateDir:resolve(dir,'private'),accountDirectory:accountsDir,nativeRuntime:runtimeBridge,fetchImpl:()=>{throw Error('EXTERNAL_MODEL_BLOCKED');}});await academy.start();
-let stopping=false;async function stop(){if(stopping)return;stopping=true;academy.server.closeAllConnections();await new Promise(r=>academy.server.close(r));await runtimeBridge.close();fixture.closeAllConnections();fixture.close();}
+let stopping=false;async function stop(){if(stopping)return;stopping=true;academy.server.closeAllConnections();await new Promise(r=>academy.server.close(r));await runtimeBridge.close();await requestRelay?.close();fixture.closeAllConnections();fixture.close();}
 for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{void stop().then(()=>process.exit(0));});
 console.log(JSON.stringify({ready:true,preview:'http://127.0.0.1:8861/terminal',scope:'isolated accounts and current academy UI; synthetic model only'}));

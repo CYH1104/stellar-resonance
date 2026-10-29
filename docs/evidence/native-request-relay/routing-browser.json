@@ -1,0 +1,69 @@
+{
+  "checks": [
+    "A authenticated",
+    "B authenticated",
+    "A complete prose committed through native relay",
+    "A receives its own account prose",
+    "A thought markers do not reach stored prose",
+    "A automatic memory completed",
+    "B complete prose committed through native relay",
+    "B receives its own account prose",
+    "B thought markers do not reach stored prose",
+    "B automatic memory completed",
+    "both selected destination routes reached the actual fixture",
+    "credentials and models do not cross between accounts",
+    "all routed requests lock reasoning off",
+    "raw synthetic API keys are absent from trace",
+    "changing the selected API routes the next task to the new URL model and credentials",
+    "no uncaught browser errors"
+  ],
+  "errors": [],
+  "businessApiMocked": false,
+  "syntheticFinalProviders": true,
+  "paidModel": false,
+  "routes": [
+    {
+      "route": "B",
+      "credential": "B",
+      "actor": "B",
+      "model": "relay-model-B",
+      "reasoningRequested": false
+    },
+    {
+      "route": "A",
+      "credential": "A",
+      "actor": "A",
+      "model": "relay-model-A",
+      "reasoningRequested": false
+    },
+    {
+      "route": "B",
+      "credential": "B",
+      "actor": "B",
+      "model": "relay-model-B",
+      "reasoningRequested": false
+    },
+    {
+      "route": "A",
+      "credential": "A",
+      "actor": "A",
+      "model": "relay-model-A",
+      "reasoningRequested": false
+    },
+    {
+      "route": "B",
+      "credential": "B",
+      "actor": "A",
+      "model": "relay-model-B",
+      "reasoningRequested": false
+    },
+    {
+      "route": "B",
+      "credential": "B",
+      "actor": "A",
+      "model": "relay-model-B",
+      "reasoningRequested": false
+    }
+  ],
+  "passed": true
+}

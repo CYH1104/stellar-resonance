@@ -10,7 +10,8 @@ export function createNativeClient({origin, upstream, fetchImpl = fetch, onReque
   const allowed = new URL(upstream);
   if (allowed.origin !== loopbackOrigin(allowed.origin) || allowed.username || allowed.password || allowed.pathname !== '/v1' || allowed.search || allowed.hash) throw Error('LOCAL_FIXTURE_REQUIRED');
   // No caller-supplied upstream URLs, keys or arbitrary custom headers cross this bridge.
-  async function complete(body, signal) {
+  async function complete(body, signal, {relayTicket}={}) {
+    if(relayTicket!==undefined&&!/^native-relay-[a-f0-9]{64}$/.test(relayTicket))throw Error('INVALID_NATIVE_RELAY_TICKET');
     signal?.throwIfAborted();
     const csrf = await fetchImpl(origin + '/csrf-token', {signal, redirect:'error'});
     if (!csrf.ok) throw Error('NATIVE_CSRF_FAILED');
@@ -24,7 +25,7 @@ export function createNativeClient({origin, upstream, fetchImpl = fetch, onReque
       frequency_penalty:body.frequency_penalty, presence_penalty:body.presence_penalty,
       include_reasoning:false,
       custom_include_body:JSON.stringify({include_reasoning:false}),
-      custom_include_headers:JSON.stringify({Authorization:'Bearer synthetic-native-fixture'}),
+      custom_include_headers:JSON.stringify({Authorization:relayTicket?'Bearer '+relayTicket:'Bearer synthetic-native-fixture'}),
     };
     onRequest({model:payload.model, messages:payload.messages.length, reasoningRequested:false});
     const response=await fetchImpl(origin + '/api/backends/chat-completions/generate', {
