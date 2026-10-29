@@ -8,7 +8,8 @@ import {collectWorkspaceArchive,applyWorkspaceArchive} from '../storage/workspac
 import {flushBackupEditors} from './backupFlushers';
 import {ensureTerminalCodes} from './terminalCodeRegistry';
 import {applyTerminalBatch} from '../domain/terminalMain';
-import {planTerminalAuto,applyTerminalAuto,terminalAutoJob,terminalAutoJobId,terminalJobFacts,terminalCommittedFacts,terminalSocialSignal,type TerminalAutoMode} from '../domain/terminalAuto';
+import {planTerminalAuto,applyTerminalAuto,terminalAutoJob,terminalAutoJobId,terminalAutoStageJob,terminalJobFacts,terminalCommittedFacts,terminalFactsJob,carryTerminalFacts,terminalSocialSignal,type TerminalAutoMode} from '../domain/terminalAuto';
+import {rollbackTerminalMemories} from '../domain/terminalTransaction';
 import {saveOnLeave} from './saveOnLeave';
 import {terminalFollowupJob} from '../domain/terminalFollowup';
 import {terminalAnchor,terminalAnchorActive,terminalJobTurnIndex} from '../domain/terminalLedger';
@@ -349,7 +350,7 @@ export function useWorkspace() {
   const terminalEpoch=ref(0);
   /** The user's current terminal selection together with its full interface and key signature. */
   const terminalRouteSignature=()=>`${preferences.terminalProfile||''}|${terminalProfile.value?connectionSignature(terminalProfile.value):''}`;
-  watch(terminalRouteSignature,()=>{terminalEpoch.value++;},{flush:'sync'});
+  watch(terminalRouteSignature,()=>stopTerminal(),{flush:'sync'});
   let terminalController:AbortController|undefined;
   function stopTerminal(){terminalController?.abort();terminalController=undefined;terminalEpoch.value++;}
   /** Top-bar switch. Enabling requires an explicit, confirmed terminal API and an idle app;
@@ -390,24 +391,27 @@ export function useWorkspace() {
     }
     // A retry keeps the stage the failed job actually executed, even if the order changed since.
     const mode=options.mode??terminalOrder.value,socialOnly=options.socialOnly===true;
-    const jobId=terminalAutoJobId(session,index,mode,socialOnly);
+    const jobId=terminalAutoStageJob(session,index,mode,socialOnly)?.id||terminalAutoJobId(session,index,mode,socialOnly);
     const hadJob=!!terminalAutoJob(session,jobId);
     const planned=planTerminalAuto(session,index,mode,{socialOnly});
     if(!planned){
       // 该阶段已经提交：把当时的通讯事实原样交回正文，不再调用模型、不再写消息。
-      const committed=terminalAutoJob(session,jobId);
+      const committed=terminalAutoStageJob(session,index,mode,socialOnly);
       return {ok:true,facts:committed?terminalJobFacts(session,committed):''};
     }
     const turn=session.turns[index],variant=turn.variants[turn.selected];
     const boundary=socialOnly||mode==='story-first'?index+1:index;
     const signature=terminalRouteSignature(),epoch=terminalEpoch.value,connection=new AbortController(),callId=uid();
     // 迟到的回包即使忽略 abort 也必须作废：停用、换终端接口、切顺序、换存档、换分支都算。
-    const stale=()=>epoch!==terminalEpoch.value||signature!==terminalRouteSignature()||!terminalEnabled.value;
+    const binding=()=>JSON.stringify([active.value===session,sessionId.value,terminalOrder.value,terminalAutoJobId(session,index,mode,socialOnly),session.turns[index]?.variants[session.turns[index].selected]?.id]);
+    const expectedBinding=binding(),releaseBinding=watch(binding,()=>connection.abort(),{flush:'sync'});
+    const stale=()=>epoch!==terminalEpoch.value||signature!==terminalRouteSignature()||!terminalEnabled.value||binding()!==expectedBinding;
     // 作废时不留一个可重试的幽灵任务；之前就存在的失败任务保留原错误。
-    const abandon=()=>{const live=active.value?.terminal?.jobs;const job=live?.find(j=>j.id===jobId);if(!live||!job||job.status==='ready')return;if(!hadJob)active.value!.terminal!.jobs=live.filter(j=>j!==job);else{job.status='failed';job.error='终端请求已作废：手机已停用或终端接口已改变。';}};
+    const abandon=()=>{const live=session.terminal?.jobs;const job=live?.find(j=>j.id===jobId);if(!live||!job||job.status==='ready')return;if(!hadJob)session.terminal!.jobs=live.filter(j=>j!==job);else{job.status='failed';job.error='终端请求已作废：手机、接口、行动或剧情分支已改变。';}};
     terminalController=connection;terminalBusy.value=true;startGeneration(callId);
     try{
       await persist();
+      connection.signal.throwIfAborted();
       const state=stateAt(session,boundary);
       const contacts=session.terminal?.contacts||[];
       const characters=[...(state.characters||[]),...contacts.filter(c=>!(state.characters||[]).some(a=>a.id===c.id))];
@@ -421,18 +425,18 @@ export function useWorkspace() {
       const liveTurn=session.turns[index];
       if(!liveTurn||liveTurn.id!==turn.id||liveTurn.variants[liveTurn.selected]?.id!==variant?.id)throw Error('剧情分支已变化，迟到终端结果未应用。');
       // 应用与落盘是一次事务：写不进去就把内存里的通讯、任务和派生记忆一起回滚，重试仍能落盘。
-      const before=copy(session.terminal),beforeMemories=copy(session.memories);
+      const before=copy(session.terminal),beforeMemories=copy(session.memories);let appliedMemories:Memory[]|undefined;
       let result:ReturnType<typeof applyTerminalAuto>;
-      try{result=applyTerminalAuto(session,planned.plan,batch);await persist();}
-      catch(e){session.terminal=before;session.memories=beforeMemories;throw e;}
+      try{result=applyTerminalAuto(session,planned.plan,batch);appliedMemories=copy(session.memories);await persist();}
+      catch(e){session.terminal=before;rollbackTerminalMemories(session,beforeMemories,appliedMemories||copy(session.memories));throw e;}
       if(result.status==='ready')markGenerationComplete(callId);
       if(!options.automatic)notice.value=result.status==='ready'?`终端本轮已保存 ${result.added} 条通讯。`:result.error||'终端部分未完成';
       return {ok:result.status==='ready',facts:result.facts};
     }catch(e){
       // Keep the failed stage visible and retryable; only the active save may be touched.
-      if(active.value?.id===session.id){
-        if(stale()){abandon();await safePersist();}
-        else{
+      if(stale()){abandon();if(sessions.value.some(s=>s.id===session.id))await safePersist();}
+      else if(active.value?.id===session.id){
+        {
           const job=terminalAutoJob(session,jobId);
           if(job&&terminalAnchorActive(session,job.anchor)){
             job.status='failed';
@@ -443,7 +447,7 @@ export function useWorkspace() {
         }
       }
       return {ok:false,facts:''};
-    }finally{finishGeneration(callId);if(terminalController===connection)terminalController=undefined;terminalBusy.value=false;}
+    }finally{releaseBinding();finishGeneration(callId);if(terminalController===connection)terminalController=undefined;terminalBusy.value=false;}
   }
   let memoryController:AbortController|undefined;const memoryQueue=new Set<Session>();
   function stopMemory(){memoryController?.abort();}
@@ -630,7 +634,7 @@ export function useWorkspace() {
     let index:number;
     if(turnIndex===undefined){if(pendingRandomEvent.value){problem.value='请先决定或跳过当前随机事件，再发送下一轮行动。';return;}const content=(text??input.value).trim();if(!content){problem.value='请先输入本轮行动';return;}if(content.length>16000){problem.value='单条输入超过首版长度限制';return;}const kind=randomEventsAvailable&&requestPreferences.diceEnabled?drawSpecialEvent(requestPreferences.randomEventProbability??30):undefined;session.turns.push({id:uid(),input:content,randomEvent:kind?{status:'preparing',kind}:{status:'none'},variants:[],selected:0});index=session.turns.length-1;input.value='';}
     else{index=turnIndex;if(!session.turns[index])return;if(continuePartial&&!selected(session.turns[index])?.text){problem.value='当前没有需要续写的正文。';return;}truncate(session,index+1);}
-    const turn=session.turns[index];session.suggestions=[];if(randomEventsAvailable&&(turn.randomEvent?.status==='preparing'||turn.randomEvent?.status==='failed')){if(!await prepareRandomEvent(session,index))return;}if(randomEventsAvailable&&turn.randomEvent?.status==='pending'){turn.randomEvent={status:'accepted',proposal:turn.randomEvent.proposal};turn.dice=rollDice();}if(continuePartial&&!stateOnly&&selected(turn)?.status==='complete'){turn.variants.push({...copy(selected(turn)!),id:uid(),status:'incomplete'});turn.selected=turn.variants.length-1;}const firstAttempt=turn.variants.length===0;const partial=continuePartial?selected(turn)?.text||'':'';if(!continuePartial){turn.variants.push({id:uid(),text:'',status:'incomplete',createdAt:now()});turn.selected=turn.variants.length-1;}const variant=turn.variants[turn.selected];if(variant.status==='incomplete')delete variant.nativeWorldInfo;if(variant.repairAudit?.variantId!==variant.id)delete variant.repairAudit;const previousOutcome=stateOnly&&variant.status==='complete'?copy(variant.outcome):undefined;const repairBefore=stateOnly?stateAt(session,index+1):undefined;if(stateOnly)repairReport.value=undefined;if(!previousOutcome)delete variant.outcome;
+    const turn=session.turns[index];session.suggestions=[];if(randomEventsAvailable&&(turn.randomEvent?.status==='preparing'||turn.randomEvent?.status==='failed')){if(!await prepareRandomEvent(session,index))return;}if(randomEventsAvailable&&turn.randomEvent?.status==='pending'){turn.randomEvent={status:'accepted',proposal:turn.randomEvent.proposal};turn.dice=rollDice();}const terminalSource=continuePartial?selected(turn)?.id:undefined;if(continuePartial&&!stateOnly&&selected(turn)?.status==='complete'){turn.variants.push({...copy(selected(turn)!),id:uid(),status:'incomplete'});turn.selected=turn.variants.length-1;if(terminalSource)carryTerminalFacts(session,index,terminalSource);}const terminalContextJob=continuePartial?terminalFactsJob(session,index):undefined;const firstAttempt=turn.variants.length===0;const partial=continuePartial?selected(turn)?.text||'':'';if(!continuePartial){turn.variants.push({id:uid(),text:'',status:'incomplete',createdAt:now()});turn.selected=turn.variants.length-1;}const variant=turn.variants[turn.selected];if(variant.status==='incomplete')delete variant.nativeWorldInfo;if(variant.repairAudit?.variantId!==variant.id)delete variant.repairAudit;const previousOutcome=stateOnly&&variant.status==='complete'?copy(variant.outcome):undefined;const repairBefore=stateOnly?stateAt(session,index+1):undefined;if(stateOnly)repairReport.value=undefined;if(!previousOutcome)delete variant.outcome;
     if(!stateOnly&&terminalEnabled.value)ensureTerminalCodes(session,index);
     const logBefore=copy(repairBefore||stateAt(session,index));
     const generationType=continuePartial?'continue':firstAttempt?'normal':'regenerate';continuationAttempt.value=0;repairingState.value=stateOnly;
@@ -673,10 +677,10 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
           flushStream();modelRaw=typeof event.raw==='string'?event.raw:'';let outcome=event.outcome;
           if(previousOutcome){outcome={...mergeRepairOutcome(previousOutcome,outcome,stateAt(session,index),repairBefore!,repairPlan),theaters:mergeRepairTheaters(previousOutcome.theaters,outcome.theaters,requestPreferences.theaters,repairBefore!)};}
           if(previousOutcome)outcome=reconcileRepairScenes(outcome,requestPreferences.theaters,stateAt(session,index+1));
-          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal&&terminalEnabled.value)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];if(event.nativeWorldInfo!==undefined&&!stateOnly)variant.nativeWorldInfo=nativeWorldCheckpoint(session,index,variant,event.nativeWorldInfo);await persist();done=true;if(!stateOnly){if(terminalEnabled.value&&terminalOrder.value==='story-first')await runTerminalStage(index,{automatic:true});
+          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal&&terminalEnabled.value)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];if(event.nativeWorldInfo!==undefined&&!stateOnly)variant.nativeWorldInfo=nativeWorldCheckpoint(session,index,variant,event.nativeWorldInfo);await persist();done=true;if(!stateOnly){if(!terminalContextJob&&terminalEnabled.value&&terminalOrder.value==='story-first')await runTerminalStage(index,{automatic:true});
             // 终端在前的顺序里，社交动作只能在正文确认后核验：绑定同一轮、只出动作、
             // 不重生成群聊或正文；正文没有接触/邀请信号时零额外请求。
-            else if(terminalEnabled.value&&terminalSocialSignal(session,index))await runTerminalStage(index,{automatic:true,socialOnly:true});
+            else if(terminalContextJob?.target!=='continuation-context'&&terminalEnabled.value&&terminalSocialSignal(session,index))await runTerminalStage(index,{automatic:true,socialOnly:true});
             markGenerationComplete(callId);}
         }
       }
@@ -701,6 +705,7 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
     if(index<0||index>=session.turns.length)return false;
     // 任务自身记录了它执行的阶段：之后切换顺序也不能把旧任务重跑到另一种阶段上。
     const mode:TerminalAutoMode=job.mode==='terminal-first'?'terminal-first':'story-first';
+    if(job.target!=='auto'||terminalAutoStageJob(session,index,mode,job.mode==='social-review')?.id!==job.id){problem.value='任务所属行动或稿件已改变，旧记录保留；请从当前轮次重试终端。';return false;}
     return (await runTerminalStage(index,{automatic:false,socialOnly:job.mode==='social-review',mode})).ok;
   }
   async function changeVariant(index:number,variant:number){if(!active.value||busy.value||backupWorking.value)return;try{selectVariant(active.value,index,variant);await safePersist();}catch(e){problem.value=message(e);}}

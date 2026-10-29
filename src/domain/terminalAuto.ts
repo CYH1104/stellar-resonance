@@ -6,6 +6,7 @@ import {emptyTerminal,groupAutoAdminLimit} from './personalTerminal.ts';
 import {terminalGroupMessages,completedStoryRounds,terminalCooldownBlocked} from './terminalPolicy.ts';
 import {applySocialActions} from './terminalSocial.ts';
 import {stateAt} from './story.ts';
+import {terminalTaskPrefix} from './terminalTaskContract.ts';
 
 /** Independent terminal round.
  *
@@ -66,12 +67,28 @@ export function terminalClaimNeedsReview(s:Session,index:number){
 export function terminalAutoJob(s:Session,jobId:string){return s.terminal?.jobs?.find(j=>j.id===jobId);}
 /** Deterministic id of one stage of one turn, so a caller can find a committed stage without
  * rebuilding the plan (and without ever deriving the turn from the knowledge anchor). */
-export function terminalAutoJobId(s:Session,index:number,mode:TerminalAutoMode,socialOnly=false){
+function legacyStageId(s:Session,index:number,mode:TerminalAutoMode,socialOnly=false){
  const turn=s.turns[index];const variant=turn?.variants[turn.selected];
  if(!turn)return '';
  if(socialOnly)return `auto:${turn.id}:${variant?.id||'none'}:social`;
  if(mode==='story-first')return `auto:${turn.id}:${variant?.id||'none'}:story-first`;
  return `auto:${turn.id}:terminal-first:${terminalAnchor(s,index).key}`;
+}
+export function terminalAutoJobId(s:Session,index:number,mode:TerminalAutoMode,socialOnly=false){
+ const base=legacyStageId(s,index,mode,socialOnly);if(!base)return '';
+ return terminalTaskPrefix+base.slice('auto:'.length)+':'+(mode==='terminal-first'&&!socialOnly?terminalOrigin(s,index)!.input:terminalAnchor(s,index+1).key);
+}
+/** New IDs bind the action or completed source branch. Legacy stages are reused only when
+ * their anchor and their stored message origins can still prove the same action. */
+export function terminalAutoStageJob(s:Session,index:number,mode:TerminalAutoMode,socialOnly=false){
+ const current=terminalAutoJob(s,terminalAutoJobId(s,index,mode,socialOnly));
+ if(current&&terminalAnchorActive(s,current.anchor))return current;
+ const legacy=terminalAutoJob(s,legacyStageId(s,index,mode,socialOnly));
+ if(!legacy||!terminalAnchorActive(s,legacy.anchor))return;
+ if(mode!=='terminal-first'||socialOnly)return legacy;
+ const origin=terminalOrigin(s,index),sources=(s.terminal?.conversations||[]).flatMap(c=>c.messages).filter(m=>m.source?.startsWith('auto:'+legacy.id+':'));
+ if(sources.length&&sources.every(m=>m.origin?.turnId===origin?.turnId&&m.origin?.input===origin?.input))return legacy;
+ if(!sources.length&&legacy.status!=='ready')return legacy;
 }
 /** The prose raises a real contact or invitation that the pre-prose round could not see.
  * This only decides whether to run the post-prose social review; the model still verifies it. */
@@ -102,11 +119,28 @@ export function terminalJobFacts(s:Session,job:TerminalJob):string{
 /** Facts of a round that has already committed its terminal stage. Continuations and state
  * repairs reuse this instead of sending the phone again: the stored copy is what the stage
  * really wrote, so it survives a reload and stays byte-identical to the first request. */
-export function terminalCommittedFacts(s:Session,index:number):string{
- const turn=s.turns[index];if(!turn)return '';
- const jobs=(s.terminal?.jobs||[]).filter(job=>job.turnId===turn.id&&job.status==='ready');
- const job=jobs.find(job=>job.mode==='terminal-first')||jobs.find(job=>job.mode==='story-first')||jobs.find(job=>job.kind==='messages');
- return job?terminalJobFacts(s,job):'';
+function continuationContextId(s:Session,index:number){const turn=s.turns[index];return turn?`context:${turn.id}:${turn.variants[turn.selected]?.id}:${terminalOrigin(s,index)!.input}:${terminalAnchor(s,index).key}`:'';}
+export function terminalFactsJob(s:Session,index:number,sourceVariantId?:string):TerminalJob|undefined{
+ const turn=s.turns[index];if(!turn)return;
+ const source=sourceVariantId===undefined?turn.selected:turn.variants.findIndex(v=>v.id===sourceVariantId);if(source<0)return;
+ const view=source===turn.selected?s:{...s,turns:s.turns.map((t,i)=>i===index?{...t,selected:source}:t)};
+ const context=terminalAutoJob(view,continuationContextId(view,index));
+ if(context?.status==='ready'&&terminalAnchorActive(view,context.anchor))return context;
+ // The selected variant's post-prose stage is more specific than an older shared pre-prose cache.
+ for(const mode of ['story-first','terminal-first'] as const){const job=terminalAutoStageJob(view,index,mode);if(job?.status==='ready')return job;}
+ // Older merged stages have no mode. Require the selected source variant and active boundary.
+ return view.terminal?.jobs?.find(j=>j.kind==='messages'&&j.mode===undefined&&j.status==='ready'&&j.anchor.turnId===turn.id&&j.anchor.variantId===turn.variants[source]?.id&&terminalAnchorActive(view,j.anchor));
+}
+export function terminalCommittedFacts(s:Session,index:number,sourceVariantId?:string):string{
+ const job=terminalFactsJob(s,index,sourceVariantId);return job?terminalJobFacts(s,job):'';
+}
+/** A completed reply is copied before continuation. Keep an explicit context-only projection
+ * using existing job fields, so interruption/reload does not lose its source or send the phone again.
+ * It records no new model call, messages or game result and is not an automatic-stage retry. */
+export function carryTerminalFacts(s:Session,index:number,sourceVariantId:string){
+ const turn=s.turns[index],source=terminalFactsJob(s,index,sourceVariantId);if(!turn||!source||!s.terminal)return;
+ const id=continuationContextId(s,index);if(terminalAutoJob(s,id))return;
+ (s.terminal.jobs||=[]).push({id,kind:'messages',target:'continuation-context',anchor:terminalAnchor(s,index),turnId:turn.id,variantId:turn.variants[turn.selected].id,status:'ready',facts:terminalJobFacts(s,source)||undefined});
 }
 
 /** Build the plan for one turn. Returns undefined when this turn needs no terminal work
@@ -119,10 +153,9 @@ export function planTerminalAuto(s:Session,index:number,mode:TerminalAutoMode,op
  const boundary=socialOnly||mode==='story-first'?index+1:index;
  const anchor=terminalAnchor(s,boundary);
  const variant=turn.variants[turn.selected];
- const jobId=terminalAutoJobId(s,index,mode,socialOnly);
+ const prior=terminalAutoStageJob(s,index,mode,socialOnly),jobId=prior?.id||terminalAutoJobId(s,index,mode,socialOnly);
  // A finished round is never regenerated; a failed one may be retried explicitly or by
  // the next generation of the same turn, so an interrupted stage is not a dead end.
- const prior=terminalAutoJob(s,jobId);
  if(prior?.status==='ready')return undefined;
  const t=s.terminal||(s.terminal=emptyTerminal());
  const full=terminalMainContext(s,boundary,turn.input);
@@ -161,6 +194,7 @@ export function terminalAutoContext(s:Session,plan:TerminalAutoPlan,base:import(
  * so retries and late duplicates never add a second copy of the same message. */
 export function applyTerminalAuto(s:Session,plan:TerminalAutoPlan,raw:TerminalMainBatch){
  if(!terminalAnchorActive(s,plan.anchor))throw Error('原剧情分支已变化，迟到终端结果未应用');
+ if(!terminalOriginActive(s,plan.origin))throw Error('本轮行动已变化，迟到终端结果未应用');
  const t=s.terminal,job=t?.jobs?.find(j=>j.id===plan.jobId);
  if(!t||!job)throw Error('终端任务已不存在，迟到终端结果未应用');
  const turnIndex=s.turns.findIndex(turn=>turn.id===plan.turnId);

@@ -1,0 +1,23 @@
+{
+  "baseline":"f180474bc1e1f0a569c29b28abbb75028da8142e",
+  "branch":"rebuild/sillytavern-native",
+  "originalAuditCases":{"unfixedBaselineFailed":4,"fixedPassed":4},
+  "frontend":{"files":149,"passed":879,"failed":0,"expectedFail":0},
+  "server":{"passed":437,"failed":0,"skipped":4},
+  "native":{"passed":19,"failed":0,"skipped":0},
+  "typecheck":true,
+  "build":true,
+  "browser":{"originalAcademyDomChecks":48,"workspaceBusinessFlowChecks":26,"uncaughtPageErrors":0},
+  "storageFaultInjected":true,
+  "businessApiMocked":false,
+  "syntheticFinalModel":true,
+  "newPersistentFields":["BackupArchive.terminalTaskVersion"],
+  "newDatabase":false,
+  "dataPaths":["actual complete download","cloud encode/decode","actual downloaded file append import with remapped save IDs","workspace overwrite","complete pre-overwrite recovery","undo restore"],
+  "oldFilesSupported":true,
+  "missingOrFutureTaskMarkersRejected":true,
+  "olderArchiveParserRejectsNewMarker":true,
+  "paidModel":false,
+  "hostedSyntheticBackupUpload":false,
+  "productionDeployed":false
+}

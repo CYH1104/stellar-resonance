@@ -74,13 +74,49 @@ async function enabled(){
 }
 
 
-// 用户已知此缺陷后要求先发布。保留原断言，用 fails 明确追踪已知失败，修复后须转回普通 it。
+// 原已知缺陷现按同一断言转回普通测试，不再作为 expected fail。
 // 发布范围和实际验证见 docs/handoffs/2026-10-27-terminal-release.md。
-it.fails('known issue: changing the triggering input still reuses previous terminal-first job facts',async()=>{
+it('changing the triggering input regenerates terminal-first facts for the new action',async()=>{
  const {w,session}=await enabled();await w.setTerminalOrder('terminal-first');
  const calls:any[]=[],prose:GenerateRequest[]=[];recordCalls([],calls,prose);
  await w.generate('原行动');await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));
  await w.edit(0,'user','完全不同的新行动');await w.generate(undefined,0);
  expect(calls).toHaveLength(2);
  expect(calls[1].input).toBe('完全不同的新行动');
+ expect(prose[1].terminalFacts).toContain('群');expect(session.terminal!.jobs!.filter(j=>j.target==='auto'&&j.status==='ready')).toHaveLength(2);
+});
+
+it('continuing the selected second prose variant uses its own committed terminal facts',async()=>{
+ const {w}=await enabled();const prose:GenerateRequest[]=[];let round=0;
+ recordCalls([],[],prose,'正文内容',(payload:any)=>{const value=batchFor(payload),tag='BATCH_'+(++round);for(const g of value.groups)for(const m of g.messages)m.text=tag+' '+m.text;return value;});
+ await w.generate('行动');await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));
+ await w.generate(undefined,0);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));
+ await w.generate(undefined,0,true);
+ expect(prose[2].terminalFacts).toContain('BATCH_2');
+ expect(prose[2].terminalFacts).not.toContain('BATCH_1');
+ expect(round).toBe(2);
+ await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));await w.generate(undefined,0,true);
+ expect(prose[3].terminalFacts).toContain('BATCH_2');expect(round).toBe(2);
+});
+
+it.each(['key','profile','model','address'])('replacing terminal %s immediately aborts the old request before its response arrives',async field=>{
+ const {w}=await enabled();recordCalls([],[],[]);let release!:()=>void,signal:AbortSignal|undefined;
+ vi.mocked(HttpGateway.prototype.terminal).mockImplementation(async(input,_p,_key,current)=>{signal=current;await new Promise<void>(done=>{release=done;});return batchFor(input);});
+ const running=w.generate('行动');await vi.waitFor(()=>expect(signal).toBeDefined());
+ try{if(field==='key')w.credentials.aux='replacement-synthetic-key';else if(field==='profile')w.preferences.terminalProfile='main';else if(field==='model')w.preferences.profiles.find(p=>p.id==='aux')!.model='replacement-model';else w.preferences.profiles.find(p=>p.id==='aux')!.apiBaseUrl='https://replacement.synthetic.example/v1';expect(signal!.aborted).toBe(true);}finally{release();await running;}
+ expect(w.active.value!.terminal!.conversations.flatMap(c=>c.messages)).toHaveLength(0);
+});
+
+it('a terminal retry save failure preserves an independently added memory and its persisted copy',async()=>{
+ const {w,session}=await enabled();recordCalls([],[],[]);vi.mocked(HttpGateway.prototype.terminal).mockRejectedValueOnce(Error('synthetic terminal failure'));
+ await w.generate('行动');await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));
+ const job=session.terminal!.jobs!.find(j=>j.status==='failed')!;expect(job).toBeTruthy();
+ let rejectWrite!:(e:Error)=>void,waiting=false,failed=false;const saved:any[]=[];
+ vi.mocked(IndexedDbRepository.prototype.write).mockImplementation(async value=>{if(!failed&&value.sessions.some(s=>s.terminal?.jobs?.some(j=>j.id===job.id&&j.status==='ready'))){failed=true;waiting=true;await new Promise<void>((_done,reject)=>{rejectWrite=reject;});}saved.push(JSON.parse(JSON.stringify(value)));});
+ const retry=w.retryTerminalJob(job.id);await vi.waitFor(()=>expect(waiting,JSON.stringify({problem:w.problem.value,jobs:session.terminal?.jobs})).toBe(true));
+ const independent=w.saveMemory('INDEPENDENT_USER_MEMORY');await vi.waitFor(()=>expect(session.memories.some(m=>m.text==='INDEPENDENT_USER_MEMORY')).toBe(true));
+ rejectWrite(Error('synthetic disk failure'));await Promise.all([retry,independent]);
+ expect(session.memories.some(m=>m.text==='INDEPENDENT_USER_MEMORY')).toBe(true);
+ expect(saved.at(-1).sessions.find((s:any)=>s.id===session.id).memories.some((m:any)=>m.text==='INDEPENDENT_USER_MEMORY')).toBe(true);
+ expect(session.terminal!.conversations.flatMap(c=>c.messages)).toHaveLength(0);
 });

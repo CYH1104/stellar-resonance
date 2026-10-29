@@ -18,18 +18,23 @@ const installed=resolve(runtime,'public/scripts/extensions/third-party/stellar-p
 const manifest=JSON.parse(await readFile(resolve(installed,'manifest.json'),'utf8'));manifest.auto_update=false;await writeFile(resolve(installed,'manifest.json'),JSON.stringify(manifest,null,2));
 const config=(await readFile(resolve(runtime,'default/config.yaml'),'utf8')).replace('  autoUpdate: true','  autoUpdate: false');await writeFile(resolve(dir,'config.yaml'),config);
 const trace={requests:[],compiles:[]};await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace));
+const failedTerminalInputs=new Set();
 const fixture=createServer(async(req,res)=>{
  if(req.method!=='POST'||req.url!=='/v1/chat/completions'){res.writeHead(404).end();return;}
  let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);
- let memory;for(const message of body.messages){try{const value=JSON.parse(message.content);if(value.turnId&&value.story)memory=value;}catch{}}
+ let memory,terminal,terminalInput,terminalActors=[];for(const message of body.messages){try{const value=JSON.parse(message.content);if(value.turnId&&value.story)memory=value;if(value.mode&&typeof value.input==='string')terminalInput=value.input;}catch{}for(const line of message.content.split('\n')){const label='终端上下文（数据）：',at=line.indexOf(label);if(at>=0)try{terminal=JSON.parse(line.slice(at+label.length));}catch{}try{const value=JSON.parse(line);if(Array.isArray(value.actors))terminalActors=value.actors.map(a=>a.id);}catch{}}}
 
  const who=JSON.stringify(body.messages).includes('测试乙')?'乙':'甲';
- trace.requests.push({kind:memory?'memory':'story',who,temperature:body.temperature,max_tokens:body.max_tokens,reasoning:body.include_reasoning});
+ const terminalNumber=trace.requests.filter(r=>r.kind==='terminal').length+1,terminalTag='TERMINAL_BATCH_'+terminalNumber;
+ trace.requests.push({kind:terminal?'terminal':memory?'memory':'story',who,temperature:body.temperature,max_tokens:body.max_tokens,reasoning:body.include_reasoning,...(terminal?{input:terminalInput,tag:terminalTag}:!memory?{terminalFacts:[...new Set(JSON.stringify(body.messages).match(/TERMINAL_BATCH_\d+/g)||[])]}:{})});
  await writeFile(resolve(dir,'trace.json'),JSON.stringify(trace,null,2));
+ if(terminal&&terminalInput?.includes('终端故障')&&!failedTerminalInputs.has(terminalInput)){failedTerminalInputs.add(terminalInput);res.writeHead(500,{'Content-Type':'application/json'}).end(JSON.stringify({error:{message:'SYNTHETIC_TERMINAL_FAILURE'}}));return;}
  const requestId=body.messages.map(m=>m.content).join('\n').match(/"requestId"\s*:\s*"([^"]+)"/)?.[1];
  const state={schemaVersion:'state-output-v1',requestId,event:'接待员说明训练安排',presentCharacterIds:['pro-01'],characters:[{id:'pro-01',affinity:{delta:0,reason:'正常接待，态度保持。'},relationship:{action:'set',value:'已接待访客'},innerThought:{action:'set',value:'认真说明训练安排。'},spiritThought:{action:'set',value:'安静旁听。'}}],customUpdates:[]};
  const latest=body.messages.map(m=>m.content).join('\n'),mode=!memory&&latest.includes('测试截断')?'length':!memory&&latest.includes('测试停止')?'slow':'stop';
- const content=memory?JSON.stringify({participants:['测试'+who],time:'未明确',location:'接待处',userActions:[memory.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]}):'账号'+who+'原生正文已完成。\n\n接待员指向训练安排。<SR_STATE>'+JSON.stringify(state)+'</SR_STATE><SR_DONE>';
+ const groups=terminal?(terminal.socialOnly?[]:terminal.initialized?terminal.groups:terminal.newGroupIds.slice(0,2).map((id,i)=>({id,title:'合成群'+i,members:terminalActors,ownerId:terminalActors[0],adminIds:[],announcement:''}))):[];
+ const content=terminal?JSON.stringify({protocolVersion:2,groups:groups.map(g=>({...g,messages:Array.from({length:4},(_,i)=>({id:g.members.filter(id=>id!=='player')[i%g.members.filter(id=>id!=='player').length],text:terminalTag+' 合成通讯 '+i})),topic:terminalTag})),privateMessages:[],friendRequests:[],groupActions:[],courses:[]}):memory?JSON.stringify({participants:['测试'+who],time:'未明确',location:'接待处',userActions:[memory.input],charActions:[],gains:[],losses:[],commitments:[],affinityChanges:[]}):'账号'+who+'原生正文已完成。\n\n接待员指向训练安排。<SR_STATE>'+JSON.stringify(state)+'</SR_STATE><SR_DONE>';
+ if(terminal&&terminalInput?.includes('终端等待'))await new Promise(r=>setTimeout(r,8000));
  res.writeHead(200,{'Content-Type':'text/event-stream'});
  res.write('data: '+JSON.stringify({choices:[{delta:{reasoning_content:'HIDDEN_THOUGHT_TEST',content:'<think>PRIVATE_CARD_NOT_FOR_BROWSER</think>'+(mode==='stop'?content:'已收到的部分正文。')},finish_reason:null}]})+'\n\n');
  if(mode==='slow')await new Promise(r=>setTimeout(r,8000));
