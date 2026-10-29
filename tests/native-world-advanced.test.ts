@@ -12,7 +12,7 @@ it('rejects malformed advanced fields and unknown role scope contracts before sa
  for(const patch of [{sticky:-1},{cooldown:1.5},{delay:NaN},{role:3},{position:8},{probability:101},{groupWeight:-1},{selectiveLogic:4},{scanDepth:'2'},{caseSensitive:'yes'},{extensions:{academy_scope:{mode:'future',characterIds:[]}}}])expect(()=>assertNativeWorldbookOptions({...book().worldbook,entries:{0:{...book().worldbook.entries[0],...patch}}})).toThrow();
 });
 it('accepts native fractional group weights for saving and execution without rounding',()=>{
- for(const weight of [1,1.5,2.125,10000]){
+ for(const weight of [0,Number.MIN_VALUE,.5,1,1.5,2.125,10000,10000.1,10001,100000]){
   const b:any=book();b.worldbook.entries[0].groupWeight=weight;
   expect(()=>assertNativeWorldbookOptions(b.worldbook)).not.toThrow();
   const selected=nativeWorldbooksForRequest({version:1,books:[b],defaultIds:['book']},'generate',{});
@@ -24,7 +24,7 @@ it('accepts native fractional group weights for saving and execution without rou
  }
 });
 it('rejects invalid native weights while keeping fractional message counters invalid',()=>{
- for(const patch of [{groupWeight:0},{groupWeight:-1},{groupWeight:.5},{groupWeight:10000.1},{groupWeight:NaN},{groupWeight:Infinity},{groupWeight:'1.5'},{scanDepth:1.5},{depth:1.5},{sticky:1.5},{cooldown:1.5},{delay:1.5}]){
+ for(const patch of [{groupWeight:-1},{groupWeight:100000.1},{groupWeight:NaN},{groupWeight:Infinity},{groupWeight:'1.5'},{scanDepth:1.5},{depth:1.5},{sticky:1.5},{cooldown:1.5},{delay:1.5}]){
   const b:any=book();Object.assign(b.worldbook.entries[0],patch);
   expect(()=>assertNativeWorldbookOptions(b.worldbook)).toThrow();
   expect(()=>nativeWorldbooksForRequest({version:1,books:[b],defaultIds:['book']},'generate',{})).toThrow();

@@ -35,8 +35,8 @@ export function assertNativeWorldbookOptions(value:unknown,onlyEnabled=false){
   for(const k of ['group','outletName'])if(entry[k]!==undefined&&typeof entry[k]!=='string')invalid();
   for(const k of ['order','position','depth','probability','sticky','cooldown','delay'])if(entry[k]!==undefined&&entry[k]!==null&&(!Number.isFinite(entry[k])||Math.abs(entry[k])>100000))invalid();
   for(const k of ['depth','scanDepth','sticky','cooldown','delay'])if(entry[k]!=null&&(!Number.isInteger(entry[k])||entry[k]<0||entry[k]>100000))invalid();
-  // Native group weights are numbers (including fractions), not message counters.
-  if(entry.groupWeight!=null&&(!Number.isFinite(entry.groupWeight)||entry.groupWeight<1||entry.groupWeight>10000))invalid();
+  // Preserve the existing nonnegative range; the native editor's 1–10000 clamp is not a file/runtime limit.
+  if(entry.groupWeight!=null&&(!Number.isFinite(entry.groupWeight)||entry.groupWeight<0||entry.groupWeight>100000))invalid();
   if(entry.role!=null&&![0,1,2].includes(entry.role)||entry.selectiveLogic!=null&&![0,1,2,3].includes(entry.selectiveLogic)||entry.position!=null&&(!Number.isInteger(entry.position)||entry.position<0||entry.position>7)||entry.probability!=null&&(entry.probability<0||entry.probability>100)||entry.delayUntilRecursion!=null&&typeof entry.delayUntilRecursion!=='boolean'&&(!Number.isInteger(entry.delayUntilRecursion)||entry.delayUntilRecursion<0||entry.delayUntilRecursion>100000))invalid();
  }}catch{throw Object.assign(Error('世界书高级设置或角色作用范围不正确，请调整后再保存或调用；原文件仍保留。'),{code:'NATIVE_WORLD_OPTIONS_INVALID',status:400});}
 }
