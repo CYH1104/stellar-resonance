@@ -7,7 +7,7 @@ import {accountStorage} from '../storage/accountScope';
 
 import {computed,onMounted,ref} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import {PersonaLibrary,personaArchiveEntries,type PersonaFile} from '../storage/personaLibrary';
+import {createPersonaLibrary,personaArchiveEntries,type PersonaFile} from '../storage/personaLibrary';
 import {blankPersona,normalizePersona} from '../domain/persona';
 import {setMasterPersona} from '../domain/masterPersona';
 import {applyPersonaMedia} from '../storage/personaMedia';
@@ -17,10 +17,10 @@ const files=ref<PersonaFile[]>([]),chosen=ref(''),sessionId=ref(''),notice=ref('
 const source=ref<PersonaFile>(),editingId=ref(''),draftLoaded=ref(false);
 const entries=computed(()=>personaArchiveEntries(files.value,props.w.sessions));
 const selected=computed(()=>entries.value.find(f=>f.id===chosen.value));
-onMounted(async()=>{try{files.value=await new PersonaLibrary().list();sessionId.value=props.w.active?.id||accountStorage.getItem('academy:main-session:v1')||'';}catch{notice.value='档案读取失败，请重试。';}});
+onMounted(async()=>{try{files.value=await createPersonaLibrary().list();sessionId.value=props.w.active?.id||accountStorage.getItem('academy:main-session:v1')||'';}catch{notice.value='档案读取失败，请重试。';}});
 async function load(){await autoSave.flush();if(autoSave.error.value)return;if(!selected.value)return;source.value=selected.value;editingId.value='';draftLoaded.value=true;Object.assign(props.w.newGameDraft.persona,blankPersona(),selected.value.persona);notice.value='已载入右侧表格；修改后自动保存为新人设，原档案保留';autoSave.cancel();}
 async function editSelected(){await load();if(!source.value)return;editingId.value=files.value.some(f=>f.id===source.value!.id)?source.value.id:'';notice.value=editingId.value?'正在编辑「'+source.value.name+'」，保存将更新该档案':'该人设来自会话，保存后建立独立档案';}
-async function saveDraft(){if(saving.value||props.w.busy)return;saving.value=true;try{const persona=normalizePersona({...props.w.newGameDraft.persona}),id=editingId.value||crypto.randomUUID();await new PersonaLibrary().save({...source.value,id,name:persona.name,persona,updatedAt:new Date().toISOString(),useAsHomeImage:editingId.value?source.value?.useAsHomeImage:false});files.value=await new PersonaLibrary().list();editingId.value=id;chosen.value=id;source.value=files.value.find(f=>f.id===id);notice.value='人设已自动保存';return true;}catch(e){notice.value=(e as Error).message;}finally{saving.value=false;}}
+async function saveDraft(){if(saving.value||props.w.busy)return;saving.value=true;try{const persona=normalizePersona({...props.w.newGameDraft.persona}),id=editingId.value||crypto.randomUUID();await createPersonaLibrary().save({...source.value,id,name:persona.name,persona,updatedAt:new Date().toISOString(),useAsHomeImage:editingId.value?source.value?.useAsHomeImage:false});files.value=await createPersonaLibrary().list();editingId.value=id;chosen.value=id;source.value=files.value.find(f=>f.id===id);notice.value='人设已自动保存';return true;}catch(e){notice.value=(e as Error).message;}finally{saving.value=false;}}
 function master(){if(!selected.value)return;try{setMasterPersona(selected.value.persona,selected.value.id);applyPersonaMedia(selected.value);notice.value='已设为主人设';}catch(e){notice.value=(e as Error).message;}}
 async function bind(){const file=selected.value,target=props.w.sessions.find(s=>s.id===sessionId.value);if(!file||!target)return;saving.value=true;try{const persona=normalizePersona({...file.persona});target.persona=persona;Object.assign(target.initial.player,{name:persona.name,primaryGender:persona.primaryGender,secondaryGender:persona.secondaryGender,identity:persona.identity,spiritAnimal:persona.spiritAnimal});await props.w.save();notice.value='已绑定到「'+target.name+'」，对话记录保留';}catch(e){notice.value=(e as Error).message;}finally{saving.value=false;}}
 const autoSave=useAutoSave(()=>props.w.newGameDraft.persona,async()=>{if(!draftLoaded.value)return true;if(!props.w.newGameDraft.persona.name.trim())return false;if(!await saveDraft())throw Error(notice.value||'人设保存失败');return true;},500,()=>saving.value||props.w.busy);

@@ -12,7 +12,7 @@ import type {ViewModel} from '../app/useWorkspace';
 import {blankPersona,normalizePersona} from '../domain/persona';
 import {masterPersonaSummary,setMasterPersona,clearMasterPersona,refreshMasterPersona} from '../domain/masterPersona';
 import {writePersonaExtra} from '../domain/personaExtras';
-import {PersonaLibrary as Repository,validatePersonaTextFile,type PersonaFile,personaArchiveEntries,samePersona,resolvePersonaArchiveFile,personaSourceSessionIds,hiddenPersonaSessionIds,hidePersonaSessions} from '../storage/personaLibrary';
+import {createPersonaLibrary as createRepository,validatePersonaTextFile,type PersonaFile,personaArchiveEntries,samePersona,resolvePersonaArchiveFile,personaSourceSessionIds,hiddenPersonaSessionIds,hidePersonaSessions} from '../storage/personaLibrary';
 import {applyPersonaMedia} from '../storage/personaMedia';
 import AutoTextarea from './AutoTextarea.vue';
 import PersonaFields from './PersonaFields.vue';
@@ -22,7 +22,7 @@ const emit=defineEmits<{use:[persona:Persona];master:[persona:Persona];settings:
 const files=ref<PersonaFile[]>([]),persona=ref<Persona>(blankPersona()),selected=ref(''),source=ref<PersonaFile>(),portrait=ref<Blob>(),avatar=ref<Blob>(),useAsHomeImage=ref(false),busy=ref(false),notice=ref(''),problem=ref(''),importInput=ref<HTMLInputElement>(),sessionId=ref(''),wish=ref('');
 const remark=ref('');
 const memo=ref(''),avatarAppearance=ref(cleanAvatarAppearance()),sourceSessionIds=ref<string[]>([]);
-const repository=new Repository();
+const repository=createRepository();
 const removing=ref(false);
 const hiddenIds=ref(hiddenPersonaSessionIds());
 const entries=computed(()=>personaArchiveEntries(files.value,props.sessions,hiddenIds.value));

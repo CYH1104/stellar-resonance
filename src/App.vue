@@ -57,7 +57,7 @@ const SavesView=defineAsyncComponent(()=>import('./components/SavesView.vue'));
 import OpeningView from './components/OpeningView.vue';
 
 const PersonaLibrary=defineAsyncComponent(()=>import('./components/PersonaLibrary.vue'));
-import {PersonaLibrary as PersonaRepository} from './storage/personaLibrary';
+import {createPersonaLibrary as createPersonaRepository} from './storage/personaLibrary';
 
 import type {Persona} from './domain/contracts';
 
@@ -74,7 +74,7 @@ const firstSetupKey='academy:first-journey:v1';
 function needsFirstSetup(){try{return !w.sessions.length&&!accountStorage.getItem(firstSetupKey);}catch{return !w.sessions.length;}}
 function savedFirstPersona(persona:Persona){if(firstSetup.value!=='persona')return;usePersona(persona);firstSetup.value='api';w.panel='settings';}
 function savedFirstApi(){if(firstSetup.value!=='api'||!w.apiReady)return;firstSetup.value='name';library.value=false;entry.value='new';w.panel='story';}
-async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;const files=await new PersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){firstSetup.value='persona';library.value=true;}else{usePersona(files[0]!.persona);firstSetup.value='api';w.panel='settings';}}
+async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;const files=await createPersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){firstSetup.value='persona';library.value=true;}else{usePersona(files[0]!.persona);firstSetup.value='api';w.panel='settings';}}
 
 
 

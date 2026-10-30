@@ -37,6 +37,7 @@ Object.assign(apiMessages,{MODEL_OUTPUT_LIMIT:'模型达到本次输出 Token �
 });
 apiMessages.NATIVE_TASK_CONTEXT_INVALID='任务的人设上下文格式不正确，请重试；原记录保留。';
 export class HttpGateway implements Gateway {
+  async terminalCode(data:object):Promise<any>{const response=await fetch('/api/terminal-code',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!response.ok)throw Error(response.status===404?'未找到该终端码，请向角色确认。':'终端码查询失败，请检查完整的11位号码。');return response.json();}
   constructor(private nativePreset?:()=>NativePresetConfig|null|undefined,private nativeState?:(body:any)=>NativeWorldSeed|undefined){}
   async readNativePreset(){return (await this.post('native-config',{action:'read'})).json() as Promise<{preset:Record<string,any>;defaultPreset:Record<string,any>}>;}
   // Upstream errors are mapped to public messages, never displayed verbatim.

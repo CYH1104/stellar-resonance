@@ -44,6 +44,7 @@ import { computed, reactive, ref, watch, nextTick, onScopeDispose, type UnwrapNe
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant, WorldState } from '../domain/contracts';
 import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, saveFailureLocation, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
+import {workspacePort} from './workspacePorts';
 import {apiAddress,type LocalApiCredentials} from '../storage/apiCredentials';
 import {drawSpecialEvent,awaitingSpecialEvent} from '../domain/randomEvents';
 import { MockGateway } from '../gateway/mock';
@@ -167,9 +168,9 @@ export function useWorkspace() {
   }
   watch(problem,value=>{if(value)logRuntime(value,generationPhase.value||'运行错误');},{flush:'sync'});
   watch(forumReplyError,value=>{if(value)logRuntime(value,'论坛 AI 回复');},{flush:'sync'});
-  const repository=new IndexedDbRepository(); let writes=Promise.resolve(); let controller:AbortController|undefined;let storageReady=false,apiStorageReady=false;
+  const repository=workspacePort('repository',()=>new IndexedDbRepository()); let writes=Promise.resolve(); let controller:AbortController|undefined;let storageReady=false,apiStorageReady=false;
   const deletingSessionId=ref('');let deletionTask:Promise<boolean>|undefined;
-  const mock=new MockGateway(), http=new HttpGateway(()=>{requireSafeDrafts();if(nativePreset.value===undefined)throw Error('请先在预设页面保存原生预设。');return nativePreset.value||nativeDefaultPreset.value;},body=>{const session=sessions.value.find(s=>s.id===body.sessionId),index=session?.turns.findIndex(t=>t.id===body.turnId)??-1;return session&&index>=0?nativeWorldSeed(session,index):undefined;});
+  const mock=new MockGateway(), http=workspacePort('gateway',()=>new HttpGateway(()=>{requireSafeDrafts();if(nativePreset.value===undefined)throw Error('请先在预设页面保存原生预设。');return nativePreset.value||nativeDefaultPreset.value;},body=>{const session=sessions.value.find(s=>s.id===body.sessionId),index=session?.turns.findIndex(t=>t.id===body.turnId)??-1;return session&&index>=0?nativeWorldSeed(session,index):undefined;}));
   const gateway=():Gateway=>localService.value?http:preferences.mode==='demo'?mock:http;
   const active=computed(()=>sessions.value.find(s=>s.id===sessionId.value));
   const pendingRandomEvent=computed(()=>randomEventsAvailable&&(active.value?.turns.some(t=>awaitingSpecialEvent(t.randomEvent))||false));

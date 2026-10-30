@@ -1,4 +1,4 @@
-import {PersonaLibrary,personaLibraryStamp,type PersonaFile} from './personaLibrary';
+import {createPersonaLibrary,personaLibraryStamp,type PersonaFile} from './personaLibrary';
 import {accountStorage,accountDatabase} from './accountScope';
 import {cleanBackupArchive,cleanBackupPersona,type BackupArchive,type BackupPersona} from '../domain/backupArchive';
 import {refreshLocalCharacterImages} from '../app/localCharacterImages';
@@ -11,11 +11,11 @@ async function encodeBlob(blob:Blob){const bytes=new Uint8Array(await blob.array
 function decodeBlob(text:string){const comma=text.indexOf(','),binary=atob(text.slice(comma+1));return new Blob([Uint8Array.from(binary,c=>c.charCodeAt(0))],{type:text.slice(5,comma).split(';')[0]});}
 async function encodeFile(file:PersonaFile,draft=false){const {portrait,avatar,...text}=file;return cleanBackupPersona({...text,...(portrait?{portrait:await encodeBlob(portrait)}:{}),...(avatar?{avatar:await encodeBlob(avatar)}:{})},draft);}
 function decodeFile(file:BackupPersona):PersonaFile{const {portrait,avatar,...text}=file;return {...text,...(portrait?{portrait:decodeBlob(portrait)}:{}),...(avatar?{avatar:decodeBlob(avatar)}:{})};}
-function notify(){refreshNicknameImages();refreshLocalCharacterImages();if(typeof window!=='undefined'){const text=accountStorage.getItem(metadata.masterPersona);window.dispatchEvent(new CustomEvent('academy:master-persona',{detail:text?JSON.parse(text):{name:'',department:'',spiritLevel:''}}));window.dispatchEvent(new Event('academy:persona-avatar-updated'));const id=accountStorage.getItem(metadata.homeImageFileId);void new PersonaLibrary().list().then(files=>{if(accountStorage.getItem(metadata.homeImageFileId)!==id)return;const file=files.find(f=>f.id===id);window.dispatchEvent(new CustomEvent('academy:persona-image',{detail:{image:file?.useAsHomeImage?file.portrait||null:null}}));}).catch(()=>{});}}
+function notify(){refreshNicknameImages();refreshLocalCharacterImages();if(typeof window!=='undefined'){const text=accountStorage.getItem(metadata.masterPersona);window.dispatchEvent(new CustomEvent('academy:master-persona',{detail:text?JSON.parse(text):{name:'',department:'',spiritLevel:''}}));window.dispatchEvent(new Event('academy:persona-avatar-updated'));const id=accountStorage.getItem(metadata.homeImageFileId);void createPersonaLibrary().list().then(files=>{if(accountStorage.getItem(metadata.homeImageFileId)!==id)return;const file=files.find(f=>f.id===id);window.dispatchEvent(new CustomEvent('academy:persona-image',{detail:{image:file?.useAsHomeImage?file.portrait||null:null}}));}).catch(()=>{});}}
 
 /** A consistent archive read; never silently substitute an empty library after a storage error. */
 export async function collectWorkspaceArchive(newGameDraft?:BackupArchive['newGameDraft']):Promise<BackupArchive>{
- const scope=accountDatabase('backup'),library=new PersonaLibrary(),meta=readMetadata(),state=await library.readBackupState();
+ const scope=accountDatabase('backup'),library=createPersonaLibrary(),meta=readMetadata(),state=await library.readBackupState();
  const personas=await Promise.all(state.files.map(f=>encodeFile(f))),draft=state.draft?await encodeFile(state.draft,true):null;
  const after=await library.readBackupState();
  if(scope!==accountDatabase('backup')||state.revision!==after.revision||personaLibraryStamp(state.files,state.draft)!==personaLibraryStamp(after.files,after.draft)||JSON.stringify(meta)!==JSON.stringify(readMetadata()))throw Error('备份期间人设或设置发生变化，请重试。');
@@ -25,7 +25,7 @@ export async function collectWorkspaceArchive(newGameDraft?:BackupArchive['newGa
 
 /** Apply independently stored archives with a rollback handle for the workspace transaction. */
 export async function applyWorkspaceArchive(source:BackupArchive,mode:'replace'|'merge',preserveMedia=false,expected?:BackupArchive):Promise<{undo:()=>Promise<void>}>{
- const next=cleanBackupArchive(source),library=new PersonaLibrary(),before=await library.readBackupState(),meta=readMetadata(),scope=accountDatabase('backup');
+ const next=cleanBackupArchive(source),library=createPersonaLibrary(),before=await library.readBackupState(),meta=readMetadata(),scope=accountDatabase('backup');
  const baseline=expected&&baselines.get(expected);if(baseline&&(baseline.revision!==before.revision||baseline.metadata!==JSON.stringify(meta)))throw Error('备份后人设或设置已被其他页面修改，恢复已停止。');
  let files=before.files,draft=before.draft;
  const personaIds=new Map<string,string>();

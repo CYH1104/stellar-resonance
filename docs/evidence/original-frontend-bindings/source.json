@@ -1,0 +1,17 @@
+{
+  "baseline": "4a1aa5cc79c2a46dbcce009df6b6fee3e5a748f2",
+  "vueTemplatesAndStyles": [
+    "src/App.vue",
+    "src/components/HomeView.vue",
+    "src/components/PersonaLibrary.vue",
+    "src/components/PersonaQuickList.vue",
+    "src/components/StoryView.vue",
+    "src/components/TheaterSettings.vue"
+  ],
+  "originalHtmlUnchanged": true,
+  "stylesUnchanged": true,
+  "officialSourceUnchanged": true,
+  "fullFrontendBuildUses": "src/main.ts -> App.vue",
+  "backendPortsComplete": false,
+  "deployed": false
+}

@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import {renderAcademyFrontend} from '../native/academy-frontend/page.mjs';
+const root=new URL('../',import.meta.url), output=new URL('dist/academy-frontend/',root);
+const manifest=JSON.parse(fs.readFileSync(new URL('.vite/manifest.json',output),'utf8'));
+const entry=manifest['src/native/fullFrontend.ts'];
+if(!entry?.isEntry)throw new Error('完整学院前端入口未构建。');
+const original=fs.readFileSync(new URL('星穹游戏终端 (1).html',root),'utf8');
+const styles=[...new Set([...(entry.css||[]),...(manifest['src/main.ts']?.css||[])])].map(file=>'/academy-assets/'+file);
+fs.writeFileSync(new URL('academy.html',output),renderAcademyFrontend(original,{script:'/academy-assets/'+entry.file,styles}));
+fs.mkdirSync(new URL('auth/',output),{recursive:true});
+for(const name of ['boot.css','boot.js'])fs.copyFileSync(new URL('server/auth-ui/'+name,root),new URL('auth/'+name,output));
+fs.cpSync(new URL('public/assets/',root),new URL('assets/',output),{recursive:true});
+console.log('已构建完整原学院文档、原加载动画和原 App 页面；需完整原生后端连接就绪后才能挂载。');

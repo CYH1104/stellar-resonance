@@ -2,6 +2,8 @@ import {cleanAvatarAppearance,type AvatarAppearance} from '../domain/avatarAppea
 import type {Persona} from '../domain/contracts';
 import {normalizePersona,personaLimits} from '../domain/persona';
 import {accountDatabase,accountStorage} from './accountScope';
+import {workspacePort} from '../app/workspacePorts';
+export function createPersonaLibrary(){return workspacePort('personas',()=>new PersonaLibrary());}
 const hiddenSessionsKey='academy:persona-hidden-sessions:v1';
 export function hiddenPersonaSessionIds():string[]{try{const value=JSON.parse(accountStorage.getItem(hiddenSessionsKey)||'[]');return Array.isArray(value)?value.filter((id):id is string=>typeof id==='string'):[];}catch{return [];}}
 export function hidePersonaSessions(ids:string[]){accountStorage.setItem(hiddenSessionsKey,JSON.stringify([...new Set([...hiddenPersonaSessionIds(),...ids])]));}

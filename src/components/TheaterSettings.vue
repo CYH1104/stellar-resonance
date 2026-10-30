@@ -6,6 +6,7 @@ import {theaterBundle,parseTheaterBundle} from '../domain/theaterBundle';
 import type {RegexRule} from '../domain/regex';
 import {encodeOfflineTheaterShare,decodeOfflineTheaterShare,maxOfflineShareLength} from '../domain/offlineTheaterShare';
 import {HttpGateway} from '../gateway/http';
+import {workspacePort} from '../app/workspacePorts';
 import {cleanTheaterShare,type TheaterShare} from '../domain/theaterShare';
 import DismissibleNotice from './DismissibleNotice.vue';
 import type {ViewModel} from '../app/useWorkspace';
@@ -18,7 +19,7 @@ function toggleRegex(s:TheaterSetting,id:string,checked:boolean){const current=s
 const importedRules=ref<RegexRule[]>([]);
 function exportJson(s:TheaterSetting){const data=theaterBundle(s,bindingRules.value),url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='theater-'+s.slot+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function importJson(event:Event){const input=event.target as HTMLInputElement;try{const f=input.files?.[0];if(!f)return;if(f.size>5000000)throw Error('文件最多5MB');const value=parseTheaterBundle(await f.text());preview.value=value.theater;importedRules.value=value.regexRules;shareError.value='';}catch(e){shareError.value=(e as Error).message;}finally{input.value='';}}
-const api=new HttpGateway();
+const api=workspacePort('gateway',()=>new HttpGateway());
 async function lookup(){shareBusy.value=true;shareError.value='';preview.value=undefined;importedRules.value=[];try{const code=shareCode.value.trim();if(legacyOnline.value){if(!/^T[A-Za-z0-9]{9}$/.test(code))throw Error('旧版在线码格式不正确');preview.value=cleanTheaterShare((await api.lookupTheaterShare(code)).template);}else preview.value=decodeOfflineTheaterShare(code);}catch(e){shareError.value=(e as Error).message;}finally{shareBusy.value=false;}}
 async function publish(){if(!publishing.value||shareBusy.value)return;shareBusy.value=true;shareError.value='';try{const template=cleanTheaterShare({version:1,...publishing.value});sharedCode.value=encodeOfflineTheaterShare(template);publishing.value=undefined;}catch(e){shareError.value=(e as Error).message;}finally{shareBusy.value=false;}}
 async function copyCode(){copyNotice.value='';try{await navigator.clipboard.writeText(sharedCode.value);copyNotice.value='分享码已复制';}catch{copyNotice.value='请在下方文本框选中全文并手动复制';}}
