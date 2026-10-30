@@ -13,12 +13,14 @@
 - 新 `native:frontend:build` 直接构建原 `src/main.ts → App.vue` 和全部现有页面，不导入简化 NativeAcademy。完整学院 HTML 使用原 `星穹游戏终端 (1).html`，开场、校园导航、地图、原内联样式/脚本及功能入口原样保留，加载使用既有 boot.css/boot.js/bootScreen。
 - 经典学院脚本和原生产页面一样，通过 academyStorage 获取资料；新连接转向原版 AccountStorage，补充 length/key 接口，避免原导出控件枚举存储时变成空备份。没有自行实现另一份持久化或新增存储字段。
 - 新入口先等待完整原生服务、再动态导入原 App，避免模块初始化时先开旧库。当前没有完整服务提供者，入口会显示明确未接通状态，不是可以上线的功能完成版。
+- 原生模式还阻止原useWorkspace在后台连接失败时走MockGateway或创建演示世界，不能在接口失败时返回假剧情、假存档。该保护另行通过原生启动失败实测。
 
 ## 验证
 
 - `npm run check` 通过。
 - 最终全套 `npx vitest run`：152文件、918项通过（包括“拒绝旧接口冒充原生”、终端和分享接线改动）。
-- `tests/workspace-ports.test.ts` 定向最终6项通过；`tests/native-skin.test.ts` 10项也在前述全套中通过。
+- `tests/workspace-ports.test.ts` 初次定向6项通过；`tests/native-skin.test.ts` 10项也在前述全套中通过。
+- 随后补充“原生连接中断不授权演示模式、不创建假存档”后，连接套件最终7项通过；相邻api-workspace＋连接套件此前88项通过。没有将未重跑的全套计数虚增为919。
 - `node --test tests/native-frontend-page.test.mjs` 最终3项通过：完整文档反向去除接入标记后等同原文（只允许原生产同样的 localStorage→academyStorage 改绑）、原加载动画、存储枚举/原生数据、无连接阻断与不安全资源路径。
 - `npm run native:frontend:build` 通过。原 public/assets 另行复制，保持旧 /assets 图片路径。Vite仍提示原绝对图片路径将在运行时解析；路径文件已复制，不是新增图片缺失。
 - 修改的6个Vue文件template/style与基线相同，完整原HTML及src/styles未改。`git diff --check`通过；部分原文件混用CRLF/LF，本次只调整改动行行尾，不整文件改行尾。
@@ -33,3 +35,5 @@
 6. 完整功能与视觉比对通过后只更新独立8088。8088当前仍是用户指出不合要求的292de66简化入口；不要宣称已恢复原前端上线。
 
 本轮不新增持久化字段或数据库，故未更改备份格式。后续原生数据映射一旦增加持久化扩展，必须同时接入完整采集、导入、云端及恢复，而不是事后再补。
+
+完整学院页面应在顶层作为真正的前端，原生运行时在逻辑层连接。入口同时支持当前窗口提供`__ACADEMY_NATIVE_CONTEXT__`和`__ACADEMY_NATIVE_PORTS__`；从旧原生验证宿主parent取上下文只用于兼容验证，不是要求继续把学院首屏藏在APP_READY之后的iframe里。实际提供者、账号预载入及原生运行时启动尚未实现。

@@ -44,7 +44,7 @@ import { computed, reactive, ref, watch, nextTick, onScopeDispose, type UnwrapNe
 import type { Gateway, GenerateRequest, LocalService, Memory, Panel, Persona, Preferences, Profile, Session, Snapshot, Variant, WorldState } from '../domain/contracts';
 import {addForumAIReply,addForumAIReplies,backup, effectiveEvents, cleanPreferences, copy, defaults, editMessage, finishVariant, likeForum, newSession, now, parseBackup, replyForum, rollDice, saveFailureLocation, selected, selectVariant, stateAt, truncate, uid, visibleForum, visibleMemories } from '../domain/story';
 import { IndexedDbRepository } from '../storage/repository';
-import {workspacePort} from './workspacePorts';
+import {workspacePort,nativeWorkspaceActive} from './workspacePorts';
 import {apiAddress,type LocalApiCredentials} from '../storage/apiCredentials';
 import {drawSpecialEvent,awaitingSpecialEvent} from '../domain/randomEvents';
 import { MockGateway } from '../gateway/mock';
@@ -171,7 +171,7 @@ export function useWorkspace() {
   const repository=workspacePort('repository',()=>new IndexedDbRepository()); let writes=Promise.resolve(); let controller:AbortController|undefined;let storageReady=false,apiStorageReady=false;
   const deletingSessionId=ref('');let deletionTask:Promise<boolean>|undefined;
   const mock=new MockGateway(), http=workspacePort('gateway',()=>new HttpGateway(()=>{requireSafeDrafts();if(nativePreset.value===undefined)throw Error('请先在预设页面保存原生预设。');return nativePreset.value||nativeDefaultPreset.value;},body=>{const session=sessions.value.find(s=>s.id===body.sessionId),index=session?.turns.findIndex(t=>t.id===body.turnId)??-1;return session&&index>=0?nativeWorldSeed(session,index):undefined;}));
-  const gateway=():Gateway=>localService.value?http:preferences.mode==='demo'?mock:http;
+  const gateway=():Gateway=>nativeWorkspaceActive()?http:localService.value?http:preferences.mode==='demo'?mock:http;
   const active=computed(()=>sessions.value.find(s=>s.id===sessionId.value));
   const pendingRandomEvent=computed(()=>randomEventsAvailable&&(active.value?.turns.some(t=>awaitingSpecialEvent(t.randomEvent))||false));
   const state=computed(()=>active.value?stateAt(active.value):undefined);
@@ -299,7 +299,7 @@ export function useWorkspace() {
     return e instanceof Error ? (e.name==='AbortError'?'生成已停止，已收到的内容保留。':e.message) : '操作未完成，请重试。';
   };
   async function boot() {
-    try {const value=await repository.read();unsafeNativeDrafts.value=repository.hasUnsafeNativeDrafts();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}for(const session of value.sessions)for(const job of session.terminal?.jobs||[])if(job.status==='running'){job.status='failed';job.error='页面关闭时任务中断，可在终端中重试。';}sessions.value=value.sessions;for(const session of sessions.value)prepareForumLikes(session);Object.assign(preferences,value.preferences);nativePreset.value=value.archive?.nativePreset;}restoreInterrupted.value=await repository.hasInterruptedRestore();storageReady=true;notice.value=sessions.value.some(s=>s.affinityMigration?.records.length)?'本地存档已载入；旧版超过 100 的好感度已迁移到新范围，原始状态与补丁保留在导出备份的 affinityMigration 记录中，旧记忆待重整':sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=preferences.mode==='demo';}
+    try {const value=await repository.read();unsafeNativeDrafts.value=repository.hasUnsafeNativeDrafts();if(value){for(const session of value.sessions)for(const task of session.memoryTasks||[])if(task.status==='running'){task.status='failed';task.error='页面关闭时任务中断，请手动重试。';}for(const session of value.sessions)for(const job of session.terminal?.jobs||[])if(job.status==='running'){job.status='failed';job.error='页面关闭时任务中断，可在终端中重试。';}sessions.value=value.sessions;for(const session of sessions.value)prepareForumLikes(session);Object.assign(preferences,value.preferences);nativePreset.value=value.archive?.nativePreset;}restoreInterrupted.value=await repository.hasInterruptedRestore();storageReady=true;notice.value=sessions.value.some(s=>s.affinityMigration?.records.length)?'本地存档已载入；旧版超过 100 的好感度已迁移到新范围，原始状态与补丁保留在导出备份的 affinityMigration 记录中，旧记忆待重整':sessions.value.length?'本地存档已载入':'新建一段旅程，数据会保存在本机';authorized.value=!nativeWorkspaceActive()&&preferences.mode==='demo';}
     catch(e){problem.value=message(e);notice.value='本地存储暂不可用，请勿覆盖旧数据';}
     finally {
       try{const service=await http.bootstrap();if(service){localService.value=service;for(const session of sessions.value)syncCharacterFacts(session,service.dataset,service.characterFacts);preferences.mode='server';await Promise.resolve();authorized.value=true;notice.value='服务器角色卡已载入 · 请在API 设置连接 AI';}}catch{problem.value='本机资料后台不可用；请使用新版 bat 启动。';}
@@ -314,11 +314,12 @@ export function useWorkspace() {
   watch(input,text=>{const session=active.value;if(!session||loading.value||backupWorking.value)return;session.draftInput=text;inputDrafts.set(session.id,text);pendingInputDrafts.set(session.id,text);inputDraftStatus.value='输入草稿待保存';clearTimeout(inputDraftTimer);inputDraftTimer=setTimeout(()=>void flushInputDrafts().catch(()=>{}),400);});
   let newGameDraftTimer:ReturnType<typeof setTimeout>|undefined;
   watch(newGameDraft,()=>{if(loading.value||backupWorking.value)return;clearTimeout(newGameDraftTimer);newGameDraftTimer=setTimeout(()=>{void saveEditorDraft('new-game',JSON.stringify(newGameDraft)).catch(e=>{inputDraftError.value=message(e);});},400);},{deep:true});
-  watch(()=>preferences.mode,()=>{authorized.value=preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
+  watch(()=>preferences.mode,()=>{authorized.value=!nativeWorkspaceActive()&&preferences.mode==='demo';for(const id of Object.keys(credentials))delete credentials[id];});
   watch(credentials,()=>{for(const id of Object.keys(approved)){const p=preferences.profiles.find(profile=>profile.id===id);if(!p||approved[id]!==connectionSignature(p))delete approved[id];}});
   watch([apiReady,panel],()=>{if(active.value&&panel.value==='story'&&!apiReady.value&&!loading.value){panel.value='settings';problem.value=apiIssues.value[0]||'请完成 API 配置后继续。';}});
   async function authorize(invite:string) {try{await gateway().authorize(invite);authorized.value=true;notice.value=preferences.mode==='demo'?'演示访问已开启':'访问验证成功';problem.value='';}catch(e){authorized.value=false;problem.value=message(e);}}
   async function create(name:string,persona:Persona,opening:string) {
+    if(nativeWorkspaceActive()&&!localService.value){problem.value='原生后端尚未连接，已停止创建；输入仍保留。';return;}
     if(creatingGame.value||workingPersona.value||busy.value||backupWorking.value||restoreInterrupted.value)return;
     try{persona=normalizePersona(persona);}catch(e){problem.value=message(e);return;}
     if(!authorized.value){problem.value='请先验证访问资格';return;}

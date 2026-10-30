@@ -13,7 +13,7 @@ export function nativeAcademyStorage(store) {
   };
 }
 // Same account-bound classic-script contract as the original production page.
-export const nativeFrontendHead = `<script>(function(){window.__ACADEMY_BACKEND__='native';var parentHost;try{parentHost=window.parent!==window?window.parent:null;}catch(_){}var context=parentHost&&parentHost.SillyTavern&&parentHost.SillyTavern.getContext();window.academyStorage=(${nativeAcademyStorage.toString()})(context&&context.accountStorage);if(parentHost){window.__ACADEMY_NATIVE_PORTS__=parentHost.academyNativeWorkspacePorts;window.__ACADEMY_ACCOUNT__=parentHost.academyNativeIdentity;}})();</script>`;
+export const nativeFrontendHead = `<script>(function(){window.__ACADEMY_BACKEND__='native';var parentHost;try{parentHost=window.parent!==window?window.parent:null;}catch(_){}var context=window.__ACADEMY_NATIVE_CONTEXT__||(parentHost&&parentHost.SillyTavern&&parentHost.SillyTavern.getContext());window.academyStorage=(${nativeAcademyStorage.toString()})(context&&context.accountStorage);if(parentHost){window.__ACADEMY_NATIVE_PORTS__=window.__ACADEMY_NATIVE_PORTS__||parentHost.academyNativeWorkspacePorts;window.__ACADEMY_ACCOUNT__=window.__ACADEMY_ACCOUNT__||parentHost.academyNativeIdentity;}})();</script>`;
 
 /** Same academy document composition used by the existing /terminal page. */
 export function renderAcademyFrontend(document, {script, styles = []}) {

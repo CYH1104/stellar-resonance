@@ -29,6 +29,9 @@ test('经典学院脚本也使用原生AccountStorage，不读取或写入浏览
   assert.throws(()=>standalone.academyStorage.getItem('旧数据'));
   assert.throws(()=>standalone.academyStorage.setItem('旧数据','x'));
   assert.throws(()=>standalone.academyStorage.length);
+  const topLevel={__ACADEMY_NATIVE_CONTEXT__:{accountStorage:native},__ACADEMY_NATIVE_PORTS__:Promise.resolve({})};topLevel.parent=topLevel;
+  vm.runInNewContext(code,{window:topLevel});
+  assert.equal(topLevel.academyStorage.getItem('academy:brightness'),'原生账号设置');
 });
 test('拒绝缺失原前端或不安全的脚本路径，不能换成精简聊天外壳',()=>{
   assert.throws(()=>renderAcademyFrontend('<html><body>聊天</body></html>',{script:'/academy-assets/workspace.js'}));

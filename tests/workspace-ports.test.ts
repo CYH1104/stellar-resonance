@@ -1,7 +1,10 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {installWorkspacePorts, workspacePort, type WorkspacePorts} from '../src/app/workspacePorts';
+import {installWorkspacePorts, workspacePort,nativeWorkspaceActive, type WorkspacePorts} from '../src/app/workspacePorts';
 import {accountStorage} from '../src/storage/accountScope';
 import {createPersonaLibrary} from '../src/storage/personaLibrary';
+import {effectScope} from 'vue';
+import {IDBFactory} from 'fake-indexeddb';
+import {useWorkspace} from '../src/app/useWorkspace';
 
 let release: (()=>void) | undefined;
 afterEach(()=>{release?.();release=undefined;delete globalThis.__ACADEMY_BACKEND__;vi.unstubAllGlobals();});
@@ -21,6 +24,7 @@ describe('原学院界面后端连接',()=>{
   });
   it('原生入口缺少连接时禁止回退，不能悄悄打开旧库',()=>{
     globalThis.__ACADEMY_BACKEND__='native';const fallback=vi.fn(()=>fixture().repository);
+    expect(nativeWorkspaceActive()).toBe(true);
     expect(()=>workspacePort('repository',fallback)).toThrow('已阻止');expect(fallback).not.toHaveBeenCalled();
     expect(()=>createPersonaLibrary()).toThrow('已阻止');
     expect(()=>accountStorage.getItem('academy:master-persona:v1')).toThrow('已阻止');
@@ -32,6 +36,7 @@ describe('原学院界面后端连接',()=>{
   });
   it('所有页面共用同一个原生存档、人设库和偏好来源',()=>{
     globalThis.__ACADEMY_BACKEND__='native';const ports=fixture();release=installWorkspacePorts(ports);
+    expect(nativeWorkspaceActive()).toBe(true);
     const fallback=vi.fn(()=>fixture().repository);
     expect(workspacePort('repository',fallback)).toBe(ports.repository);expect(fallback).not.toHaveBeenCalled();
     expect(createPersonaLibrary()).toBe(ports.personas);
@@ -47,5 +52,26 @@ describe('原学院界面后端连接',()=>{
   it('不能把旧接口对象作为完整原生连接登记',()=>{
     const ports=fixture();ports.gateway.capabilities.native=false;
     expect(()=>installWorkspacePorts(ports)).toThrow('不能登记旧请求接口');
+  });
+  it('原生资料连接失败不能自动授权演示模式或创建假世界存档',async()=>{
+    vi.stubGlobal('indexedDB',new IDBFactory());globalThis.__ACADEMY_BACKEND__='native';
+    const ports=fixture();
+    ports.repository.read=vi.fn(async()=>undefined);
+    ports.repository.hasUnsafeNativeDrafts=()=>false;
+    ports.repository.hasInterruptedRestore=async()=>false;
+    ports.repository.readEditorDrafts=async()=>({});
+    ports.repository.readApiCredentials=async()=>undefined;
+    ports.gateway.bootstrap=async()=>{throw Error('原生连接中断');};
+    release=installWorkspacePorts(ports);
+    const scope=effectScope();
+    try{
+      const workspace=scope.run(()=>useWorkspace())!;
+      await vi.waitFor(()=>expect(workspace.loading.value).toBe(false));
+      expect(workspace.authorized.value).toBe(false);
+      await workspace.create('不会创建',{name:'玩家',appearance:'',personality:'',background:''},'');
+      expect(workspace.sessions.value).toHaveLength(0);
+      expect(workspace.problem.value).toContain('原生后端尚未连接');
+      expect(ports.repository.write).not.toHaveBeenCalled();
+    }finally{scope.stop();}
   });
 });

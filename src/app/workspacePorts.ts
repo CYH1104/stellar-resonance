@@ -15,6 +15,7 @@ export interface WorkspacePorts {
 }
 type PortGlobal = typeof globalThis & {__ACADEMY_BACKEND__?: 'native'};
 let installed: WorkspacePorts | undefined;
+export function nativeWorkspaceActive(){return !!installed || (globalThis as PortGlobal).__ACADEMY_BACKEND__ === 'native';}
 
 const required = {
   repository: ['read', 'write', 'hasUnsafeNativeDrafts', 'writeInputDraft', 'readEditorDrafts', 'writeEditorDraft', 'writeNativePreset', 'writeConfiguration', 'writeTerminalSession', 'prepareCloudRecovery', 'lockRestore', 'hasInterruptedRestore', 'clearInterruptedRestore', 'readCloudRecovery', 'readApiCredentials', 'writeApiCredentials'],
