@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "clean browser context loads server persona without onboarding or local data",
+    "clean browser context loads original server chat including generated response",
+    "academy skin displays restored server chat",
+    "no legacy academy database needed for recovery"
+  ],
+  "passed": 4,
+  "afterServerRestart": false
+}

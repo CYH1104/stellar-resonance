@@ -15,6 +15,8 @@
   "stop": "node scripts/stop-local.mjs",
     "native:install": "npm --prefix native/SillyTavern ci --omit=dev --no-audit --no-fund",
     "native:start": "npm --prefix native/SillyTavern start --",
+    "native:skin:build": "vite build --config vite.native.config.ts",
+    "native:skin:install": "npm run native:skin:build && node scripts/install-native-skin.mjs",
     "test:server": "node --test tests/*.test.mjs",
     "users": "node scripts/users.mjs",
     "editor:key": "node scripts/editor-key.mjs",

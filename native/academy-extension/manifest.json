@@ -1,0 +1,9 @@
+{
+  "display_name": "星穹学院 · 原生皮肤",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "author": "Stellar Academy",
+  "version": "0.1.0"
+}

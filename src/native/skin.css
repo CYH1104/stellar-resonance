@@ -1,0 +1,11 @@
+/* Layout only. Original academy tokens, palette and controls are imported unchanged. */
+#academy-workspace .native-academy {display:flex;flex-direction:column;}
+#academy-workspace .native-story {display:flex;flex-direction:column;flex:1;min-height:0;width:min(1100px,100%);margin:0 auto;padding:0 20px;}
+#academy-workspace .native-story .story-feed {flex:1;min-height:0;overflow:auto;overflow-anchor:none;padding:18px 0;}
+#academy-workspace .native-story .message {margin:0 0 20px;padding:16px;}
+#academy-workspace .native-story .message header {margin-bottom:8px;color:var(--color-muted);}
+#academy-workspace .native-story .composer {flex:none;padding:12px 0;}
+#academy-workspace .native-input {margin:0 0 8px;}
+#academy-workspace .native-input textarea {min-height:76px;max-height:25vh;}
+#academy-workspace .native-story .prose img {max-width:100%;}
+@media(max-width:650px) {#academy-workspace .native-story {padding:0 10px;}#academy-workspace .native-story .message {padding:12px 6px;}#academy-workspace .native-academy .navigation {flex-wrap:wrap;padding:6px 10px;}}
