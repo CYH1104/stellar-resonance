@@ -1,0 +1,19 @@
+{
+  "phase": "initial-save-and-read",
+  "checks": [
+    "original settings save succeeds",
+    "original native JSONL chat save succeeds",
+    "original preset endpoint accepts 64000 and unknown extensions",
+    "original worldbook endpoint preserves raw book",
+    "native settings retain draft terminal and persona extensions",
+    "native chat retains messages",
+    "native chat retains swipes and metadata",
+    "native preset reads back 64000 and unknown fields",
+    "native worldbook reads back unknown fields"
+  ],
+  "passed": true,
+  "originalNativeApis": true,
+  "syntheticData": true,
+  "modelCalls": 0,
+  "academyFrontendConnected": false
+}

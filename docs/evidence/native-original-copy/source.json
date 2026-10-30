@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/SillyTavern/SillyTavern",
+  "commit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "files": 1010,
+  "matched": 1010,
+  "modified": [],
+  "method": "Exact git cat-file blobs verified by git hash-object --no-filters",
+  "note": "Initial Windows archive newline conversion was detected and corrected by copying original blob bytes."
+}
