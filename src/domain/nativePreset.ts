@@ -46,7 +46,7 @@ export function assertNativePresetDraftSafe(text:string,depth=0){
 function invalid():never{throw Error('原生预设格式不支持或版本过新，原数据未修改。');}
 function cleanPreset(value:unknown):Record<string,any>{
  if(!object(value))invalid();const preset=json(value);
- if(JSON.stringify(preset).length>500000||!Array.isArray(preset.prompts)||preset.prompts.length>1000||!Array.isArray(preset.prompt_order))invalid();
+ if(!Array.isArray(preset.prompts)||!Array.isArray(preset.prompt_order))invalid();
  const identifiers=new Set<string>();
  for(const entry of preset.prompts){
   if(!object(entry)||typeof entry.identifier!=='string'||!entry.identifier||entry.identifier.length>200||identifiers.has(entry.identifier)||entry.identifier==='academy-task-context')invalid();
@@ -54,20 +54,20 @@ function cleanPreset(value:unknown):Record<string,any>{
   if(entry.content!==undefined&&typeof entry.content!=='string'||entry.role!==undefined&&!['system','user','assistant'].includes(entry.role)||entry.enabled!==undefined&&typeof entry.enabled!=='boolean')invalid();
  }
  for(const group of preset.prompt_order){if(!object(group)||!Array.isArray(group.order))invalid();const seen=new Set();for(const entry of group.order){if(!object(entry)||typeof entry.identifier!=='string'||seen.has(entry.identifier)||typeof entry.enabled!=='boolean')invalid();seen.add(entry.identifier);}}
- for(const [name,min,max,integer]of [['temperature',0,2,false],['openai_max_tokens',1,32000,true],['top_p',0,1,false],['frequency_penalty',-2,2,false],['presence_penalty',-2,2,false]] as const){const n=preset[name];if(n!==undefined&&(!Number.isFinite(n)||n<min||n>max||integer&&!Number.isInteger(n)))invalid();}
+ for(const [name,min,max,integer]of [['temperature',0,2,false],['openai_max_tokens',1,Number.MAX_SAFE_INTEGER,true],['top_p',0,1,false],['frequency_penalty',-2,2,false],['presence_penalty',-2,2,false]] as const){const n=preset[name];if(n!==undefined&&(!Number.isFinite(n)||n<min||n>max||integer&&!Number.isInteger(n)))invalid();}
  return preset;
 }
 export function cleanNativePresetConfig(value:unknown):NativePresetConfig{
  if(!object(value)||value.version!==1||Object.keys(value).some(k=>!['version','preset','id','name','presets','taskPresets','worldbooks'].includes(k)))invalid();
  const validId=(id:unknown):id is string=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(id);
- const validName=(name:unknown):name is string=>typeof name==='string'&&!!name.trim()&&name.length<=100;
+ const validName=(name:unknown):name is string=>typeof name==='string'&&!!name.trim()&&name.length<=255;
  if(value.id!==undefined&&!validId(value.id)||value.name!==undefined&&!validName(value.name))invalid();
  const result:NativePresetConfig={version:1,preset:cleanPreset(value.preset),...(value.id!==undefined?{id:value.id}:{}),...(value.name!==undefined?{name:value.name}:{})};
  const ids=new Set([value.id||'default']);
- if(value.presets!==undefined){if(!Array.isArray(value.presets)||value.presets.length>19)invalid();result.presets=value.presets.map((item:unknown)=>{if(!object(item)||Object.keys(item).some(k=>!['id','name','preset'].includes(k))||!validId(item.id)||!validName(item.name)||ids.has(item.id))invalid();ids.add(item.id);return {id:item.id,name:item.name,preset:cleanPreset(item.preset)};});}
+ if(value.presets!==undefined){if(!Array.isArray(value.presets))invalid();result.presets=value.presets.map((item:unknown)=>{if(!object(item)||Object.keys(item).some(k=>!['id','name','preset'].includes(k))||!validId(item.id)||!validName(item.name)||ids.has(item.id))invalid();ids.add(item.id);return {id:item.id,name:item.name,preset:cleanPreset(item.preset)};});}
  if(value.taskPresets!==undefined){if(!object(value.taskPresets))invalid();result.taskPresets={};for(const [task,id]of Object.entries(value.taskPresets)){if(!Object.hasOwn(nativePresetTasks,task)||typeof id!=='string'||!ids.has(id))invalid();result.taskPresets[task as NativePresetTask]=id;}}
  if(value.worldbooks!==undefined)result.worldbooks=cleanNativeWorldbooks(value.worldbooks);
- if(JSON.stringify(result).length>500000)invalid();return result;
+ return result;
 }
 export function nativePresetList(value:NativePresetConfig):NativePresetItem[]{const safe=cleanNativePresetConfig(value);return [{id:safe.id||'default',name:safe.name||'默认预设',preset:safe.preset},...safe.presets||[]];}
 export function selectNativePreset(value:NativePresetConfig,id:string):NativePresetConfig{
