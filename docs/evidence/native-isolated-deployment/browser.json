@@ -1,0 +1,15 @@
+{
+  "url": "http://43.138.251.91:8088/",
+  "checks": [
+    "public new site renders original native login",
+    "native login and onboarding reach academy skin",
+    "new account has no old configured custom model endpoint",
+    "desktop skin covers viewport",
+    "native API settings opens on deployed Linux instance",
+    "mobile skin covers viewport without horizontal overflow",
+    "no uncaught browser exceptions",
+    "no model calls or old academy requests"
+  ],
+  "passed": 8,
+  "errors": []
+}

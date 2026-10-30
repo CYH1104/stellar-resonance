@@ -1,0 +1,44 @@
+{
+  "checks": [
+    "standalone native service running without failure restart",
+    "dedicated OS account and isolated release directory",
+    "resource limits configured",
+    "old home directory hidden by service mount namespace",
+    "old project path is actually absent inside native namespace",
+    "old 8807 PID/start time/restart count unchanged",
+    "old 8807 health and original process unchanged",
+    "old 9000 PID/start time/restart count unchanged",
+    "old 9000 health and original process unchanged",
+    "native service enabled independently",
+    "standalone native site requires its own login"
+  ],
+  "passed": 11,
+  "native": {
+    "MainPID": "3849164",
+    "NRestarts": "0",
+    "MemoryCurrent": "333955072",
+    "CPUQuotaPerSecUSec": "500ms",
+    "MemoryMax": "805306368",
+    "WorkingDirectory": "/opt/stellar-native-academy/releases/292de6628c1f/app",
+    "User": "stellar-native",
+    "ProtectHome": "yes",
+    "ProtectSystem": "strict",
+    "ActiveState": "active"
+  },
+  "old": [
+    {
+      "unit": "stellar-resonance.service",
+      "port": 8807,
+      "MainPID": "2817555",
+      "NRestarts": "0",
+      "ActiveEnterTimestamp": "Tue 2026-10-27 20:00:27 CST"
+    },
+    {
+      "unit": "stellar-resonance-test.service",
+      "port": 9000,
+      "MainPID": "2871143",
+      "NRestarts": "0",
+      "ActiveEnterTimestamp": "Tue 2026-10-27 23:32:33 CST"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "url": "http://43.138.251.91:8088/",
+  "checks": [
+    "public root requires separate native login",
+    "anonymous cannot read native settings",
+    "independent initial native credentials authenticate",
+    "authenticated original settings endpoint works",
+    "deployed academy native extension manifest works",
+    "deployed native skin HTML is accessible",
+    "original admin API creates isolated temporary acceptance account"
+  ],
+  "passed": 7
+}
