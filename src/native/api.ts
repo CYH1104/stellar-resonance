@@ -4,9 +4,15 @@ export class NativeHttpError extends Error {
   }
 }
 export class NativeApi {
-  constructor(private headers:()=>HeadersInit|Promise<HeadersInit>, private request:typeof fetch=fetch){}
+  private request:typeof fetch;
+  constructor(private headers:()=>HeadersInit|Promise<HeadersInit>,request:typeof fetch=fetch){
+    // Browser fetch needs its Window receiver, unlike Node's implementation.
+    this.request=(input,init)=>request.call(globalThis,input,init);
+  }
   private async call(path:string, body:unknown, mode:'json'|'text'|'none', signal?:AbortSignal):Promise<any> {
-    if(!/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|files|secrets|users|backends)(?:\/|$)/.test(path)||path.includes('..'))throw Error('不支持的原生接口。');
+    const official=/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|files|secrets|users|backends)(?:\/|$)/.test(path);
+    const compatible=/^\/api\/plugins\/academy-compat\/terminal\/(?:plan|finish|cancel)$/.test(path);
+    if((!official&&!compatible)||path.includes('..'))throw Error('不支持的原生接口。');
     const headers=new Headers(await this.headers());headers.set('Content-Type','application/json');
     const response=await this.request(path,{method:'POST',credentials:'same-origin',redirect:'manual',headers,body:JSON.stringify(body),signal:signal||AbortSignal.timeout(30000)});
     if(!response.ok){let code:string|undefined;try{const data=await response.json();if(data?.error==='integrity')code='integrity';}catch{}throw new NativeHttpError(response.type==='opaqueredirect'?302:response.status,path,code);}

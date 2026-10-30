@@ -1,0 +1,37 @@
+{
+  "checks": [
+    "real original SDK returns concurrent main and phone replies",
+    "request routing never changes native global API settings",
+    "stream is decoded by original native SDK",
+    "native finish_reason length retains text and fails explicitly",
+    "original Generate dry-run hasAction",
+    "original Generate dry-run hasInstruction",
+    "original Generate dry-run macroExpanded",
+    "original Generate dry-run occurrences",
+    "original Generate dry-run chatUnchanged",
+    "original Generate dry-run metadataUnchanged",
+    "original Generate dry-run injectionsUnchanged",
+    "original Generate dry-run nativePreset",
+    "original Generate dry-run nativeWorldInfo",
+    "stored main secret ID does not use unrelated active secret",
+    "terminal uses its explicit endpoint and transient key",
+    "terminal feature contract is served by native plugin and model call by original SDK",
+    "only five explicit calls reached synthetic upstream",
+    "no unhandled browser exceptions"
+  ],
+  "settingsUnchanged": true,
+  "prompt": {
+    "hasAction": true,
+    "hasInstruction": true,
+    "macroExpanded": true,
+    "occurrences": 1,
+    "chatUnchanged": true,
+    "metadataUnchanged": true,
+    "injectionsUnchanged": true,
+    "nativePreset": true,
+    "nativeWorldInfo": true
+  },
+  "terminalAccepted": true,
+  "syntheticUpstream": true,
+  "paidModelCalls": 0
+}
