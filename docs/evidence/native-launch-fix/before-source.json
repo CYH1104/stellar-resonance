@@ -1,0 +1,30 @@
+{
+  "commit": "2a6f1994a97c52ea6f908d3d642d3c5ab62a511c",
+  "originalFiles": 1010,
+  "copiedFiles": 1010,
+  "byteMatches": 1010,
+  "missing": [],
+  "modeDifferences": [
+    {
+      "file": "server.js",
+      "expected": "100755",
+      "actual": "100644"
+    },
+    {
+      "file": "src/electron/start.sh",
+      "expected": "100755",
+      "actual": "100644"
+    },
+    {
+      "file": "src/server-global.js",
+      "expected": "100755",
+      "actual": "100644"
+    },
+    {
+      "file": "start.sh",
+      "expected": "100755",
+      "actual": "100644"
+    }
+  ],
+  "unexpectedFiles": []
+}

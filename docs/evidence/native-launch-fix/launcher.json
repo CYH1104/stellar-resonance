@@ -1,0 +1,16 @@
+{
+  "base": "2a6f1994a97c52ea6f908d3d642d3c5ab62a511c",
+  "packageBytesEqual": true,
+  "packageSHA256": "9b3b6de61a967a9695dff5419d87fadede78501fbcfebb260c13a57fa69231f6",
+  "ordinaryNpmArgumentSeparator": true,
+  "nativeHelp": true,
+  "requestedLoopbackPort": 8998,
+  "selectedDataRootWithSpaces": true,
+  "chatAndSettingsInSelectedDirectory": true,
+  "originalProcessRestarted": true,
+  "modelCalls": 0,
+  "upstreamLogicModified": false,
+  "academyCssModified": false,
+  "cleanDependencyInstallTested": false,
+  "linuxExecutionTested": false
+}

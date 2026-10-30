@@ -14,7 +14,7 @@
   "start:test": "node scripts/launch-test.mjs",
   "stop": "node scripts/stop-local.mjs",
     "native:install": "npm --prefix native/SillyTavern ci --omit=dev --no-audit --no-fund",
-    "native:start": "npm --prefix native/SillyTavern start",
+    "native:start": "npm --prefix native/SillyTavern start --",
     "test:server": "node --test tests/*.test.mjs",
     "users": "node scripts/users.mjs",
     "editor:key": "node scripts/editor-key.mjs",

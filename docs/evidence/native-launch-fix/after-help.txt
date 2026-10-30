@@ -1,0 +1,76 @@
+npm notice run stellar-resonance-frontend@0.20.5 native:start
+npm notice run npm --prefix native/SillyTavern start -- --help
+npm notice run sillytavern@1.19.0 start
+npm notice run node server.js --help
+Node version: v24.20.0. Running in undefined environment. Server directory: D:\QQ\QQ文件\星穹学院终端\.integration\native-launch-fix-2a6f199\native\SillyTavern
+Usage: <your-start-script> [options]
+Options that are not provided will be filled with config values.
+
+Options:
+  --help                         Show help                             [boolean]
+  --version                      Show version number                   [boolean]
+  --global                       Use global data and config paths instead of the
+                                 server directory      [boolean] [default: null]
+  --configPath                   Path to the config file (only for standalone
+                                 mode)                  [string] [default: null]
+  --enableIPv6                   Enables IPv6 protocol  [string] [default: null]
+  --enableIPv4                   Enables IPv4 protocol  [string] [default: null]
+  --port                         Sets the server listening port
+                                                        [number] [default: null]
+  --dnsPreferIPv6                Prefers IPv6 for DNS
+                                 You should probably have the enabled if you're
+                                 on an IPv6 only network
+                                                       [boolean] [default: null]
+  --browserLaunchEnabled         Automatically launch SillyTavern in the browser
+                                                       [boolean] [default: null]
+  --browserLaunchHostname        Sets the browser launch hostname, best left on
+                                 'auto'.
+                                 Use values like 'localhost', 'st.example.com'
+                                                        [string] [default: null]
+  --browserLaunchPort            Overrides the port for browser launch with open
+                                 your browser with this port and ignore what
+                                 port the server is running on. -1 is use server
+                                 port                   [number] [default: null]
+  --browserLaunchAvoidLocalhost  Avoids using 'localhost' for browser launch in
+                                 auto mode.
+                                 Use if you don't have 'localhost' in your hosts
+                                 file                  [boolean] [default: null]
+  --listen                       Whether to listen on all network interfaces
+                                                       [boolean] [default: null]
+  --listenAddressIPv6            Specific IPv6 address to listen to
+                                                        [string] [default: null]
+  --listenAddressIPv4            Specific IPv4 address to listen to
+                                                        [string] [default: null]
+  --corsProxy                    Enables CORS proxy    [boolean] [default: null]
+  --disableCsrf                  Disables CSRF protection - NOT RECOMMENDED
+                                                       [boolean] [default: null]
+  --ssl                          Enables SSL           [boolean] [default: null]
+  --certPath                     Path to SSL certificate file
+                                                        [string] [default: null]
+  --keyPath                      Path to SSL private key file
+                                                        [string] [default: null]
+  --keyPassphrase                Passphrase for the SSL private key
+                                                        [string] [default: null]
+  --whitelist                    Enables whitelist mode[boolean] [default: null]
+  --dataRoot                     Root directory for data storage (only for
+                                 standalone mode)       [string] [default: null]
+  --basicAuthMode                Enables basic authentication
+                                                       [boolean] [default: null]
+  --enableKeepAlive              Enable HTTP/HTTPS keep-alive globally
+                                                       [boolean] [default: null]
+  --requestProxyEnabled          Enables a use of proxy for outgoing requests
+                                                       [boolean] [default: null]
+  --requestProxyUrl              Request proxy URL (HTTP or SOCKS protocols)
+                                                        [string] [default: null]
+  --requestProxyBypass           Request proxy bypass list (space separated list
+                                 of hosts)                               [array]
+  --heartbeatInterval            Interval in seconds to write a heartbeat file.
+                                 0 to disable.          [number] [default: null]
+  --autorun                      DEPRECATED: Use "browserLaunchEnabled" instead.
+                                                       [boolean] [default: null]
+  --autorunHostname              DEPRECATED: Use "browserLaunchHostname"
+                                 instead.               [string] [default: null]
+  --autorunPortOverride          DEPRECATED: Use "browserLaunchPort" instead.
+                                                        [number] [default: null]
+  --avoidLocalhost               DEPRECATED: Use "browserLaunchAvoidLocalhost"
+                                 instead.              [boolean] [default: null]
