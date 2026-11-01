@@ -707,3 +707,13 @@ it('records one call with real prose, character, theater, private terminal, MVU 
  expect(entry.callId).toBeTruthy();const kinds=entry.sections!.map(s=>s.kind);if(kinds.includes('errors'))expect(kinds[0]).toBe('errors');for(const kind of ['prose','characters','theaters','terminal','variables','terminalActivity','vector'])expect(kinds).toContain(kind);
  expect(entry.sections!.find(s=>s.kind==='prose')!.text).toContain('正文段落');expect(entry.sections!.find(s=>s.kind==='terminal')!.text).toContain('私聊内容');expect(entry.sections!.find(s=>s.kind==='theaters')!.text).toContain('剧场对白');expect(entry.sections!.find(s=>s.kind==='variables')!.variables?.details.join(' ')).toContain('MVU 1');expect(entry.sections!.find(s=>s.kind==='vector')!.text).toContain('关键词');
 });
+
+it('persona assistance uses only its confirmed profile even when story, memory and embedding routes are incomplete',async()=>{
+ const w=await workspace();fill(w,'aux');w.preferences.personaProfile='aux';w.preferences.vectorEnabled=true;
+ expect(await w.connectProfile(w.preferences.profiles.find(p=>p.id==='aux')!)).toBe(true);expect(w.apiReady.value).toBe(false);
+ const assist=vi.spyOn(HttpGateway.prototype,'assistPersona').mockResolvedValue({name:'Selected persona',appearance:'',personality:'',background:''});w.newGameDraft.wish='a new student';const previousPanel=w.panel.value;await w.assistPersona();
+ expect(assist).toHaveBeenCalledTimes(1);expect(assist.mock.calls[0][2].id).toBe('aux');expect(w.panel.value).toBe(previousPanel);expect(w.newGameDraft.persona.name).toBe('Selected persona');
+});
+it('persona assistance with missing selected credentials still preserves the draft and opens settings without requesting a model',async()=>{
+ const w=await workspace();w.newGameDraft.wish='keep this wish';w.newGameDraft.persona.name='Existing';const assist=vi.spyOn(HttpGateway.prototype,'assistPersona');await w.assistPersona();expect(assist).not.toHaveBeenCalled();expect(w.panel.value).toBe('settings');expect(w.newGameDraft.wish).toBe('keep this wish');expect(w.newGameDraft.persona.name).toBe('Existing');
+});

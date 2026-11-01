@@ -13,14 +13,15 @@ import {guardNativeWrites} from './runtimeGuard';
 import {nativeDigestFallback} from './digest';
 import {addNativePreset} from '../domain/nativePreset';
 type NativeWindow=Window&typeof globalThis&{__academyModules?:Record<string,any>;__academyReady?:boolean;SillyTavern?:any};
-const moduleScript=`const context=window.SillyTavern.getContext();context.eventSource.on(context.eventTypes.APP_READY,()=>window.__academyReady=true);window.__academyModules={core:await import('/script.js'),openai:await import('/scripts/openai.js'),wi:await import('/scripts/world-info.js'),authors:await import('/scripts/authors-note.js'),regex:await import('/scripts/extensions/regex/engine.js'),power:await import('/scripts/power-user.js'),utils:await import('/scripts/utils.js'),extensions:await import('/scripts/extensions.js'),lib:await import('/lib.js'),window,context:()=>window.SillyTavern.getContext()};`;
+const moduleScript=`const modules={core:await import('/script.js'),openai:await import('/scripts/openai.js'),wi:await import('/scripts/world-info.js'),authors:await import('/scripts/authors-note.js'),regex:await import('/scripts/extensions/regex/engine.js'),power:await import('/scripts/power-user.js'),utils:await import('/scripts/utils.js'),extensions:await import('/scripts/extensions.js'),lib:await import('/lib.js'),window,context:()=>window.SillyTavern.getContext()};window.__academyModules=modules;const context=modules.context();context.eventSource.on(context.eventTypes.APP_READY,()=>window.__academyReady=true);`;
+
 /** The original document paints first; native UI runs invisibly as the request engine. */
 async function engine(){
   const frame=document.createElement('iframe');frame.title='学院原生请求引擎';frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;width:1px;height:1px;left:-10000px;top:-10000px;border:0;visibility:hidden';
   let loaded=false;frame.addEventListener('load',()=>{loaded=true;const host=frame.contentWindow as NativeWindow;if(!host?.document.querySelector('script[type="module"]'))return;guardNativeWrites(host);const script=host.document.createElement('script');script.type='module';script.textContent=moduleScript;host.document.body.append(script);});
   frame.src='/native-engine/';document.body.append(frame);
   const start=Date.now();
-  while(Date.now()-start<180000){const host=frame.contentWindow as NativeWindow;if(loaded&&host.location.pathname==='/login')throw Error('账号会话已失效，请重新登录。');if(host?.__academyModules&&host.__academyReady)return host.__academyModules;
+  while(Date.now()-start<180000){const host=frame.contentWindow as NativeWindow;if(loaded&&host.location.pathname==='/login')throw Error('账号会话已失效，请重新登录。');if(host?.__academyModules){const context=host.__academyModules.context();if(host.__academyReady||context.eventSource.autoFireLastArgs?.has(context.eventTypes.APP_READY))return host.__academyModules;}
     // Only the native first-run naming prompt is resolved from the logged-in identity.
     const dialog=host?.document.querySelector('dialog[open]');if(dialog&&(dialog.querySelector('.onboarding')||/what.?s your name|你的名字|您的名字/i.test(dialog.textContent||''))){const input=dialog.querySelector('textarea.popup-input') as HTMLTextAreaElement|null;if(input){input.value=(window as any).__ACADEMY_ACCOUNT__?.email||'学院学员';(dialog.querySelector('.popup-button-ok') as HTMLElement)?.click();}}
     await new Promise(resolve=>setTimeout(resolve,100));

@@ -29,19 +29,26 @@ function requestFailure(error:unknown,signal:AbortSignal):never{
 /** Calls the actual native SDK. No global API switch, provider client or SSE parser. */
 export class NativeCompletions {
   constructor(private context:()=>NativeCompletionContext,private credentials:NativeCredentials){}
+  async profileForPreset(profile:Profile,preset:Record<string,any>):Promise<Profile>{
+    const sdk=this.context().ChatCompletionService;
+    const native=await sdk.presetToGeneratePayload(clone(preset),{},{messages:[],model:profile.model,chat_completion_source:'custom',custom_url:nativeBase(profile.apiBaseUrl!)});
+    const maxTokens=Number(native.max_tokens),temperature=Number(native.temperature);
+    if(!Number.isSafeInteger(maxTokens)||maxTokens<1||!Number.isFinite(temperature))throw new NativeCompletionError('NATIVE_PRESET_SAMPLING_INVALID','酒馆原生加载后未得到有效的输出长度或温度，请检查预设对应字段；原文件保留。');
+    return {...profile,maxTokens,temperature};
+  }
   async payload(messages:CompletionMessage[],profile:Profile,key:string,preset?:Record<string,any>,stream=false){
     profile={...profile};
-    if(apiFieldIssues(profile,key).length)throw new NativeCompletionError('MODEL_NOT_CONFIGURED','请先填写并确认本次任务的接口地址、模型和 Key。');
+    if(apiFieldIssues({...profile,maxTokens:1,temperature:.7,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key).length)throw new NativeCompletionError('MODEL_NOT_CONFIGURED','请先填写并确认本次任务的接口地址、模型和 Key。');
     if(!Array.isArray(messages)||!messages.length||messages.some(m=>!m||!['system','developer','user','assistant','tool','function'].includes(m.role)||typeof m.content!=='string'&&!Array.isArray(m.content)&&m.content!==null))throw new NativeCompletionError('NATIVE_PROMPT_INVALID','本次任务提示内容不完整，已停止请求。');
     messages=clone(messages);preset=preset?clone(preset):undefined;
     const sdk=this.context().ChatCompletionService,credential=await this.credentials.payload(key);
     const overrides={
       messages:clone(messages),stream,chat_completion_source:'custom',custom_url:nativeBase(profile.apiBaseUrl!),model:profile.model,
-      temperature:profile.temperature,max_tokens:profile.maxTokens,
+      ...(!preset?{temperature:profile.temperature,max_tokens:profile.maxTokens}:{}),
       include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined,
-      ...(profile.topP!==undefined?{top_p:profile.topP}:{}),
-      ...(profile.frequencyPenalty!==undefined?{frequency_penalty:profile.frequencyPenalty}:{}),
-      ...(profile.presencePenalty!==undefined?{presence_penalty:profile.presencePenalty}:{}),
+      ...(!preset&&profile.topP!==undefined?{top_p:profile.topP}:{}),
+      ...(!preset&&profile.frequencyPenalty!==undefined?{frequency_penalty:profile.frequencyPenalty}:{}),
+      ...(!preset&&profile.presencePenalty!==undefined?{presence_penalty:profile.presencePenalty}:{}),
       // Explicitly clear connection overrides inherited by the native SDK from its active UI.
       reverse_proxy:'',proxy_password:'',custom_include_body:'',custom_exclude_body:'',custom_include_headers:'',custom_exclude_headers:'',
       secret_id:undefined,tools:undefined,tool_choice:undefined,json_schema:undefined,...credential,

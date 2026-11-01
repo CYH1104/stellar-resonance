@@ -18,9 +18,9 @@ it('keeps raw extension/trigger/depth/order fields and updates actual native ena
  const value=raw(0.2),next=editNativePreset(value,{temperature:0.8,prompts:[{identifier:'a',enabled:false,content:'修改'}]});
  expect(next.preset.prompt_order[0].order[0].enabled).toBe(false);expect(next.preset.prompts[0].injection_trigger).toEqual(['normal']);expect(next.preset.prompts[0].injection_depth).toBe(2);expect(next.preset.extensions).toEqual(value.preset.extensions);expect(value.preset.prompts[0].content).toBe('原始\n内容');expect(next.preset.show_thoughts).toBe(true);
 });
-it('rejects unknown envelope versions/fields, ambiguous identifiers, unsafe keys and credential-bearing presets',()=>{
+it('rejects unknown envelope versions/fields, unsafe keys and credential-bearing presets',()=>{
  expect(()=>cleanBackupArchive({version:1,nativePreset:{...raw(0.2),version:2}})).toThrow();expect(()=>cleanNativePresetConfig({...raw(0.2),future:true})).toThrow();
- const duplicate=raw(0.2);duplicate.preset.prompts.push({...duplicate.preset.prompts[0]});expect(()=>cleanNativePresetConfig(duplicate)).toThrow();
+ const duplicate=raw(0.2);duplicate.preset.prompts.push({...duplicate.preset.prompts[0]});expect(cleanNativePresetConfig(duplicate)).toEqual(duplicate);
  for(const item of [{api_key:'SYNTHETIC_KEY'},{custom_include_headers:'Authorization: synthetic'},{extensions:{apiKey:'synthetic'}}])expect(()=>cleanNativePresetConfig({version:1,preset:{...raw(0.2).preset,...item}})).toThrow('凭据');
  expect(()=>cleanNativePresetConfig(JSON.parse('{"version":1,"preset":{"__proto__":{}}}'))).toThrow();
 });

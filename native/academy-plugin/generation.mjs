@@ -33,7 +33,7 @@ export function privateGeneration({catalog,tasks,terminal,compiler=new PrivateNa
   consume(owner,body){prune();const value=body.messages?.length===1&&body.messages[0]?.content;if(typeof value!=='string'||!value.startsWith(prefix))return;
    const token=value.slice(prefix.length),entry=pending.get(token);if(!entry||entry.owner!==owner)throw fail('NATIVE_GENERATION_EXPIRED',409);
    const base=value=>String(value||'').replace(/\/+$/,'').replace(/\/chat\/completions$/,'');
-   if(body.model!==entry.profile.model||base(body.custom_url)!==base(entry.profile.apiBaseUrl)||body.max_tokens!==entry.profile.maxTokens)throw fail('NATIVE_GENERATION_PROFILE_CHANGED',409);
+   if(body.model!==entry.profile.model||base(body.custom_url)!==base(entry.profile.apiBaseUrl)||Number(body.max_tokens)!==entry.profile.maxTokens)throw fail('NATIVE_GENERATION_PROFILE_CHANGED',409);
    pending.delete(token);return entry.messages;
   },
   cancel(owner,family,token){for(const [id,row]of pending)if(row.owner===owner&&row.family===family&&row.sourceToken===token)pending.delete(id);},

@@ -109,7 +109,7 @@ export function useWorkspace() {
     if(!storageReady||backupWorking.value||busy.value||workingMemory.value||terminalBusy.value||savingNativePreset.value||restoreInterrupted.value)throw Error('请等待或停止当前任务后保存预设。');
     const safe=value===null?null:cleanNativePresetConfig(value),expected=nativePreset.value===undefined?undefined:copy(nativePreset.value);
     savingNativePreset.value=true;
-    try{const task=writes.catch(()=>{}).then(()=>repository.writeNativePreset(safe,expected,cleanPreferences(preferences)));writes=task;await task;nativePreset.value=safe;notice.value='原生预设已保存在本机，完整备份会包含它。';}
+    try{const task=writes.catch(()=>{}).then(()=>repository.writeNativePreset(safe,expected,cleanPreferences(preferences)));writes=task;await task;nativePreset.value=safe;notice.value=nativeWorkspaceActive()?'原生预设已保存在服务器，完整备份会包含原文件。':'原生预设已保存在本机，完整备份会包含它。';}
     finally{savingNativePreset.value=false;}
   }
   const newGameDraft=reactive({title:defaultJourneyName(sessions.value.map(s=>s.name)),opening:'',wish:'',persona:blankPersona()});
@@ -122,8 +122,9 @@ export function useWorkspace() {
     if(!newGameDraft.wish.trim()){problem.value='先写下你想玩的人设，再点击 AI 帮我写。';return;}
     if(!localService.value){problem.value='AI 人设填写需要连接本机世界卡后台。';return;}
     const p=personaProfile.value!;
-    if(!ensureApiConfiguration())return;
-    if(!connectionReady(p)||!key(p)){problem.value='请先在API 设置填写地址、模型名和 Key，并确认使用此服务；人设草稿会保留。';panel.value='settings';return;}
+    // Persona assistance depends on its selected API, not unrelated story, memory or vector routes.
+    if(loading.value||!authorized.value){problem.value='请等待账号和接口配置载入完成，人设草稿已保留。';return;}
+    if(!p||apiFieldIssues(p,key(p)).length||!connectionReady(p)){problem.value='请先在API 设置填写地址、模型名和 Key，并确认使用此服务；人设草稿会保留。';panel.value='settings';return;}
     workingPersona.value=true;problem.value='';personaNotice.value='AI 正在结合世界观补全人设…';personaController=new AbortController();
     try{const result=await http.assistPersona(newGameDraft.wish,copy(newGameDraft.persona),copy(p),key(p),personaController.signal);personaController.signal.throwIfAborted();Object.assign(newGameDraft.persona,mergePersonaDraft(newGameDraft.persona,result));personaNotice.value='已补全空白栏位，原有内容保留。请检查并修改，满意后再开始游戏。';}
     catch(e){personaNotice.value='现有表格已保留。';problem.value=personaController.signal.aborted?'已取消人设生成，表格未修改。':message(e);}
@@ -135,7 +136,7 @@ export function useWorkspace() {
   const approved=reactive<Record<string,string>>({});
   const connectionSignature=(p:Profile)=>JSON.stringify([apiAddress(p.apiBaseUrl),p.model,credentials[p.id]||'']);
   const connectionReady=(p:Profile)=>approved[p.id]===connectionSignature(p);
-  async function connectProfile(p:Profile){try{const missing=apiFieldIssues(p,credentials[p.id]);if(missing.length)throw new Error(`请填写：${missing.join('、')}`);const signature=connectionSignature(p);await http.configure(copy(p));if(signature!==connectionSignature(p))throw new Error('配置已改变，请重新确认。');problem.value='';if(!loading.value){const saved=credentialsSnapshot();if(saved.remember)saved.confirmed[p.id]={apiBaseUrl:apiAddress(p.apiBaseUrl),model:p.model};const next=cleanPreferences(preferences);const task=writes.catch(()=>{}).then(()=>repository.writeConfiguration(next,saved));writes=task;await task;}approved[p.id]=signature;notice.value=rememberApiKeys.value?'当前接口已确认并保存在此浏览器；尚未进行模型生成测试。':'当前接口已确认，仅在本次页面使用。';return true;}catch(e){problem.value=message(e);return false;}}
+  async function connectProfile(p:Profile){try{const missing=apiFieldIssues(p,credentials[p.id]);if(missing.length)throw new Error(`请填写：${missing.join('、')}`);const signature=connectionSignature(p);await http.configure(copy(p));if(signature!==connectionSignature(p))throw new Error('配置已改变，请重新确认。');problem.value='';if(!loading.value){const saved=credentialsSnapshot();if(saved.remember)saved.confirmed[p.id]={apiBaseUrl:apiAddress(p.apiBaseUrl),model:p.model};const next=cleanPreferences(preferences);const task=writes.catch(()=>{}).then(()=>repository.writeConfiguration(next,saved));writes=task;await task;}approved[p.id]=signature;notice.value=rememberApiKeys.value?(nativeWorkspaceActive()?'当前接口已确认并保存在服务器账号；尚未进行模型生成测试。':'当前接口已确认并保存在此浏览器；尚未进行模型生成测试。'):'当前接口已确认，仅在本次页面使用。';return true;}catch(e){problem.value=message(e);return false;}}
   async function fetchModels(p:Profile,signal:AbortSignal,kind?:'embedding',draftKey?:string){try{if(!localService.value)throw new Error('请先连接本机后台，再获取模型。');return await http.models(p.apiBaseUrl||'',draftKey??key(p),signal,kind);}catch(e){if(!signal.aborted)logRuntime(e,'获取模型');throw e;}}
   async function testProfile(p:Profile,embedding:boolean,signal:AbortSignal,draftKey?:string){try{if(!localService.value)throw new Error('本机后台未连接，请用启动预览.bat 启动。');const issues=apiFieldIssues(p,draftKey??key(p));if(issues.length)throw new Error('请填写：'+issues.join('、'));return await http.probe(copy(p),draftKey??key(p),embedding?'embedding':'text',signal);}catch(e){if(!signal.aborted)logRuntime(e,'测试连接');throw e;}}
   const generationPhase=ref(''),generationStarted=ref(0);

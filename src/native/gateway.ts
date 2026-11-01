@@ -38,6 +38,7 @@ export class NativeGateway {
   async lookupTheaterShare(code:string):Promise<{template:unknown}>{return this.api.post(prefix+'shares/lookup',{code});}
   private async compose(path:string,input:any,token:string,profile:Profile,signal:AbortSignal,session?:Session){
     const config=await this.presets.read(),taskPreset=nativePresetForRequest(config,path,input).preset;
+    profile=await this.completions.profileForPreset(profile,taskPreset);
     const selected=nativePresetList(config).find(p=>JSON.stringify(p.preset)===JSON.stringify(taskPreset));if(!selected)throw Error('本次任务的原生预设未找到。');
     const id=session?.id||input.sessionId||input.rounds?.[0]?.sessionId;
     const seed=session?nativeWorldSeed(session,session.turns.findIndex(t=>t.id===input.turnId)):undefined;
@@ -46,13 +47,13 @@ export class NativeGateway {
     if(session){const index=session.turns.findIndex(t=>t.id===input.turnId);if(index<0)throw Error('本次轮次与原生存档不符。');history=[];if(session.opening)history.push({role:'assistant',content:session.opening});for(const turn of session.turns.slice(0,index)){const variant=turn.variants[turn.selected];if(variant?.status==='complete')history.push({role:'user',content:turn.input},{role:'assistant',content:variant.text});}history.push({role:'user',content:input.input});if(input.continuation?.partial)history.push({role:'assistant',content:input.continuation.partial});
     }else history=[];
     const result=await this.api.post(prefix+'prepare',{family:path==='personal-terminal'?'terminal':'tasks',token,profile,pipeline:{history,preset:{name:selected.name,data:selected.preset},books,effects:seed?.effects||emptyNativeEffects(),variables:{...(seed?.variables||{}),...(input.state?dataFromState(input.state):{})},globals:seed?.globals||{}}},signal);
-    return {...result,preset:taskPreset};
+    return {...result,preset:taskPreset,profile};
   }
   private async task(task:string,input:any,profile:Profile,key:string,signal:AbortSignal){
     input=clone(input);const plan=await this.api.post(prefix+'tasks/plan',{task,input},signal);
-    try{const prepared=await this.compose(task,input,plan.token,profile,signal);const result=await this.completions.complete(prepared.messages,profile,key,signal,prepared.preset);return await this.api.post(prefix+'tasks/finish',{token:plan.token,text:result.text},signal);}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
+    try{const prepared=await this.compose(task,input,plan.token,profile,signal);const result=await this.completions.complete(prepared.messages,prepared.profile,key,signal,prepared.preset);return await this.api.post(prefix+'tasks/finish',{token:plan.token,text:result.text},signal);}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
   }
-  async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal){const value=clone(input);const config=await this.presets.read(),preset=nativePresetForRequest(config,'personal-terminal',value).preset;return new NativeTerminal(this.api,this.completions,undefined,async(token,s)=>(await this.compose('personal-terminal',value,token,profile,s)).messages).run(value,profile,key,signal,preset);}
+  async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal){const value=clone(input);const config=await this.presets.read(),preset=nativePresetForRequest(config,'personal-terminal',value).preset;profile=await this.completions.profileForPreset(profile,preset);return new NativeTerminal(this.api,this.completions,undefined,async(token,s)=>(await this.compose('personal-terminal',value,token,profile,s)).messages).run(value,profile,key,signal,preset);}
   async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal){return normalizePersona((await this.task('persona',{wish,draft},profile,key,signal)).persona);}
   async randomEvent(input:any,profile:Profile,key:string,signal:AbortSignal){return this.task('random-event',input,profile,key,signal);}
   async forumReply(input:any,profile:Profile,key:string,signal:AbortSignal){const result=await this.task('forum-reply',input,profile,key,signal);return input.minReplies===5?result.replies:result;}
@@ -64,7 +65,7 @@ export class NativeGateway {
     request=clone(request);const {profile,...input}=request,session=this.repository.session(request.sessionId);
     const plan=await this.api.post(prefix+'tasks/plan',{task:'story',input},signal),decoder=new NativeProtocolStream();
     try{yield {type:'progress',phase:'waiting'};const prepared=await this.compose('generate',input,plan.token,profile,signal,session);
-      for await(const chunk of this.completions.stream(prepared.messages,profile,key,signal,prepared.preset)){const text=decoder.push(chunk);if(text)yield {type:'delta',text};}
+      for await(const chunk of this.completions.stream(prepared.messages,prepared.profile,key,signal,prepared.preset)){const text=decoder.push(chunk);if(text)yield {type:'delta',text};}
       signal.throwIfAborted();const result=await this.api.post(prefix+'tasks/finish',{token:plan.token,text:decoder.raw},signal);signal.throwIfAborted();yield {type:'done',outcome:result.outcome,raw:decoder.raw,nativeWorldInfo:prepared.effects,nativeVariables:{variables:prepared.variables,globals:prepared.globals}};
     }catch(error){if(decoder.raw)yield {type:'format-error',raw:decoder.raw,code:(error as any)?.code||'NATIVE_GENERATION_FAILED'};throw error;}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
   }

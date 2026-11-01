@@ -34,6 +34,7 @@ export async function init(router){
   router.post('/prepare',route(async(owner,body,request,response)=>{const controller=new AbortController();response.on('close',()=>controller.abort());return generation.prepare(owner,body,AbortSignal.any([controller.signal,AbortSignal.timeout(600000)]));}));
   router.post('/completions/generate',async(request,response,next)=>{
     const owner=request.user?.profile?.handle;if(!owner)return response.status(401).send({error:'NATIVE_LOGIN_REQUIRED'});
+    if(process.env.ACADEMY_PUBLIC_PREVIEW==='1')return response.status(503).send({error:'NATIVE_PRIVATE_COMPILER_PENDING'});
     try{
       const privateMessages=generation.consume(owner,request.body);
       const body={...request.body,...(privateMessages?{messages:privateMessages}:{}),include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined,reverse_proxy:'',proxy_password:'',custom_include_body:'',custom_exclude_body:'',custom_include_headers:'',custom_exclude_headers:'',chat_completion_source:'custom'};

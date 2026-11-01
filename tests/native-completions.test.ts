@@ -106,3 +106,10 @@ it('does not silently drop sticky/cooldown state by treating native preview as c
   await expect(f.builder.build([{role:'user',content:'输入'}],'规则',signal())).rejects.toThrow('跨轮状态');
   expect(f.context.chat[0].mes).toBe('已有消息');expect([...events.values()].flat()).toHaveLength(0);
 });
+
+it('native sampling and defaults come from the original SDK instead of the academy profile limits',async()=>{
+ const f=fixture();f.sdk.presetToGeneratePayload.mockImplementation(async(preset:any,_settings:any,overrides:any)=>({temperature:preset.temperature??.3,max_tokens:preset.openai_max_tokens??300,...overrides}));
+ const raw={temperature:3.2,openai_max_tokens:64000};const effective=await f.client.profileForPreset(profile('story'),raw);expect(effective).toMatchObject({maxTokens:64000,temperature:3.2});
+ await f.client.complete(messages,effective,'synthetic',signal(),raw);expect(f.requests[0]).toMatchObject({temperature:3.2,max_tokens:64000,model:'story-model',custom_url:'https://story.example/v1',include_reasoning:false});
+ expect(await f.client.profileForPreset(profile('story'),{})).toMatchObject({maxTokens:300,temperature:.3});
+});
