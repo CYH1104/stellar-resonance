@@ -24,6 +24,16 @@ function api(){
     return response;
   });
 }
+it.skipIf(!origin)('rolls back native files when a later file in the same settings transaction is rejected',async()=>{
+  const client=api(),before=await client.post('/api/settings/get',{}),document=JSON.parse(before.settings),name='rollback_'+crypto.randomUUID();
+  const presetName=before.openai_setting_names[0],preset=JSON.parse(before.openai_settings[0]);
+  await expect(client.post('/api/plugins/academy-compat/settings/save',{expected:JSON.stringify(document),document,nativeFiles:[
+    {family:'presets',name:presetName,before:preset,after:{...preset,proof_transaction:true}},
+    {family:'worldinfo',name,after:{invalid_worldbook:true}},
+  ]})).rejects.toThrow();
+  const after=await client.post('/api/settings/get',{});
+  expect(JSON.parse(after.settings)).toEqual(document);expect(after.openai_settings[after.openai_setting_names.indexOf(presetName)]).toEqual(before.openai_settings[0]);expect(after.world_names).not.toContain(name);
+},30000);
 it.skipIf(!origin)('persists full academy messages, private terminal records, original images and drafts using the unmodified native server',async()=>{
   const connection=api(),settings=new NativeSettings(connection),presets=new NativePresets(settings),credentials=new NativeCredentials(settings);
   const repository=new NativeWorkspaceRepository(settings,credentials,presets,async()=>{throw Error('Archive application must be explicit in this isolated chat test');});

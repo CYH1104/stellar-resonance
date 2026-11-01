@@ -1,25 +1,33 @@
+import {reportHttpFailure,attachHttpNotice} from '../gateway/requestFailure';
 export class NativeHttpError extends Error {
   constructor(readonly status:number, readonly path:string, readonly code?:string) {
-    super(status===401||status===403||status===302?'原生账号会话已失效，请重新登录；当前输入保留。':code==='integrity'?'原生聊天已被其他操作修改，已停止覆盖；请重新载入。':`原生接口请求失败（${status}），当前资料保留。`);
+    super(code==='NATIVE_PRIVATE_COMPILER_PENDING'?'私有原生编排正在接入，生成功能暂不可用；已有存档和设置保留。':status===401||status===403||status===302?'原生账号会话已失效，请重新登录；当前输入保留。':code==='integrity'||code==='NATIVE_DATA_CONFLICT'?'原生资料已被其他操作修改，已停止覆盖；请重新载入。':code==='MODEL_RESPONSE_INCOMPLETE'?'回复尚未完整结束，正文已保留，状态未更新；可继续续写或重试。':`原生接口请求失败（${status}），当前资料保留。${code?' 错误类型：'+code:''}`);
+    attachHttpNotice(this,reportHttpFailure({status,code,task:'原生接口',message:this.message}));
   }
 }
 export class NativeApi {
   private request:typeof fetch;
+  private chatStamps=new Map<string,string>();
   constructor(private headers:()=>HeadersInit|Promise<HeadersInit>,request:typeof fetch=fetch){
     // Browser fetch needs its Window receiver, unlike Node's implementation.
     this.request=(input,init)=>request.call(globalThis,input,init);
   }
   private async call(path:string, body:unknown, mode:'json'|'text'|'none', signal?:AbortSignal):Promise<any> {
+    if(path==='/api/chats/save'){
+      const document=body as any,id=JSON.stringify([document.avatar_url,document.file_name]);
+      if(!this.chatStamps.has(id))await this.post('/api/chats/get',{avatar_url:document.avatar_url,file_name:document.file_name},signal);
+      return this.post('/api/plugins/academy-compat/chats/save',{expected:this.chatStamps.get(id),document},signal);
+    }
     const official=/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|files|secrets|users|backends)(?:\/|$)/.test(path);
-    const compatible=/^\/api\/plugins\/academy-compat\/terminal\/(?:plan|finish|cancel)$/.test(path);
+    const compatible=/^\/api\/plugins\/academy-compat\/(?:terminal\/(?:plan|finish|cancel)|tasks\/(?:plan|finish|cancel)|(?:settings|chats)\/save|shares\/(?:create|lookup)|catalog|cards|map|new-game|place|author-books|prepare|vectors)$/.test(path);
     if((!official&&!compatible)||path.includes('..'))throw Error('不支持的原生接口。');
     const headers=new Headers(await this.headers());headers.set('Content-Type','application/json');
     const response=await this.request(path,{method:'POST',credentials:'same-origin',redirect:'manual',headers,body:JSON.stringify(body),signal:signal||AbortSignal.timeout(30000)});
-    if(!response.ok){let code:string|undefined;try{const data=await response.json();if(data?.error==='integrity')code='integrity';}catch{}throw new NativeHttpError(response.type==='opaqueredirect'?302:response.status,path,code);}
+    if(!response.ok){let code:string|undefined;try{const data=await response.json();if(typeof data?.error==='string'&&/^[A-Za-z_]{1,100}$/.test(data.error))code=data.error;}catch{}throw new NativeHttpError(response.type==='opaqueredirect'?302:response.status,path,code);}
     if(mode==='none'||response.status===204)return;
     if(mode==='text')return response.text();
     if(!response.headers.get('Content-Type')?.includes('application/json'))throw Error('原生接口未返回预期资料，已停止操作。');
-    return response.json();
+    const value=await response.json();if(path==='/api/chats/get'){const b=body as any;this.chatStamps.set(JSON.stringify([b.avatar_url,b.file_name]),JSON.stringify(value));}return value;
   }
   post<T=any>(path:string,body:unknown,signal?:AbortSignal):Promise<T>{return this.call(path,body,'json',signal);}
   text(path:string,body:unknown,signal?:AbortSignal):Promise<string>{return this.call(path,body,'text',signal);}

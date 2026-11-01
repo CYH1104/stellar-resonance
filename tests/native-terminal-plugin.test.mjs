@@ -30,9 +30,9 @@ test('expired/cancelled plans do not change the stored save and raw keys are not
 test('the plugin requires native login and returns safe errors without raw context',async()=>{
   const routes=new Map();await init({post:(path,handler)=>routes.set(path,handler)});
   const response=()=>({statusCode:200,status(n){this.statusCode=n;return this;},send(value){this.value=value;return this;}});
-  const noUser=response();routes.get('/terminal/plan')({body:{input:input()}},noUser);assert.equal(noUser.statusCode,401);
-  const invalid=response();routes.get('/terminal/plan')({user:{profile:{handle:'a'}},body:{input:{...input(),actorIds:['missing'],input:'DO_NOT_ECHO'}}},invalid);
-  assert.equal(invalid.statusCode,400);assert.equal(JSON.stringify(invalid.value).includes('DO_NOT_ECHO'),false);
+  const noUser=response();await routes.get('/terminal/plan')({body:{input:input()}},noUser);assert.equal(noUser.statusCode,401);
+  const invalid=response();await routes.get('/terminal/finish')({user:{profile:{handle:'a'}},body:{token:'missing',text:'DO_NOT_ECHO'}},invalid);
+  assert.equal(invalid.statusCode,404);assert.equal(JSON.stringify(invalid.value).includes('DO_NOT_ECHO'),false);
 });
 test('anonymous king commands keep scoped NPC identity while excluding player secrets and hidden number maps',()=>{
   const plans=terminalPlans(),created=plans.plan('a',{task:'command',actorIds:['npc-a'],input:'PRIVATE_CANARY',persona:{name:'玩家甲',background:'PRIVATE_CANARY'},context:{round:1,maxNumber:3,targets:[2],style:'日常',participantNames:['路人甲','玩家甲'],numbers:{player:1,'npc-b':2},memories:['PRIVATE_CANARY'],state:{characters:[{id:'npc-a',name:'路人甲',identity:'国王'},{id:'npc-b',name:'路人乙',identity:'参与者'}],variables:{hidden:'PRIVATE_CANARY'}}}});

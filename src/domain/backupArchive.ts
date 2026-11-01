@@ -7,6 +7,7 @@ import {cleanNativePresetConfig,assertNativePresetDraftSafe,type NativePresetCon
 export interface BackupPersona {id:string;name:string;persona:Persona;updatedAt:string;memo?:string;remark?:string;sourceSessionIds?:string[];avatarAppearance?:AvatarAppearance;useAsHomeImage?:boolean;portrait?:string;avatar?:string}
 export interface BackupArchive {
  version:1;
+ uiSettings?:Record<string,string>;
  nativeWorldInfoVersion?:1;
  terminalTaskVersion?:1;
  terminalContextVersion?:1;
@@ -22,6 +23,7 @@ export interface BackupArchive {
  newGameDraft?:{title:string;opening:string;wish:string;persona:Persona};
 }
 const object=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+export const backupUiKeys=['academy:brightness','academy:card-appearance','academy:portrait-layout','chat-content-expanded','academy:auto-hide-floors','academy:chat-avatar-hidden','cloud-repository:gitee','cloud-repository:github',...['rpgTheme:v1','academy:initialized','academy:draft','mapImg:v1','splashAuto:v1','splashOrient:v1','autoOpenPanel','autoScrollAfterReload','rpgPos:v1','scrollSecs','petOn','markNodes','nickName','academy:palette','academy:portrait'].map(k=>'interstellarPRO:'+k)] as const;
 function fail():never{throw Error('备份附加资料格式不正确或版本过新，请更新页面后再试。');}
 const safeId=(v:unknown,empty=false):v is string=>typeof v==='string'&&(empty||!!v)&&v.length<=200&&!['__proto__','prototype','constructor'].includes(v);
 function keys(v:Record<string,unknown>,allowed:string[]){if(Object.keys(v).some(k=>!allowed.includes(k)))fail();}
@@ -40,8 +42,9 @@ export function cleanBackupPersona(v:unknown,draft=false):BackupPersona{
  return result;
 }
 export function cleanBackupArchive(v:unknown):BackupArchive{
- if(!object(v)||v.version!==1)fail();keys(v,['version','nativeWorldInfoVersion','terminalTaskVersion','terminalContextVersion','nativePreset','editorDrafts','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
+ if(!object(v)||v.version!==1)fail();keys(v,['version','uiSettings','nativeWorldInfoVersion','terminalTaskVersion','terminalContextVersion','nativePreset','editorDrafts','personas','draft','masterPersona','homeImageFileId','hiddenPersonaSessionIds','nicknameImages','characterImages','newGameDraft']);
  const result:BackupArchive={version:1};
+ if(v.uiSettings!==undefined){if(!object(v.uiSettings)||Object.entries(v.uiSettings).some(([k,value])=>!backupUiKeys.includes(k as any)||typeof value!=='string'))fail();result.uiSettings={...v.uiSettings};}
  if(v.nativeWorldInfoVersion!==undefined){if(v.nativeWorldInfoVersion!==1)fail();result.nativeWorldInfoVersion=1;}
  if(v.terminalTaskVersion!==undefined){if(v.terminalTaskVersion!==1)fail();result.terminalTaskVersion=1;}
  if(v.terminalContextVersion!==undefined){if(v.terminalContextVersion!==1)fail();result.terminalContextVersion=1;}
@@ -73,6 +76,7 @@ export function cleanEditorDraftShape(raw:unknown):Record<string,string>{if(!obj
 export function cleanEditorDrafts(raw:unknown):Record<string,string>{const out=cleanEditorDraftShape(raw);if(out['preset:native-runtime']!==undefined)assertNativePresetDraftSafe(out['preset:native-runtime']);return out;}
 export function cloudBackupArchive(source:BackupArchive):BackupArchive{
  const next=cleanBackupArchive(source);
+  if(next.uiSettings)next.uiSettings=Object.fromEntries(Object.entries(next.uiSettings).filter(([,v])=>!/(?:data:image\/|blob:https?:)/i.test(v)));
  if(next.nativePreset?.worldbooks&&/(?:data:image\/|blob:https?:)/i.test(JSON.stringify(next.nativePreset.worldbooks)))throw Error('原生世界书包含本机图片内容，请改为图片 URL 后上传；完整原文可先下载到本机。');
  for(const p of [...next.personas||[],...next.draft?[next.draft]:[]]){delete p.portrait;delete p.avatar;}
  if(next.nicknameImages)next.nicknameImages=Object.fromEntries(Object.entries(next.nicknameImages).filter(([,url])=>/^https?:\/\//i.test(url)));

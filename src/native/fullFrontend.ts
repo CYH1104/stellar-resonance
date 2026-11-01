@@ -1,4 +1,5 @@
 import {installWorkspacePorts, type WorkspacePorts} from '../app/workspacePorts';
+import {connectNativeFrontend} from './connectFrontend';
 
 declare global {
   interface Window {__ACADEMY_NATIVE_PORTS__?: Promise<WorkspacePorts>}
@@ -7,7 +8,7 @@ declare global {
 globalThis.__ACADEMY_BACKEND__ = 'native';
 
 async function start() {
-  if (!window.__ACADEMY_NATIVE_PORTS__) throw new Error('完整学院前端尚未连接原生后端。');
+  window.__ACADEMY_NATIVE_PORTS__??=connectNativeFrontend();
   // Install before importing App: existing modules read UI preferences during import.
   const ports = await window.__ACADEMY_NATIVE_PORTS__;
   installWorkspacePorts(ports);

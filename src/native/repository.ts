@@ -23,6 +23,7 @@ export class NativeWorkspaceRepository {
   private unsafe=false;private restoreOwner?:string;
   constructor(readonly settings:NativeSettings,private credentials:NativeCredentials,private presets:NativePresetFiles,private applyArchive:(value:BackupArchive)=>Promise<unknown>){}
   hasUnsafeNativeDrafts(){return this.unsafe;}
+  session(id:string){const value=this.snapshot?.sessions.find(s=>s.id===id);if(!value)throw Error('本次任务的原生存档未找到。');return clone(value);}
   private queue<T>(action:()=>Promise<T>):Promise<T>{const result=this.tail.then(action);this.tail=result;return result;}
   private refs(){const refs=this.settings.current().chats||[];const ids=new Set();for(const ref of refs){if(!ref||typeof ref.id!=='string'||ids.has(ref.id)||typeof ref.avatar!=='string'||!ref.avatar.endsWith('.png')||/[\\/]/.test(ref.avatar)||typeof ref.file!=='string'||!ref.file||/[\\/]/.test(ref.file))throw Error('原生存档索引无法识别，原资料保留。');ids.add(ref.id);}return clone(refs);}
   private async document(ref:NativeChatReference){const rows=await this.settings.api.post('/api/chats/get',{avatar_url:ref.avatar,file_name:ref.file});if(!Array.isArray(rows)||!rows.length)throw Error('原生聊天文件未找到，已停止覆盖；请检查存档。');if(nativeMessagesSession(rows).id!==ref.id)throw Error('原生聊天与存档关联不符。');return rows as NativeChatRow[];}
@@ -78,7 +79,7 @@ export class NativeWorkspaceRepository {
     for(const ref of before)if(!next.some(value=>value.id===ref.id)){
       await this.settings.api.post('/api/chats/delete',{avatar_url:ref.avatar,chatfile:ref.file+'.jsonl'});this.documents.delete(ref.id);
     }
-    this.snapshot=clone(safe);
+    this.snapshot=clone({...safe,...(safe.archive===undefined&&this.snapshot?.archive?{archive:this.snapshot.archive}:{})});
   }
   async writeInputDraft(sessionId:string,text:string){return this.queue(async()=>{this.requireWritable();if(typeof text!=='string'||text.length>16000||!this.snapshot!.sessions.some(s=>s.id===sessionId))throw Error('输入草稿关联不正确。');await this.settings.update(scope=>{scope.inputDrafts={...scope.inputDrafts,[sessionId]:text};});this.snapshot!.sessions.find(s=>s.id===sessionId)!.draftInput=text;});}
   async readEditorDrafts(){const result=localEditorDrafts(this.settings.current().editorDrafts||{});this.unsafe=result.blocked;return clone(result.safe);}
@@ -108,4 +109,5 @@ export class NativeWorkspaceRepository {
   }
   async readApiCredentials(){return this.credentials.read();}
   async writeApiCredentials(value:LocalApiCredentials){await this.credentials.write(value);}
+  async exportApiCredentials(value:LocalApiCredentials){return this.credentials.exportKeys(value);}
 }

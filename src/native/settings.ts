@@ -1,5 +1,6 @@
 import {NativeApi} from './api';
 export interface NativeChatReference {id:string;avatar:string;file:string}
+export interface NativeFileChange {family:'presets'|'worldinfo';name:string;before?:Record<string,any>;after?:Record<string,any>}
 export interface AcademySettings {
   version:1; revision:number;
   preferences?:import('../domain/contracts').Preferences;
@@ -40,16 +41,16 @@ export class NativeSettings {
   async ensure(){if(this.loaded)return this.current();this.loading??=this.load().finally(()=>{this.loading=undefined;});return this.loading;}
   async nativeDocument(){await this.ensure();return this.document();}
   async assertCurrent(){await this.tail;await this.ensure();const raw=(await this.document()).extension_settings?.[namespace];academySettings(raw);if(JSON.stringify(raw)!==this.stamp)throw Error('原生资料已在其他页面修改，已停止覆盖；请重新载入。');}
-  async update(change:(draft:AcademySettings)=>void,patchNative?:(document:Record<string,any>)=>void):Promise<AcademySettings>{
+  async update(change:(draft:AcademySettings)=>void,patchNative?:(document:Record<string,any>)=>void,nativeFiles?:NativeFileChange[]):Promise<AcademySettings>{
     const task=this.tail.then(async()=>{
       if(!this.loaded)await this.load();
-      const document=await this.document(),raw=document.extension_settings?.[namespace];
+      const document=await this.document(),expected=JSON.stringify(document),raw=document.extension_settings?.[namespace];
       academySettings(raw);
       if(JSON.stringify(raw)!==this.stamp)throw Error('原生资料已在其他页面修改，已停止覆盖；请重新载入。');
       const next=clone(this.value);change(next);next.revision=this.value.revision+1;academySettings(next);
       document.extension_settings={...document.extension_settings,[namespace]:next};
       patchNative?.(document);
-      const response=await this.api.post('/api/settings/save',document);
+      const response=await this.api.post('/api/plugins/academy-compat/settings/save',{expected,document,...(nativeFiles?.length?{nativeFiles}:{})});
       if(response?.result!=='ok')throw Error('原生设置未确认保存，当前资料保留。');
       const saved=(await this.document()).extension_settings?.[namespace];
       if(JSON.stringify(saved)!==JSON.stringify(next))throw Error('原生设置保存结果发生变化，已停止后续写入；请重新载入。');

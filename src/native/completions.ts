@@ -38,6 +38,7 @@ export class NativeCompletions {
     const overrides={
       messages:clone(messages),stream,chat_completion_source:'custom',custom_url:nativeBase(profile.apiBaseUrl!),model:profile.model,
       temperature:profile.temperature,max_tokens:profile.maxTokens,
+      include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined,
       ...(profile.topP!==undefined?{top_p:profile.topP}:{}),
       ...(profile.frequencyPenalty!==undefined?{frequency_penalty:profile.frequencyPenalty}:{}),
       ...(profile.presencePenalty!==undefined?{presence_penalty:profile.presencePenalty}:{}),

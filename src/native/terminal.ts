@@ -4,29 +4,29 @@ import {NativeCompletions,NativeCompletionError,type CompletionMessage} from './
 interface Plan {token:string;messages:CompletionMessage[]}
 const base='/api/plugins/academy-compat/terminal/';
 const rawText=(values:string[])=>{const text=values.join('\n\n');return text.length>48000?text.slice(0,47960)+'\n…[运行日志原文已截断]':text;};
-function plan(value:any):Plan{
-  if(!value||typeof value.token!=='string'||!value.token||!Array.isArray(value.messages)||!value.messages.length)throw Error('终端任务未准备完成，原记录已保留。');
+function plan(value:any,opaque=false):Plan{
+  if(!value||typeof value.token!=='string'||!value.token||!opaque&&(!Array.isArray(value.messages)||!value.messages.length))throw Error('终端任务未准备完成，原记录已保留。');
   return value;
 }
 /** Original academy task validation + native SDK, with one bounded format correction. */
 export class NativeTerminal {
-  constructor(private api:NativeApi,private completions:NativeCompletions){}
+  constructor(private api:NativeApi,private completions:NativeCompletions,private compose?:(messages:CompletionMessage[],signal:AbortSignal)=>Promise<CompletionMessage[]>,private preparePrivate?:(token:string,signal:AbortSignal)=>Promise<CompletionMessage[]>){}
   async run(input:unknown,profile:Profile,key:string,signal:AbortSignal,preset?:Record<string,any>){
     signal=AbortSignal.any([signal,AbortSignal.timeout(600000)]);
     if(!input||typeof input!=='object'||Array.isArray(input))throw new NativeCompletionError('INVALID_TERMINAL_REQUEST','终端请求不完整，请检查参与角色和输入。');
     input=JSON.parse(JSON.stringify(input));profile={...profile};preset=preset?JSON.parse(JSON.stringify(preset)):undefined;
-    signal.throwIfAborted();const prepared=plan(await this.api.post(base+'plan',{input},signal));
+    signal.throwIfAborted();const prepared=plan(await this.api.post(base+'plan',{input},signal),!!this.preparePrivate);
     let active=prepared.token;
     const raw:string[]=[];
     const finish=async(current:Plan)=>{
       let messages=current.messages;
       for(let attempt=0;attempt<2;attempt++){
-        signal.throwIfAborted();const response=await this.completions.complete(messages,profile,key,signal,preset);raw.push(response.text);
+        signal.throwIfAborted();const response=await this.completions.complete(this.preparePrivate?await this.preparePrivate(current.token,signal):this.compose?await this.compose(messages,signal):messages,profile,key,signal,preset);raw.push(response.text);
         const checked=await this.api.post(base+'finish',{token:current.token,text:response.text},signal);
         if(checked?.ok===true&&checked.result&&typeof checked.result==='object')return checked;
         const error=checked?.error;
         if(attempt===0&&error?.retryable===true&&typeof error.reason==='string'&&/^[A-Z_]{1,100}$/.test(error.reason)){
-          messages=[...current.messages,{role:'assistant',content:response.text},{role:'user',content:`回复格式未通过（${error.reason}）。使用同一组已锁定的目标和全部规则，只返回所需的合法 JSON；不要重新抽签，不要揭露匿名身份。`}];
+          messages=[...current.messages||[],{role:'assistant',content:response.text},{role:'user',content:`回复格式未通过（${error.reason}）。使用同一组已锁定的目标和全部规则，只返回所需的合法 JSON；不要重新抽签，不要揭露匿名身份。`}];
           continue;
         }
         throw new NativeCompletionError('INVALID_TERMINAL_RESULT','角色回复格式未通过检查，当前记录已保留，可重试。',rawText(raw));
@@ -35,7 +35,7 @@ export class NativeTerminal {
     };
     try{
       const checked=await finish(prepared);
-      if(checked.review){const review=plan(checked.review);active=review.token;await finish(review);}
+      if(checked.review){const review=plan(checked.review,!!this.preparePrivate);active=review.token;await finish(review);}
       signal.throwIfAborted();return {...checked.result,raw:rawText(raw)};
     }finally{void this.api.post(base+'cancel',{token:active}).catch(()=>{});}
   }

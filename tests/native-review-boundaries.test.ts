@@ -23,9 +23,9 @@ it('checks nested, escaped and array-held text independently of schema and rejec
 it('reads valid Chinese UTF-8 and BOM files within a separate byte preflight',async()=>{
  const raw={entries:{0:{uid:0,key:[],content:'字'.repeat(180000),constant:true}}};for(const prefix of ['', '\uFEFF']){const text=prefix+JSON.stringify(raw),file=new Blob([text]);expect(file.size).toBeGreaterThan(500000);expect(await readNativeWorldbookFile(file)).toEqual(raw);}
 });
-it('rejects oversized files before allocating their text and still enforces the stored character budget',async()=>{
+it('rejects files above 5 MiB before reading and accepts valid books above the former character limit',async()=>{
  const text=vi.fn(async()=>'{"entries":{}}');await expect(readNativeWorldbookFile({size:NATIVE_WORLD_FILE_LIMIT_BYTES+1,text})).rejects.toThrow('5 MB');expect(text).not.toHaveBeenCalled();
- const raw={entries:Object.fromEntries([0,1,2].map(uid=>[uid,{uid,key:[],content:'a'.repeat(180000)}]))},file=new Blob([JSON.stringify(raw)]);expect(file.size).toBeLessThan(NATIVE_WORLD_FILE_LIMIT_BYTES);await expect(readNativeWorldbookFile(file)).rejects.toThrow();
+ const raw={entries:Object.fromEntries([0,1,2].map(uid=>[uid,{uid,key:[],content:'a'.repeat(180000)}]))},file=new Blob([JSON.stringify(raw)]);expect(file.size).toBeLessThan(NATIVE_WORLD_FILE_LIMIT_BYTES);await expect(readNativeWorldbookFile(file)).resolves.toEqual(raw);const oversized={entries:{0:{uid:0,key:[],content:'字'.repeat(1800000)}}};expect(()=>cleanNativeWorldbook(oversized)).toThrow('5 MB');
 });
 it('retains a valid deep native extension when adding the draft envelope',()=>{
  let extension:unknown='safe';for(let i=0;i<23;i++)extension={nested:extension};const safe=cleanNativePresetConfig({...config,preset:{...config.preset,extension}});

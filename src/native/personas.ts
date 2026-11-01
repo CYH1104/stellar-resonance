@@ -3,12 +3,13 @@ import {blankPersona} from '../domain/persona';
 import {personaLibraryStamp,type PersonaFile} from '../storage/personaLibrary';
 import {uploadNativeBlob} from './api';
 import {NativeSettings} from './settings';
+import {nativeDigest} from './digest';
 
 interface Media {path:string;type:string;hash:string}
 interface RecordFile {version:1;file:Omit<PersonaFile,'portrait'|'avatar'>;nativeAvatar?:string;description?:string;media:Partial<Record<'portrait'|'avatar',Media>>}
 const clone=<T>(value:T):T=>structuredClone(value);
 const signature=(document:Record<string,any>)=>JSON.stringify([document.power_user?.personas||{},document.power_user?.persona_descriptions||{}]);
-async function digest(bytes:BufferSource){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');}
+async function digest(bytes:BufferSource){return [...new Uint8Array(await nativeDigest(bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');}
 async function stableId(avatar:string){return 'native-persona-'+(await digest(new TextEncoder().encode(avatar))).slice(0,32);}
 function textFile(file:PersonaFile,draft=false){const {avatar,portrait,...text}=file;return cleanBackupPersona(text,draft) as Omit<PersonaFile,'avatar'|'portrait'>;}
 function description(file:PersonaFile){return file.persona.rawText||Object.entries(file.persona).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('\n');}

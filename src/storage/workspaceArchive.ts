@@ -1,12 +1,12 @@
 import {createPersonaLibrary,personaLibraryStamp,type PersonaFile} from './personaLibrary';
-import {accountStorage,accountDatabase} from './accountScope';
-import {cleanBackupArchive,cleanBackupPersona,type BackupArchive,type BackupPersona} from '../domain/backupArchive';
+import {accountStorage,accountDatabase,flushAccountStorage} from './accountScope';
+import {cleanBackupArchive,cleanBackupPersona,backupUiKeys,type BackupArchive,type BackupPersona} from '../domain/backupArchive';
 import {refreshLocalCharacterImages} from '../app/localCharacterImages';
 import {refreshNicknameImages} from '../app/localNicknameImages';
 
 const metadata={masterPersona:'academy:master-persona:v1',homeImageFileId:'academy:master-image-file',hiddenPersonaSessionIds:'academy:persona-hidden-sessions:v1',nicknameImages:'terminal-nickname-images',characterImages:'character-images'} as const;
 const baselines=new WeakMap<BackupArchive,{revision:string;metadata:string}>();
-function readMetadata(){return Object.fromEntries(Object.values(metadata).map(key=>[key,accountStorage.getItem(key)])) as Record<string,string|null>;}
+function readMetadata(){return Object.fromEntries([...Object.values(metadata),...backupUiKeys].map(key=>[key,accountStorage.getItem(key)])) as Record<string,string|null>;}
 async function encodeBlob(blob:Blob){const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return 'data:'+(blob.type||'application/octet-stream')+';base64,'+btoa(binary);}
 function decodeBlob(text:string){const comma=text.indexOf(','),binary=atob(text.slice(comma+1));return new Blob([Uint8Array.from(binary,c=>c.charCodeAt(0))],{type:text.slice(5,comma).split(';')[0]});}
 async function encodeFile(file:PersonaFile,draft=false){const {portrait,avatar,...text}=file;return cleanBackupPersona({...text,...(portrait?{portrait:await encodeBlob(portrait)}:{}),...(avatar?{avatar:await encodeBlob(avatar)}:{})},draft);}
@@ -15,11 +15,12 @@ function notify(){refreshNicknameImages();refreshLocalCharacterImages();if(typeo
 
 /** A consistent archive read; never silently substitute an empty library after a storage error. */
 export async function collectWorkspaceArchive(newGameDraft?:BackupArchive['newGameDraft']):Promise<BackupArchive>{
+ await flushAccountStorage();
  const scope=accountDatabase('backup'),library=createPersonaLibrary(),meta=readMetadata(),state=await library.readBackupState();
  const personas=await Promise.all(state.files.map(f=>encodeFile(f))),draft=state.draft?await encodeFile(state.draft,true):null;
  const after=await library.readBackupState();
  if(scope!==accountDatabase('backup')||state.revision!==after.revision||personaLibraryStamp(state.files,state.draft)!==personaLibraryStamp(after.files,after.draft)||JSON.stringify(meta)!==JSON.stringify(readMetadata()))throw Error('备份期间人设或设置发生变化，请重试。');
- const result=cleanBackupArchive({version:1,personas,draft,masterPersona:meta[metadata.masterPersona]?JSON.parse(meta[metadata.masterPersona]!):null,homeImageFileId:meta[metadata.homeImageFileId],hiddenPersonaSessionIds:JSON.parse(meta[metadata.hiddenPersonaSessionIds]||'[]'),nicknameImages:JSON.parse(meta[metadata.nicknameImages]||'{}'),characterImages:JSON.parse(meta[metadata.characterImages]||'{}'),...(newGameDraft?{newGameDraft}:{})});
+ const result=cleanBackupArchive({version:1,uiSettings:Object.fromEntries(backupUiKeys.filter(k=>meta[k]!==null).map(k=>[k,meta[k]])),personas,draft,masterPersona:meta[metadata.masterPersona]?JSON.parse(meta[metadata.masterPersona]!):null,homeImageFileId:meta[metadata.homeImageFileId],hiddenPersonaSessionIds:JSON.parse(meta[metadata.hiddenPersonaSessionIds]||'[]'),nicknameImages:JSON.parse(meta[metadata.nicknameImages]||'{}'),characterImages:JSON.parse(meta[metadata.characterImages]||'{}'),...(newGameDraft?{newGameDraft}:{})});
  baselines.set(result,{revision:state.revision,metadata:JSON.stringify(meta)});return result;
 }
 
@@ -37,6 +38,7 @@ export async function applyWorkspaceArchive(source:BackupArchive,mode:'replace'|
  }
  if(next.draft!==undefined){draft=next.draft?decodeFile(next.draft):undefined;if(draft&&personaIds.has(draft.id))draft.id=personaIds.get(draft.id)!;if(preserveMedia&&draft&&before.draft?.id===draft.id){draft.portrait||=before.draft.portrait;draft.avatar||=before.draft.avatar;}}
  const values={...meta};
+ if(next.uiSettings)for(const [key,value]of Object.entries(next.uiSettings))if(mode==='replace'||values[key]===null)values[key]=value;
  for(const field of Object.keys(metadata) as (keyof typeof metadata)[]){
   if(next[field]===undefined)continue;let value:any=next[field];
   if(field==='masterPersona'&&value?.personaId&&personaIds.has(value.personaId))value={...value,personaId:personaIds.get(value.personaId)};
@@ -60,10 +62,10 @@ export async function applyWorkspaceArchive(source:BackupArchive,mode:'replace'|
   if(scope!==accountDatabase('backup'))throw Error('账号已改变，恢复已停止。');
   if(metadataCommitted&&JSON.stringify(values)!==JSON.stringify(readMetadata()))throw Error('恢复后的设置已被其他页面修改，已停止自动回退。');
   if(applied){await library.replace(before.files,before.draft,personaLibraryStamp(files,draft),appliedRevision);applied=false;}
-  writeMetadata(meta);
+  writeMetadata(meta);await flushAccountStorage();
  };
  try{
   if(scope!==accountDatabase('backup')||JSON.stringify(meta)!==JSON.stringify(readMetadata()))throw Error('设置已被其他页面修改，请重试。');
-  appliedRevision=await library.replace(files,draft,stamp,before.revision);applied=true;writeMetadata(values);metadataCommitted=true;return {undo};
+  appliedRevision=await library.replace(files,draft,stamp,before.revision);applied=true;writeMetadata(values);metadataCommitted=true;await flushAccountStorage();return {undo};
  }catch(error){if(applied)await undo();throw error;}
 }

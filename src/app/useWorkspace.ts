@@ -680,7 +680,7 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
           flushStream();modelRaw=typeof event.raw==='string'?event.raw:'';let outcome=event.outcome;
           if(previousOutcome){outcome={...mergeRepairOutcome(previousOutcome,outcome,stateAt(session,index),repairBefore!,repairPlan),theaters:mergeRepairTheaters(previousOutcome.theaters,outcome.theaters,requestPreferences.theaters,repairBefore!)};}
           if(previousOutcome)outcome=reconcileRepairScenes(outcome,requestPreferences.theaters,stateAt(session,index+1));
-          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal&&terminalEnabled.value)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];if(event.nativeWorldInfo!==undefined&&!stateOnly)variant.nativeWorldInfo=nativeWorldCheckpoint(session,index,variant,event.nativeWorldInfo);await persist();done=true;if(!stateOnly){if(!terminalContextJob&&terminalEnabled.value&&terminalOrder.value==='story-first')await runTerminalStage(index,{automatic:true});
+          protectedGeneration=undefined;finishVariant(session,index,variant,outcome);if(outcome.terminal&&terminalEnabled.value)applyTerminalBatch(session,outcome.terminal,index);if(repairBefore)variant.repairAudit=createRepairAudit(variant.id,repairBefore,stateAt(session,index+1),compareRepair(repairBefore,stateAt(session,index+1)),variant.outcome?.stateUpdate?.codes);if(repairBefore)repairReport.value={sessionId:session.id,turnId:turn.id,rows:compareRepair(repairBefore,stateAt(session,index+1))};variant.suggestions=[...(outcome.suggestions||[])];if(event.nativeWorldInfo!==undefined&&!stateOnly)variant.nativeWorldInfo=nativeWorldCheckpoint(session,index,variant,event.nativeWorldInfo,event.nativeVariables);await persist();done=true;if(!stateOnly){if(!terminalContextJob&&terminalEnabled.value&&terminalOrder.value==='story-first')await runTerminalStage(index,{automatic:true});
             // 终端在前的顺序里，社交动作只能在正文确认后核验：绑定同一轮、只出动作、
             // 不重生成群聊或正文；正文没有接触/邀请信号时零额外请求。
             else if(terminalContextJob?.target!=='continuation-context'&&terminalEnabled.value&&terminalSocialSignal(session,index))await runTerminalStage(index,{automatic:true,socialOnly:true});
@@ -775,10 +775,11 @@ if(event.diagnostic.code==='STATE_AUX_RETAINED')notice.value='MVU 副接口未�
   function downloadWorkspace(value:Snapshot){download(`群星共振-完整备份-${new Date().toISOString().slice(0,10)}.json`,backup(value));notice.value='完整备份已下载，包含人设档案与终端记录，不包含 Key 和运行日志。';}
   async function exportBackup(){try{downloadWorkspace(await completeBackupSnapshot());return true;}catch(e){problem.value=message(e);return false;}}
   async function createCloudWorkspaceBackup(){const value=await completeBackupSnapshot();return createCloudSave(value,{...value.preferences,characterImages:{...value.preferences.characterImages,...value.archive?.characterImages}},value.archive?.nicknameImages);}
-  function exportApiConfiguration(includeKeys=false){
+  async function exportApiConfiguration(includeKeys=false){
     if(loading.value||busy.value||configuringApis.value)return;
-    download(`群星共振-API设置${includeKeys?'-含Key':''}-${new Date().toISOString().slice(0,10)}.json`,exportApiSettings(preferences,credentials,includeKeys));
+    try{download(`群星共振-API设置${includeKeys?'-含Key':''}-${new Date().toISOString().slice(0,10)}.json`,exportApiSettings(preferences,includeKeys&&repository.exportApiCredentials?(await repository.exportApiCredentials({version:1,remember:rememberApiKeys.value,keys:{...credentials},confirmed:{}})).keys:credentials,includeKeys));
     notice.value=includeKeys?'API 设置已导出，文件包含明文 Key，请妥善保管。':'API 设置已导出，不包含 Key。';
+    }catch(error){problem.value=message(error);}
   }
   async function importApiConfiguration(text:string){
     if(loading.value||busy.value||workingMemory.value||configuringApis.value||workingPersona.value||creatingGame.value||workingForumReply.value)return false;

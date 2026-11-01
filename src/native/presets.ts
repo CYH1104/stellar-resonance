@@ -1,9 +1,10 @@
 import {cleanNativePresetConfig,type NativePresetConfig,type NativePresetItem} from '../domain/nativePreset';
 import type {NativeWorldbook} from '../domain/nativeWorldbooks';
-import {NativeSettings} from './settings';
+import {NativeSettings,type NativeFileChange} from './settings';
+import {nativeDigest} from './digest';
 import type {NativePresetFiles} from './repository';
 const copy=<T>(value:T):T=>structuredClone(value);
-async function identity(prefix:string,name:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(name));return prefix+Array.from(new Uint8Array(hash)).map(v=>v.toString(16).padStart(2,'0')).join('').slice(0,32);}
+async function identity(prefix:string,name:string){const hash=await nativeDigest(new TextEncoder().encode(name));return prefix+Array.from(new Uint8Array(hash)).map(v=>v.toString(16).padStart(2,'0')).join('').slice(0,32);}
 const filename=(name:string)=>{if(!name||/[\\/:*?"<>|]/.test(name)||name==='.'||name==='..')throw Error('请使用不含路径字符的原生文件名称。');return name;};
 
 /** Preset/worldbook JSON stays in original files; only UI bindings use metadata. */
@@ -44,23 +45,24 @@ export class NativePresets implements NativePresetFiles {
     if(expected!==undefined&&JSON.stringify(current)!==JSON.stringify(expected))throw Error('原生预设或世界书已改变，请重新载入编辑器。');
     const items=(config:NativePresetConfig)=>[{id:config.id||'default',name:config.name||'默认预设',preset:config.preset},...config.presets||[]];
     const before=items(current),after=items(next),oldBooks=current.worldbooks?.books||[],newBooks=next.worldbooks?.books||[];
+    const files:NativeFileChange[]=[];
     for(const group of [after,newBooks]){for(const item of group)filename(item.name);if(new Set(group.map(item=>item.name)).size!==group.length)throw Error('原生文件名称重复，请为每份预设和世界书使用不同名称。');}
     for(const item of after){filename(item.name);const old=before.find(value=>value.id===item.id);if(!old||old.name!==item.name||JSON.stringify(old.preset)!==JSON.stringify(item.preset)){
-      const saved=await this.settings.api.post('/api/presets/save',{apiId:'openai',name:item.name,preset:item.preset});if(saved?.name!==item.name)throw Error('原生预设文件名已调整，请重新载入。');
+      const prior=before.find(value=>value.name===item.name);files.push({family:'presets',name:item.name,...(prior?{before:prior.preset}:{}),after:item.preset});
     }}
     for(const book of newBooks){filename(book.name);const old=oldBooks.find(value=>value.id===book.id);if(!old||old.name!==book.name||JSON.stringify(old.worldbook)!==JSON.stringify(book.worldbook)){
-      const saved=await this.settings.api.post('/api/worldinfo/edit',{name:book.name,data:book.worldbook});if(saved?.ok!==true)throw Error('原生世界书未确认保存。');
+      const prior=oldBooks.find(value=>value.name===book.name);files.push({family:'worldinfo',name:book.name,...(prior?{before:prior.worldbook}:{}),after:book.worldbook});
     }}
     // Deletions require a known edit baseline; initial bootstrap never deletes files.
     if(expected){
-      for(const old of items(expected))if(!after.some(item=>item.name===old.name))await this.settings.api.empty('/api/presets/delete',{apiId:'openai',name:old.name});
-      for(const old of expected.worldbooks?.books||[])if(!newBooks.some(book=>book.name===old.name))await this.settings.api.empty('/api/worldinfo/delete',{name:old.name});
+      for(const old of items(expected))if(!after.some(item=>item.name===old.name))files.push({family:'presets',name:old.name,before:old.preset});
+      for(const old of expected.worldbooks?.books||[])if(!newBooks.some(book=>book.name===old.name))files.push({family:'worldinfo',name:old.name,before:old.worldbook});
     }
     await this.settings.update(scope=>{scope.nativeBindings={presetNames:Object.fromEntries(after.map(item=>[item.id,item.name])),bookNames:Object.fromEntries(newBooks.map(book=>[book.id,book.name])),presetOrder:after.map(item=>item.id),bookOrder:newBooks.map(book=>book.id),defaultIds:[...next.worldbooks?.defaultIds||[]],...(next.taskPresets?{taskPresets:copy(next.taskPresets)}:{}),...(next.worldbooks?.taskBooks?{taskBooks:copy(next.worldbooks.taskBooks)}:{}),...(next.worldbooks?.sessionBooks?{sessionBooks:copy(next.worldbooks.sessionBooks)}:{})};},document=>{
       document.oai_settings={...document.oai_settings,preset_settings_openai:next.name||'默认预设'};
       // Keep original fields and other extensions while selecting global books.
       const names=(next.worldbooks?.defaultIds||[]).map(id=>newBooks.find(book=>book.id===id)!.name);
       document.world_info_settings={...document.world_info_settings,world_info:{...document.world_info_settings?.world_info,globalSelect:names}};
-    });
+    },files);
   }
 }

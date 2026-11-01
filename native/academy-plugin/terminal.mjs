@@ -8,11 +8,12 @@ export function terminalPlans({clock=Date.now,maxPending=64}={}){
   function prune(){for(const [id,entry]of pending)if(entry.expires<=clock())pending.delete(id);}
   function put(owner,plan,source){prune();if(pending.size>=maxPending)throw fail(429,'NATIVE_TASK_BUSY');const id=randomUUID();pending.set(id,{owner,plan,source,expires:clock()+750000,attempts:0});return {token:id,messages:plan.messages};}
   return {
-    plan(owner,input){
+    plan(owner,input,card={characters:[]}){
       if(!owner||!input||typeof input!=='object'||JSON.stringify(input).length>2000000||'key' in input||'profile' in input)throw fail(400,'INVALID_TERMINAL_REQUEST');
       // The caller supplies its selected save's scoped state, including custom NPCs.
       // No global player persona, unrelated save, author card or server profile is consulted.
-      const source={card:{characters:[]},input:JSON.parse(JSON.stringify(input))};
+      const ids=new Set((input.context?.state?.characters||input.state?.characters||[]).map(c=>c.id));
+      const source={card:{characters:(card.characters||[]).filter(c=>ids.has(c.id))},input:JSON.parse(JSON.stringify(input))};
       return put(owner,terminalPlan(source.card,source.input),source);
     },
     finish(owner,token,text){
@@ -24,7 +25,7 @@ export function terminalPlans({clock=Date.now,maxPending=64}={}){
       try{
         result=parseTerminalResult(text,entry.plan);
       }catch(error){
-        if(error?.retryable&&entry.attempts<2)return {ok:false,error:{code:'INVALID_TERMINAL_RESULT',reason:/^[A-Z_]{1,100}$/.test(error.reason||'')?error.reason:'RESULT_FORMAT_INVALID',retryable:true}};
+        if(error?.retryable&&entry.attempts<2){entry.correction={text,reason:/^[A-Z_]{1,100}$/.test(error.reason||'')?error.reason:'RESULT_FORMAT_INVALID'};return {ok:false,error:{code:'INVALID_TERMINAL_RESULT',reason:entry.correction.reason,retryable:true}};}
         pending.delete(token);return {ok:false,error:{code:'INVALID_TERMINAL_RESULT',reason:/^[A-Z_]{1,100}$/.test(error?.reason||'')?error.reason:'RESULT_FORMAT_INVALID',retryable:false}};
       }
       pending.delete(token);
@@ -35,6 +36,7 @@ export function terminalPlans({clock=Date.now,maxPending=64}={}){
       return {ok:true,result};
     },
     cancel(owner,token){const entry=pending.get(token);if(entry?.owner===owner)pending.delete(token);},
+    preparation(owner,token){prune();const row=pending.get(token);if(!row||row.owner!==owner)throw fail(404,'NATIVE_TASK_EXPIRED');const messages=[...row.plan.messages];if(row.correction)messages.push({role:'assistant',content:row.correction.text},{role:'user',content:`回复格式未通过（${row.correction.reason}）。沿用同一组已锁定目标，只返回合法 JSON，不重新抽签或揭露匿名身份。`});return JSON.parse(JSON.stringify({input:row.source.input,messages,task:row.plan.task}));},
     get size(){prune();return pending.size;},
   };
 }

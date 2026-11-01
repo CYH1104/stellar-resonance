@@ -4,13 +4,14 @@ import type {HttpGateway} from '../gateway/http';
 
 /** Backend bindings for the existing UI, not another workspace implementation. */
 export interface WorkspacePorts {
-  repository: Pick<IndexedDbRepository, keyof IndexedDbRepository>;
+  repository: Pick<IndexedDbRepository, keyof IndexedDbRepository>&{exportApiCredentials?:(value:import('../storage/apiCredentials').LocalApiCredentials)=>Promise<import('../storage/apiCredentials').LocalApiCredentials>};
   gateway: Pick<HttpGateway, keyof HttpGateway>;
-  personas: Pick<PersonaLibrary, keyof PersonaLibrary>;
+  personas: Omit<Pick<PersonaLibrary, keyof PersonaLibrary>,'replace'>&{replace(...args:Parameters<PersonaLibrary['replace']>):Promise<string>};
   accountStorage: {
     getItem(name: string): string | null;
     setItem(name: string, value: string): void;
     removeItem(name: string): void;
+    flush?():Promise<void>;
   };
 }
 type PortGlobal = typeof globalThis & {__ACADEMY_BACKEND__?: 'native'};

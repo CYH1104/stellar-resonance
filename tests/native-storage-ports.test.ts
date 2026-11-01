@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {NativeApi} from '../src/native/api';
 import {NativeSettings} from '../src/native/settings';
+import {NativeAccountStorage} from '../src/native/accountStorage';
 import {NativeCredentials} from '../src/native/credentials';
 import {NativePersonaLibrary} from '../src/native/personas';
 import {sessionNativeMessages,nativeMessagesSession} from '../src/native/academyMessages';
@@ -19,7 +20,7 @@ function fixture(){
     path=String(path);const body=init?.body instanceof FormData?init.body:init?.body?JSON.parse(String(init.body)):undefined;
     calls.push({path,body});const json=(value:any,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
     if(path==='/api/settings/get')return json({settings:JSON.stringify(document)});
-    if(path==='/api/settings/save'){if(failSave)return json({error:true},500);document=structuredClone(body);return json({result:'ok'});}
+    if(path==='/api/plugins/academy-compat/settings/save'){if(failSave)return json({error:true},500);if(body.expected!==JSON.stringify(document))return json({error:'NATIVE_DATA_CONFLICT'},409);document=structuredClone(body.document);return json({result:'ok'});}
     if(path==='/api/files/upload'){const bytes=Uint8Array.from(atob(body.data),(x:string)=>x.charCodeAt(0));const target='/user/files/'+body.name;resources.set(target,new Blob([bytes]));return json({path:target});}
     if(path==='/api/avatars/upload'){const target=body.get('overwrite_name');resources.set('/User%20Avatars/'+target,body.get('avatar'));return json({path:target});}
     if(path==='/img/user-default.png')return new Response(new Blob(['default'],{type:'image/png'}));
@@ -35,6 +36,16 @@ function fixture(){
 const file=()=>({id:'profile-1',name:'独立档案名',persona:{...blankPersona(),name:'玩家',rawText:'完整原文\n  保留空格\n'},memo:'备忘',remark:'备注',sourceSessionIds:['session-before'],updatedAt:'2026-10-30T01:00:00.000Z',avatar:new Blob(['avatar-original'],{type:'image/png'}),portrait:new Blob(['portrait-original'],{type:'image/webp'})});
 
 describe('original-native storage adapters',()=>{
+  it('rejects the losing native settings writer even when both pages passed the read check',async()=>{
+    const f=fixture(),other=new NativeSettings(f.api);await Promise.all([f.settings.load(),other.load()]);
+    const results=await Promise.allSettled([f.settings.update(s=>{s.inputDrafts={one:'first'};}),other.update(s=>{s.inputDrafts={two:'second'};})]);
+    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(results.filter(r=>r.status==='rejected')).toHaveLength(1);expect(f.document.extension_settings.stellar_academy.revision).toBe(1);
+  });
+  it('coalesces UI setting changes and prevents overwriting external native account storage edits',async()=>{
+    const f=fixture(),store=new NativeAccountStorage(f.settings,{});await store.initialize();store.setItem('academy:brightness','0.8');store.setItem('academy:chat-avatar-hidden','true');await store.flush();
+    expect(f.document.accountStorage).toEqual({'academy:brightness':'0.8','academy:chat-avatar-hidden':'true'});expect(f.document.extension_settings.stellar_academy.revision).toBe(1);
+    f.document.accountStorage.external='new';store.setItem('academy:brightness','0.7');await expect(store.flush()).rejects.toThrow('其他页面');expect(f.document.accountStorage['academy:brightness']).toBe('0.8');
+  });
   it('round trips every session field, alternate draft, private message and pending input through native messages',()=>{
     const s=newSession('学院会话',{name:'用户',appearance:'',background:'',personality:''},'开场');
     s.terminal=emptyTerminal();s.terminal.contacts=[{id:'contact-custom',name:'自己哥哥',present:false}];s.terminal.friends=[{id:'contact-custom',status:'accepted',reply:'好',note:''}];
