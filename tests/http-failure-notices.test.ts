@@ -88,3 +88,5 @@ describe('top notices',()=>{
   expect(notices).toHaveLength(0);
  });
 });
+
+it('explains the native generation pause without mislabelling an upstream 503',()=>{const failure={status:503,task:'原生接口',code:'NATIVE_PRIVATE_COMPILER_PENDING',message:'private'};expect(httpFailureNotice(failure)?.message).toContain('生成已暂停');expect(httpFailureNotice({...failure,upstreamStatus:503})?.message).toContain('上游模型服务');});

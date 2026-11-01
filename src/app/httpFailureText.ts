@@ -11,7 +11,8 @@ const failedUpstream=(failure:HttpFailure)=>Number.isInteger(failure.upstreamSta
 export function httpFailureNotice(failure:HttpFailure):{message:string;key:string}|undefined{
  const status=statusOf(failure);if(status===undefined)return;
  const origin=failedUpstream(failure)?'上游模型服务':'本机后台',reason=reasons[status]||'请求失败';
- return {message:`HTTP ${status} · ${failure.task} · ${origin}${reason}`,key:`http:${origin}:${status}:${failure.task}:${failure.code||''}`};
+ const detail=!failedUpstream(failure)&&status===503&&failure.code==='NATIVE_PRIVATE_COMPILER_PENDING'?'当前站点生成已暂停；已有存档和设置保留。':`${origin}${reason}`;
+ return {message:`HTTP ${status} · ${failure.task} · ${detail}`,key:`http:${origin}:${status}:${failure.task}:${failure.code||''}`};
 }
 /** Full sanitized line for the run log; the caller redacts credentials before recording it. */
 export function httpFailureLog(failure:HttpFailure){
