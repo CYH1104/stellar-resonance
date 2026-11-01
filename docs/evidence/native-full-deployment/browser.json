@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "public login page works",
+    "full original frontend connected to native ports",
+    "original academy navigation mounted",
+    "original native runtime initializes once",
+    "mobile viewport has no horizontal overflow",
+    "no uncaught browser exceptions"
+  ],
+  "passed": 6,
+  "errors": [],
+  "failed": []
+}

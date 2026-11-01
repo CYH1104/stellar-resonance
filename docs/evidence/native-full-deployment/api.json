@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "independent native admin login works",
+    "temporary original native account created",
+    "original academy document served",
+    "native engine original document works",
+    "author source not exported",
+    "private tasks explicitly blocked",
+    "canonical public catalog loaded"
+  ],
+  "passed": 7
+}

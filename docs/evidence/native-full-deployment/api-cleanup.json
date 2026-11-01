@@ -1,0 +1,7 @@
+{
+  "checks": [
+    "independent native admin login works",
+    "temporary account purged"
+  ],
+  "passed": 2
+}
