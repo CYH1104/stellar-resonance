@@ -9,6 +9,7 @@ import {NativeSettings,type NativeChatReference} from './settings';
 import {NativeCredentials} from './credentials';
 import {sessionNativeMessages,nativeMessagesSession,type NativeChatRow} from './academyMessages';
 import {uploadNativeBlob} from './api';
+import {academyWorldAvatar,nativeChatFingerprint} from './world';
 
 export interface NativePresetFiles {
   read():Promise<NativePresetConfig>;
@@ -34,10 +35,9 @@ export class NativeWorkspaceRepository {
     this.documents.set(ref.id,saved);
   }
   private async createReference(session:Session){
-    const id=crypto.randomUUID();
-    const avatar=await this.settings.api.text('/api/characters/create',{ch_name:session.name||'学院会话',file_name:'academy-'+id,description:'',first_mes:session.opening});
-    if(!avatar||!avatar.endsWith('.png')||/[\\/]/.test(avatar))throw Error('原生角色关联未创建，当前存档保留在页面。');
-    return {id:session.id,avatar,file:'academy-'+id};
+    const world=await this.settings.api.post('/api/plugins/academy-compat/world/ensure',{});
+    if(world?.avatar!==academyWorldAvatar)throw Error('学院世界资源未确认，当前存档保留在页面。');
+    return {id:session.id,avatar:world.avatar,file:'academy-'+crypto.randomUUID()};
   }
   async read():Promise<Snapshot|undefined>{
     const scope=await this.settings.load(),sessions:Session[]=[];
@@ -54,9 +54,20 @@ export class NativeWorkspaceRepository {
   async write(value:Snapshot,recoveryFor?:string,completeRestore=false):Promise<void>{return this.queue(()=>this.writeSnapshot(value,recoveryFor,completeRestore));}
   private async writeSnapshot(value:Snapshot,recoveryFor?:string,completeRestore=false):Promise<void>{
     this.requireWritable();const safe=parseBackup(backup(value));await this.settings.assertCurrent();
-    const before=this.refs(),current=new Map<string,NativeChatRow[]>();
+    let before=this.refs();const current=new Map<string,NativeChatRow[]>();
     // Validate all loaded files before writing any, so stale pages do not start overwriting.
     for(const ref of before){const rows=await this.document(ref),known=this.documents.get(ref.id);if(known&&JSON.stringify(rows)!==JSON.stringify(known))throw Error('原生聊天已在其他页面修改，已停止保存。');current.set(ref.id,rows);}
+    if(before.some(ref=>ref.avatar!==academyWorldAvatar)){
+      const result=await this.settings.api.post('/api/plugins/academy-compat/world/migrate',{
+        expected:JSON.stringify(this.settings.current()),
+        ...(this.restoreOwner?{restoreOwner:this.restoreOwner}:{}),
+        chats:await Promise.all(before.map(async ref=>({id:ref.id,hash:await nativeChatFingerprint(current.get(ref.id))}))),
+      },AbortSignal.timeout(120000));
+      await this.settings.reload();const migrated=this.refs();
+      if(this.settings.current().revision!==result?.revision||JSON.stringify(migrated)!==JSON.stringify(result?.chats)||migrated.length!==before.length||migrated.some(ref=>ref.avatar!==academyWorldAvatar||!current.has(ref.id)))throw Error('学院世界存档迁移结果未确认，原文件和副本保留。');
+      for(const ref of migrated){const rows=await this.document(ref);if(JSON.stringify(rows)!==JSON.stringify(current.get(ref.id)))throw Error('迁移后原生聊天发生变化，已停止保存。');}
+      before=migrated;
+    }
     if(recoveryFor)await this.saveRecovery(this.snapshot!,recoveryFor,false);
     if(safe.archive?.nativePreset!==undefined)await this.presets.save(safe.archive.nativePreset,this.snapshot?.archive?.nativePreset);
     if(safe.archive&&Object.keys(safe.archive).some(key=>!['version','nativePreset','editorDrafts','newGameDraft','nativeWorldInfoVersion','terminalTaskVersion','terminalContextVersion'].includes(key)))await this.applyArchive(safe.archive);

@@ -19,7 +19,7 @@ export class NativeApi {
       return this.post('/api/plugins/academy-compat/chats/save',{expected:this.chatStamps.get(id),document},signal);
     }
     const official=/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|files|secrets|users|backends)(?:\/|$)/.test(path);
-    const compatible=/^\/api\/plugins\/academy-compat\/(?:terminal\/(?:plan|finish|cancel)|tasks\/(?:plan|finish|cancel)|(?:settings|chats)\/save|shares\/(?:create|lookup)|catalog|cards|map|new-game|place|author-books|prepare|vectors)$/.test(path);
+    const compatible=/^\/api\/plugins\/academy-compat\/(?:terminal\/(?:plan|finish|cancel)|tasks\/(?:plan|finish|cancel)|world\/(?:ensure|migrate)|(?:settings|chats)\/save|shares\/(?:create|lookup)|catalog|cards|map|new-game|place|author-books|prepare|vectors)$/.test(path);
     if((!official&&!compatible)||path.includes('..'))throw Error('不支持的原生接口。');
     const headers=new Headers(await this.headers());headers.set('Content-Type','application/json');
     const response=await this.request(path,{method:'POST',credentials:'same-origin',redirect:'manual',headers,body:JSON.stringify(body),signal:signal||AbortSignal.timeout(30000)});

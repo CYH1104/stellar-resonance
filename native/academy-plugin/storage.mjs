@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {randomInt} from 'node:crypto';
 import {cleanTheaterShare} from '../../src/domain/theaterShare.ts';
+import {nativeWorldRoutes} from './world.mjs';
 /** Delegate all writes to the unmodified native routers. No second file store. */
 export function invokeNative(router,path,request,body){return new Promise((done,reject)=>{
   const child=Object.create(request);Object.assign(child,{url:path,originalUrl:path,baseUrl:'',method:'POST',body});let status=200;
@@ -27,6 +28,7 @@ async function nativeFiles(request,catalog,changes){
 }
 export function nativeStorageRoutes(router,route){
   const serial=(owner,fn)=>{const task=(queues.get(owner)||Promise.resolve()).catch(()=>{}).then(fn);queues.set(owner,task);return task.finally(()=>{if(queues.get(owner)===task)queues.delete(owner);});};
+  nativeWorldRoutes(router,route,serial,invokeNative);
   router.post('/settings/save',route((owner,body,request)=>serial(owner,async()=>{
     const {router:native}=await import('../SillyTavern/src/endpoints/settings.js');
     const current=await invokeNative(native,'/get',request,{});if(typeof body.expected!=='string'||JSON.stringify(JSON.parse(current.settings))!==body.expected)throw Object.assign(Error('NATIVE_DATA_CONFLICT'),{status:409,code:'NATIVE_DATA_CONFLICT'});

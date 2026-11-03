@@ -5,7 +5,10 @@ import {NativePresets} from '../src/native/presets';
 import {NativeCredentials} from '../src/native/credentials';
 import {NativeWorkspaceRepository} from '../src/native/repository';
 import {NativePersonaLibrary} from '../src/native/personas';
-import {newSession,defaults,finishVariant} from '../src/domain/story';
+import {newSession,defaults,finishVariant,backup,parseBackup} from '../src/domain/story';
+import {sessionNativeMessages} from '../src/native/academyMessages';
+import {academyWorldAvatar} from '../src/native/world';
+import {createCloudSave,parseCloudSave} from '../src/domain/cloudBackup';
 import {emptyTerminal} from '../src/domain/personalTerminal';
 import {applyTerminalBatch} from '../src/domain/terminalMain';
 import {blankPersona} from '../src/domain/persona';
@@ -32,7 +35,7 @@ it.skipIf(!origin)('rolls back native files when a later file in the same settin
     {family:'worldinfo',name,after:{invalid_worldbook:true}},
   ]})).rejects.toThrow();
   const after=await client.post('/api/settings/get',{});
-  expect(JSON.parse(after.settings)).toEqual(document);expect(after.openai_settings[after.openai_setting_names.indexOf(presetName)]).toEqual(before.openai_settings[0]);expect(after.world_names).not.toContain(name);
+  expect(JSON.parse(after.settings)).toEqual(document);expect(JSON.parse(after.openai_settings[after.openai_setting_names.indexOf(presetName)])).toEqual(preset);expect(after.world_names).not.toContain(name);
 },30000);
 it.skipIf(!origin)('persists full academy messages, private terminal records, original images and drafts using the unmodified native server',async()=>{
   const connection=api(),settings=new NativeSettings(connection),presets=new NativePresets(settings),credentials=new NativeCredentials(settings);
@@ -67,4 +70,53 @@ it.skipIf(!origin)('persists full academy messages, private terminal records, or
   await presets.save({...added,name:name+'重命名'},added);const renamed=await presets.read();expect(renamed.name).toBe(name+'重命名');expect(nativePresetList(renamed).some(p=>p.name===name)).toBe(false);
   await presets.save(null,renamed);const reset=await presets.read();expect(reset.name).toBe('Default');expect(nativePresetList(reset).some(p=>p.id===id)).toBe(true);
   await presets.save(initialPreset,reset);
+},60000);
+
+it.skipIf(!origin)('migrates old per-session cards to one native world without losing source JSONL, personas, terminal records or backup recovery',async()=>{
+  const connection=api(),settings=new NativeSettings(connection),presets=new NativePresets(settings);
+  const repository=new NativeWorkspaceRepository(settings,new NativeCredentials(settings),presets,async()=>{});
+  await repository.read();
+  const legacy=newSession('旧世界引用迁移',{name:'旧玩家',appearance:'完整外观',background:'完整背景',personality:'性格'},'旧开场');
+  legacy.terminal=emptyTerminal();legacy.terminal.contacts=[{id:'contact-migration',name:'哥哥',present:false}];
+  legacy.terminal.friends=[{id:'contact-migration',status:'accepted',reply:'保留好友',note:'自定义备注'}];
+  const v:Variant={id:'migration-first',text:'旧第一稿',status:'incomplete',createdAt:new Date().toISOString()};
+  legacy.turns=[{id:'migration-turn',input:'旧输入',selected:0,variants:[v]}];
+  finishVariant(legacy,0,v,{event:'旧事实',terminal:{protocolVersion:2,groups:[],privateMessages:[{id:'contact-migration',text:'必须保留旧私聊',topic:'近况'}],friendRequests:[]}});
+  applyTerminalBatch(legacy,v.outcome!.terminal!,0);
+  legacy.turns[0].variants.push({...structuredClone(v),id:'migration-second',text:'旧第二稿'});legacy.turns[0].selected=1;
+  legacy.draftInput='迁移前未发送';
+  const rows=sessionNativeMessages({...legacy,draftInput:undefined});
+  rows[0].chat_metadata.unrelated_extension={nested:['keep',1]};rows[3].swipe_info[0].extra.unrelated='keep-swipe';
+  const oldAvatar=await connection.text('/api/characters/create',{ch_name:'旧会话',file_name:'legacy-proof-'+crypto.randomUUID(),description:'',first_mes:''});
+  const oldRef={id:legacy.id,avatar:oldAvatar,file:'old-file-'+crypto.randomUUID()};
+  await connection.post('/api/chats/save',{avatar_url:oldRef.avatar,file_name:oldRef.file,ch_name:'旧会话',chat:rows});
+  await settings.update(scope=>{scope.chats=[...scope.chats!,oldRef];scope.inputDrafts={...scope.inputDrafts,[legacy.id]:legacy.draftInput!};});
+  const freshSettings=new NativeSettings(connection),fresh=new NativeWorkspaceRepository(freshSettings,new NativeCredentials(freshSettings),new NativePresets(freshSettings),async()=>{});
+  const before=(await fresh.read())!,rawBefore=JSON.parse((await connection.post('/api/settings/get',{})).settings);
+  const cardCount=(await connection.post('/api/characters/all',{})).length;
+  await fresh.write(before);
+  const refs=freshSettings.current().chats!;expect(refs.every(ref=>ref.avatar===academyWorldAvatar)).toBe(true);
+  const migrated=refs.find(ref=>ref.id===legacy.id)!;
+  expect(await connection.post('/api/chats/get',{avatar_url:oldRef.avatar,file_name:oldRef.file})).toEqual(rows);
+  expect(await connection.post('/api/chats/get',{avatar_url:migrated.avatar,file_name:migrated.file})).toEqual(rows);
+  const recoveryPath=freshSettings.current().recovery!['native-world-migration'];
+  const migrationRecovery=JSON.parse(await(await connection.blob(recoveryPath)).text());
+  expect(migrationRecovery.settings).toEqual(rawBefore);expect(migrationRecovery.sources.find((source:any)=>source.reference.id===legacy.id).rows).toEqual(rows);
+  const rawAfter=JSON.parse((await connection.post('/api/settings/get',{})).settings);
+  const withoutIndex=(document:any)=>{document=structuredClone(document);for(const field of ['chats','revision','recovery'])delete document.extension_settings.stellar_academy[field];return document;};
+  expect(withoutIndex(rawAfter)).toEqual(withoutIndex(rawBefore));
+  const added=newSession('第二个新会话',{name:'新玩家',appearance:'',background:'',personality:''},'新开场');
+  const saved={...before,sessions:[...before.sessions,added]};await fresh.write(saved);
+  expect((await connection.post('/api/characters/all',{})).length).toBe(cardCount);
+  expect(new Set(freshSettings.current().chats!.map(ref=>ref.avatar))).toEqual(new Set([academyWorldAvatar]));
+  const local=parseBackup(backup(saved));expect(local.sessions.find(s=>s.id===legacy.id)).toEqual(before.sessions.find(s=>s.id===legacy.id));
+  const cloud=parseCloudSave(createCloudSave(saved,saved.preferences)).snapshot;
+  await fresh.prepareCloudRecovery(saved);const release=await fresh.lockRestore();
+  try{await fresh.write(cloud,undefined,true);}finally{await release();}
+  const recovery=await fresh.readCloudRecovery('workspace');expect(recovery!.sessions).toEqual(local.sessions);
+  await fresh.write(recovery!);
+  const reopenedSettings=new NativeSettings(connection),reopened=new NativeWorkspaceRepository(reopenedSettings,new NativeCredentials(reopenedSettings),new NativePresets(reopenedSettings),async()=>{});
+  const reloaded=(await reopened.read())!;
+  expect(reloaded.sessions.find(s=>s.id===legacy.id)).toEqual(before.sessions.find(s=>s.id===legacy.id));
+  expect(reloaded.sessions.map(s=>s.id)).toEqual(saved.sessions.map(s=>s.id));
 },60000);
