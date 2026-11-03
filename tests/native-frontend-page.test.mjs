@@ -8,11 +8,14 @@ import {bootHead,bootScreen} from '../server/boot-screen.mjs';
 test('完整原学院HTML、内联样式和脚本原样保留，只接入加载和原App资源',async()=>{
   const original=await readFile(new URL('../星穹游戏终端 (1).html',import.meta.url),'utf8');
   const output=renderAcademyFrontend(original,{script:'/academy-assets/workspace.js',styles:['/academy-assets/main.css']});
-  const removed=output.replace('<html data-academy-boot ','<html ').replace(nativeFrontendHead,'').replace(bootHead,'').replace(bootScreen,'').replace('<link rel="stylesheet" href="/academy-assets/main.css">\n<script type="module" src="/academy-assets/workspace.js"></script>\n','');
+  const removed=output.replace('<html data-academy-boot ','<html ').replace(nativeFrontendHead,'').replace(bootHead,'').replace(/<div id="academy-loading"[^>]*>[\s\S]*?<\/div>/,'').replace('<link rel="stylesheet" href="/academy-assets/main.css">\n<script type="module" src="/academy-assets/workspace.js"></script>\n','');
   assert.equal(removed,original.replace(/\blocalStorage\b/g,'academyStorage'));
   assert.ok(output.includes('academy-loading-ring'));
   assert.ok(output.includes('id="gate"'));
   assert.ok(output.includes('__exp_splash__'));
+  assert.ok(output.includes('正在加载学院资源，请稍候…'));
+  assert.ok(!output.includes('加载时间较长，请检查网络或刷新重试。'));
+  assert.ok(bootScreen.includes('加载时间较长，请检查网络或刷新重试。'));
 });
 test('经典学院脚本也使用原生AccountStorage，不读取或写入浏览器旧资料',()=>{
   const code=nativeFrontendHead.slice('<script>'.length,-'</script>'.length);

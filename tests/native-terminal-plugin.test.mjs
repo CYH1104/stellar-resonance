@@ -28,7 +28,7 @@ test('expired/cancelled plans do not change the stored save and raw keys are not
   const again=plans.plan('a',input());plans.cancel('a',again.token);assert.equal(plans.size,0);
 });
 test('the plugin requires native login and returns safe errors without raw context',async()=>{
-  const routes=new Map();await init({post:(path,handler)=>routes.set(path,handler)});
+  const routes=new Map();await init({post:(path,handler)=>routes.set(path,handler)},{installAccounts:async()=>{}});
   const response=()=>({statusCode:200,status(n){this.statusCode=n;return this;},send(value){this.value=value;return this;}});
   const noUser=response();await routes.get('/terminal/plan')({body:{input:input()}},noUser);assert.equal(noUser.statusCode,401);
   const invalid=response();await routes.get('/terminal/finish')({user:{profile:{handle:'a'}},body:{token:'missing',text:'DO_NOT_ECHO'}},invalid);

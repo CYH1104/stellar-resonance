@@ -35,3 +35,8 @@ it('prevents hidden native autosaves while allowing original reads and SDK gener
  const release=guardNativeWrites(host);expect((await host.fetch('/api/settings/save',{method:'POST'})).status).toBe(409);expect((await host.fetch('/api/chats/save',{method:'POST'})).status).toBe(409);
  expect((await host.fetch('/api/worldinfo/get',{method:'POST'})).status).toBe(200);expect((await host.fetch('/api/backends/chat-completions/generate',{method:'POST'})).status).toBe(200);expect(calls).toHaveLength(2);release();expect(host.fetch).toBe(original);
 });
+it('pins native SDK reads and generation to the account that opened the page',async()=>{
+ const received:RequestInit[]=[];const host={location:{href:'http://test.invalid/native-engine/',origin:'http://test.invalid'},fetch:async(_input:any,init:RequestInit)=>{received.push(init);return new Response('{}');},Response} as unknown as Window&typeof globalThis;
+ const release=guardNativeWrites(host,'account-a');await host.fetch('/api/settings/get',{method:'POST',headers:{'X-CSRF-Token':'test'}});await host.fetch('/api/backends/chat-completions/generate',{method:'POST'});
+ expect(received.map(init=>new Headers(init.headers).get('X-Academy-Account'))).toEqual(['account-a','account-a']);expect(new Headers(received[0].headers).get('X-CSRF-Token')).toBe('test');release();
+});

@@ -23,9 +23,10 @@ export function renderAcademyFrontend(document, {script, styles = []}) {
   };
   if (!document.includes('__exp_splash__') || !document.includes('id="gate"')) throw new Error('原学院前端文档不完整。');
   const tags = [...styles.map(value => `<link rel="stylesheet" href="${asset(value)}">`), `<script type="module" src="${asset(script)}"></script>`].join('\n');
+  const nativeBootScreen=bootScreen.replace('加载时间较长，请检查网络或刷新重试。','正在加载学院资源，请稍候…');
   return document.replace(/\blocalStorage\b/g, 'academyStorage').replace('<html ', '<html data-academy-boot ')
     .replace(/<head\b[^>]*>/i, head => head+nativeFrontendHead)
     .replace('</head>', bootHead+'</head>')
-    .replace(/<body\b[^>]*>/i, body => body+bootScreen)
+    .replace(/<body\b[^>]*>/i, body => body+nativeBootScreen)
     .replace('</body>', tags+'\n</body>');
 }

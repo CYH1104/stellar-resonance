@@ -1,8 +1,10 @@
-import {createServer,request as upstreamRequest} from 'node:http';
+import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {nativeEnginePage} from './enginePage.mjs';
+import {createNativeForwarder} from './forward.mjs';
+import {academyLoginPage} from './login.mjs';
 const root=resolve(fileURLToPath(new URL('../../',import.meta.url))),dist=resolve(root,'dist/academy-frontend');
 const upstream=new URL(process.env.ACADEMY_NATIVE_ORIGIN||'http://127.0.0.1:18088');
 if(upstream.hostname!=='127.0.0.1'||upstream.protocol!=='http:')throw Error('Native upstream must be independent loopback HTTP.');
@@ -13,12 +15,16 @@ function apiSession(request,response){let cookie=request.headers.cookie||'';cons
   async function call(path,{method='GET',body,csrf}={}){const headers={cookie,...(body?{'Content-Type':'application/json'}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})};const result=await fetch(new URL(path,upstream),{method,headers,body:body?JSON.stringify(body):undefined,redirect:'manual',signal:AbortSignal.timeout(30000)});for(const item of result.headers.getSetCookie()){cookies.push(item);const pair=item.split(';')[0],key=pair.split('=')[0];cookie=cookie.split(';').map(s=>s.trim()).filter(s=>!s.startsWith(key+'=')).concat(pair).filter(Boolean).join('; ');}if(cookies.length)response.setHeader('Set-Cookie',cookies);return result;}
   return {call,async post(path,body){const csrf=await (await call('/csrf-token')).json();return call(path,{method:'POST',body,csrf:csrf.token});}};
 }
-function forward(request,response,path=request.url,transform){const proxy=upstreamRequest(new URL(path,upstream),{method:request.method,agent:false,headers:{...request.headers,host:upstream.host,connection:'close',...(transform?{'accept-encoding':'identity'}:{})}},incoming=>{
-  if(transform){const chunks=[];incoming.on('data',chunk=>chunks.push(chunk));incoming.on('end',()=>{let body=Buffer.concat(chunks);const headers={...incoming.headers};if(incoming.statusCode===200){body=Buffer.from(transform(body.toString('utf8')));delete headers['content-encoding'];delete headers['content-length'];headers['cache-control']='no-store';}response.writeHead(incoming.statusCode||502,headers);response.end(body);});}
-  else{response.writeHead(incoming.statusCode||502,incoming.headers);incoming.pipe(response);}
-});proxy.on('error',()=>{if(!response.headersSent)response.writeHead(502,{'Content-Type':'text/plain; charset=utf-8'});response.end('原生后端暂时不可用，请稍后重试。');});request.on('aborted',()=>proxy.destroy());request.pipe(proxy);}
+const forward=createNativeForwarder(upstream);
 createServer(async(request,response)=>{let stage='request';try{
   const url=new URL(request.url,'http://localhost'),path=decodeURIComponent(url.pathname);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Referrer-Policy','no-referrer');
+  if(request.method==='GET'&&path==='/login'){response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(academyLoginPage);return;}
+  if(request.headers['x-academy-account']&&(path.startsWith('/api/')||path.startsWith('/native-engine/api/'))){
+    const check=await apiSession(request,response).call('/api/users/me');
+    if(!check.ok&&![302,401,403].includes(check.status))throw Object.assign(Error('Native account unavailable'),{code:'NATIVE_ACCOUNT_HTTP_'+check.status});
+    const current=check.ok?await check.json():undefined;
+    if(current?.handle!==request.headers['x-academy-account']){response.writeHead(409,{'Content-Type':'application/json','Cache-Control':'no-store'});response.end(JSON.stringify({error:'NATIVE_ACCOUNT_CHANGED'}));return;}
+  }
   if(request.method==='GET'&&(path==='/'||path==='/terminal')){
     stage='account';const session=apiSession(request,response),me=await session.call('/api/users/me');if(!me.ok){response.writeHead(302,{Location:'/login'});response.end();return;}
     stage='account-json';const user=await me.json();stage='settings';const result=await session.post('/api/settings/get',{});if(!result.ok)throw Object.assign(Error('Native settings unavailable'),{code:'NATIVE_SETTINGS_HTTP_'+result.status});stage='settings-json';const document=await result.json();stage='settings-document';const settings=JSON.parse(document.settings),state=settings.accountStorage||{};stage='page';
@@ -32,7 +38,7 @@ createServer(async(request,response)=>{let stage='request';try{
     const session=apiSession(request,response),result=path==='/api/auth/me'?await session.call('/api/users/me'):await session.post('/api/plugins/academy-compat/'+(path==='/api/map-assets'?'map':'cards'),{});const value=await result.json();response.writeHead(result.status,{'Content-Type':'application/json','Cache-Control':'no-store'});response.end(JSON.stringify(path==='/api/auth/me'?{user:{id:value.handle,email:value.name}}:value));return;
   }
   if(request.method==='POST'&&path==='/api/auth/logout'){forward(request,response,'/api/users/logout');return;}
-  let relative=path.startsWith('/academy-assets/')?path.slice('/academy-assets/'.length):path.startsWith('/assets/')||path.startsWith('/auth/boot.')||path==='/auth/native-account.js'?path.slice(1):undefined;
+  let relative=path.startsWith('/academy-assets/')?path.slice('/academy-assets/'.length):path.startsWith('/assets/')||path.startsWith('/auth/boot.')||['/auth/native-account.js','/auth/native-login.js'].includes(path)?path.slice(1):undefined;
   if(relative!==undefined&&['GET','HEAD'].includes(request.method)){const target=resolve(dist,relative);if(!target.startsWith(dist+sep))throw Error('Invalid path');const body=await readFile(target);response.writeHead(200,{'Content-Type':types[extname(target)]||'application/octet-stream','Cache-Control':'no-cache'});response.end(request.method==='HEAD'?undefined:body);return;}
   forward(request,response);
 }catch(error){console.warn('Academy frontend request failed',{stage,code:error?.cause?.code||error?.code||error?.name});response.writeHead(error?.code==='ENOENT'?404:502,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});response.end('学院页面暂未连接完成，请稍后重试。');}}).listen(port,host,()=>console.log(`Academy frontend ready on ${host}:${port}`));

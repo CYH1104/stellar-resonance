@@ -1,5 +1,5 @@
 /** Hidden native UI is a request engine. The academy repository owns durable writes. */
-export function guardNativeWrites(host:Window&typeof globalThis){
+export function guardNativeWrites(host:Window&typeof globalThis,account?:string){
   const original=host.fetch;
   const guarded:typeof fetch=(input,init)=>{
     const url=new URL(typeof input==='string'?input:'href'in input?input.href:input.url,host.location.href);
@@ -9,6 +9,10 @@ export function guardNativeWrites(host:Window&typeof globalThis){
     const read=/\/(?:get|all|list|read|find|search|chats|verify|sanitize-filename)$/.test(path)||path==='/api/presets/restore';
     const write=family&&!read;
     if(method!=='GET'&&url.origin===host.location.origin&&write)return Promise.resolve(new host.Response(JSON.stringify({error:'NATIVE_RUNTIME_READONLY'}),{status:409,headers:{'Content-Type':'application/json'}}));
+    if(account&&url.origin===host.location.origin&&path.startsWith('/api/')){
+      const headers=new Headers(typeof input==='object'&&'headers'in input?input.headers:undefined);new Headers(init?.headers).forEach((value,key)=>headers.set(key,value));headers.set('X-Academy-Account',account);
+      return original.call(host,input,{...init,headers});
+    }
     return original.call(host,input,init);
   };
   host.fetch=guarded;return ()=>{if(host.fetch===guarded)host.fetch=original;};

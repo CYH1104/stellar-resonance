@@ -1,0 +1,105 @@
+{
+  "date": "2026-11-04",
+  "baseline": "661a2f6bb8bfc7782f0fdf917eb349a960a1a706",
+  "tests": {
+    "backend": {
+      "passed": 482,
+      "skipped": 4
+    },
+    "frontend": {
+      "passed": 966,
+      "skipped": 3
+    },
+    "types": "passed",
+    "build": "passed",
+    "finalGatewayOutageRegression": "passed"
+  },
+  "localApi": {
+    "scope": "isolated original native server",
+    "passed": 7,
+    "checks": [
+      "anonymous users cannot issue invites",
+      "two accounts register through one-time invites and native login, never obtaining admin rights",
+      "ordinary accounts cannot issue invites",
+      "native account A settings, draft and chat are absent from independent account B",
+      "registration refuses to overwrite an already logged-in account",
+      "logout invalidates native account and settings access",
+      "the same browser cookie jar can switch accounts without inheriting the first account data"
+    ],
+    "modelCalls": 0
+  },
+  "localBrowser": {
+    "scope": "isolated local browser and original native server",
+    "checks": [
+      "account 0 registers through the visible invitation form",
+      "first account saves a server-backed draft from the complete frontend",
+      "logout is visible and clickable even while the native engine is loading",
+      "logout returns to the account form and locks the other old account tab",
+      "account 1 registers through the visible invitation form",
+      "second account opens with no first-account sessions or draft",
+      "old tab cannot submit data after another account signs in"
+    ],
+    "passed": 7,
+    "modelCalls": 0
+  },
+  "deployedApi": {
+    "scope": "deployed 8088 via SSH loopback",
+    "passed": 8,
+    "checks": [
+      "anonymous users cannot issue invites",
+      "two accounts register through one-time invites and native login, never obtaining admin rights",
+      "ordinary accounts cannot issue invites",
+      "native account A settings, draft and chat are absent from independent account B",
+      "registration refuses to overwrite an already logged-in account",
+      "logout invalidates native account and settings access",
+      "the same browser cookie jar can switch accounts without inheriting the first account data",
+      "existing formal generation pause remains explicit and unchanged"
+    ],
+    "modelCalls": 0
+  },
+  "publicBrowser": {
+    "scope": "actual public 8088 browser",
+    "checks": [
+      "account 0 registers through the visible invitation form",
+      "first account saves a server-backed draft from the complete frontend",
+      "logout is visible and clickable even while the native engine is loading",
+      "logout returns to the account form and locks the other old account tab",
+      "account 1 registers through the visible invitation form",
+      "second account opens with no first-account sessions or draft",
+      "old tab cannot submit data after another account signs in"
+    ],
+    "passed": 7,
+    "modelCalls": 0
+  },
+  "deployment": {
+    "frontendPid": 1224879,
+    "nativePid": 1220035,
+    "automaticRestarts": 0,
+    "old8807Pid": 2817555,
+    "old9000Pid": 2871143,
+    "generationPaused": true,
+    "compilerActive": false,
+    "backups": [
+      "pre-accounts-20261104-code.tar.gz",
+      "pre-accounts-20261104-data.tar.gz",
+      "pre-login-ready-20261104-code.tar.gz",
+      "pre-account-error-20261104-server.mjs"
+    ]
+  },
+  "deployedFileHashes": {
+    "native/academy-frontend/server.mjs": "ffddab7f5681455b6ffcf8d361c1f3b28c5d8df256eaa3c260eb97dba1199c22",
+    "native/academy-frontend/forward.mjs": "30785a725980819ad6584302383f8b5062440460e7777835b27d152824af85d9",
+    "native/academy-frontend/login.mjs": "84b12fcdf3ffed4672a7e8d9edff018757f0425a70c5db64abb877d568f3c8c2",
+    "native/academy-plugin/index.mjs": "abdfbe7d7e2bd9944f540c6ede57807f8683f34ff759b3a92139220bfc9f74f8",
+    "native/academy-plugin/accounts.mjs": "ed085c02c4b3e0c8af562cec98b614b1cbcc86774b474fa62c7fadce91cdcd2e",
+    "dist/academy-frontend/workspace.js": "6866a5ae97b673c4469696143240f8976cb2dac4a5da2297574f5e1910c072fa",
+    "dist/academy-frontend/auth/native-account.js": "959dd6a938d302ae6861b137644b17d957648f92c2320a2506a21a14bcd1d4cb",
+    "dist/academy-frontend/auth/native-login.js": "d3c6a169c971445538f4e2f28a49f74a8b71d2c44ad526c11ff26dfdd0737af0"
+  },
+  "limits": [
+    "No real model request was made; formal generation is still paused.",
+    "The 8088 full author management page is not migrated; old author entry remains on 8807/editor/.",
+    "Earlier synthetic native module failure timeout test did not pass and is not counted as accepted.",
+    "Public browser full-flow checks preceded a final gateway outage classification fix; that final delta passed a real local HTTP regression and deployed stale-account 409 smoke check."
+  ]
+}
