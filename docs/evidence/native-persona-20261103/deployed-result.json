@@ -1,0 +1,13 @@
+{
+  "scope": "deployed 8088 via SSH loopback tunnel, independent native test account, actual UI and original native storage; real providers not called",
+  "checks": [
+    "deployed automatic draft save retains the editor and does not create a formal persona",
+    "actual native server contains complete long wish before API settings navigation",
+    "actual settings return restores complete wish",
+    "deployed full page reload restores persona and wish from native server",
+    "configured persona API bypasses unrelated routes and explains generation pause while retaining input"
+  ],
+  "passed": 5,
+  "pageErrors": 0,
+  "modelCalls": 0
+}
