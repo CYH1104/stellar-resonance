@@ -717,3 +717,40 @@ it('persona assistance uses only its confirmed profile even when story, memory a
 it('persona assistance with missing selected credentials still preserves the draft and opens settings without requesting a model',async()=>{
  const w=await workspace();w.newGameDraft.wish='keep this wish';w.newGameDraft.persona.name='Existing';const assist=vi.spyOn(HttpGateway.prototype,'assistPersona');await w.assistPersona();expect(assist).not.toHaveBeenCalled();expect(w.panel.value).toBe('settings');expect(w.newGameDraft.wish).toBe('keep this wish');expect(w.newGameDraft.persona.name).toBe('Existing');
 });
+
+
+it('persists the entire persona wish before redirecting to API settings and restores it in a new workspace',async()=>{
+ const w=await workspace(),wish='完整长人设描述\n'.repeat(900)+'末尾必须保留';
+ const drafts:Record<string,string>={};
+ vi.mocked(IndexedDbRepository.prototype.writeEditorDraft).mockImplementation(async(id,text)=>{if(text!==null)drafts[id]=text;});
+ const assist=vi.spyOn(HttpGateway.prototype,'assistPersona');w.newGameDraft.wish=wish;w.newGameDraft.persona.name='未完成的人设';
+ await w.assistPersona();expect(w.panel.value).toBe('settings');expect(assist).not.toHaveBeenCalled();
+ expect(JSON.parse(drafts['new-game']).wish).toBe(wish);
+ vi.mocked(IndexedDbRepository.prototype.readEditorDrafts).mockResolvedValue(drafts);
+ const restored=await workspace();expect(restored.newGameDraft.wish).toBe(wish);expect(restored.newGameDraft.persona.name).toBe('未完成的人设');
+ expect(saved?.sessions||[]).toHaveLength(0);
+});
+it('does not leave the persona editor or call a model when its draft cannot be saved',async()=>{
+ const w=await workspace();w.newGameDraft.wish='输入不能因为保存失败而消失';const previous=w.panel.value;
+ const assist=vi.spyOn(HttpGateway.prototype,'assistPersona');
+ vi.mocked(IndexedDbRepository.prototype.writeEditorDraft).mockRejectedValueOnce(Error('服务器拒绝写入草稿'));
+ await w.assistPersona();expect(w.panel.value).toBe(previous);expect(w.problem.value).toContain('服务器拒绝写入草稿');expect(assist).not.toHaveBeenCalled();expect(w.newGameDraft.wish).toBe('输入不能因为保存失败而消失');
+ await w.assistPersona();expect(w.panel.value).toBe('settings');expect(w.workingPersona.value).toBe(false);
+});
+it('only sends one persona request while the pre-request draft write is pending',async()=>{
+ const w=await workspace();fill(w,'aux');w.preferences.personaProfile='aux';await w.connectProfile(w.preferences.profiles.find(p=>p.id==='aux')!);
+ const wish='很长的原始输入\n'.repeat(700);w.newGameDraft.wish=wish;w.newGameDraft.persona.background='玩家已有背景';
+ let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+ vi.mocked(IndexedDbRepository.prototype.writeEditorDraft).mockImplementationOnce(()=>gate);
+ const assist=vi.spyOn(HttpGateway.prototype,'assistPersona').mockResolvedValue({name:'补全名字',background:'模型背景',appearance:'',personality:''});
+ const first=w.assistPersona();await w.assistPersona();expect(assist).not.toHaveBeenCalled();release();await first;
+ expect(assist).toHaveBeenCalledTimes(1);expect(assist.mock.calls[0][0]).toBe(wish);expect(w.newGameDraft.persona.background).toBe('玩家已有背景');
+ expect(w.newGameDraft.wish).toBe(wish);expect(w.workingPersona.value).toBe(false);
+});
+it('preserves persona input when the configured native generation path is unavailable',async()=>{
+ const w=await workspace();fill(w,'aux');w.preferences.personaProfile='aux';await w.connectProfile(w.preferences.profiles.find(p=>p.id==='aux')!);
+ w.newGameDraft.wish='保留请求失败前的全部描述';w.newGameDraft.persona.name='原名字';
+ vi.spyOn(HttpGateway.prototype,'assistPersona').mockRejectedValue(Error('原生生成暂不可用'));
+ await w.assistPersona();expect(w.newGameDraft.wish).toBe('保留请求失败前的全部描述');expect(w.newGameDraft.persona.name).toBe('原名字');expect(w.problem.value).toContain('原生生成暂不可用');expect(w.panel.value).not.toBe('settings');
+ expect(JSON.parse(vi.mocked(IndexedDbRepository.prototype.writeEditorDraft).mock.calls.find(([id])=>id==='new-game')![1]!).wish).toBe(w.newGameDraft.wish);
+});

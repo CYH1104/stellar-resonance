@@ -1,0 +1,20 @@
+{
+  "scope": "Isolated persona release based on 716e032; worldbook/helper WIP excluded",
+  "frontend": {
+    "pass": 964,
+    "skip": 2
+  },
+  "backend": {
+    "pass": 460,
+    "skip": 4
+  },
+  "typecheck": true,
+  "defaultBuild": true,
+  "nativeFrontendBuild": true,
+  "browser": {
+    "passed": 5,
+    "pageErrors": 0,
+    "scope": "actual component with test shell, browser IndexedDB; no production/real model acceptance"
+  },
+  "modelCalls": 0
+}

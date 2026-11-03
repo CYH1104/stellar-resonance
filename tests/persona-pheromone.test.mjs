@@ -7,3 +7,10 @@ test('persona helper explicitly requests pheromone in the existing other field a
  const result=parsePersonaResult('{"name":"玩家","secondaryGender":"Omega","other":"备注\\n信息素：雪松"}');assert.equal(result.other,'备注\n信息素：雪松');
  const beta=parsePersonaResult('{"name":"玩家","secondaryGender":"Beta","other":"信息素：无"}');assert.equal(beta.other,'信息素：无');
 });
+
+test('persona helper accepts a long wish without truncating it before native context budgeting',()=>{
+ const wish='原始人设描述\n'.repeat(1200)+'最后一行';
+ const messages=buildPersonaMessages({world:'公开世界背景'},wish,{name:'玩家'});
+ assert.equal(JSON.parse(messages.find(m=>m.role==='user').content).wish,wish);
+ assert.throws(()=>buildPersonaMessages({world:'公开世界背景'},' ',{name:'玩家'}),{code:'INVALID_PERSONA_WISH'});
+});

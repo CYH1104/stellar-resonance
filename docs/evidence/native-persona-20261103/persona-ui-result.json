@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "typing and automatic draft save never emits formal save or navigates",
+    "API settings navigation retains the full wish before unmount",
+    "returning to the editor restores the actual persona component and complete wish",
+    "browser reload restores the persona draft and wish without creating a formal archive",
+    "set-master explicitly saves current edits instead of applying the stale archived persona"
+  ],
+  "passed": 5,
+  "pageErrors": 0,
+  "modelCalls": 0,
+  "scope": "Real PersonaLibrary DOM with real browser IndexedDB; navigation/workspace shell fixture. Native server persistence separately covered, not a deployed-site or real-provider acceptance."
+}

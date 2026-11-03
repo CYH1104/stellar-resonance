@@ -69,12 +69,12 @@ const WorldbookManager=defineAsyncComponent(()=>import('./components/WorldbookMa
 import {restorePersonaMedia} from './storage/personaMedia';
 
 const library=ref(false);
-const firstSetup=ref<'persona'|'api'|'name'|null>(null);
+const firstSetup=ref<'persona'|'api'|'name'|null>(null),personaApiReturn=ref(false);
 const firstSetupKey='academy:first-journey:v1';
 function needsFirstSetup(){try{return !w.sessions.length&&!accountStorage.getItem(firstSetupKey);}catch{return !w.sessions.length;}}
-function savedFirstPersona(persona:Persona){if(firstSetup.value!=='persona')return;usePersona(persona);firstSetup.value='api';w.panel='settings';}
-function savedFirstApi(){if(firstSetup.value!=='api'||!w.apiReady)return;firstSetup.value='name';library.value=false;entry.value='new';w.panel='story';}
-async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;const files=await createPersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length){firstSetup.value='persona';library.value=true;}else{usePersona(files[0]!.persona);firstSetup.value='api';w.panel='settings';}}
+function savedFirstPersona(persona:Persona){if(firstSetup.value!=='persona')return;usePersona(persona,true);firstSetup.value='api';w.panel='settings';}
+function savedFirstApi(){if(personaApiReturn.value&&w.personaProfile&&w.apiSelectable(w.personaProfile)&&w.connectionReady(w.personaProfile)){returnToPersona();return;}if(firstSetup.value!=='api'||!w.apiReady)return;firstSetup.value='name';library.value=false;entry.value='new';w.panel='story';}
+async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;const files=await createPersonaRepository().list();if(sequence!==navigationSequence)return;if(!files.length||w.newGameDraft.wish.trim()){firstSetup.value='persona';library.value=true;}else{usePersona(files[0]!.persona,true);firstSetup.value='api';w.panel='settings';}}
 
 
 
@@ -168,7 +168,7 @@ const entry=ref<'opening'|'new'|'continue'>(embedded?'new':'opening');
 
 watch(()=>[w.panel,library.value,entry.value,w.active?.id],async()=>{await nextTick();window.dispatchEvent(new Event('academy:page-transition'));});
 
-function start(){if(guardNavigation(start))return;if(!w.loading&&needsFirstSetup()){w.home();w.resetNewGameDraft();entry.value='new';void beginFirstSetup(++navigationSequence);return;}pendingText='';library.value=false;w.home();w.resetNewGameDraft();entry.value='new';w.panel='story';}
+function start(){if(guardNavigation(start))return;if(!w.loading&&needsFirstSetup()){w.home();entry.value='new';void beginFirstSetup(++navigationSequence);return;}pendingText='';library.value=false;w.home();entry.value='new';w.panel='story';}
 
 function resume(){if(guardNavigation(resume))return;pendingText='';library.value=false;w.home();entry.value='continue';}
 
@@ -194,7 +194,7 @@ async function terminalNavigate(event:Event){
   if(detail.entry==='new'){if(w.busy||w.workingMemory){w.notice='生成期间可浏览其他页面，新建存档请先等待或停止生成。';return;}
     pendingText=typeof detail.insert==='string'?detail.insert.trim().slice(0,16000):'';
     pendingExistingSessions=pendingText?new Set(w.sessions.map(session=>session.id)):undefined;
-    if(w.active)w.home();w.resetNewGameDraft();library.value=false;entry.value='new';w.panel='story';
+    if(w.active){w.home();w.resetNewGameDraft();}library.value=false;entry.value='new';w.panel='story';
     if(pendingText)w.notice='请先建立新会话，选中角色的邂逅提示会保留到剧情输入框，不会自动发送。';
     if(!w.sessions.length){try{await beginFirstSetup(sequence);}catch{w.problem='无法读取人设档案，请重试。';}}
     return;
@@ -261,7 +261,9 @@ onUnmounted(()=>{window.removeEventListener('academy:navigate',terminalNavigate)
 
 function navigate(panel:Panel){if(!draftFreePanels.has(panel)&&guardNavigation(()=>navigate(panel)))return;library.value=false;if(panel==='game-settings')w.settingsTab='theaters';if(panel==='map'&&embedded){window.dispatchEvent(new Event('academy:map'));return;}if(['memory','relations','theaters','status'].includes(panel)&&!w.active&&mainSession.value){w.open(mainSession.value.id);if(!w.active)return;}if(panel==='story')w.enterStory();else w.panel=panel;}
 
-function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetNewGameDraft();Object.assign(w.newGameDraft.persona,persona);entry.value='new';library.value=false;}
+function openPersonaApi(){personaApiReturn.value=true;navigate('settings');}
+function returnToPersona(){personaApiReturn.value=false;library.value=true;entry.value='new';w.panel='story';}
+function usePersona(persona:Persona,preserveDraft=false){setMasterPersona(persona);w.home();if(!preserveDraft)w.resetNewGameDraft();Object.assign(w.newGameDraft.persona,persona);entry.value='new';library.value=false;}
 
 </script>
 
@@ -297,7 +299,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <p v-if="!w.active&&entry==='new'&&pendingText" class="muted encounter-draft-notice" role="status">建立新存档后，所选角色的邂逅提示会填入剧情输入框，不会自动发送。</p>
 
-            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="navigate('settings')" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @saved="savedFirstPersona" />
+            <PersonaLibrary v-if="library" :w="w" :sessions="w.sessions" @settings="openPersonaApi" @use="persona=>firstSetup==='persona'?savedFirstPersona(persona):usePersona(persona)" @saved="savedFirstPersona" />
 
             <FormatErrorsView v-else-if="w.panel==='format-errors'" :w="w" /><HomeView @personas="library=true" v-else-if="!w.active && w.panel==='story'" :w="w" :mode="entry==='continue'?'continue':'new'" :first-setup="firstSetup==='name'" />
 
@@ -319,7 +321,7 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
 
             <StatusBar v-else-if="w.panel==='status'" :w="w" />
 
-            <SettingsView v-else-if="w.panel==='settings'" :w="configuration.view" @saved="savedFirstApi" />
+            <section v-else-if="w.panel==='settings'"><button v-if="personaApiReturn||(!w.active&&w.newGameDraft.wish.trim())" type="button" class="persona-api-return" @click="returnToPersona">返回人设编辑（草稿已保留）</button><SettingsView :w="configuration.view" @saved="savedFirstApi" /></section>
 
             <section v-else-if="w.panel==='presets'" class="surface preset-page"><header class="panel-heading"><div><p class="eyebrow">PRESETS / 预设管理</p><h1>导入与编辑预设</h1></div></header><PresetManager :w="configuration.view" /></section>
 
