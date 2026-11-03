@@ -12,5 +12,7 @@ for(const name of ['boot.css','boot.js'])fs.copyFileSync(new URL('server/auth-ui
 fs.copyFileSync(new URL('native/academy-frontend/account.js',root),new URL('auth/native-account.js',output));
 fs.copyFileSync(new URL('native/academy-frontend/account.css',root),new URL('auth/native-account.css',output));
 fs.copyFileSync(new URL('native/academy-frontend/login.js',root),new URL('auth/native-login.js',output));
+fs.copyFileSync(new URL('native/academy-frontend/login.css',root),new URL('auth/native-login.css',output));
+fs.copyFileSync(new URL('native/academy-frontend/login-visuals.js',root),new URL('auth/native-login-visuals.js',output));
 fs.cpSync(new URL('public/assets/',root),new URL('assets/',output),{recursive:true});
 console.log('已构建完整原学院文档、原加载动画和原 App 页面；需完整原生后端连接就绪后才能挂载。');

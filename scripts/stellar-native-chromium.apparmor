@@ -1,0 +1,8 @@
+# Applies only to the read-only bind mount of the existing server browser in
+# the independent Academy service namespace. The host browser is not replaced.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile stellar-native-chromium /opt/stellar-native-academy/browser-runtime/chrome flags=(unconfined) {
+  userns,
+}

@@ -27,7 +27,7 @@ export class NativeGateway {
   async readNativePreset(){const config=await this.presets.read();const defaults=await this.api.post('/api/presets/restore',{apiId:'openai',name:'Default'});if(!defaults?.preset)throw Error('原生默认预设未返回。');return {preset:config.preset,defaultPreset:defaults.preset};}
   async newGame(persona:Persona){return this.api.post(prefix+'new-game',{persona});}
   async place(id:string){return this.api.post(prefix+'place',{id});}
-  async configure(profile:Profile,_signal?:AbortSignal){const url=new URL(profile.apiBaseUrl!);if(url.username||url.password||url.search||url.hash||!['http:','https:'].includes(url.protocol))throw Error('请填写正确的接口地址。');return {origin:url.origin};}
+  async configure(profile:Profile,signal?:AbortSignal){const url=new URL(profile.apiBaseUrl!);if(url.username||url.password||url.search||url.hash||!['http:','https:'].includes(url.protocol))throw Error('请填写正确的接口地址。');return this.api.post(prefix+'model-service',{apiBaseUrl:profile.apiBaseUrl},signal);}
   async models(apiBaseUrl:string,key:string,signal:AbortSignal,_kind?:'embedding'):Promise<string[]>{
     const value=await this.api.post('/api/backends/chat-completions/status',{chat_completion_source:'custom',custom_url:apiBaseUrl.replace(/\/+$/,'').replace(/\/chat\/completions$/,''),...await this.credentials.payload(key)},signal);
     const rows=Array.isArray(value?.data)?value.data:Array.isArray(value)?value:[];const names=rows.map((v:any)=>typeof v==='string'?v:v.id).filter((v:any)=>typeof v==='string'&&v.trim());if(!names.length)throw Error('接口没有返回模型列表，请手动填写模型名。');return names;

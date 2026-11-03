@@ -9,7 +9,7 @@ export async function nativeVectors(request,signal){
   const credential=secret_id?readSecret(request.user.directories,SECRET_KEYS.CUSTOM,secret_id):key;
   if(!credential)throw Object.assign(Error('MODEL_KEY_REQUIRED'),{status:400});
   url.pathname=url.pathname.replace(/\/+$/,'').replace(/\/(?:chat\/completions|embeddings)$/,'')+'/embeddings';
-  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential}`},body:JSON.stringify({input:texts,model:profile.model}),signal});
+  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential}`},body:JSON.stringify({input:texts,model:profile.model}),signal,redirect:'error'});
   if(!response.ok)throw Object.assign(Error('NATIVE_EMBEDDING_FAILED'),{status:response.status,code:'NATIVE_EMBEDDING_FAILED'});
   const data=await response.json();if(!Array.isArray(data?.data)||data.data.length!==texts.length)throw Object.assign(Error('INVALID_EMBEDDING_RESPONSE'),{status:502});
   data.data.sort((a,b)=>a.index-b.index);

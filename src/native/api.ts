@@ -1,7 +1,7 @@
 import {reportHttpFailure,attachHttpNotice} from '../gateway/requestFailure';
 export class NativeHttpError extends Error {
   constructor(readonly status:number, readonly path:string, readonly code?:string) {
-    super(code==='NATIVE_PRIVATE_COMPILER_PENDING'?'私有原生编排正在接入，生成功能暂不可用；已有存档和设置保留。':status===401||status===403||status===302?'原生账号会话已失效，请重新登录；当前输入保留。':code==='integrity'||code==='NATIVE_DATA_CONFLICT'?'原生资料已被其他操作修改，已停止覆盖；请重新载入。':code==='MODEL_RESPONSE_INCOMPLETE'?'回复尚未完整结束，正文已保留，状态未更新；可继续续写或重试。':`原生接口请求失败（${status}），当前资料保留。${code?' 错误类型：'+code:''}`);
+    super(code==='NATIVE_PRIVATE_COMPILER_PENDING'?'私有原生编排正在接入，生成功能暂不可用；已有存档和设置保留。':code==='API_ORIGIN_NOT_ALLOWED'?'此接口尚未加入新版的服务白名单，请联系管理员添加；当前配置保留。':status===401||status===302||status===403&&!code?'原生账号会话已失效，请重新登录；当前输入保留。':code==='integrity'||code==='NATIVE_DATA_CONFLICT'?'原生资料已被其他操作修改，已停止覆盖；请重新载入。':code==='MODEL_RESPONSE_INCOMPLETE'?'回复尚未完整结束，正文已保留，状态未更新；可继续续写或重试。':`原生接口请求失败（${status}），当前资料保留。${code?' 错误类型：'+code:''}`);
     attachHttpNotice(this,reportHttpFailure({status,code,task:'原生接口',message:this.message}));
   }
 }
@@ -19,7 +19,7 @@ export class NativeApi {
       return this.post('/api/plugins/academy-compat/chats/save',{expected:this.chatStamps.get(id),document},signal);
     }
     const official=/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|files|secrets|users|backends)(?:\/|$)/.test(path);
-    const compatible=/^\/api\/plugins\/academy-compat\/(?:terminal\/(?:plan|finish|cancel)|tasks\/(?:plan|finish|cancel)|world\/(?:ensure|migrate)|(?:settings|chats)\/save|shares\/(?:create|lookup)|catalog|cards|map|new-game|place|author-books|prepare|vectors)$/.test(path);
+    const compatible=/^\/api\/plugins\/academy-compat\/(?:terminal\/(?:plan|finish|cancel)|tasks\/(?:plan|finish|cancel)|world\/(?:ensure|migrate)|(?:settings|chats)\/save|shares\/(?:create|lookup)|catalog|cards|map|new-game|place|author-books|prepare|vectors|model-service)$/.test(path);
     if((!official&&!compatible)||path.includes('..'))throw Error('不支持的原生接口。');
     const headers=new Headers(await this.headers());headers.set('Content-Type','application/json');
     const response=await this.request(path,{method:'POST',credentials:'same-origin',redirect:'manual',headers,body:JSON.stringify(body),signal:signal||AbortSignal.timeout(30000)});

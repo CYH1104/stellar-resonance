@@ -641,7 +641,7 @@ export function useWorkspace() {
     if(!authorized.value){problem.value='请先验证访问资格';return;}
     const p=copy(storyProfile.value!);const storyKey=key(p);
     if(!ensureApiConfiguration())return;
-    if(localService.value&&session.sourceDataset!==localService.value.dataset){problem.value='这是旧版演示存档，请新建一份服务器世界卡存档测试。原存档仍保留。';return;}
+    if(localService.value&&!nativeWorkspaceActive()&&session.sourceDataset!==localService.value.dataset){problem.value='这是旧版演示存档，请新建一份服务器世界卡存档测试。原存档仍保留。';return;}
     if(localService.value&&!connectionReady(p)){problem.value='请在API 设置填写服务地址、模型名称，并确认使用此服务。';panel.value='settings';return;}
     if(requestPreferences.mode==='server'&&gateway().capabilities.keyRequired!==false&&!key(p)){problem.value='请在API 设置填写当前接口的 Key';panel.value='settings';return;}
     let index:number;

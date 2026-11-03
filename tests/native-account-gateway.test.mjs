@@ -16,6 +16,9 @@ test('gateway rejects stale account requests before native access and offers ind
     const stale=await fetch(origin+'/api/settings/save',{method:'POST',headers:{'X-Academy-Account':'account-a'},body:'{}'});assert.equal(stale.status,409);assert.deepEqual(await stale.json(),{error:'NATIVE_ACCOUNT_CHANGED'});assert.deepEqual(writes,[]);
     const staleEditor=await fetch(origin+'/editor/api/editor',{method:'POST',headers:{'X-Academy-Account':'account-a'},body:'{}'});assert.equal(staleEditor.status,409);assert.deepEqual(writes,[]);
     const current=await fetch(origin+'/api/settings/get',{method:'POST',headers:{'X-Academy-Account':'account-b'},body:'{}'});assert.equal(current.status,200);await current.json();assert.deepEqual(writes,['/api/settings/get']);
-    unavailable=true;const outage=await fetch(origin+'/api/settings/get',{method:'POST',headers:{'X-Academy-Account':'account-b'},body:'{}'});assert.equal(outage.status,502);assert.ok(!(await outage.text()).includes('NATIVE_ACCOUNT_CHANGED'));assert.deepEqual(writes,['/api/settings/get']);
+    for(const path of ['/api/backends/chat-completions/status','/native-engine/api/backends/chat-completions/status']){const r=await fetch(origin+path,{method:'POST',body:'{}'});assert.equal(r.status,200);await r.json();assert.equal(writes.at(-1),'/api/plugins/academy-compat/completions/status');}
+    for(const path of ['/api/backends/claude/generate','/native-engine/api/backends/text-completions/generate'])assert.equal((await fetch(origin+path,{method:'POST',body:'{}'})).status,403);
+    const prior=[...writes];
+    unavailable=true;const outage=await fetch(origin+'/api/settings/get',{method:'POST',headers:{'X-Academy-Account':'account-b'},body:'{}'});assert.equal(outage.status,502);assert.ok(!(await outage.text()).includes('NATIVE_ACCOUNT_CHANGED'));assert.deepEqual(writes,prior);
   }finally{child.kill();await once(child,'exit');native.closeAllConnections();await new Promise(done=>native.close(done));}
 });
