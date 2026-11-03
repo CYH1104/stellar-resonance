@@ -14,6 +14,7 @@ test('gateway rejects stale account requests before native access and offers ind
     const origin='http://127.0.0.1:'+port;
     const login=await fetch(origin+'/login');assert.equal(login.status,200);assert.equal(login.headers.get('cache-control'),'no-store');assert.equal(await login.text(),academyLoginPage);
     const stale=await fetch(origin+'/api/settings/save',{method:'POST',headers:{'X-Academy-Account':'account-a'},body:'{}'});assert.equal(stale.status,409);assert.deepEqual(await stale.json(),{error:'NATIVE_ACCOUNT_CHANGED'});assert.deepEqual(writes,[]);
+    const staleEditor=await fetch(origin+'/editor/api/editor',{method:'POST',headers:{'X-Academy-Account':'account-a'},body:'{}'});assert.equal(staleEditor.status,409);assert.deepEqual(writes,[]);
     const current=await fetch(origin+'/api/settings/get',{method:'POST',headers:{'X-Academy-Account':'account-b'},body:'{}'});assert.equal(current.status,200);await current.json();assert.deepEqual(writes,['/api/settings/get']);
     unavailable=true;const outage=await fetch(origin+'/api/settings/get',{method:'POST',headers:{'X-Academy-Account':'account-b'},body:'{}'});assert.equal(outage.status,502);assert.ok(!(await outage.text()).includes('NATIVE_ACCOUNT_CHANGED'));assert.deepEqual(writes,['/api/settings/get']);
   }finally{child.kill();await once(child,'exit');native.closeAllConnections();await new Promise(done=>native.close(done));}

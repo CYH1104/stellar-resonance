@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {terminalPlan,terminalFollowupPlan,parseTerminalResult} from '../../server/personal-terminal.mjs';
+import {withInternalPrompts} from '../../server/internal-prompts.mjs';
 
 const fail=(status,code)=>Object.assign(Error(code),{status,code});
 /** Feature protocol only. Model requests and persistence remain native. */
@@ -13,8 +14,8 @@ export function terminalPlans({clock=Date.now,maxPending=64}={}){
       // The caller supplies its selected save's scoped state, including custom NPCs.
       // No global player persona, unrelated save, author card or server profile is consulted.
       const ids=new Set((input.context?.state?.characters||input.state?.characters||[]).map(c=>c.id));
-      const source={card:{characters:(card.characters||[]).filter(c=>ids.has(c.id))},input:JSON.parse(JSON.stringify(input))};
-      return put(owner,terminalPlan(source.card,source.input),source);
+      const source={card:{characters:(card.characters||[]).filter(c=>ids.has(c.id))},authorCard:card,input:JSON.parse(JSON.stringify(input))};
+      return put(owner,withInternalPrompts(card.internalPrompts,()=>terminalPlan(source.card,source.input)),source);
     },
     finish(owner,token,text){
       prune();const entry=pending.get(token);
@@ -30,13 +31,13 @@ export function terminalPlans({clock=Date.now,maxPending=64}={}){
       }
       pending.delete(token);
       if(entry.plan.task==='react'){
-        const review=terminalFollowupPlan(entry.source.card,entry.source.input,'review',{command:entry.source.input.input,result});
+        const review=withInternalPrompts(entry.source.authorCard?.internalPrompts,()=>terminalFollowupPlan(entry.source.card,entry.source.input,'review',{command:entry.source.input.input,result}));
         return {ok:true,result,review:put(owner,review,entry.source)};
       }
       return {ok:true,result};
     },
     cancel(owner,token){const entry=pending.get(token);if(entry?.owner===owner)pending.delete(token);},
-    preparation(owner,token){prune();const row=pending.get(token);if(!row||row.owner!==owner)throw fail(404,'NATIVE_TASK_EXPIRED');const messages=[...row.plan.messages];if(row.correction)messages.push({role:'assistant',content:row.correction.text},{role:'user',content:`回复格式未通过（${row.correction.reason}）。沿用同一组已锁定目标，只返回合法 JSON，不重新抽签或揭露匿名身份。`});return JSON.parse(JSON.stringify({input:row.source.input,messages,task:row.plan.task}));},
+    preparation(owner,token){prune();const row=pending.get(token);if(!row||row.owner!==owner)throw fail(404,'NATIVE_TASK_EXPIRED');const messages=[...row.plan.messages];if(row.correction)messages.push({role:'assistant',content:row.correction.text},{role:'user',content:`回复格式未通过（${row.correction.reason}）。沿用同一组已锁定目标，只返回合法 JSON，不重新抽签或揭露匿名身份。`});return JSON.parse(JSON.stringify({input:row.source.input,messages,task:row.plan.task,authorCard:row.source.authorCard}));},
     get size(){prune();return pending.size;},
   };
 }

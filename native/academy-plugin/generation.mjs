@@ -16,7 +16,7 @@ export function privateGeneration({catalog,tasks,terminal,compiler=new PrivateNa
   async prepare(owner,body,signal){
    prune();if(pending.size>=64)throw fail('NATIVE_TASK_BUSY',429);
    if(!['tasks','terminal'].includes(body.family)||typeof body.token!=='string'||!body.pipeline||!body.profile)throw fail('INVALID_NATIVE_TASK');
-   const source=body.family==='terminal'?terminal.preparation(owner,body.token):(await tasks()).preparation(owner,body.token),input=body.pipeline,card=(await catalog()).card;
+   const source=body.family==='terminal'?terminal.preparation(owner,body.token):(await tasks()).preparation(owner,body.token),input=body.pipeline,card=source.authorCard||(await catalog()).card;
    const anonymous=source.input.task==='command'||source.input.task==='divination'&&source.input.context?.divination?.kind==='npc';
    const projection=anonymous?{userName:'User',persona:''}:nativeTaskProjection(source.input);
    const books=cleanNativeWorldbookRequest(input.books||[]);if(source.input.task!=='command')books.unshift(authorBook(card));

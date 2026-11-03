@@ -1,15 +1,17 @@
 import {privateGeneration} from './generation.mjs';
 import {terminalPlans} from './terminal.mjs';
-import {academyCatalog,academyTasks} from './tasks.mjs';
+import {academyCatalog,academyTasks,catalogFromEditor} from './tasks.mjs';
 import {nativeVectors} from './vectors.mjs';
 import {nativeStorageRoutes} from './storage.mjs';
 import {installNativeAccounts} from './accounts.mjs';
+import {nativeAuthor,nativeAuthorRoutes} from './author.mjs';
 export const info={id:'academy-compat',name:'Academy feature compatibility',description:'Academy feature contracts on original native requests and storage'};
 export async function init(router,{installAccounts=installNativeAccounts}={}){
   await installAccounts(router);
   const plans=terminalPlans();
   let catalogPromise;const catalog=()=>catalogPromise??=academyCatalog().catch(error=>{catalogPromise=undefined;throw error;});
   let tasksPromise;const tasks=()=>tasksPromise??=catalog().then(academyTasks).catch(error=>{tasksPromise=undefined;throw error;});
+  nativeAuthorRoutes(router,nativeAuthor({catalog,changed:async editor=>{const next=catalogFromEditor((await catalog()).base,editor);catalogPromise=Promise.resolve(next);if(tasksPromise)(await tasksPromise).updateCatalog(next);}}));
   const generation=privateGeneration({catalog,tasks,terminal:plans});
   const publicPlan=value=>({token:value.token,...(value.requestId?{requestId:value.requestId}:{})});
   const route=action=>async(request,response)=>{

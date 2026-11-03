@@ -10,12 +10,16 @@ export function academyAccounts({store,create,now=Date.now}){
   let tail=Promise.resolve();
   const serial=fn=>{const task=tail.then(fn);tail=task.catch(()=>{});return task;};
   return {
-    async invite(owner){
+    async invite(owner,metadata={}){
       if(!owner?.admin)throw failure('NATIVE_ADMIN_REQUIRED',403);
+      const batch=typeof metadata.batch==='string'?metadata.batch.trim():'',note=typeof metadata.note==='string'?metadata.note.trim():'';
+      if(batch.length>100||note.length>500)throw failure('NATIVE_INVITE_INVALID');
       const code=randomBytes(18).toString('base64url');
-      await store.setItem(prefix+digest(code),{version:1,created:now(),createdBy:owner.handle,status:'unused'});
+      await store.setItem(prefix+digest(code),{version:1,created:now(),createdBy:owner.handle,status:'unused',batch,note});
       return {code};
     },
+    async list(owner){if(!owner?.admin)throw failure('NATIVE_ADMIN_REQUIRED',403);return {invites:(await store.values(item=>item.key.startsWith(prefix))).map(({created,createdBy,status,handle,batch,note,used})=>({created,createdBy,status,handle,batch:batch||'',note:note||'',used})).sort((a,b)=>b.created-a.created)};},
+    revoke(owner,code){return serial(async()=>{if(!owner?.admin)throw failure('NATIVE_ADMIN_REQUIRED',403);if(typeof code!=='string'||!/^[A-Za-z0-9_-]{24}$/.test(code.trim()))throw failure('NATIVE_INVITE_INVALID');const key=prefix+digest(code.trim()),item=await store.getItem(key);if(item?.status!=='unused')return {revoked:false};await store.setItem(key,{...item,status:'revoked'});return {revoked:true};});},
     register(body){return serial(async()=>{
       const handle=typeof body?.handle==='string'?body.handle.trim().toLowerCase():'';
       const name=typeof body?.name==='string'?body.name.trim():'';
@@ -60,7 +64,10 @@ export async function installNativeAccounts(pluginRouter){
     }catch(error){return sendError(response,error);}
   });
   pluginRouter.post('/accounts/invites/create',async(request,response)=>{
-    try{return response.json(await accounts.invite(request.user?.profile));}
+    try{return response.json(await accounts.invite(request.user?.profile,request.body));}
     catch(error){return sendError(response,error);}
   });
+  pluginRouter.post('/accounts/invites/list',async(request,response)=>{try{return response.json(await accounts.list(request.user?.profile));}catch(error){return sendError(response,error);}});
+  pluginRouter.post('/accounts/invites/revoke',async(request,response)=>{try{return response.json(await accounts.revoke(request.user?.profile,request.body?.code));}catch(error){return sendError(response,error);}});
+  pluginRouter.post('/accounts/invites/batch',async(request,response)=>{try{if(!request.user?.profile?.admin)throw failure('NATIVE_ADMIN_REQUIRED',403);const count=request.body?.count;if(!Number.isSafeInteger(count)||count<1||count>1000)throw failure('NATIVE_INVITE_INVALID');const codes=[];for(let i=0;i<count;i++)codes.push((await accounts.invite(request.user.profile,request.body)).code);return response.json({codes});}catch(error){return sendError(response,error);}});
 }

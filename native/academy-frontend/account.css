@@ -1,0 +1,4 @@
+.academy-account-tools{position:fixed;right:8px;bottom:8px;z-index:2147483647;visibility:visible;display:flex;align-items:center;flex-wrap:wrap;gap:8px;max-width:calc(100vw - 16px);border:1px solid var(--line,#d4c8b7);border-radius:6px;background:var(--paper,#fffaf2);color:var(--muted,#73869a);font:12px/1.5 Georgia,serif;padding:5px 9px}
+.academy-account-tools button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:4px 6px}
+.academy-account-tools input{font:inherit;min-width:210px;max-width:100%}
+.academy-account-tools a{color:inherit}

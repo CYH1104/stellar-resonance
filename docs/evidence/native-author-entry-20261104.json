@@ -1,0 +1,139 @@
+{
+  "date": "2026-11-04",
+  "baseline": "7a1c5be665268388f01ab1af8f679766b1f27b8f",
+  "entry": "http://43.138.251.91:8088/editor/",
+  "authentication": "existing independent native account session, admin required, native CSRF for writes",
+  "tests": {
+    "backend": {
+      "passed": 486,
+      "skipped": 4
+    },
+    "frontend": {
+      "passed": 966,
+      "skipped": 3
+    },
+    "staticCompositionBuild": "passed; existing workspace bundle reused; no TypeScript/Vue change"
+  },
+  "localApi": {
+    "scope": "isolated original native backend and new editor gateway",
+    "passed": 7,
+    "checks": [
+      "guest and ordinary users cannot enter the new editor or read/write its private native endpoints",
+      "native administrators receive the original editor under the independent new entry",
+      "original author CSS and scripts, native account management and account styles all load",
+      "author reads have a native CSRF token and stale writes do not modify the document",
+      "a real native author save immediately updates opening, public cards and map without revealing private content",
+      "administrator batch invites support statistics and revocation; ordinary accounts cannot inspect them",
+      "formal generation pause is preserved; no model request is made"
+    ],
+    "modelCalls": 0
+  },
+  "localAuthorBrowser": {
+    "scope": "isolated browser and original native backend, including real author edits",
+    "passed": 9,
+    "checks": [
+      "author entry redirects to native admin login and returns to the original author UI",
+      "original author stylesheet and HTTP-compatible UUID support load under the editor CSP",
+      "the original add-character control saves successfully on HTTP",
+      "original opening editor round-trips a real native author save",
+      "character, private worldbook, map, opening and internal-rule sections all render",
+      "the author account-management link displays native users",
+      "visible native invite controls generate usable non-admin registration codes and revoke unused codes",
+      "native admin password reset accepts the new password and invalidates the prior user session",
+      "the original author logout uses native CSRF and returns to login"
+    ],
+    "modelCalls": 0,
+    "cspViolations": 0,
+    "runtimeErrors": 0
+  },
+  "localPlayerBrowser": {
+    "scope": "isolated local browser and original native server",
+    "checks": [
+      "account 0 registers through the visible invitation form",
+      "first account saves a server-backed draft from the complete frontend",
+      "logout is visible and clickable even while the native engine is loading",
+      "logout returns to the account form and locks the other old account tab",
+      "account 1 registers through the visible invitation form",
+      "second account opens with no first-account sessions or draft",
+      "old tab cannot submit data after another account signs in"
+    ],
+    "passed": 7,
+    "modelCalls": 0
+  },
+  "deployedApi": {
+    "scope": "deployed new author entry via SSH loopback, read-only author data checks",
+    "passed": 6,
+    "checks": [
+      "guest and ordinary users cannot enter the new editor or read/write its private native endpoints",
+      "native administrators receive the original editor under the independent new entry",
+      "original author CSS and scripts, native account management and account styles all load",
+      "author reads have a native CSRF token and stale writes do not modify the document",
+      "administrator batch invites support statistics and revocation; ordinary accounts cannot inspect them",
+      "formal generation pause is preserved; no model request is made"
+    ],
+    "modelCalls": 0
+  },
+  "publicAuthorBrowser": {
+    "scope": "actual public new author UI; existing real author documents were not edited",
+    "passed": 7,
+    "checks": [
+      "author entry redirects to native admin login and returns to the original author UI",
+      "original author stylesheet and HTTP-compatible UUID support load under the editor CSP",
+      "character, private worldbook, map, opening and internal-rule sections all render",
+      "the author account-management link displays native users",
+      "visible native invite controls generate usable non-admin registration codes and revoke unused codes",
+      "native admin password reset accepts the new password and invalidates the prior user session",
+      "the original author logout uses native CSRF and returns to login"
+    ],
+    "modelCalls": 0,
+    "cspViolations": 0,
+    "runtimeErrors": 0
+  },
+  "deployment": {
+    "frontendPid": 1242215,
+    "nativePid": 1242214,
+    "automaticRestarts": 0,
+    "old8807Pid": 2817555,
+    "old9000Pid": 2871143,
+    "oldAuthorHttpStatus": 200,
+    "generationPaused": true,
+    "compilerActive": false,
+    "backups": [
+      "pre-author-20261104-code.tar.gz",
+      "pre-author-20261104-data.tar.gz"
+    ],
+    "backupOwner": "root",
+    "backupMode": "0600",
+    "authorData": "independent author-assets directory; real online documents were not edited during verification"
+  },
+  "deployedFileHashes": {
+    "native/academy-frontend/account.js": "3f2f9526c665d46e8877a1ace1f36583e6a477b5ab445cd5bd53dd6011b0f99a",
+    "native/academy-frontend/account.css": "e7ba4a0286cf6cd8cf80ebec0b349fbd2ecd224c9cae215937b3a66eebe6b4f8",
+    "native/academy-frontend/login.js": "82f29ff964b4e4d14bed631ad1ae90bafe57f703049bff9da5c48706bdea7083",
+    "native/academy-frontend/server.mjs": "24595cb3ad96f40c22fa6c751cbd2d734a2af2a8dd52be02bba1039ac41de808",
+    "native/academy-frontend/editor.mjs": "a589fcba691726a67c435896bc0c223eb6fa09ac10c24f030a1735cf2771781c",
+    "native/academy-frontend/editor-accounts.html": "07cb36596bb18695f097d4ae9352bc6840241036560a15a2488d43658f16c132",
+    "native/academy-frontend/editor-accounts.js": "7c6c3a2d8f7ca93c0aca699387226533862c23da69312dc202f9c1ba15f6ed5b",
+    "native/academy-plugin/accounts.mjs": "85c8355a0a5a8f3d2ecb4dc43d7ddbcf0dddab23769e6f723078b404ab4268ff",
+    "native/academy-plugin/author.mjs": "a5345e01fe382b9b7e8c9539146d3ac32debc804305bfb77b6d22331d88a49f6",
+    "native/academy-plugin/index.mjs": "189693b7c7d416d71225773c5f0592c271eea9a2b6d7f2ef6d0ef098a8d6a9f5",
+    "native/academy-plugin/tasks.mjs": "098f9a66fd5c03c6526b4aa9fcdb58ebfe94eda3240684eed74e2e94220eb12a",
+    "native/academy-plugin/terminal.mjs": "c8a868292c84c85aa10c1847e07d6b5d09e6f4290320f2a9078eb31b4f6ad69d",
+    "native/academy-plugin/generation.mjs": "a6d7f018357960c96af0821c5561d425d605c7e672a1fb9f3e19a0013b01c894",
+    "scripts/build-academy-frontend.mjs": "61bf4a0759866e13232f13a4037a9a75a524e113687dd36e10d886556aa74dc5",
+    "server/editor-ui/editor.html": "668900f485835b4b12530e05f1ff9a20ae1ed7f32b4542546f1fb62e2373a878",
+    "server/editor-ui/editor.js": "d321a782e1a62266244106f945dafe10b9bf6548bd2ae6db1acb8ac95a37106f",
+    "server/editor-ui/editor.css": "3762a861f22b0f26b802373a6675df5759ed18952c5eaf2423ed9ac7902cde9d",
+    "server/editor-ui/worldbook.js": "0a61a29fbdb7302bbce03e6915174738c2596bee39e99b15cbb9aa6299559cfc",
+    "server/auth-ui/login.css": "c86322572b42862fadfcdc91d47ebc524c15a32c80eb652d01e8577270cd5df6",
+    "dist/academy-frontend/auth/native-account.js": "3f2f9526c665d46e8877a1ace1f36583e6a477b5ab445cd5bd53dd6011b0f99a",
+    "dist/academy-frontend/auth/native-account.css": "e7ba4a0286cf6cd8cf80ebec0b349fbd2ecd224c9cae215937b3a66eebe6b4f8",
+    "dist/academy-frontend/auth/native-login.js": "82f29ff964b4e4d14bed631ad1ae90bafe57f703049bff9da5c48706bdea7083",
+    "dist/academy-frontend/workspace.js": "6866a5ae97b673c4469696143240f8976cb2dac4a5da2297574f5e1910c072fa"
+  },
+  "limits": [
+    "No real model calls; existing generation pause remains.",
+    "This connects author editing and native account management, not the unfinished worldbook/helper architecture migration.",
+    "Actual author writes and cache refresh were tested on an isolated real native server; production author verification was read-only except deliberately rejected stale writes."
+  ]
+}
