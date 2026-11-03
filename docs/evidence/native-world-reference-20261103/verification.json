@@ -1,0 +1,25 @@
+{
+  "scope": "isolated fixed-world snapshot; excludes pending worldbook/helper changes",
+  "frontend": {
+    "passed": 965,
+    "skipped": 3
+  },
+  "backend": {
+    "passed": 470,
+    "skipped": 4
+  },
+  "typescript": "passed",
+  "defaultBuild": "passed",
+  "nativeFrontendBuild": "passed",
+  "originalNativeApi": {
+    "passed": 3,
+    "origin": "http://127.0.0.1:8998"
+  },
+  "deployedNativeApi": {
+    "passed": 5,
+    "modelCalls": 0
+  },
+  "browserUi": "not run for this change",
+  "provider": "not called",
+  "capacity": "not accepted"
+}

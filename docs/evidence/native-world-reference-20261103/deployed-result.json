@@ -1,0 +1,12 @@
+{
+  "scope": "deployed independent 8088 through SSH loopback; temporary non-admin account; native storage API verification, not a browser UI or real-model test",
+  "checks": [
+    "two old chats migrate to one fixed world with independent JSONL files",
+    "original source files, swipes, private terminal records and native extensions remain identical",
+    "account-private migration recovery contains exact previous settings and all original rows",
+    "repeated world preparation and migration do not create another resource or migrate twice",
+    "native login boundary and existing generation pause are preserved"
+  ],
+  "passed": 5,
+  "modelCalls": 0
+}
