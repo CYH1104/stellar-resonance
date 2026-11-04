@@ -51,8 +51,34 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
    <div class="actions"><button type="button" :disabled="blocked" @click="update(value=>addNativePreset(value,value.preset,((value.name||'默认预设')+' 副本').slice(0,100)))">复制预设</button><button type="button" :disabled="blocked||items.length<2" @click="update(value=>removeNativePreset(value,value.id||'default'))">删除当前预设</button></div>
    <details class="subsection"><summary>按任务选择预设</summary><div class="field-grid"><label v-for="(label,task) in nativePresetTasks" :key="task">{{label}}<select :aria-label="label+'预设绑定'" :value="draft.taskPresets?.[task]||''" :disabled="blocked" @change="bind(task,($event.target as HTMLSelectElement).value)"><option value="">跟随当前预设</option><option v-for="item in items" :key="item.id" :value="item.id">{{item.name}}</option></select></label></div></details>
    <div class="field-grid"><label>Temperature<input v-model.number="draft.preset.temperature" aria-label="原生预设温度" type="number" min="0" step="0.05" :disabled="blocked"/></label><label>上下文 Token<input v-model.number="draft.preset.openai_max_context" aria-label="原生预设上下文长度" type="number" min="512" step="1" :disabled="blocked"/></label><label>最大输出 Token<input v-model.number="draft.preset.openai_max_tokens" aria-label="原生预设输出上限" type="number" min="1" :disabled="blocked"/></label></div>
-   <details v-for="(entry,index) in promptEntries" :key="index" class="subsection"><summary>{{entry.name||entry.identifier}}</summary><label class="toggle"><input type="checkbox" :checked="enabled(entry)" :aria-label="'启用 '+(entry.name||entry.identifier)" :disabled="blocked||typeof entry.identifier!=='string'" @change="toggle(entry.identifier,($event.target as HTMLInputElement).checked)"/>启用条目</label><label v-if="typeof entry.content==='string'">内容<textarea v-model="entry.content" :aria-label="'内容 '+(entry.name||entry.identifier)" rows="5" :disabled="blocked"/></label></details>
+   <div class="native-prompt-list" aria-label="提示词条目">
+    <div v-for="(entry,index) in promptEntries" :key="index" class="native-prompt-entry" :class="{'is-enabled':enabled(entry)}">
+     <details class="native-prompt-detail"><summary><span>{{entry.name||entry.identifier||'未命名条目'}}</span></summary><div class="native-prompt-content"><label v-if="typeof entry.content==='string'">内容<textarea v-model="entry.content" :aria-label="'内容 '+(entry.name||entry.identifier)" rows="5" :disabled="blocked"/></label></div></details>
+     <button type="button" class="native-prompt-toggle" role="switch" :aria-checked="!!enabled(entry)" :aria-label="'启用 '+(entry.name||entry.identifier||'未命名条目')" :disabled="blocked||typeof entry.identifier!=='string'" @click="toggle(entry.identifier,!enabled(entry))"><span class="native-prompt-track" aria-hidden="true"></span><span>{{enabled(entry)?'已启用':'已停用'}}</span></button>
+    </div>
+   </div>
    <details class="subsection"><summary>完整文件编辑</summary><label>预设 JSON<textarea v-model="rawText" aria-label="完整原生预设 JSON" rows="12" :disabled="blocked"/></label><button type="button" :disabled="blocked" @click="applyRaw">应用到草稿</button><p class="rail-note">导入和编辑保留原文件的扩展字段；点击保存后生效。</p></details>
   </template>
  </section>
 </template>
+<style scoped>
+.native-prompt-list{margin-top:16px;border-top:1px solid var(--color-border)}
+.native-prompt-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;column-gap:12px;border-bottom:1px solid var(--color-border)}
+.native-prompt-detail{min-width:0}
+.native-prompt-detail>summary{cursor:pointer;padding:12px 0;line-height:1.5;overflow-wrap:anywhere;color:var(--color-muted)}
+.is-enabled>.native-prompt-detail>summary{color:var(--color-text);font-weight:600}
+.native-prompt-content{padding:0 0 12px}
+.native-prompt-content label{margin:0}
+.native-prompt-toggle{display:inline-flex;align-items:center;gap:7px;margin:7px 0;padding:5px 8px;min-height:32px;white-space:nowrap;border:1px solid var(--color-border);border-radius:6px;background:transparent;color:var(--color-muted);font:inherit;font-size:12px;line-height:1.5;cursor:pointer}
+.native-prompt-track{position:relative;display:block;flex:0 0 28px;width:28px;height:16px;border:1px solid currentColor;border-radius:10px;box-sizing:border-box}
+.native-prompt-track::after{content:'';position:absolute;left:2px;top:2px;width:10px;height:10px;border-radius:50%;background:currentColor;transition:transform .15s ease}
+.is-enabled>.native-prompt-toggle{color:var(--color-accent);border-color:currentColor}
+.is-enabled>.native-prompt-toggle .native-prompt-track::after{transform:translateX(12px)}
+.native-prompt-toggle:focus-visible{outline:2px solid var(--color-accent);outline-offset:3px}
+.native-prompt-toggle:disabled{cursor:default;opacity:.5}
+:global(#academy-workspace) .native-prompt-toggle{display:inline-flex;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;background:transparent;color:var(--color-muted);font-size:12px;line-height:1.5}
+:global(#academy-workspace) .is-enabled>.native-prompt-toggle{color:var(--color-accent);border-color:currentColor}
+:global(#academy-workspace) .native-prompt-detail>summary{color:var(--color-muted)}
+:global(#academy-workspace) .is-enabled>.native-prompt-detail>summary{color:var(--color-text)}
+@media(prefers-reduced-motion:reduce){.native-prompt-track::after{transition:none}}
+</style>
