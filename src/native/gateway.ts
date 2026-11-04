@@ -1,5 +1,5 @@
 import type {GenerateRequest,GenerateEvent,Persona,Profile,LocalService,Session} from '../domain/contracts';
-import {nativePresetForRequest,nativePresetList} from '../domain/nativePreset';
+import {nativePresetForRequest,nativePresetList,type NativePresetConfig} from '../domain/nativePreset';
 import {nativeWorldbooksForRequest,projectNativeWorldScopes,type NativeWorldbook} from '../domain/nativeWorldbooks';
 import {emptyNativeEffects,nativeWorldSeed} from '../domain/nativeWorldState';
 import {terminalCodeBindings} from '../domain/terminalCodeVariables';
@@ -36,8 +36,9 @@ export class NativeGateway {
   async terminalCode(data:any){const codes=terminalCodeBindings(data.state);if(data.self===true)return {code:codes.player||''};const id=Object.keys(codes).find(id=>id!=='player'&&codes[id]===data.code);const actor=data.state?.characters?.find((c:any)=>c.id===id);if(!actor)throw Error('未找到该终端码，请向角色确认。');return {id,name:actor.name,identity:actor.identity||'',code:data.code};}
   async createTheaterShare(template:unknown):Promise<{code:string}>{return this.api.post(prefix+'shares/create',{template});}
   async lookupTheaterShare(code:string):Promise<{template:unknown}>{return this.api.post(prefix+'shares/lookup',{code});}
-  private async compose(path:string,input:any,token:string,profile:Profile,signal:AbortSignal,session?:Session){
-    const config=await this.presets.read(),taskPreset=nativePresetForRequest(config,path,input).preset;
+  private async compose(path:string,input:any,token:string,profile:Profile,signal:AbortSignal,session?:Session,configuration?:NativePresetConfig){
+    const started=performance.now();profile=clone(profile);
+    const config=configuration||await this.presets.read(),taskPreset=nativePresetForRequest(config,path,input).preset;
     profile=await this.completions.profileForPreset(profile,taskPreset);
     const selected=nativePresetList(config).find(p=>JSON.stringify(p.preset)===JSON.stringify(taskPreset));if(!selected)throw Error('本次任务的原生预设未找到。');
     const id=session?.id||input.sessionId||input.rounds?.[0]?.sessionId;
@@ -47,13 +48,14 @@ export class NativeGateway {
     if(session){const index=session.turns.findIndex(t=>t.id===input.turnId);if(index<0)throw Error('本次轮次与原生存档不符。');history=[];if(session.opening)history.push({role:'assistant',content:session.opening});for(const turn of session.turns.slice(0,index)){const variant=turn.variants[turn.selected];if(variant?.status==='complete')history.push({role:'user',content:turn.input},{role:'assistant',content:variant.text});}history.push({role:'user',content:input.input});if(input.continuation?.partial)history.push({role:'assistant',content:input.continuation.partial});
     }else history=[];
     const result=await this.api.post(prefix+'prepare',{family:path==='personal-terminal'?'terminal':'tasks',token,profile,pipeline:{history,preset:{name:selected.name,data:selected.preset},books,effects:seed?.effects||emptyNativeEffects(),variables:{...(seed?.variables||{}),...(input.state?dataFromState(input.state):{})},globals:seed?.globals||{}}},signal);
+    if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('academy:native-transport',{detail:{phase:'prepare',model:profile.model,apiOrigin:new URL(profile.apiBaseUrl!).origin,elapsedMs:Math.round(performance.now()-started)}}));
     return {...result,preset:taskPreset,profile};
   }
   private async task(task:string,input:any,profile:Profile,key:string,signal:AbortSignal){
-    input=clone(input);const plan=await this.api.post(prefix+'tasks/plan',{task,input},signal);
+    input=clone(input);profile=clone(profile);const plan=await this.api.post(prefix+'tasks/plan',{task,input},signal);
     try{const prepared=await this.compose(task,input,plan.token,profile,signal);const result=await this.completions.complete(prepared.messages,prepared.profile,key,signal,prepared.preset);return await this.api.post(prefix+'tasks/finish',{token:plan.token,text:result.text},signal);}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
   }
-  async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal){const value=clone(input);const config=await this.presets.read(),preset=nativePresetForRequest(config,'personal-terminal',value).preset;profile=await this.completions.profileForPreset(profile,preset);return new NativeTerminal(this.api,this.completions,undefined,async(token,s)=>(await this.compose('personal-terminal',value,token,profile,s)).messages).run(value,profile,key,signal,preset);}
+  async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal){profile=clone(profile);const value=clone(input);const config=await this.presets.read(),preset=nativePresetForRequest(config,'personal-terminal',value).preset;profile=await this.completions.profileForPreset(profile,preset);return new NativeTerminal(this.api,this.completions,undefined,async(token,s)=>(await this.compose('personal-terminal',value,token,profile,s,undefined,config)).messages).run(value,profile,key,signal,preset);}
   async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal){return normalizePersona((await this.task('persona',{wish,draft},profile,key,signal)).persona);}
   async randomEvent(input:any,profile:Profile,key:string,signal:AbortSignal){return this.task('random-event',input,profile,key,signal);}
   async forumReply(input:any,profile:Profile,key:string,signal:AbortSignal){const result=await this.task('forum-reply',input,profile,key,signal);return input.minReplies===5?result.replies:result;}

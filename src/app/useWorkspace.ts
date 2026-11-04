@@ -83,6 +83,13 @@ export function useWorkspace() {
   }
   const disposeHttpFailureSink=setHttpFailureSink(reportHttpFailureNotice);
   onScopeDispose(()=>{disposeHttpFailureSink();clearHttpNotices();});
+  function nativeTransportLog(event:Event){
+    const value=(event as CustomEvent).detail;if(!value||!['prepare','response'].includes(value.phase)||typeof value.apiOrigin!=='string'||typeof value.model!=='string'||value.model.length>150||!Number.isSafeInteger(value.elapsedMs)||value.elapsedMs<0)return;
+    let url:URL;try{url=new URL(value.apiOrigin);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash||url.pathname!=='/')return;}catch{return;}
+    const stage=value.phase==='prepare'?'原生提示词准备':'模型接口响应';
+    void formatErrors.record(`${stage}\n模型：${value.model||'获取模型列表'}\n接口：${url.origin}\n等待：${(value.elapsedMs/1000).toFixed(2)} 秒`,'NATIVE_TRANSPORT',active.value?.id||'','','runtime').catch(()=>{});
+  }
+  if(typeof window!=='undefined'){window.addEventListener('academy:native-transport',nativeTransportLog);onScopeDispose(()=>window.removeEventListener('academy:native-transport',nativeTransportLog));}
   const hideFloors=ref((()=>{try{return accountStorage.getItem('academy:auto-hide-floors')!=='false';}catch{return true;}})());
   watch(hideFloors,value=>{try{accountStorage.setItem('academy:auto-hide-floors',String(value));}catch{}});
   const preferences=reactive<Preferences>({...defaults(),activePreset:'legacy',theaters:defaultTheaters()});

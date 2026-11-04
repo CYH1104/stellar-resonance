@@ -5,7 +5,7 @@ import {nativeVectors} from './vectors.mjs';
 import {nativeStorageRoutes} from './storage.mjs';
 import {installNativeAccounts} from './accounts.mjs';
 import {nativeAuthor,nativeAuthorRoutes} from './author.mjs';
-import {nativeModelBody,nativeModelPolicy} from './modelRequest.mjs';
+import {nativeModelBody,nativeModelPolicy,requireNativeCredential} from './modelRequest.mjs';
 export const info={id:'academy-compat',name:'Academy feature compatibility',description:'Academy feature contracts on original native requests and storage'};
 export async function init(router,{installAccounts=installNativeAccounts}={}){
   await installAccounts(router);
@@ -46,8 +46,12 @@ export async function init(router,{installAccounts=installNativeAccounts}={}){
     if(operation==='generate'&&process.env.ACADEMY_PUBLIC_PREVIEW==='1')return response.status(503).send({error:'NATIVE_PRIVATE_COMPILER_PENDING'});
     try{
       const body=nativeModelBody(request.body);
+      requireNativeCredential(request,body,await import('../SillyTavern/src/endpoints/secrets.js'));
+      if(operation==='generate'&&(typeof body.model!=='string'||!body.model.trim()||body.model.length>150))throw Object.assign(Error('MODEL_NOT_CONFIGURED'),{status:400,code:'MODEL_NOT_CONFIGURED'});
       await modelPolicy().assert(body.custom_url);
       if(operation==='generate'){const messages=generation.consume(owner,body);if(messages)body.messages=messages;}
+      response.setHeader('X-Academy-Api-Origin',new URL(body.custom_url).origin);
+      response.setHeader('X-Academy-Model',encodeURIComponent(operation==='generate'?body.model:''));
       const {router:native}=await import('../SillyTavern/src/endpoints/backends/chat-completions.js');
       const child=Object.assign(Object.create(request),{url:'/'+operation,body});
       native.handle(child,response,error=>error?response.status(502).send({error:'NATIVE_COMPLETION_FAILED'}):next());

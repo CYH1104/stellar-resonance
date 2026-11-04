@@ -113,3 +113,9 @@ it('native sampling and defaults come from the original SDK instead of the acade
  await f.client.complete(messages,effective,'synthetic',signal(),raw);expect(f.requests[0]).toMatchObject({temperature:3.2,max_tokens:64000,model:'story-model',custom_url:'https://story.example/v1',include_reasoning:false});
  expect(await f.client.profileForPreset(profile('story'),{})).toMatchObject({maxTokens:300,temperature:.3});
 });
+it('freezes the selected connection before awaiting native preset application',async()=>{
+ const f=fixture(),selected=profile('chosen');let release!:()=>void;const wait=new Promise<void>(resolve=>release=resolve);
+ f.sdk.presetToGeneratePayload.mockImplementation(async(_preset:any,_settings:any,overrides:any)=>{await wait;return {max_tokens:256,temperature:.7,...overrides};});
+ const preparing=f.client.profileForPreset(selected,{});selected.apiBaseUrl='https://changed.example/v1';selected.model='changed-model';release();
+ expect(await preparing).toMatchObject({apiBaseUrl:'https://chosen.example/v1',model:'chosen-model'});
+});

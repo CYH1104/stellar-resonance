@@ -12,7 +12,8 @@ import {committedRenderText,renderChunks} from '../domain/renderChunks';
 const props=defineProps<{text:string;streaming?:boolean;placeholder?:string;regexRules?:RegexRule[];regexContext?:RegexContext;highlighted?:boolean;htmlContext?:HtmlRenderContext}>();
 const formatted=ref<string>(),regexErrors=ref<string[]>([]);let formattedInput='';
 const cleanText=computed(()=>stripReasoning(props.text));
-const committed=computed(()=>committedRenderText(cleanText.value,props.streaming));
+const hasDisplayRegex=computed(()=>props.regexRules?.some(r=>!r.disabled&&r.placement.includes(props.regexContext?.placement||2)&&(!r.markdownOnly&&!r.promptOnly||r.markdownOnly)));
+const committed=computed(()=>hasDisplayRegex.value?committedRenderText(cleanText.value,props.streaming):'');
 const renderSignature=computed(()=>JSON.stringify([committed.value,!!props.streaming,props.regexRules,props.regexContext]));
 watch(renderSignature,(signature,previousSignature,cleanup)=>{const next=JSON.parse(signature),previous=previousSignature?JSON.parse(previousSignature):undefined;
  if(!committed.value.startsWith(formattedInput)||JSON.stringify(next[2])!==JSON.stringify(previous?.[2])||JSON.stringify(next[3])!==JSON.stringify(previous?.[3])){formatted.value=undefined;formattedInput='';}regexErrors.value=[];if(!props.regexRules?.some(r=>!r.disabled&&r.placement.includes(props.regexContext?.placement||2)&&(!r.markdownOnly&&!r.promptOnly||r.markdownOnly))){formatted.value=undefined;formattedInput='';return;}

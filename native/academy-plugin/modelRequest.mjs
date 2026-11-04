@@ -26,3 +26,12 @@ export function nativeModelPolicy(){
  if(!directory)throw fail('ACADEMY_AUTHOR_DATA_REQUIRED',503);
  return createRelayPolicy(resolve(directory,'relay-policy.json'));
 }
+
+/** Never let the native handler select its globally active key for an Academy task. */
+export function requireNativeCredential(request,body,{readSecret,SECRET_KEYS}){
+ if(body.custom_include_headers){
+  if(body.secret_id)throw fail('NATIVE_MODEL_CREDENTIAL_AMBIGUOUS');
+  return;
+ }
+ if(!body.secret_id||!readSecret(request.user.directories,SECRET_KEYS.CUSTOM,body.secret_id))throw fail('MODEL_KEY_REQUIRED');
+}

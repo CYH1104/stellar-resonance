@@ -10,7 +10,12 @@ const filename=(name:string)=>{if(!name||/[\\/:*?"<>|]/.test(name)||name==='.'||
 /** Preset/worldbook JSON stays in original files; only UI bindings use metadata. */
 export class NativePresets implements NativePresetFiles {
   constructor(private settings:NativeSettings){}
+  private reading?:Promise<NativePresetConfig>;
   async read():Promise<NativePresetConfig>{
+    this.reading??=this.readLibrary().finally(()=>{this.reading=undefined;});
+    return copy(await this.reading);
+  }
+  private async readLibrary():Promise<NativePresetConfig>{
     await this.settings.ensure();
     const response=await this.settings.api.post('/api/settings/get',{}),document=JSON.parse(response.settings);
     if(!Array.isArray(response.openai_setting_names)||!Array.isArray(response.openai_settings)||response.openai_setting_names.length!==response.openai_settings.length)throw Error('原生预设目录未完整返回。');
@@ -27,11 +32,12 @@ export class NativePresets implements NativePresetFiles {
     const selected=presets.find(item=>item.name===document.oai_settings?.preset_settings_openai)||presets.find(item=>item.name==='Default')||presets[0];
     const books:NativeWorldbook[]=[];
     if(!Array.isArray(response.world_names))throw Error('原生世界书目录未完整返回。');
-    for(const name of response.world_names){
+    const readBook=async(name:string)=>{
       if(typeof name!=='string')throw Error('原生世界书名称不正确。');
       const id=Object.entries(bindings?.bookNames||{}).find(([,file])=>file===name)?.[0]||await identity('nw_',name);
-      books.push({id,name,worldbook:await this.settings.api.post('/api/worldinfo/get',{name})});
-    }
+      return {id,name,worldbook:await this.settings.api.post('/api/worldinfo/get',{name})};
+    };
+    for(let start=0;start<response.world_names.length;start+=4)books.push(...await Promise.all(response.world_names.slice(start,start+4).map(readBook)));
     if(bindings?.bookOrder)books.sort((a,b)=>{const order=bindings.bookOrder!;return (order.indexOf(a.id)<0?order.length:order.indexOf(a.id))-(order.indexOf(b.id)<0?order.length:order.indexOf(b.id));});
     const globalBooks=Array.isArray(document.world_info_settings?.world_info?.globalSelect)?document.world_info_settings.world_info.globalSelect:[];
     const defaultIds=bindings?.defaultIds||books.filter(book=>globalBooks.includes(book.name)).map(book=>book.id);

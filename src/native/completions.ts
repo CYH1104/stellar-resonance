@@ -21,6 +21,8 @@ function requestFailure(error:unknown,signal:AbortSignal):never{
   if(signal.aborted&&signal.reason?.name==='TimeoutError')throw new NativeCompletionError('MODEL_TIMEOUT','本次模型请求已超时，收到的内容已保留。');
   if(signal.aborted)throw signal.reason||new DOMException('请求已停止','AbortError');
   if(error instanceof NativeCompletionError)throw error;
+  if((error as {code?:string})?.code==='NATIVE_MODEL_ROUTE_MISMATCH')throw new NativeCompletionError('NATIVE_MODEL_ROUTE_MISMATCH','实际模型接口与所选配置不一致，已停止展示回复；请重新保存 API。');
+  if(['MODEL_KEY_REQUIRED','NATIVE_MODEL_CREDENTIAL_AMBIGUOUS'].includes((error as {code?:string})?.code||''))throw new NativeCompletionError('MODEL_KEY_REQUIRED','当前接口没有可用的指定 Key，请重新保存此接口；不会调用其他接口的 Key。');
   // The native SDK may include an upstream body in Error.message. Never echo it.
   const match=error instanceof Error&&/^Got response status (\d{3})$/.exec(error.message),status=match?Number(match[1]):undefined;
   throw new NativeCompletionError('NATIVE_MODEL_REQUEST_FAILED',status?`模型请求失败（${status}），当前记录已保留。`:'模型请求未完成，当前记录已保留，请检查运行日志或接口配置。','','',status);
@@ -30,6 +32,7 @@ function requestFailure(error:unknown,signal:AbortSignal):never{
 export class NativeCompletions {
   constructor(private context:()=>NativeCompletionContext,private credentials:NativeCredentials){}
   async profileForPreset(profile:Profile,preset:Record<string,any>):Promise<Profile>{
+    profile=clone(profile);preset=clone(preset);
     const sdk=this.context().ChatCompletionService;
     const native=await sdk.presetToGeneratePayload(clone(preset),{},{messages:[],model:profile.model,chat_completion_source:'custom',custom_url:nativeBase(profile.apiBaseUrl!)});
     const maxTokens=Number(native.max_tokens),temperature=Number(native.temperature);
