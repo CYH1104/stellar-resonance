@@ -94,8 +94,12 @@ export class NativeWorkspaceRepository {
   }
   async writeInputDraft(sessionId:string,text:string){return this.queue(async()=>{this.requireWritable();if(typeof text!=='string'||text.length>16000||!this.snapshot!.sessions.some(s=>s.id===sessionId))throw Error('输入草稿关联不正确。');await this.settings.update(scope=>{scope.inputDrafts={...scope.inputDrafts,[sessionId]:text};});this.snapshot!.sessions.find(s=>s.id===sessionId)!.draftInput=text;});}
   async readEditorDrafts(){const result=localEditorDrafts(this.settings.current().editorDrafts||{});this.unsafe=result.blocked;return clone(result.safe);}
-  async writeEditorDraft(key:string,text:string|null){return this.queue(async()=>{
-    if(!this.snapshot)throw Error('原生存档尚未载入。');cleanEditorDrafts({[key]:text??''});
+  async writeEditorDraft(key:string,text:string|null){
+    // Reject invalid editor input before entering the write queue. No disk
+    // mutation has begun, so a corrected draft must remain retryable.
+    cleanEditorDrafts({[key]:text??''});
+    return this.queue(async()=>{
+    if(!this.snapshot)throw Error('原生存档尚未载入。');
     if(this.unsafe&&key!==nativeDraftKey)throw Error('请先清理无法校验的原生预设草稿。');
     await this.settings.update(scope=>{scope.editorDrafts={...scope.editorDrafts};if(text===null)delete scope.editorDrafts[key];else scope.editorDrafts[key]=text;});
     this.unsafe=localEditorDrafts(this.settings.current().editorDrafts||{}).blocked;

@@ -7,6 +7,20 @@ import {HttpGateway} from '../src/gateway/http';
 const raw=(temperature:number)=>({temperature,prompts:[{identifier:'a',role:'system',content:'content',enabled:true,extension:{depth:4}}],prompt_order:[{order:[{identifier:'a',enabled:true}]}],future:{keep:true}});
 const library=()=>cleanNativePresetConfig({...addNativePreset({version:1,preset:raw(.2)},raw(.8),'终端专用','phone'),taskPresets:{story:'default',memory:'phone',terminal:'phone',summary:'default'}});
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
+it('accepts a native editor draft larger than the former per-draft and total limits through local and cloud archives',()=>{
+ const config=library();config.preset.prompts[0].content='原生扩展正文'.repeat(270000);
+ const text=encodeNativePresetDraft(config,JSON.stringify(config.preset,null,2));expect(text.length).toBeGreaterThan(3000000);
+ const editorDrafts={'preset:native-runtime':text,'preset:ordinary':'其他草稿保留'};
+ expect(cleanEditorDrafts(editorDrafts)).toEqual(editorDrafts);
+ const snapshot={version:1 as const,sessions:[],preferences:defaults(),archive:{version:1 as const,nativePreset:config,editorDrafts}};
+ for(const value of [parseBackup(backup(snapshot)),parseCloudSave(createCloudSave(snapshot,defaults())).snapshot]){
+  expect(value.archive!.editorDrafts).toEqual(editorDrafts);
+  expect(decodeNativePresetDraft(value.archive!.editorDrafts!['preset:native-runtime'],config).config).toEqual(config);
+ }
+ expect(()=>cleanEditorDrafts({'preset:ordinary':'x'.repeat(600001)})).toThrow();
+ expect(()=>cleanEditorDrafts({...editorDrafts,'preset:native-runtime':text.slice(0,-1)})).toThrow('无法校验');
+ expect(()=>cleanEditorDrafts({...editorDrafts,'preset:native-runtime':JSON.stringify({schema:'native-preset-draft-v2',config,rawText:'{}'})})).toThrow('无法校验');
+});
 it('switches, duplicates and removes without dropping unknown fields or breaking bound task references',()=>{
  const source=library(),next=selectNativePreset(source,'default');expect(next.preset.temperature).toBe(.2);expect(next.presets![0].preset.future).toEqual({keep:true});expect(source.id).toBe('phone');
  const removedBound=removeNativePreset(source,'phone');expect(removedBound.id).toBe('default');expect(removedBound.taskPresets).toEqual({story:'default',summary:'default'});

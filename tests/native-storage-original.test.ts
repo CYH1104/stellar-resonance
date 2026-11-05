@@ -13,7 +13,7 @@ import {emptyTerminal} from '../src/domain/personalTerminal';
 import {applyTerminalBatch} from '../src/domain/terminalMain';
 import {blankPersona} from '../src/domain/persona';
 import type {Variant} from '../src/domain/contracts';
-import {nativePresetList} from '../src/domain/nativePreset';
+import {nativePresetList,encodeNativePresetDraft} from '../src/domain/nativePreset';
 
 // Explicit, disposable local instance only. This test never targets the deployed site.
 const origin=(globalThis as typeof globalThis&{process?:{env:Record<string,string|undefined>}}).process?.env.NATIVE_STORAGE_TEST_ORIGIN;
@@ -27,6 +27,24 @@ function api(){
     return response;
   });
 }
+it.skipIf(!origin)('recovers from invalid editor input and round trips a large native draft through real settings and restore copies',async()=>{
+ const settings=new NativeSettings(api()),repo=new NativeWorkspaceRepository(settings,new NativeCredentials(settings),new NativePresets(settings),async()=>{});
+ const before=(await repo.read())!,config=before.archive!.nativePreset!;
+ config.preset={...config.preset,extensions:{...config.preset.extensions,draftProof:'原生草稿'.repeat(410000)}};
+ const text=encodeNativePresetDraft(config,JSON.stringify(config.preset,null,2));expect(text.length).toBeGreaterThan(3000000);
+ await expect(repo.writeEditorDraft('preset:native-runtime','{"api_key":"synthetic-rejected"}')).rejects.toThrow('凭据');
+ await repo.writeEditorDraft('preset:native-runtime',text);
+ const loaded=(await repo.read())!;expect(loaded.archive!.editorDrafts!['preset:native-runtime']).toBe(text);
+ expect(parseBackup(backup(loaded)).archive!.editorDrafts!['preset:native-runtime']).toBe(text);
+ const cloud=parseCloudSave(createCloudSave(loaded,loaded.preferences)).snapshot;
+ await repo.prepareCloudRecovery(loaded);const release=await repo.lockRestore();
+ try{await repo.write({...loaded,archive:{...loaded.archive!,editorDrafts:{}}},undefined,true);}finally{await release();}
+ const copy=await repo.readCloudRecovery('workspace');expect(copy!.archive!.editorDrafts!['preset:native-runtime']).toBe(text);
+ await repo.write(cloud);expect((await repo.read())!.archive!.editorDrafts!['preset:native-runtime']).toBe(text);
+ await repo.writeEditorDraft('preset:native-runtime',null);await repo.write(copy!);
+ expect((await repo.read())!.archive!.editorDrafts!['preset:native-runtime']).toBe(text);
+ await repo.writeEditorDraft('preset:native-runtime',null);
+},60000);
 it.skipIf(!origin)('keeps native extension arrays and nested preset fields through original files and backup formats',async()=>{
  const settings=new NativeSettings(api()),presets=new NativePresets(settings),before=await presets.read();
  const extra={large:Array(5001).fill(0),nested:Array.from({length:30}).reduce(value=>({child:value}),{} as any)};
