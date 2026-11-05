@@ -6,13 +6,16 @@ import {configurationEditors} from '../app/configurationEditors';
 import {registerBackupFlusher} from '../app/backupFlushers';
 import {useAutoSave} from '../app/useAutoSave';
 import FileImportButton from './FileImportButton.vue';
+import NativePresetEditor from './NativePresetEditor.vue';
+import {workspaceNativePresetEditor} from '../app/workspacePorts';
+const nativeEditor=workspaceNativePresetEditor();
 const props=defineProps<{w:ViewModel}>();
 const saved=computed(()=>props.w.nativePreset||props.w.nativeDefaultPreset);
 const draft=ref<NativePresetConfig>(),baseline=ref(''),problem=ref(''),rawText=ref(''),ready=ref(false),committing=ref(false);
 const draftKey='preset:native-runtime';
 const rawChanged=computed(()=>!!draft.value&&rawText.value!==JSON.stringify(draft.value.preset,null,2));
 const dirty=computed(()=>!!draft.value&&(JSON.stringify(draft.value)!==baseline.value||rawChanged.value));
-const blocked=computed(()=>props.w.busy||props.w.workingMemory||props.w.terminalBusy||props.w.backupWorking||props.w.savingNativePreset||props.w.unsafeNativeDrafts);
+const blocked=computed(()=>props.w.backupWorking||props.w.savingNativePreset||props.w.unsafeNativeDrafts||props.w.restoreInterrupted);
 const items=computed(()=>draft.value?[{id:draft.value.id||'default',name:draft.value.name||'默认预设'},...draft.value.presets||[]]:[]);
 const promptEntries=computed(()=>Array.isArray(draft.value?.preset.prompts)?draft.value!.preset.prompts.filter((entry:any)=>entry&&typeof entry==='object'&&!Array.isArray(entry)):[]);
 const draftText=()=>encodeNativePresetDraft(draft.value!,rawText.value);
@@ -34,12 +37,14 @@ async function save(){if(!draft.value||blocked.value)return;problem.value='';com
 }catch(e){problem.value=e instanceof Error?e.message:'预设未保存';}finally{committing.value=false;}}
 async function cancel(){autoSave.cancel();load++;reset();await props.w.saveEditorDraft(draftKey,null);}
 function update(action:(value:NativePresetConfig)=>NativePresetConfig){try{const value=rawChanged.value?cleanNativePresetConfig({...draft.value,preset:parseNativePresetFile(rawText.value)}):cleanNativePresetConfig(draft.value);draft.value=action(value);rawText.value=JSON.stringify(draft.value.preset,null,2);problem.value='';}catch(e){problem.value=e instanceof Error?e.message:'预设格式不正确';}}
-async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file){const raw=parseNativePresetFile(await file.text());update(value=>addNativePreset(value,raw,file.name.replace(/\.json$/i,'').slice(0,255)||'导入预设'));}}catch(e){problem.value=e instanceof Error?e.message:'文件无法读取';}finally{input.value='';}}
+async function importFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];try{if(file){const raw=parseNativePresetFile(await file.text()),name=file.name.replace(/\.json$/i,'').slice(0,255)||'导入预设',existing=items.value.find(item=>item.name===name);if(existing&&!window.confirm('已有同名预设“'+name+'”，是否用导入文件替换？'))return;update(value=>existing?{...selectNativePreset(value,existing.id),preset:raw}:addNativePreset(value,raw,name));}}catch(e){problem.value=e instanceof Error?e.message:'文件无法读取';}finally{input.value='';}}
+function duplicate(){update(value=>{const names=new Set(nativePresetList(value).map(item=>item.name)),base=((value.name||'默认预设')+' 副本').slice(0,240);let name=base,n=2;while(names.has(name))name=base+' '+n++;return addNativePreset(value,value.preset,name);});}
 function applyRaw(){update(value=>value);}
 function bind(task:NativePresetTask,id:string){update(value=>{const taskPresets={...value.taskPresets};if(id)taskPresets[task]=id;else delete taskPresets[task];return cleanNativePresetConfig({...value,taskPresets});});}
-function exportFile(){if(!saved.value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(saved.value.preset,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='原生预设.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function exportFile(){if(!draft.value)return;try{const preset=rawChanged.value?parseNativePresetFile(rawText.value):draft.value.preset,url=URL.createObjectURL(new Blob([JSON.stringify(preset,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=(draft.value.name||'原生预设')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);problem.value='';}catch(e){problem.value=e instanceof Error?e.message:'预设无法导出';}}
 const unregister=configurationEditors()?.('native-preset',{dirty:()=>dirty.value,save:async()=>{await save();if(problem.value)throw Error(problem.value);},discard:cancel});if(unregister)onScopeDispose(unregister);
-registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)throw Error(autoSave.error.value);});
+async function flushNativeDraft(){await autoSave.flush();if(autoSave.error.value)throw Error(autoSave.error.value);}
+registerBackupFlusher(flushNativeDraft);
 </script>
 <template>
  <section class="surface preset-manager native-preset-settings">
@@ -48,15 +53,18 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
   <p v-if="problem||autoSave.error.value" class="error" role="alert">{{problem||autoSave.error.value}}</p>
   <template v-if="draft">
    <div class="field-grid"><label>当前预设<select aria-label="当前原生预设" :value="draft.id||'default'" :disabled="blocked" @change="update(value=>selectNativePreset(value,($event.target as HTMLSelectElement).value))"><option v-for="item in items" :key="item.id" :value="item.id">{{item.name}}</option></select></label><label>预设名称<input :value="draft.name||'默认预设'" aria-label="原生预设名称" maxlength="255" :disabled="blocked" @change="update(value=>({...value,name:($event.target as HTMLInputElement).value}))"/></label></div>
-   <div class="actions"><button type="button" :disabled="blocked" @click="update(value=>addNativePreset(value,value.preset,((value.name||'默认预设')+' 副本').slice(0,100)))">复制预设</button><button type="button" :disabled="blocked||items.length<2" @click="update(value=>removeNativePreset(value,value.id||'default'))">删除当前预设</button></div>
+   <div class="actions"><button type="button" :disabled="blocked" @click="duplicate">复制预设</button><button type="button" :disabled="blocked||items.length<2" @click="update(value=>removeNativePreset(value,value.id||'default'))">删除当前预设</button></div>
    <details class="subsection"><summary>按任务选择预设</summary><div class="field-grid"><label v-for="(label,task) in nativePresetTasks" :key="task">{{label}}<select :aria-label="label+'预设绑定'" :value="draft.taskPresets?.[task]||''" :disabled="blocked" @change="bind(task,($event.target as HTMLSelectElement).value)"><option value="">跟随当前预设</option><option v-for="item in items" :key="item.id" :value="item.id">{{item.name}}</option></select></label></div></details>
-   <div class="field-grid"><label>Temperature<input v-model.number="draft.preset.temperature" aria-label="原生预设温度" type="number" min="0" step="0.05" :disabled="blocked"/></label><label>上下文 Token<input v-model.number="draft.preset.openai_max_context" aria-label="原生预设上下文长度" type="number" min="512" step="1" :disabled="blocked"/></label><label>最大输出 Token<input v-model.number="draft.preset.openai_max_tokens" aria-label="原生预设输出上限" type="number" min="1" :disabled="blocked"/></label></div>
+   <NativePresetEditor v-if="nativeEditor" :preset="draft.preset" :disabled="blocked" :flush-draft="flushNativeDraft" @change="draft.preset=$event"/>
+   <template v-else>
+   <div class="field-grid"><label>Temperature<input v-model.number="draft.preset.temperature" aria-label="原生预设温度" type="number" step="any" :disabled="blocked"/></label><label>上下文 Token<input v-model.number="draft.preset.openai_max_context" aria-label="原生预设上下文长度" type="number" step="any" :disabled="blocked"/></label><label>最大输出 Token<input v-model.number="draft.preset.openai_max_tokens" aria-label="原生预设输出上限" type="number" step="any" :disabled="blocked"/></label></div>
    <div class="native-prompt-list" aria-label="提示词条目">
     <div v-for="(entry,index) in promptEntries" :key="index" class="native-prompt-entry" :class="{'is-enabled':enabled(entry)}">
      <details class="native-prompt-detail"><summary><span>{{entry.name||entry.identifier||'未命名条目'}}</span></summary><div class="native-prompt-content"><label v-if="typeof entry.content==='string'">内容<textarea v-model="entry.content" :aria-label="'内容 '+(entry.name||entry.identifier)" rows="5" :disabled="blocked"/></label></div></details>
      <button type="button" class="native-prompt-toggle" role="switch" :aria-checked="!!enabled(entry)" :aria-label="'启用 '+(entry.name||entry.identifier||'未命名条目')" :disabled="blocked||typeof entry.identifier!=='string'" @click="toggle(entry.identifier,!enabled(entry))"><span class="native-prompt-track" aria-hidden="true"></span><span>{{enabled(entry)?'已启用':'已停用'}}</span></button>
     </div>
    </div>
+   </template>
    <details class="subsection"><summary>完整文件编辑</summary><label>预设 JSON<textarea v-model="rawText" aria-label="完整原生预设 JSON" rows="12" :disabled="blocked"/></label><button type="button" :disabled="blocked" @click="applyRaw">应用到草稿</button><p class="rail-note">导入和编辑保留原文件的扩展字段；点击保存后生效。</p></details>
   </template>
  </section>

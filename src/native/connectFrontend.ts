@@ -12,17 +12,20 @@ import {NativeGateway} from './gateway';
 import {guardNativeWrites} from './runtimeGuard';
 import {nativeDigestFallback} from './digest';
 import {addNativePreset} from '../domain/nativePreset';
-type NativeWindow=Window&typeof globalThis&{__academyModules?:Record<string,any>;__academyReady?:boolean;__academyBootFailed?:boolean;SillyTavern?:any};
+import {createNativePresetEditor} from './presetEditor';
+import {installNativeCsrf} from './csrf';
+type NativeWindow=Window&typeof globalThis&{__academyModules?:Record<string,any>;__academyCsrf?:ReturnType<typeof installNativeCsrf>;__academyReady?:boolean;__academyBootFailed?:boolean;SillyTavern?:any};
 const moduleScript=`try{const modules={core:await import('/script.js'),openai:await import('/scripts/openai.js'),wi:await import('/scripts/world-info.js'),authors:await import('/scripts/authors-note.js'),regex:await import('/scripts/extensions/regex/engine.js'),power:await import('/scripts/power-user.js'),utils:await import('/scripts/utils.js'),extensions:await import('/scripts/extensions.js'),lib:await import('/lib.js'),window,context:()=>window.SillyTavern.getContext()};window.__academyModules=modules;const context=modules.context();context.eventSource.on(context.eventTypes.APP_READY,()=>window.__academyReady=true);}catch{window.__academyBootFailed=true;}`;
 
 /** The original document paints first; native UI runs invisibly as the request engine. */
 async function engine(){
   const frame=document.createElement('iframe');frame.title='学院原生请求引擎';frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;width:1px;height:1px;left:-10000px;top:-10000px;border:0;visibility:hidden';
-  let loaded=false;frame.addEventListener('load',()=>{loaded=true;const host=frame.contentWindow as NativeWindow;if(!host?.document.querySelector('script[type="module"]'))return;guardNativeWrites(host,(window as any).__ACADEMY_ACCOUNT__?.id);const script=host.document.createElement('script');script.type='module';script.textContent=moduleScript;host.document.body.append(script);});
+  let loaded=false;frame.addEventListener('load',()=>{loaded=true;const host=frame.contentWindow as NativeWindow;if(!host?.document.querySelector('script[type="module"]'))return;host.__academyCsrf=installNativeCsrf(host);guardNativeWrites(host,(window as any).__ACADEMY_ACCOUNT__?.id);const script=host.document.createElement('script');script.type='module';script.textContent=moduleScript;host.document.body.append(script);});
   frame.src='/native-engine/';document.body.append(frame);
   const start=Date.now();
-  while(Date.now()-start<180000){const host=frame.contentWindow as NativeWindow;if(loaded&&host.location.pathname==='/login')throw Error('账号会话已失效，请重新登录。');if(host?.__academyBootFailed)throw Error('学院页面初始化失败，请刷新重试；已有资料保留。');if(host?.__academyModules){const context=host.__academyModules.context();if(host.__academyReady||context.eventSource.autoFireLastArgs?.has(context.eventTypes.APP_READY))return host.__academyModules;}
+  while(Date.now()-start<180000){const host=frame.contentWindow as NativeWindow;if(loaded&&host.location.pathname==='/login')throw Error('账号会话已失效，请重新登录。');if(host?.__academyBootFailed)throw Error('学院页面初始化失败，请刷新重试；已有资料保留。');if(host?.__academyModules){host.__academyModules.csrf=host.__academyCsrf;const context=host.__academyModules.context();if(host.__academyReady||context.eventSource.autoFireLastArgs?.has(context.eventTypes.APP_READY))return host.__academyModules;}
     // Only the native first-run naming prompt is resolved from the logged-in identity.
+    if(host?.__academyModules)host.__academyModules.csrf=host.__academyCsrf;
     const dialog=host?.document.querySelector('dialog[open]');if(dialog&&(dialog.querySelector('.onboarding')||/what.?s your name|你的名字|您的名字/i.test(dialog.textContent||''))){const input=dialog.querySelector('textarea.popup-input') as HTMLTextAreaElement|null;if(input){input.value=(window as any).__ACADEMY_ACCOUNT__?.email||'学院学员';(dialog.querySelector('.popup-button-ok') as HTMLElement)?.click();}}
     await new Promise(resolve=>setTimeout(resolve,100));
   }throw Error('原生引擎未能就绪，请检查网络后重新载入；已有资料保留。');
@@ -32,7 +35,7 @@ export async function connectNativeFrontend():Promise<WorkspacePorts>{
   const initial=(window as any).__ACADEMY_ACCOUNT_STORAGE__;if(!initial||typeof initial!=='object')throw Error('原生账号界面设置未加载。');
   const accountStorage=new NativeAccountStorage(settings,initial);(window as any).__ACADEMY_NATIVE_CONTEXT__.accountStorage=accountStorage;(window as any).academyStorage=accountStorage;
   await accountStorage.initialize();
-  const modules=await engine();
+  const modules=await engine();await modules.csrf.refresh();
   // Native helpers provide SHA-256 and UUID on HTTP deployments too.
   if(!crypto.randomUUID)Object.defineProperty(crypto,'randomUUID',{value:()=>{const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(n=>n.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');}});
   nativeDigestFallback(bytes=>modules.lib.sha256.arrayBuffer(bytes));
@@ -44,5 +47,5 @@ export async function connectNativeFrontend():Promise<WorkspacePorts>{
   // Repository writes and exports must await synchronous UI setting changes.
   const write=repository.write.bind(repository);repository.write=async(...args)=>{await accountStorage.flush();return write(...args);};
   window.addEventListener('beforeunload',()=>{void accountStorage.flush().catch(()=>{});});
-  return {repository,gateway,personas,accountStorage};
+  return {repository,gateway,personas,accountStorage,nativePresetEditor:createNativePresetEditor(modules)};
 }

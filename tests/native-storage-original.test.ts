@@ -27,6 +27,14 @@ function api(){
     return response;
   });
 }
+it.skipIf(!origin)('keeps native extension arrays and nested preset fields through original files and backup formats',async()=>{
+ const settings=new NativeSettings(api()),presets=new NativePresets(settings),before=await presets.read();
+ const extra={large:Array(5001).fill(0),nested:Array.from({length:30}).reduce(value=>({child:value}),{} as any)};
+ const next={...before,preset:{...before.preset,extensions:{...before.preset.extensions,compatibilityProof:extra}}};
+ await presets.save(next,before);const actual=await presets.read();expect(actual.preset.extensions.compatibilityProof).toEqual(extra);
+ const snapshot={version:1 as const,sessions:[],preferences:defaults(),archive:{version:1 as const,nativePreset:actual}};
+ expect(parseBackup(backup(snapshot)).archive!.nativePreset!.preset.extensions.compatibilityProof).toEqual(extra);expect(parseCloudSave(createCloudSave(snapshot,defaults())).snapshot.archive!.nativePreset!.preset.extensions.compatibilityProof).toEqual(extra);
+},30000);
 it.skipIf(!origin)('rolls back native files when a later file in the same settings transaction is rejected',async()=>{
   const client=api(),before=await client.post('/api/settings/get',{}),document=JSON.parse(before.settings),name='rollback_'+crypto.randomUUID();
   const presetName=before.openai_setting_names[0],preset=JSON.parse(before.openai_settings[0]);

@@ -32,7 +32,11 @@ export class NativeGateway {
     const value=await this.api.post('/api/backends/chat-completions/status',{chat_completion_source:'custom',custom_url:apiBaseUrl.replace(/\/+$/,'').replace(/\/chat\/completions$/,''),...await this.credentials.payload(key)},signal);
     const rows=Array.isArray(value?.data)?value.data:Array.isArray(value)?value:[];const names=rows.map((v:any)=>typeof v==='string'?v:v.id).filter((v:any)=>typeof v==='string'&&v.trim());if(!names.length)throw Error('接口没有返回模型列表，请手动填写模型名。');return names;
   }
-  async probe(profile:Profile,key:string,kind:'text'|'embedding',signal:AbortSignal){const started=Date.now();if(kind==='embedding'){const vectors=await this.embed(['connection check'],profile,key,signal);return {kind,durationMs:Date.now()-started,dimensions:vectors[0].length};}const result=await this.completions.complete([{role:'user',content:'Reply OK.'}],profile,key,signal);return {kind,durationMs:Date.now()-started,visibleChars:result.text.length};}
+  async probe(profile:Profile,key:string,kind:'text'|'embedding',signal:AbortSignal){
+    const started=Date.now();profile=clone(profile);if(kind==='embedding'){const vectors=await this.embed(['connection check'],profile,key,signal);return {kind,durationMs:Date.now()-started,dimensions:vectors[0].length};}
+    try{const result=await this.completions.complete([{role:'user',content:'Reply OK.'}],{...profile,maxTokens:256,topP:undefined,frequencyPenalty:undefined,presencePenalty:undefined},key,signal);return {kind,durationMs:Date.now()-started,visibleChars:result.text.length};}
+    catch(error){if((error as any)?.code==='MODEL_OUTPUT_LIMIT')return {kind,durationMs:Date.now()-started,visibleChars:String((error as any).raw||'').length};throw error;}
+  }
   async terminalCode(data:any){const codes=terminalCodeBindings(data.state);if(data.self===true)return {code:codes.player||''};const id=Object.keys(codes).find(id=>id!=='player'&&codes[id]===data.code);const actor=data.state?.characters?.find((c:any)=>c.id===id);if(!actor)throw Error('未找到该终端码，请向角色确认。');return {id,name:actor.name,identity:actor.identity||'',code:data.code};}
   async createTheaterShare(template:unknown):Promise<{code:string}>{return this.api.post(prefix+'shares/create',{template});}
   async lookupTheaterShare(code:string):Promise<{template:unknown}>{return this.api.post(prefix+'shares/lookup',{code});}
@@ -52,8 +56,8 @@ export class NativeGateway {
     return {...result,preset:taskPreset,profile};
   }
   private async task(task:string,input:any,profile:Profile,key:string,signal:AbortSignal){
-    input=clone(input);profile=clone(profile);const plan=await this.api.post(prefix+'tasks/plan',{task,input},signal);
-    try{const prepared=await this.compose(task,input,plan.token,profile,signal);const result=await this.completions.complete(prepared.messages,prepared.profile,key,signal,prepared.preset);return await this.api.post(prefix+'tasks/finish',{token:plan.token,text:result.text},signal);}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
+    input=clone(input);profile=clone(profile);const config=await this.presets.read(),plan=await this.api.post(prefix+'tasks/plan',{task,input},signal);
+    try{const prepared=await this.compose(task,input,plan.token,profile,signal,undefined,config);const result=await this.completions.complete(prepared.messages,prepared.profile,key,signal,prepared.preset);return await this.api.post(prefix+'tasks/finish',{token:plan.token,text:result.text},signal);}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}
   }
   async terminal(input:unknown,profile:Profile,key:string,signal:AbortSignal){profile=clone(profile);const value=clone(input);const config=await this.presets.read(),preset=nativePresetForRequest(config,'personal-terminal',value).preset;profile=await this.completions.profileForPreset(profile,preset);return new NativeTerminal(this.api,this.completions,undefined,async(token,s)=>(await this.compose('personal-terminal',value,token,profile,s,undefined,config)).messages).run(value,profile,key,signal,preset);}
   async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal){return normalizePersona((await this.task('persona',{wish,draft},profile,key,signal)).persona);}
@@ -65,8 +69,8 @@ export class NativeGateway {
   async embed(texts:string[],profile:Profile,key:string,signal:AbortSignal):Promise<number[][]>{const credential=await this.credentials.payload(key);return (await this.api.post(prefix+'vectors',{texts,profile,...(credential.secret_id?{secret_id:credential.secret_id}:{key})},signal)).vectors;}
   async *generate(request:GenerateRequest,key:string,signal:AbortSignal):AsyncIterable<GenerateEvent>{
     request=clone(request);const {profile,...input}=request,session=this.repository.session(request.sessionId);
-    const plan=await this.api.post(prefix+'tasks/plan',{task:'story',input},signal),decoder=new NativeProtocolStream();
-    try{yield {type:'progress',phase:'waiting'};const prepared=await this.compose('generate',input,plan.token,profile,signal,session);
+    const config=await this.presets.read(),plan=await this.api.post(prefix+'tasks/plan',{task:'story',input},signal),decoder=new NativeProtocolStream();
+    try{yield {type:'progress',phase:'waiting'};const prepared=await this.compose('generate',input,plan.token,profile,signal,session,config);
       for await(const chunk of this.completions.stream(prepared.messages,prepared.profile,key,signal,prepared.preset)){const text=decoder.push(chunk);if(text)yield {type:'delta',text};}
       signal.throwIfAborted();const result=await this.api.post(prefix+'tasks/finish',{token:plan.token,text:decoder.raw},signal);signal.throwIfAborted();yield {type:'done',outcome:result.outcome,raw:decoder.raw,nativeWorldInfo:prepared.effects,nativeVariables:{variables:prepared.variables,globals:prepared.globals}};
     }catch(error){if(decoder.raw)yield {type:'format-error',raw:decoder.raw,code:(error as any)?.code||'NATIVE_GENERATION_FAILED'};throw error;}finally{void this.api.post(prefix+'tasks/cancel',{token:plan.token}).catch(()=>{});}

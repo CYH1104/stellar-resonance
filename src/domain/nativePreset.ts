@@ -49,7 +49,7 @@ function cleanPreset(value:unknown):Record<string,any>{
  // Native PresetManager/PromptManager owns defaults, migrations, identifiers,
  // prompt ordering and sampler semantics. Keep the import verbatim and apply
  // only the separate JSON, credentials and allocation guards here.
- return json(value);
+ return json(value,0,false);
 }
 export function parseNativePresetFile(text:string):Record<string,any>{
  let value:unknown;try{value=JSON.parse(text.replace(/^\uFEFF/,''));}catch{throw Object.assign(Error('预设 JSON 无法解析，请检查括号、逗号和引号；原文件和已保存资料保留。'),{code:'NATIVE_PRESET_JSON_INVALID'});}
@@ -77,9 +77,8 @@ export function addNativePreset(value:NativePresetConfig,preset:unknown,name:str
 }
 export function removeNativePreset(value:NativePresetConfig,id:string):NativePresetConfig{
  const safe=cleanNativePresetConfig(value),items=nativePresetList(safe);if(items.length<2)throw Error('至少保留一个预设。');
- if(Object.values(safe.taskPresets||{}).includes(id))throw Error('此预设已绑定任务，请先调整任务绑定。');
  if(!items.some(item=>item.id===id))invalid();const next=(safe.id||'default')===id?selectNativePreset(safe,items.find(item=>item.id!==id)!.id):safe;
- next.presets=next.presets?.filter(item=>item.id!==id);return cleanNativePresetConfig(next);
+ next.presets=next.presets?.filter(item=>item.id!==id);if(next.taskPresets)for(const task of Object.keys(next.taskPresets) as NativePresetTask[])if(next.taskPresets[task]===id)delete next.taskPresets[task];return cleanNativePresetConfig(next);
 }
 /** Send only a snapshot of the chosen raw preset, never the entire library. */
 export function nativePresetForRequest(value:NativePresetConfig,path:string,body:any):NativePresetConfig{

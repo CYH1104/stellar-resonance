@@ -1,7 +1,13 @@
 import {reportHttpFailure,attachHttpNotice} from '../gateway/requestFailure';
+import {nativeCsrfSession} from './csrf';
 export class NativeHttpError extends Error {
   constructor(readonly status:number, readonly path:string, readonly code?:string) {
     super(code==='NATIVE_PRIVATE_COMPILER_PENDING'?'私有原生编排正在接入，生成功能暂不可用；已有存档和设置保留。':code==='API_ORIGIN_NOT_ALLOWED'?'此接口尚未加入新版的服务白名单，请联系管理员添加；当前配置保留。':status===401||status===302||status===403&&!code?'原生账号会话已失效，请重新登录；当前输入保留。':code==='integrity'||code==='NATIVE_DATA_CONFLICT'?'原生资料已被其他操作修改，已停止覆盖；请重新载入。':code==='MODEL_RESPONSE_INCOMPLETE'?'回复尚未完整结束，正文已保留，状态未更新；可继续续写或重试。':`原生接口请求失败（${status}），当前资料保留。${code?' 错误类型：'+code:''}`);
+    const stage=path.endsWith('/model-service')?'确认 API 地址':path.endsWith('/settings/save')?'保存设置':path.endsWith('/secrets/write')?'保存 Key':path.endsWith('/chat-completions/status')?'获取模型列表':undefined;
+    if(stage)this.message=stage+'：'+this.message;
+    if(code==='PRIVATE_NATIVE_EXECUTION_FAILED')this.message='原生提示词组装失败，本次尚未调用模型。预设和已有资料保留，请检查预设条目及上下文设置。';
+    if(code==='NATIVE_PRESET_CONTEXT_INSUFFICIENT')this.message='预设的上下文长度不足，请调整原生上下文或输出长度。本次尚未调用模型，预设和已有资料保留。';
+    if(code==='NATIVE_PRESET_COMPILE_INVALID')this.message='酒馆原生预设未能组装有效提示词，请检查条目和上下文。本次尚未调用模型，已有资料保留。';
     attachHttpNotice(this,reportHttpFailure({status,code,task:'原生接口',message:this.message}));
   }
 }
@@ -50,11 +56,10 @@ export class NativeApi {
 }
 
 export function sessionNativeApi(request:typeof fetch=fetch) {
-  let token:Promise<string>|undefined;
+  const session=nativeCsrfSession(request),account=(globalThis as any).__ACADEMY_ACCOUNT__?.id;
   return new NativeApi(async()=>{
-    token??=(async()=>{const r=await request('/csrf-token',{credentials:'same-origin',redirect:'manual'});if(!r.ok)throw new NativeHttpError(r.status,'/csrf-token');const value=await r.json();if(typeof value.token!=='string')throw Error('原生会话令牌未准备好。');return value.token;})();
-    return {'X-CSRF-Token':await token};
-  },request);
+    return {'X-CSRF-Token':await session.token(),...(account?{'X-Academy-Account':account}:{})};
+  },session.request);
 }
 
 export async function uploadNativeBlob(api:NativeApi,blob:Blob,name:string):Promise<string>{

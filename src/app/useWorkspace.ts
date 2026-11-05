@@ -113,7 +113,7 @@ export function useWorkspace() {
   async function clearUnsafeNativeDrafts(){try{const task=writes.catch(()=>{}).then(async()=>{const drafts=await repository.readEditorDrafts();await repository.writeEditorDraft('preset:native-runtime',drafts['preset:native-runtime']??null);});writes=task;await task;unsafeNativeDrafts.value=repository.hasUnsafeNativeDrafts();if(nativePreset.value===undefined&&nativeDefaultPreset.value&&!restoreInterrupted.value)await saveNativePreset(nativeDefaultPreset.value);problem.value='';storageError.value='';storageStatus.value='saved';lastSaved.value=now();notice.value='已清理旧预设草稿，已保存预设、剧情和其他草稿保留。';}catch(e){problem.value=message(e);}}
   async function saveNativePreset(value:NativePresetConfig|null){
     requireSafeDrafts();
-    if(!storageReady||backupWorking.value||busy.value||workingMemory.value||terminalBusy.value||savingNativePreset.value||restoreInterrupted.value)throw Error('请等待或停止当前任务后保存预设。');
+    if(!storageReady||backupWorking.value||savingNativePreset.value||restoreInterrupted.value)throw Error('请等待预设保存或数据恢复完成。');
     const safe=value===null?null:cleanNativePresetConfig(value),expected=nativePreset.value===undefined?undefined:copy(nativePreset.value);
     savingNativePreset.value=true;
     try{const task=writes.catch(()=>{}).then(()=>repository.writeNativePreset(safe,expected,cleanPreferences(preferences)));writes=task;await task;nativePreset.value=safe;notice.value=nativeWorkspaceActive()?'原生预设已保存在服务器，完整备份会包含原文件。':'原生预设已保存在本机，完整备份会包含它。';}

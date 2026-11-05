@@ -24,7 +24,7 @@ it('uses original SDK methods and explicit per-call route/key without changing n
   const main=f.requests.find(r=>r.model==='story-model'),phone=f.requests.find(r=>r.model==='phone-model');
   expect(main).toMatchObject({secret_id:'main-id',custom_url:'https://story.example/v1',chat_completion_source:'custom',custom_include_headers:'',reverse_proxy:'',proxy_password:''});
   expect(phone.secret_id).toBeUndefined();expect(phone.custom_url).toBe('https://phone.example/v1');expect(JSON.parse(phone.custom_include_headers)).toEqual({Authorization:'Bearer synthetic-phone'});
-  expect(f.requests.every(r=>!r.tools&&r.custom_include_body===''&&r.custom_exclude_headers==='')).toBe(true);
+  expect(f.requests.every(r=>r.custom_include_body===''&&r.custom_exclude_headers==='')).toBe(true);
 });
 it('preserves native multimodal messages and extension fields without sharing mutable input objects',async()=>{
   const f=fixture(),input=[{role:'user',content:[{type:'image_url',image_url:{url:'https://image.example/a.png'}},{type:'text',text:'看看'}],name:'原生字段'}];
@@ -108,10 +108,14 @@ it('does not silently drop sticky/cooldown state by treating native preview as c
 });
 
 it('native sampling and defaults come from the original SDK instead of the academy profile limits',async()=>{
- const f=fixture();f.sdk.presetToGeneratePayload.mockImplementation(async(preset:any,_settings:any,overrides:any)=>({temperature:preset.temperature??.3,max_tokens:preset.openai_max_tokens??300,...overrides}));
- const raw={temperature:3.2,openai_max_tokens:64000};const effective=await f.client.profileForPreset(profile('story'),raw);expect(effective).toMatchObject({maxTokens:64000,temperature:3.2});
- await f.client.complete(messages,effective,'synthetic',signal(),raw);expect(f.requests[0]).toMatchObject({temperature:3.2,max_tokens:64000,model:'story-model',custom_url:'https://story.example/v1',include_reasoning:false});
+ const f=fixture();f.sdk.presetToGeneratePayload.mockImplementation(async(preset:any,_settings:any,overrides:any)=>({temperature:preset.temperature??.3,max_tokens:preset.openai_max_tokens??300,include_reasoning:preset.include_reasoning,reasoning_effort:preset.reasoning_effort,...overrides}));
+ const raw={temperature:3.2,openai_max_tokens:64000,include_reasoning:true,reasoning_effort:'high'};const effective=await f.client.profileForPreset(profile('story'),raw);expect(effective).toMatchObject({maxTokens:64000,temperature:3.2});
+ await f.client.complete(messages,effective,'synthetic',signal(),raw);expect(f.requests[0]).toMatchObject({temperature:3.2,max_tokens:64000,model:'story-model',custom_url:'https://story.example/v1',include_reasoning:true,reasoning_effort:'high'});
  expect(await f.client.profileForPreset(profile('story'),{})).toMatchObject({maxTokens:300,temperature:.3});
+});
+it('honors the native non-streaming preset while keeping one request and the explicit API binding',async()=>{
+ const f=fixture(),chunks=[];for await(const text of f.client.stream(messages,profile('story'),'synthetic',signal(),{stream_openai:false}))chunks.push(text);
+ expect(chunks).toEqual(['本次回复']);expect(f.sdk.sendRequest).toHaveBeenCalledOnce();expect(f.requests[0]).toMatchObject({stream:false,model:'story-model',custom_url:'https://story.example/v1'});
 });
 it('freezes the selected connection before awaiting native preset application',async()=>{
  const f=fixture(),selected=profile('chosen');let release!:()=>void;const wait=new Promise<void>(resolve=>release=resolve);

@@ -23,6 +23,7 @@ function requestFailure(error:unknown,signal:AbortSignal):never{
   if(error instanceof NativeCompletionError)throw error;
   if((error as {code?:string})?.code==='NATIVE_MODEL_ROUTE_MISMATCH')throw new NativeCompletionError('NATIVE_MODEL_ROUTE_MISMATCH','实际模型接口与所选配置不一致，已停止展示回复；请重新保存 API。');
   if(['MODEL_KEY_REQUIRED','NATIVE_MODEL_CREDENTIAL_AMBIGUOUS'].includes((error as {code?:string})?.code||''))throw new NativeCompletionError('MODEL_KEY_REQUIRED','当前接口没有可用的指定 Key，请重新保存此接口；不会调用其他接口的 Key。');
+  if((error as any)?.code==='NATIVE_MODEL_HTTP_ERROR'||(error as any)?.source==='academy'||(error as any)?.source==='upstream')throw new NativeCompletionError((error as any).code,(error as Error).message,'','',(error as any).status);
   // The native SDK may include an upstream body in Error.message. Never echo it.
   const match=error instanceof Error&&/^Got response status (\d{3})$/.exec(error.message),status=match?Number(match[1]):undefined;
   throw new NativeCompletionError('NATIVE_MODEL_REQUEST_FAILED',status?`模型请求失败（${status}），当前记录已保留。`:'模型请求未完成，当前记录已保留，请检查运行日志或接口配置。','','',status);
@@ -48,13 +49,13 @@ export class NativeCompletions {
     const overrides={
       messages:clone(messages),stream,chat_completion_source:'custom',custom_url:nativeBase(profile.apiBaseUrl!),model:profile.model,
       ...(!preset?{temperature:profile.temperature,max_tokens:profile.maxTokens}:{}),
-      include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined,
+      ...(!preset?{include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined}:{}),
       ...(!preset&&profile.topP!==undefined?{top_p:profile.topP}:{}),
       ...(!preset&&profile.frequencyPenalty!==undefined?{frequency_penalty:profile.frequencyPenalty}:{}),
       ...(!preset&&profile.presencePenalty!==undefined?{presence_penalty:profile.presencePenalty}:{}),
       // Explicitly clear connection overrides inherited by the native SDK from its active UI.
       reverse_proxy:'',proxy_password:'',custom_include_body:'',custom_exclude_body:'',custom_include_headers:'',custom_exclude_headers:'',
-      secret_id:undefined,tools:undefined,tool_choice:undefined,json_schema:undefined,...credential,
+      secret_id:undefined,...(!preset?{tools:undefined,tool_choice:undefined,json_schema:undefined}:{}),...credential,
     };
     const value=preset?await sdk.presetToGeneratePayload(clone(preset),{},overrides):sdk.createRequestData(overrides);
     // Keep the per-call connection authoritative even if an SDK extension changed defaults.
@@ -75,6 +76,7 @@ export class NativeCompletions {
     }catch(error){requestFailure(error,combined);}finally{controller.abort();}
   }
   async *stream(messages:CompletionMessage[],profile:Profile,key:string,signal:AbortSignal,preset?:Record<string,any>):AsyncIterable<string>{
+    if(preset?.stream_openai===false){const result=await this.complete(messages,profile,key,signal,preset);yield result.text;return;}
     const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal,AbortSignal.timeout(600000)]);
     let prior='';
     try{

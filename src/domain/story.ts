@@ -329,7 +329,8 @@ export function cleanPreferences(p: Preferences): Preferences {
 function cleanApiUrl(value:unknown):string|undefined{if(typeof value!=='string'||value.length>2000||!value.trim())return;try{const u=new URL(value.trim());if(u.username||u.password||u.search||u.hash||!['http:','https:'].includes(u.protocol))return;return u.href;}catch{return;}}
 const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'access_token', 'token', 'password', 'secret', '__proto__', 'prototype', 'constructor']);
 function inspect(value: unknown, depth = 0, path = ''): void {
-  if (depth > 18) throw new Error('备份结构过深');
+  const rawNativePreset=/^archive\/nativePreset\/(?:preset(?:\/|$)|presets\/\d+\/preset(?:\/|$))/.test(path);
+  if (depth > 18&&!rawNativePreset) throw new Error('备份结构过深');
   if (!value || typeof value !== 'object') return;
   const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|groupInvitations\/\d+|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
   const nativeKeywords=/^archive\/nativePreset\/worldbooks\/books\/\d+\/worldbook\/entries\/\d+$/.test(path);

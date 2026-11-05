@@ -7,7 +7,7 @@ test('temporary native API credentials reach native custom transport while unsaf
  const result=nativeModelBody(input,[{role:'system',content:'PRIVATE_SERVER_ONLY'}]);
  assert.deepEqual(JSON.parse(result.custom_include_headers),{Authorization:'Bearer synthetic-temporary-key'});
  for(const key of ['custom_include_body','custom_exclude_body','reverse_proxy','proxy_password','custom_exclude_headers'])assert.equal(result[key],'');
- assert.equal(result.include_reasoning,false);assert.equal(result.chat_completion_source,'custom');assert.equal(result.messages[0].content,'PRIVATE_SERVER_ONLY');assert.equal(input.include_reasoning,true);
+ assert.equal(result.include_reasoning,true);assert.equal(result.chat_completion_source,'custom');assert.equal(result.messages[0].content,'PRIVATE_SERVER_ONLY');assert.equal(input.include_reasoning,true);
 });
 test('an absent, deleted or ambiguous per-call key never falls back to the native active secret',()=>{
  const seen=[],request={user:{directories:{account:'a'}}},secrets={SECRET_KEYS:{CUSTOM:'custom'},readSecret:(directory,key,id)=>{seen.push({directory,key,id});return id==='chosen-id'?'synthetic-chosen-key':'';}};

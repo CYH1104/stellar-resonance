@@ -10,6 +10,7 @@ export interface NativePipelineInput {
 }
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value));
 const replace=(target:Record<string,any>,source:Record<string,any>)=>{for(const key of Object.keys(target))delete target[key];Object.assign(target,source);};
+const presetFailure=(code:string,message:string)=>Object.assign(Error(message),{code});
 const tails=new WeakMap<object,Promise<unknown>>();
 /** Original native functions compose and scan once; temporary state is restored before a model call. */
 export class NativePipeline {
@@ -22,20 +23,21 @@ export class NativePipeline {
     signal.throwIfAborted();const {core,openai,wi,authors,regex,power,utils}=m;
     const context=m.context(),chat=core.chat,metadata=core.chat_metadata,extensions=core.extension_prompts;
     const character=core.characters[core.this_chid];
-    const old={error:openai.promptManager?.error,main:core.main_api,chat:clone(chat),metadata:clone(metadata),extensions:{...extensions},settings:clone(openai.oai_settings),power:clone(power.power_user),user:core.name1,char:core.name2,books:[...wi.selected_world_info],world:clone(wi.world_info),character:character?clone(character):undefined,globals:m.extensions.extension_settings.variables?.global};
+    const selector=(m.window?.document?.getElementById('main_api') as HTMLSelectElement|undefined);
+    const old={selectedMain:selector?.value,error:openai.promptManager?.error,main:core.main_api,chat:clone(chat),metadata:clone(metadata),extensions:{...extensions},settings:clone(openai.oai_settings),power:clone(power.power_user),user:core.name1,char:core.name2,books:[...wi.selected_world_info],world:clone(wi.world_info),character:character?clone(character):undefined,globals:m.extensions.extension_settings.variables?.global};
     const cache=new Map<string,any>();
     const releaseWrites=guardNativeWrites(m.window||globalThis);
     const manager=context.getPresetManager('openai'),selected=manager.getSelectedPresetName();
     try{
-      core.changeMainAPI('openai');
+      if(selector)selector.value='openai';core.changeMainAPI('openai');
       manager.updateList(input.preset.name,clone(input.preset.data));await openai.getPresetApplicationPromise();
       if(input.profile)Object.assign(openai.oai_settings,{chat_completion_source:'custom',custom_model:input.profile.model,openai_max_tokens:input.profile.maxTokens,temp_openai:input.profile.temperature});
       // Native UI clamps presets to its formerly selected provider's model.
       // This request has its own custom model; retain the saved native context.
       if(Number.isFinite(input.preset.data.openai_max_context))openai.oai_settings.openai_max_context=input.preset.data.openai_max_context;
       const contractTokens=input.instruction?await context.getTokenCountAsync(input.instruction):0;
-      const limit=Number(openai.oai_settings.openai_max_context),output=Number(openai.oai_settings.openai_max_tokens);
-      if(!Number.isFinite(limit)||limit-output-contractTokens<128)throw Error('原生预设的上下文长度不足，请在预设页面调高“上下文 Token”，或调低 API 最大输出；本次没有发送模型请求。');
+      const limit=Number(openai.oai_settings.openai_max_context);
+      if(!Number.isFinite(limit)||limit<=contractTokens)throw presetFailure('NATIVE_PRESET_CONTEXT_INSUFFICIENT','原生预设的上下文长度不足以容纳本次任务格式，请检查“上下文 Token”；本次没有发送模型请求。');
       openai.oai_settings.openai_max_context=limit-contractTokens;
       core.setUserName(input.user,{toastPersonaNameChange:false});core.setCharacterName(input.anonymous?'终端角色':'学院叙事');
       power.power_user.persona_description=input.persona;
@@ -65,9 +67,7 @@ export class NativePipeline {
       if(position===4)core.setExtensionPrompt('PERSONA_DESCRIPTION',input.persona,1,power.power_user.persona_description_depth,true,power.power_user.persona_description_role);
       if(openai.promptManager)openai.promptManager.error='';
       const [messages]=await openai.prepareOpenAIMessages({name2:core.name2,charDescription:fields.description,charPersonality:fields.personality,scenario:fields.scenario,worldInfoBefore:lore.worldInfoBefore,worldInfoAfter:lore.worldInfoAfter,extensionPrompts:extensions,bias:'',type:input.type||'normal',quietPrompt:'',cyclePrompt:'',systemPromptOverride:fields.system,jailbreakPromptOverride:fields.jailbreak,messages:openai.setOpenAIMessages(rows),messageExamples:openai.setOpenAIMessageExamples(examples)},false);
-      signal.throwIfAborted();if(openai.promptManager?.error||!Array.isArray(messages)||!messages.length)throw Error('原生提示词未完整组装，请检查上下文长度和预设条目；本次没有发送模型请求。');
-      const action=rows.findLast((row:any)=>row.is_user)?.mes;
-      if(action&&!messages.some((row:any)=>row.role==='user'&&typeof row.content==='string'&&row.content.includes(action)))throw Error('当前输入未进入原生提示词，请检查上下文预算、聊天历史开关和正则；本次没有发送模型请求。');
+      signal.throwIfAborted();if(openai.promptManager?.error||!Array.isArray(messages)||!messages.length)throw presetFailure('NATIVE_PRESET_COMPILE_INVALID','原生提示词未完整组装，请检查上下文长度和预设条目；本次没有发送模型请求。');
       // Reserve the contract before native budgeting, then anchor it after all
       // native prompt-order rules. Keep original assistant prefills at the end.
       if(input.instruction){let at=messages.length;while(at>0&&messages[at-1].role==='assistant')at--;messages.splice(at,0,{role:'system',content:input.instruction});}
@@ -78,7 +78,7 @@ export class NativePipeline {
       if(m.extensions.extension_settings.variables)m.extensions.extension_settings.variables.global=old.globals;
       for(const [name,previous]of cache)previous===undefined?wi.worldInfoCache.delete(name):wi.worldInfoCache.set(name,previous);
       core.setUserName(old.user,{toastPersonaNameChange:false});core.setCharacterName(old.char);wi.selected_world_info.splice(0,wi.selected_world_info.length,...old.books);replace(wi.world_info,old.world);
-      if(manager.findPreset(selected)!==undefined)await manager.selectPreset(manager.findPreset(selected));core.changeMainAPI(old.main);replace(openai.oai_settings,old.settings);if(openai.promptManager)openai.promptManager.error=old.error;
+      if(manager.findPreset(selected)!==undefined)await manager.selectPreset(manager.findPreset(selected));if(selector&&old.selectedMain!==undefined)selector.value=old.selectedMain;core.changeMainAPI(old.main);replace(openai.oai_settings,old.settings);if(openai.promptManager)openai.promptManager.error=old.error;
       }finally{utils.cancelDebounce(core.saveSettingsDebounced);utils.cancelDebounce(core.saveMetadataDebounced);releaseWrites();}
     }
   }

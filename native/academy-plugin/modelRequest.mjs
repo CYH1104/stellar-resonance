@@ -14,7 +14,6 @@ export function nativeModelBody(input,messages){
  }
  if(input.secret_id!==undefined&&(typeof input.secret_id!=='string'||!input.secret_id||input.secret_id.length>200))throw fail('INVALID_MODEL_SECRET');
  return {...input,...(messages?{messages}:{}),
-  include_reasoning:false,request_thoughts:false,show_thoughts:false,reasoning_effort:undefined,
   reverse_proxy:'',proxy_password:'',custom_include_body:'',custom_exclude_body:'',
   custom_include_headers:authorization?JSON.stringify({Authorization:authorization}):'',custom_exclude_headers:'',
   chat_completion_source:'custom',

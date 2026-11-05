@@ -4,6 +4,7 @@ import type {HttpGateway} from '../gateway/http';
 
 /** Backend bindings for the existing UI, not another workspace implementation. */
 export interface WorkspacePorts {
+  nativePresetEditor?:import('../native/presetEditor').NativePresetEditor;
   repository: Pick<IndexedDbRepository, keyof IndexedDbRepository>&{exportApiCredentials?:(value:import('../storage/apiCredentials').LocalApiCredentials)=>Promise<import('../storage/apiCredentials').LocalApiCredentials>};
   gateway: Pick<HttpGateway, keyof HttpGateway>;
   personas: Omit<Pick<PersonaLibrary, keyof PersonaLibrary>,'replace'>&{replace(...args:Parameters<PersonaLibrary['replace']>):Promise<string>};
@@ -16,6 +17,7 @@ export interface WorkspacePorts {
 }
 type PortGlobal = typeof globalThis & {__ACADEMY_BACKEND__?: 'native'};
 let installed: WorkspacePorts | undefined;
+export function workspaceNativePresetEditor(){return installed?.nativePresetEditor;}
 export function nativeWorkspaceActive(){return !!installed || (globalThis as PortGlobal).__ACADEMY_BACKEND__ === 'native';}
 
 const required = {

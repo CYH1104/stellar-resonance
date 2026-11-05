@@ -13,6 +13,9 @@ export function guardNativeWrites(host:Window&typeof globalThis,account?:string)
       if(selected&&!response.ok){
         const data=await response.clone().json().catch(()=>undefined),code=data?.error;
         if(['MODEL_KEY_REQUIRED','NATIVE_MODEL_CREDENTIAL_AMBIGUOUS','MODEL_NOT_CONFIGURED'].includes(code))throw Object.assign(Error(code),{code});
+        const source=response.headers.get('X-Academy-Api-Origin')===selected.origin?'upstream':'academy';
+        const known=typeof code==='string'&&/^[A-Z_]{1,100}$/.test(code)?code:undefined;
+        throw Object.assign(Error(`${source==='upstream'?'模型接口':'站内请求'}返回 ${response.status}（${path.endsWith('/status')?'获取模型列表':'模型调用'}）；接口：${selected.origin}${selected.model?'；模型：'+selected.model:''}${known?'；错误类型：'+known:''}`),{code:known||'NATIVE_MODEL_HTTP_ERROR',status:response.status,source});
       }
       if(response.ok&&selected&&(response.headers.get('X-Academy-Api-Origin')!==selected.origin||response.headers.get('X-Academy-Model')!==encodeURIComponent(selected.model))){
         await response.body?.cancel();throw Object.assign(Error('实际模型接口与所选配置不一致，已停止展示回复；请重新保存 API。'),{code:'NATIVE_MODEL_ROUTE_MISMATCH'});
@@ -28,6 +31,7 @@ export function guardNativeWrites(host:Window&typeof globalThis,account?:string)
     const family=/^\/api\/(?:settings|chats|characters|presets|worldinfo|avatars|secrets|files)(?:\/|$)/.test(path);
     const read=/\/(?:get|all|list|read|find|search|chats|verify|sanitize-filename)$/.test(path)||path==='/api/presets/restore';
     const write=family&&!read;
+    if(method!=='GET'&&url.origin===host.location.origin&&path==='/api/settings/save'&&typeof (host as any).__academyDraftSettingsSave==='function')return Promise.resolve().then(()=>(host as any).__academyDraftSettingsSave()).then(()=>new host.Response(JSON.stringify({result:'ok'}),{headers:{'Content-Type':'application/json'}}),()=>new host.Response(JSON.stringify({error:'NATIVE_DRAFT_SAVE_FAILED'}),{status:409,headers:{'Content-Type':'application/json'}}));
     if(method!=='GET'&&url.origin===host.location.origin&&write)return Promise.resolve(new host.Response(JSON.stringify({error:'NATIVE_RUNTIME_READONLY'}),{status:409,headers:{'Content-Type':'application/json'}}));
     if(account&&url.origin===host.location.origin&&path.startsWith('/api/')){
       const headers=new Headers(typeof input==='object'&&'headers'in input?input.headers:undefined);new Headers(init?.headers).forEach((value,key)=>headers.set(key,value));headers.set('X-Academy-Account',account);

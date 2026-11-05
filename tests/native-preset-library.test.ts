@@ -9,7 +9,7 @@ const library=()=>cleanNativePresetConfig({...addNativePreset({version:1,preset:
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 it('switches, duplicates and removes without dropping unknown fields or breaking bound task references',()=>{
  const source=library(),next=selectNativePreset(source,'default');expect(next.preset.temperature).toBe(.2);expect(next.presets![0].preset.future).toEqual({keep:true});expect(source.id).toBe('phone');
- expect(()=>removeNativePreset(source,'phone')).toThrow('已绑定');
+ const removedBound=removeNativePreset(source,'phone');expect(removedBound.id).toBe('default');expect(removedBound.taskPresets).toEqual({story:'default',summary:'default'});
  const third=addNativePreset(next,raw(.4),'暂用','third'),removed=removeNativePreset(third,'third');expect(removed.id).toBe('default');expect(removed.taskPresets).toEqual(source.taskPresets);expect(removed.presets).toHaveLength(1);
  for(const invalid of [{...source,presets:[{id:'phone',name:'重复',preset:raw(.1)}]},{...source,taskPresets:{story:'missing'}},{...source,taskPresets:{unknown:'phone'}},{...source,presets:[{id:'other',name:'角色',preset:{...raw(.5),api_key:'synthetic'}}]}])expect(()=>cleanNativePresetConfig(invalid)).toThrow();
 });
