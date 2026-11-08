@@ -5,7 +5,9 @@ test('real HTTP providers: switching the same API slot changes endpoint, model a
  const calls=[],waiters=[];let releaseSlow,slowStarted;const started=new Promise(resolve=>slowStarted=resolve);
  const provider=createServer(async(req,res)=>{let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);calls.push({path:req.url,key:req.headers.authorization,body});
   if(req.url==='/a'&&body.max_tokens!==512){slowStarted();await new Promise(resolve=>{releaseSlow=resolve;waiters.push(resolve);});res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'system message not supported PRIVATE_PROVIDER_CONTENT'}}));return;}
-  res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{message:{content:'合成正文。<SR_STATE>{"event":"合成推进"}</SR_STATE><SR_DONE>'}}]}));
+  // B uses a visible text-completion field and a wrong SSE MIME on its JSON.
+  const content='合成正文。<SR_STATE>{"event":"合成推进"}</SR_STATE><SR_DONE>';
+  res.writeHead(200,{'Content-Type':req.url==='/b'?'text/event-stream':'application/json'});res.end(JSON.stringify({choices:[req.url==='/b'?{text:content}:{message:{content}}]}));
  });
  await new Promise(resolve=>provider.listen(0,'127.0.0.1',resolve));
  let app;

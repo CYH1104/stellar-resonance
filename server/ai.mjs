@@ -1,5 +1,5 @@
 import {cleanSceneSnapshot} from '../src/domain/storyScene.ts';
-import {completionRejectionReason,textCompletionMessages,completionRequestShape,completionHttpCode} from './completion-errors.mjs';
+import {completionRejectionReason,textCompletionMessages,completionRequestShape,completionHttpCode,classifyCompletionRejection} from './completion-errors.mjs';
 import {isTerminalCodePath,validTerminalCode} from '../src/domain/terminalCodeVariables.ts';
 import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
 import {playerIdentityContext} from './player-identity.mjs';
@@ -419,14 +419,17 @@ export class StoryDecoder {
 export async function* completionChunks(response,{reasoningFilter=new ReasoningFilter(),onProgress=()=>{},signal}={}) {
   if(!response.body)throw modelError(502,'INVALID_MODEL_RESPONSE');
   const stats={contentChars:0,visibleChars:0,reasoningChars:0,finishReason:''};
-  let hasVisible=false,refused=false;
+  let hasVisible=false,refused=false,hasToolCalls=false;
   const contentText=content=>typeof content==='string'?content:Array.isArray(content)?content.filter(p=>p&&p.thought!==true&&['text','output_text',undefined].includes(p.type)&&typeof p.text==='string').map(p=>p.text).join(''):undefined;
   const accept=choice=>{
-    const part=choice?.delta||choice?.message||{};
-    refused ||= typeof part.refusal==='string'&&!!part.refusal.trim();
-    const hidden=part.reasoning_content??part.reasoning??part.thinking;
+    const delta=choice?.delta||{},message=choice?.message||{};
+    for(const part of [delta,message]){refused ||= typeof part.refusal==='string'&&!!part.refusal.trim();hasToolCalls ||= Array.isArray(part.tool_calls)&&part.tool_calls.length>0||!!part.function_call;}
+    const hidden=delta.reasoning_content??delta.reasoning??delta.thinking??message.reasoning_content??message.reasoning??message.thinking;
     if(typeof hidden==='string')stats.reasoningChars+=hidden.length;
-    const content=contentText(part.content);
+    const deltaText=contentText(delta.content),messageText=contentText(message.content);
+    // Some relays use the text-completion field on the chat route, or include
+    // an empty delta alongside the final message. Never read function arguments.
+    const content=deltaText||messageText||(typeof choice?.text==='string'?choice.text:deltaText??messageText);
     if(typeof content==='string')stats.contentChars+=content.length;
     if(typeof choice?.finish_reason==='string')stats.finishReason=choice.finish_reason;
     const visible=content===undefined?'':reasoningFilter.push(content);stats.visibleChars+=visible.length;hasVisible||=!!visible.trim();
@@ -435,34 +438,46 @@ export async function* completionChunks(response,{reasoningFilter=new ReasoningF
   const finish=()=>{
     const tail=reasoningFilter.finish();stats.visibleChars+=tail.length;hasVisible||=!!tail.trim();
     onProgress({...stats});
-    if(!hasVisible)throw modelError(502,refused||stats.finishReason==='content_filter'?'MODEL_REFUSAL':stats.finishReason==='length'?'MODEL_OUTPUT_LIMIT':reasoningFilter.unclosed?'MODEL_REASONING_UNCLOSED':stats.reasoningChars?'MODEL_REASONING_ONLY':stats.contentChars?'MODEL_NO_VISIBLE_CONTENT':'MODEL_EMPTY_RESPONSE');
+    if(!hasVisible)throw modelError(502,refused||stats.finishReason==='content_filter'?'MODEL_REFUSAL':stats.finishReason==='length'?'MODEL_OUTPUT_LIMIT':reasoningFilter.unclosed?'MODEL_REASONING_UNCLOSED':hasToolCalls||['tool_calls','function_call'].includes(stats.finishReason)?'MODEL_TOOL_CALL_ONLY':stats.reasoningChars?'MODEL_REASONING_ONLY':stats.contentChars?'MODEL_NO_VISIBLE_CONTENT':'MODEL_EMPTY_RESPONSE');
     return tail;
   };
   // An abort must also interrupt a stalled response body, not only the initial fetch.
   const reader=response.body.getReader(),decoder=new TextDecoder();let received=0,buffer='';
-  const abort=()=>{void reader.cancel().catch(()=>{});};signal?.throwIfAborted();signal?.addEventListener('abort',abort,{once:true});
+  const abort=()=>{void reader.cancel().catch(()=>{});};signal?.addEventListener('abort',abort,{once:true});
   async function read(){const next=await reader.read();signal?.throwIfAborted();received+=next.value?.byteLength||0;if(received>2000000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');return next;}
   try{
-    if(response.headers.get('content-type')?.includes('application/json')){
-      while(true){const next=await read();buffer+=decoder.decode(next.value,{stream:!next.done});if(next.done)break;}
+    signal?.throwIfAborted();
+    // Trust only recognizable OpenAI bytes, rather than a relay's MIME label.
+    let format,ended=false;const fields=['data:','event:','id:','retry:',':'];
+    while(!format){
+      const next=await read();ended=next.done;buffer+=decoder.decode(next.value,{stream:!next.done});const prefix=buffer.trimStart();
+      if(prefix.startsWith('{'))format='json';
+      else if(fields.some(field=>prefix.startsWith(field))){format='sse';buffer=prefix;}
+      else if(prefix&&!fields.some(field=>field.startsWith(prefix)))throw modelError(502,'INVALID_MODEL_RESPONSE');
+      if(!format&&buffer.length>8192)throw modelError(502,'INVALID_MODEL_RESPONSE');
+      if(ended&&!format){const tail=finish();if(tail)yield tail;return;}
+    }
+    const errorEvent=value=>{if(value?.error){const reason=classifyCompletionRejection(JSON.stringify(value).slice(0,16384));throw Object.assign(modelError(502,'UPSTREAM_FAILED'),reason?{reason}:{});}};
+    if(format==='json'){
+      while(!ended){const next=await read();buffer+=decoder.decode(next.value,{stream:!next.done});ended=next.done;}
       let value;try{value=JSON.parse(buffer);}catch{throw modelError(502,'INVALID_MODEL_RESPONSE');}
-      if(value?.error)throw modelError(502,'UPSTREAM_FAILED');
+      errorEvent(value);
       if(!Array.isArray(value?.choices)||!value.choices.length)throw modelError(502,'INVALID_MODEL_RESPONSE');
       const visible=accept(value.choices[0]);if(visible)yield visible;const tail=finish();if(tail)yield tail;return;
     }
-    if(!response.headers.get('content-type')?.includes('text/event-stream'))throw modelError(502,'INVALID_MODEL_RESPONSE');
     const parse=block=>{
       const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');
       if(!data)return {visible:'',end:false};if(data==='[DONE]')return {visible:'',end:true};
       let event;try{event=JSON.parse(data);}catch{throw modelError(502,'INVALID_MODEL_RESPONSE');}
-      if(event?.error)throw modelError(502,'UPSTREAM_FAILED');
+      errorEvent(event);
       const choice=event?.choices?.[0];return {visible:accept(choice),end:!!choice?.finish_reason};
     };
     while(true){
-      const next=await read();buffer+=decoder.decode(next.value,{stream:!next.done});buffer=buffer.replace(/\r\n/g,'\n');let end;
+      buffer=buffer.replace(/\r\n/g,'\n');let end;
       while((end=buffer.indexOf('\n\n'))>=0){const block=buffer.slice(0,end);buffer=buffer.slice(end+2);const event=parse(block);if(event.visible)yield event.visible;if(event.end){const tail=finish();if(tail)yield tail;return;}}
       if(buffer.length>100000)throw modelError(502,'MODEL_RESPONSE_TOO_LARGE');
-      if(next.done){if(buffer.trim()){const event=parse(buffer);if(event.visible)yield event.visible;}const tail=finish();if(tail)yield tail;return;}
+      if(ended){if(buffer.trim()){const event=parse(buffer);if(event.visible)yield event.visible;}const tail=finish();if(tail)yield tail;return;}
+      const next=await read();buffer+=decoder.decode(next.value,{stream:!next.done});ended=next.done;
     }
   }finally{signal?.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});reader.releaseLock();}
 }

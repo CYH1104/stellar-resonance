@@ -25,7 +25,7 @@ it('开发诊断的 SSE 只传入白名单元数据，不让原始文本或 Key 
  const events=await collect(new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal));expect(events[0]).toMatchObject({type:'diagnostic',diagnostic:{line:3,column:4}});expect(JSON.stringify(events)).not.toMatch(/private-response|synthetic-secret|hidden-thought/);
 });
 it('安全进度信息传入页面，只有推理或未闭合标签会显示明确错误',async()=>{
-  for(const code of ['MODEL_REASONING_ONLY','MODEL_REASONING_UNCLOSED','MODEL_EMPTY_RESPONSE']){
+  for(const code of ['MODEL_REASONING_ONLY','MODEL_REASONING_UNCLOSED','MODEL_EMPTY_RESPONSE','MODEL_TOOL_CALL_ONLY']){
     vi.stubGlobal('fetch',async()=>streamResponse('data: {"type":"progress","phase":"hidden"}\n\ndata: '+JSON.stringify({type:'error',code})+'\n\n'));
     const events:GenerateEvent[]=[];
     await expect((async()=>{for await(const e of new HttpGateway().generate(request(),'synthetic-key',new AbortController().signal))events.push(e);})()).rejects.toThrow(/正文/);

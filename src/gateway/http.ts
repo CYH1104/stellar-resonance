@@ -20,7 +20,7 @@ Object.assign(apiMessages,{MODEL_OUTPUT_LIMIT:'模型达到本次输出 Token �
   STATE_FORMAT_INVALID:'正文已保留，但本次状态格式未通过。可检查状态与格式接口，再手动补修；不会自动重复调用。',
   MODEL_REASONING_ONLY:'中转站返回了推理内容，但没有可展示的正文。请提高最大输出 Token 或检查模型／预设；不会显示思维链。',
   MODEL_NO_VISIBLE_CONTENT:'中转站有返回内容，但只有隐藏内容，没有可展示的正文。请检查预设的输出格式。',
-  MODEL_EMPTY_RESPONSE:'中转站结束了回复，但没有返回正文。请检查所选模型是否支持 OpenAI chat/completions 及其输出长度。',
+  MODEL_EMPTY_RESPONSE:'接口返回了结束信号，但没有可展示的正文。输入和已有记录已保留，可查看本轮日志。',MODEL_TOOL_CALL_ONLY:'接口只返回了工具或函数调用，没有返回正文；本轮不会执行工具，也不会把工具参数作为正文。',
   MODEL_STORY_EMPTY:'模型仅返回了状态数据，没有剧情正文；原有状态保留。',
   INVALID_MODEL_RESPONSE:'中转站返回格式不兼容，未取得正文。请检查 API 地址是否以 /v1 结尾，以及是否支持 OpenAI chat/completions。',
   UPSTREAM_FAILED:'模型服务在回复流内报告失败，请检查中转站请求记录或稍后重试。',
