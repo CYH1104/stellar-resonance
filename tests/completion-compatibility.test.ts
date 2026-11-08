@@ -4,6 +4,7 @@ import {completionProfile} from '../src/domain/completionProfile';
 import {modelRequestContext} from '../src/gateway/requestFailure';
 import {HttpGateway} from '../src/gateway/http';
 import StoryReplyFailure from '../src/components/StoryReplyFailure.vue';
+import {completionRequestShapeText} from '../src/domain/completionRequestShape';
 import type {GenerateRequest,Profile} from '../src/domain/contracts';
 afterEach(()=>vi.unstubAllGlobals());
 const profile:Profile={id:'main',name:'主API',providerId:'approved-provider',apiBaseUrl:'https://synthetic.example/v1',model:'pg/gemini-compatible-high',temperature:.7,maxTokens:32000,topP:1,frequencyPenalty:0,presencePenalty:0};
@@ -31,4 +32,13 @@ it('keeps the exact failed variant error visible independently of transient noti
 it('shows only the safe upstream classification rather than echoing a provider error body',async()=>{
  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({code:'UPSTREAM_REJECTED',upstreamStatus:400,reason:'UPSTREAM_TOOL_CALLS_UNSUPPORTED'},{status:502})));
  await expect(new HttpGateway().terminal({task:'chat'},profile,'synthetic-key',new AbortController().signal)).rejects.toThrow('上游拒绝工具或函数调用相关内容');
+});
+it('shows 500 as a server error with safe reason and actual request counts for HTTP and SSE failures',async()=>{
+ const requestShape={messages:4,system:2,user:1,assistant:1,characters:123,empty:0,lastRole:'user',systemAfterConversation:true,stream:true,toolFields:0,secret:'PRIVATE_KEY'};
+ const error={code:'UPSTREAM_SERVER_ERROR',upstreamStatus:500,reason:'UPSTREAM_MESSAGE_ROLES',requestShape};
+ for(const streamed of [false,true]){
+  vi.stubGlobal('fetch',vi.fn(async()=>streamed?new Response('data: '+JSON.stringify({type:'error',...error})+'\n\n',{headers:{'Content-Type':'text/event-stream'}}):Response.json(error,{status:502})));
+  try{for await(const _ of new HttpGateway().generate({profile} as GenerateRequest,'synthetic-key',new AbortController().signal)){}expect.unreachable();}catch(e){const message=String(e);expect(message).toContain('上游返回服务端错误');expect(message).toContain('上游拒绝消息角色或顺序');expect(message).toContain('4 条消息');expect(message).toContain('工具字段 0 个');expect(message).not.toContain('PRIVATE_KEY');expect(message).not.toContain('请检查模型名和参数');}
+ }
+ expect(completionRequestShapeText({...requestShape,characters:'PRIVATE_TEXT'})).toBe('');expect(completionRequestShapeText({...requestShape,lastRole:'PRIVATE_TEXT'})).toBe('');expect(completionRequestShapeText({...requestShape,messages:3})).toBe('');
 });

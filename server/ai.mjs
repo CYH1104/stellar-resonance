@@ -1,5 +1,5 @@
 import {cleanSceneSnapshot} from '../src/domain/storyScene.ts';
-import {completionRejectionReason,textCompletionMessages} from './completion-errors.mjs';
+import {completionRejectionReason,textCompletionMessages,completionRequestShape,completionHttpCode} from './completion-errors.mjs';
 import {isTerminalCodePath,validTerminalCode} from '../src/domain/terminalCodeVariables.ts';
 import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
 import {playerIdentityContext} from './player-identity.mjs';
@@ -473,8 +473,9 @@ export async function openCompletion({connection,key,profile,messages,signal,fet
   const sampling={};for(const [key,target,min,max] of [['topP','top_p',0,1],['frequencyPenalty','frequency_penalty',-2,2],['presencePenalty','presence_penalty',-2,2]])if(profile[key]!==undefined){if(!Number.isFinite(profile[key])||profile[key]<min||profile[key]>max)throw modelError(400,'INVALID_MODEL_PROFILE');sampling[target]=profile[key];}
   let response;
   const textMessages=textCompletionMessages(messages);
-  try{response=await fetchImpl(connection.url,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model:profile.model,messages:textMessages,temperature:profile.temperature,max_tokens:profile.maxTokens,...sampling,stream:true})});}
+  const body={model:profile.model,messages:textMessages,temperature:profile.temperature,max_tokens:profile.maxTokens,...sampling,stream:true};
+  try{response=await fetchImpl(connection.url,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify(body)});}
   catch(error){if(signal.reason?.name==='TimeoutError')throw modelError(504,'MODEL_TIMEOUT');if(signal.aborted)throw error;throw modelError(502,'MODEL_UNREACHABLE');}
-  if(!response.ok){const reason=await completionRejectionReason(response);throw Object.assign(modelError(502,response.status===401||response.status===403?'UPSTREAM_AUTH':response.status===429?'UPSTREAM_RATE_LIMIT':'UPSTREAM_REJECTED'),{upstreamStatus:response.status,...(reason?{reason}:{})});}
+  if(!response.ok){const reason=await completionRejectionReason(response);throw Object.assign(modelError(502,completionHttpCode(response.status)),{upstreamStatus:response.status,...([400,422].includes(response.status)||response.status>=500?{requestShape:completionRequestShape(body)}:{}),...(reason?{reason}:{})});}
   return response;
 }

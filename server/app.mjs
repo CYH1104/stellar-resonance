@@ -1,5 +1,7 @@
 import {createCloudBackup} from './cloud-backup.mjs';
+import {cleanCompletionRequestShape} from '../src/domain/completionRequestShape.ts';
 const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.upstreamStatus>=100&&error.upstreamStatus<=599?{upstreamStatus:error.upstreamStatus}:{};
+const completionFailureFields=error=>{const requestShape=cleanCompletionRequestShape(error?.requestShape);return {...upstreamStatusField(error),...(typeof error?.reason==='string'?{reason:error.reason}:{}),...(requestShape?{requestShape}:{})};};
 import {majorCharacter} from '../src/domain/characterImages.ts';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
 import {terminalCodePrompt} from './terminal-codes.mjs';
@@ -260,7 +262,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
           const validationCodes=[];const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
           try{for await(const event of streamStory({card:generationCard,state,options:{requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
-          catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...upstreamStatusField(error),...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
+          catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...completionFailureFields(error),...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
           finally{clearInterval(heartbeat);}
           return;
         }
@@ -322,7 +324,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
       const validStatus=Number.isInteger(failure.status)&&failure.status>=400&&failure.status<=599;
       const status=validStatus?failure.status:500;
       const code=validStatus&&typeof failure.code==='string'&&failure.code?failure.code:'SERVER_ERROR';
-      json(response,status,{code,...(typeof failure.reason==='string'?{reason:failure.reason}:{}),...upstreamStatusField(failure),...(typeof failure.raw==='string'?{raw:failure.raw.slice(0,48000)}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudDetail==='string'?{cloudDetail:failure.cloudDetail}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudStep==='string'?{cloudStep:failure.cloudStep}:{})});
+      json(response,status,{code,...completionFailureFields(failure),...(typeof failure.raw==='string'?{raw:failure.raw.slice(0,48000)}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudDetail==='string'?{cloudDetail:failure.cloudDetail}:{}),...(code.startsWith('CLOUD_')&&typeof failure.cloudStep==='string'?{cloudStep:failure.cloudStep}:{})});
     }
   }));
   let accountsClosed=false;const closeAccounts=()=>{if(!accountsClosed){accountsClosed=true;accounts?.close();}};
