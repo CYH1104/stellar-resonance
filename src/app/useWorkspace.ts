@@ -72,7 +72,8 @@ export function useWorkspace() {
     if(!notice)return;
     registerHttpNotice(notice.message,notice.key);
     showNotice(notice.message,true,httpNoticeDuration,notice.key);
-    void formatErrors.record(httpFailureLog({...failure,task:redact(failure.task),...(failure.code!==undefined?{code:redact(failure.code)}:{}),message:redact(failure.message)}),'HTTP_ERROR',active.value?.id||'','','runtime').catch(()=>{});
+    const target=failure.task==='剧情生成'?protectedGeneration:undefined;
+    void formatErrors.record(httpFailureLog({...failure,task:redact(failure.task),...(failure.code!==undefined?{code:redact(failure.code)}:{}),message:redact(failure.message)}),'HTTP_ERROR',target?.sessionId||active.value?.id||'',target?.turnId||'','runtime',target?{variantId:target.variantId,...(activeCallId?{callId:activeCallId}:{})}:undefined).catch(()=>{});
     return notice.key;
   }
   const disposeHttpFailureSink=setHttpFailureSink(reportHttpFailureNotice);

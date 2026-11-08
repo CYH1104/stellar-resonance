@@ -16,7 +16,7 @@ watch(()=>[props.p.apiBaseUrl,props.p.model,props.w.credentials[props.p.id]],()=
 onBeforeUnmount(cancel);
 async function test(){
   cancel();const id=serial;controller=new AbortController();testing.value=true;failed.value=false;result.value='';elapsed.value=0;const start=Date.now();timer=setInterval(()=>elapsed.value=Math.floor((Date.now()-start)/1000),1000);
-  try{const value=await props.w.testProfile(props.p,!!props.embedding,controller.signal);if(id!==serial)return;result.value='连接成功 · '+(value.durationMs/1000).toFixed(2)+' 秒'+(value.kind==='embedding'?' · '+value.dimensions+' 维向量':'');}
+  try{const value=await props.w.testProfile(props.p,!!props.embedding,controller.signal);if(id!==serial)return;result.value=(value.kind==='embedding'?'向量测试成功':'基础请求成功')+' · '+(value.durationMs/1000).toFixed(2)+' 秒'+(value.kind==='embedding'?' · '+value.dimensions+' 维向量':'');}
   catch(e){if(id!==serial)return;failed.value=true;result.value='连接失败 · '+(e instanceof Error?e.message:'请求失败');}
   finally{if(id===serial){testing.value=false;clearInterval(timer);}}
 }

@@ -16,6 +16,7 @@ import type {LocalService,Snapshot,GenerateRequest} from '../src/domain/contract
 import {emptyTerminal} from '../src/domain/personalTerminal';
 import {terminalAnchor,recordTerminalChat,syncTerminalMemoryNotes,isTerminalMemoryNote,terminalPrivateChats} from '../src/domain/terminalLedger';
 import {cleanLocalApiCredentials,type LocalApiCredentials} from '../src/storage/apiCredentials';
+import {reportHttpFailure,attachHttpNotice} from '../src/gateway/requestFailure';
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
 const service:LocalService={runtime:'local-card',dataset:'test-world',name:'测试',greeting:[],characters:[],places:[],counts:{characters:0,departments:0,places:0},missing:[],capabilities:{continue:true,keyRequired:true,embeddings:true}};
 let scope:ReturnType<typeof effectScope>;
@@ -42,6 +43,13 @@ beforeEach(()=>{
 afterEach(()=>{scope.stop();vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 async function generateAndWait(w:ReturnType<typeof useWorkspace>,...args:Parameters<ReturnType<typeof useWorkspace>['generate']>){await w.generate(...args);await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));}
 async function workspace(memoryInterval=1){const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));w.preferences.memorySummaryInterval=memoryInterval;return w;}
+it('associates a rejected prose request with its exact turn, variant and call without persisting a fake reply',async()=>{
+ const w=await workspace();fill(w);await w.confirmAllApis();await w.create('上游拒绝',{name:'玩家',appearance:'',background:'',personality:''},'');
+ vi.spyOn(HttpGateway.prototype,'generate').mockImplementation(async function*(){const key=reportHttpFailure({status:502,upstreamStatus:400,code:'UPSTREAM_REJECTED',task:'剧情生成',message:'上游拒绝\n模型：指定模型\n请求最大输出：32000 tokens'});throw attachHttpNotice(Error('上游拒绝'),key);});
+ await w.generate('保留本轮输入');const turn=w.active.value!.turns[0],variant=turn.variants[turn.selected];
+ const entry=await vi.waitFor(()=>{const row=w.formatErrors.entries.value.find(e=>e.code==='HTTP_ERROR');expect(row).toBeDefined();return row!;});
+ expect(entry).toMatchObject({sessionId:w.active.value!.id,turnId:turn.id,variantId:variant.id});expect(entry.callId).toBeTruthy();expect(entry.raw).toContain('400');expect(entry.raw).toContain('请求最大输出：32000');expect(variant.text).toBe('');expect(turn.input).toBe('保留本轮输入');expect(w.busy.value).toBe(false);
+});
 it('retains the input and avoids a paid request when saving the sent turn fails',async()=>{
  const w=await workspace();fill(w);await w.confirmAllApis();await w.create('提交失败',{name:'玩家',appearance:'',background:'',personality:''},'');w.input.value='不能丢失的输入';
  const generate=vi.spyOn(HttpGateway.prototype,'generate');vi.mocked(IndexedDbRepository.prototype.write).mockRejectedValueOnce(Error('空间不足'));await w.generate();

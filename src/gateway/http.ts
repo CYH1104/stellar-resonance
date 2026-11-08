@@ -1,4 +1,6 @@
+import {completionFailureReason} from '../domain/completionFailure';
 import {openGenerationStream,responseMetadata} from './generationResponse';
+import {completionProfile} from '../domain/completionProfile';
 const upstreamStatusLabel=(v:{upstreamStatus?:unknown})=>Number.isInteger(v.upstreamStatus)&&Number(v.upstreamStatus)>=100&&Number(v.upstreamStatus)<=599?' 上游 HTTP 状态：'+v.upstreamStatus+'。':'';
 import {attachHttpNotice,modelRequestContext,modelRequestFailure,reportHttpFailure,taskLabel,upstreamStatus} from './requestFailure';
 import {cleanDiagnostic} from '../domain/diagnostics';
@@ -10,6 +12,7 @@ const apiMessages:Record<string,string>={API_ORIGIN_NOT_ALLOWED:'此接口域名
 Object.assign(apiMessages,{MODEL_OUTPUT_LIMIT:'模型达到本次输出 Token 上限，正文可能尚未完整。已收到的内容保留，可提高输出上限或继续续写。',MODEL_REFUSAL:'模型拒绝回答或触发内容过滤。已收到的内容保留，请检查中转站请求记录。',INVALID_TERMINAL_REQUEST:'终端请求不完整，请检查参与角色和输入。',INVALID_DIVINATION_SCOPE:'占卜的解读对象与知情范围不一致，已锁定牌面保留，可重试解读或刷新后重试。',INVALID_TERMINAL_RESULT:'角色回复格式未通过检查，当前记录已保留，请重试。',PROMPT_DISCLOSURE_REQUEST_BLOCKED:'请求涉及提取服务器内置提示词，已拒绝生成。',SHARE_NOT_FOUND:'分享码不存在，请检查大小写及是否来自同一服务器。',INVALID_SHARE:'分享模板格式不正确。',SHARE_LIMIT:'分享模板数量已达上限。',SHARE_RATE_LIMIT:'分享操作过于频繁，请一分钟后重试。',
   INVALID_FORUM_THREAD_RESULT:'论坛回复不足5条、遗漏必需发言人或格式不正确，你的评论已保留，可手动重试。',
   MODEL_FANFIC_TOO_SHORT:'同人文不足800字，正文已保留，可补全小剧场。',MODEL_FANFIC_UNFINISHED:'同人文尚未确认完整结尾，正文已保留，可补全小剧场。',MODEL_DIARY_UNFINISHED:'精神体日记缺少结尾署名或故事日期，正文已保留，可补全小剧场。',MODEL_DIARY_TOO_SHORT:'精神体日记不足200字，正文已保留，可补全小剧场。',
+  INVALID_TEXT_MESSAGES:'正文请求包含不支持的结构化消息，请检查预设；输入和原记录保留。',
   INVALID_WORLD_INFO:'世界书触发内容或插入设置不正确，请检查世界书页面。',
   REQUEST_TOO_LARGE:'本轮请求内容过多，请减少世界书预算或关闭不需要的预设条目后重试。',
   MODEL_REASONING_UNCLOSED:'模型返回了未闭合的思考标签，后面的内容无法安全区分为正文，已停止。请关闭预设中要求输出思考标签的条目后重试；不会显示思维链。',
@@ -45,18 +48,22 @@ export class HttpGateway implements Gateway {
   async assistPersona(wish:string,draft:Persona,profile:Profile,key:string,signal:AbortSignal):Promise<Persona>{const data=await(await this.post('persona',{wish,draft,profile,key},signal)).json();try{return normalizePersona(data.persona);}catch{throw new Error('AI 返回的人设格式不正确，现有表格未修改。');}}
   async place(id:string):Promise<{id:string;name:string;description:string}>{return (await this.post('place',{id})).json();}
   private async post(path: string, body: unknown, signal?: AbortSignal,contextOverride?:string): Promise<Response> {
+    if(['persona','memory','utility','forum-reply','random-event','personal-terminal'].includes(path)&&body&&typeof body==='object'&&!Array.isArray(body)){
+      const profile=(body as {profile?:Profile}).profile;if(profile&&typeof profile==='object'&&!Array.isArray(profile))body={...body,profile:completionProfile(profile)};
+    }
     const context=contextOverride??modelRequestContext(body,path),started=Date.now();
     try{
     const response=await fetch(`/api/${path}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'manual',signal}).catch(error=>{if(signal?.aborted)throw error;throw new Error('无法连接本机后台。请使用“启动预览.bat”启动服务，然后刷新网页。');});
     if(response.type==='opaqueredirect'||response.redirected||response.status>=300&&response.status<400){void response.body?.cancel().catch(()=>{});throw new Error('生成或配置接口发生重定向，请检查登录会话和服务器API路由。'+responseMetadata(response));}
-    if(!response.ok){let code='',detail='',raw='',reason='',upstream:number|undefined;try{const value=await response.json() as {code?:unknown;upstreamStatus?:unknown;raw?:unknown;reason?:unknown};detail=upstreamStatusLabel(value);upstream=upstreamStatus(value.upstreamStatus);if(typeof value.code==='string')code=value.code;if(typeof value.raw==='string')raw=value.raw.slice(0,48000);if(typeof value.reason==='string'&&/^[A-Z_]{1,80}$/.test(value.reason))reason=value.reason;}catch{}const personaErrors:Record<string,string>={PLAYER_NAME_REQUIRED:'请填写玩家姓名后再开始。',INVALID_PERSONA:'人设表格的内容或长度不正确，请检查后重试。',INVALID_PERSONA_WISH:'请用不超过3000字描述想玩的人设。',INVALID_PERSONA_RESULT:'AI 返回的人设格式不正确，现有表格未修改，可以重试。',MODEL_LIST_NOT_SUPPORTED:'该服务不支持获取模型列表，请检查接口配置并刷新模型列表。',INVALID_MODEL_LIST:'服务返回的模型列表格式不正确，请检查接口配置并刷新模型列表。',MODEL_LIST_TOO_LARGE:'模型列表过大，请检查接口配置并刷新模型列表。',MODEL_LIST_FAILED:'获取模型列表失败，请检查地址；也可手动填写模型名。'};const failure=new Error((personaErrors[code]||apiMessages[code]||(response.status===404?'服务器接口尚未接通。':response.status===501?'此模型功能尚未配置。':response.status===401||response.status===403?'本机会话已失效，请刷新页面后重新确认接口。':`接口请求失败（${response.status}），请重试。`))+detail+(reason?'；错误类型：'+reason:''));if(raw)(failure as Error&{raw?:string}).raw=raw;attachHttpNotice(failure,reportHttpFailure({status:response.status,...(upstream!==undefined?{upstreamStatus:upstream}:{}),code,task:taskLabel(path),message:[failure.message,context,`已等待：${((Date.now()-started)/1000).toFixed(1)} 秒`].filter(Boolean).join('\n')}));throw failure;}
+    if(!response.ok){let code='',detail='',raw='',reason='',upstream:number|undefined;try{const value=await response.json() as {code?:unknown;upstreamStatus?:unknown;raw?:unknown;reason?:unknown};detail=upstreamStatusLabel(value);upstream=upstreamStatus(value.upstreamStatus);if(typeof value.code==='string')code=value.code;if(typeof value.raw==='string')raw=value.raw.slice(0,48000);if(typeof value.reason==='string'&&/^[A-Z_]{1,80}$/.test(value.reason))reason=completionFailureReason(value.reason);}catch{}const personaErrors:Record<string,string>={PLAYER_NAME_REQUIRED:'请填写玩家姓名后再开始。',INVALID_PERSONA:'人设表格的内容或长度不正确，请检查后重试。',INVALID_PERSONA_WISH:'请用不超过3000字描述想玩的人设。',INVALID_PERSONA_RESULT:'AI 返回的人设格式不正确，现有表格未修改，可以重试。',MODEL_LIST_NOT_SUPPORTED:'该服务不支持获取模型列表，请检查接口配置并刷新模型列表。',INVALID_MODEL_LIST:'服务返回的模型列表格式不正确，请检查接口配置并刷新模型列表。',MODEL_LIST_TOO_LARGE:'模型列表过大，请检查接口配置并刷新模型列表。',MODEL_LIST_FAILED:'获取模型列表失败，请检查地址；也可手动填写模型名。'};const failure=new Error((personaErrors[code]||apiMessages[code]||(response.status===404?'服务器接口尚未接通。':response.status===501?'此模型功能尚未配置。':response.status===401||response.status===403?'本机会话已失效，请刷新页面后重新确认接口。':`接口请求失败（${response.status}），请重试。`))+detail+(reason?'；错误类型：'+reason:''));if(raw)(failure as Error&{raw?:string}).raw=raw;attachHttpNotice(failure,reportHttpFailure({status:response.status,...(upstream!==undefined?{upstreamStatus:upstream}:{}),code,task:taskLabel(path),message:[failure.message,context,`已等待：${((Date.now()-started)/1000).toFixed(1)} 秒`].filter(Boolean).join('\n')}));throw failure;}
     return response;
     }catch(error){const failure=modelRequestFailure(error,context,Date.now()-started);if(typeof (error as {raw?:unknown})?.raw==='string'&&failure&&typeof failure==='object')(failure as {raw?:string}).raw=(error as {raw:string}).raw;throw failure;}
   }
   async authorize(invite: string, signal?: AbortSignal): Promise<void> { const response=await this.post('access',{invite},signal);if(response.status!==204){const data=await response.json() as {capabilities?:{continue?:boolean}};this.capabilities.continue=data.capabilities?.continue===true;} }
   async *generate(request: GenerateRequest, key: string, signal: AbortSignal): AsyncIterable<GenerateEvent> {
-    const context=modelRequestContext({profile:{...request.profile},key},'generate'),started=Date.now();
-    const response=await this.post('generate',{...request,key,singleStateCall:true,captureFormatErrors:true},signal);
+    const payload={...request,profile:completionProfile(request.profile),key,singleStateCall:true,captureFormatErrors:true};
+    const context=modelRequestContext(payload,'generate'),started=Date.now();
+    const response=await this.post('generate',payload,signal);
     const {reader,prefix,decoder}=await openGenerationStream(response,code=>Object.hasOwn(apiMessages,code)?apiMessages[code]:undefined).catch(error=>{throw modelRequestFailure(error,context,Date.now()-started);});
     let buffer=prefix.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n'), finished=false;
     try {

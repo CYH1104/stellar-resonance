@@ -21,14 +21,15 @@ export function upstreamStatus(value:unknown):number|undefined{const n=typeof va
 /** Capture the selected endpoint before awaiting; later edits must not change the error's source. */
 export function modelRequestContext(body:unknown,path:string){
  if(!body||typeof body!=='object')return '';
- const value=body as {profile?:{name?:unknown;model?:unknown;apiBaseUrl?:unknown};apiBaseUrl?:unknown;key?:unknown};
+ const value=body as {profile?:{name?:unknown;model?:unknown;apiBaseUrl?:unknown;maxTokens?:unknown;temperature?:unknown;topP?:unknown;frequencyPenalty?:unknown;presencePenalty?:unknown};apiBaseUrl?:unknown;key?:unknown};
  const profile=value.profile,address=profile?.apiBaseUrl??value.apiBaseUrl;
  if(!profile&&typeof address!=='string')return '';
  let endpoint='未配置',port='未配置';
  try{const url=new URL(String(address));if(['http:','https:'].includes(url.protocol)){endpoint=url.origin;port=url.port||(url.protocol==='https:'?'443':'80');}}catch{}
  const secrets=typeof value.key==='string'?[value.key]:[];
  const clean=(text:unknown)=>safeLogText(typeof text==='string'?text:'',secrets).replace(/[\r\n\t]/g,' ').slice(0,256);
- return [`任务：${tasks[path]||'模型请求'}`,`模型：${clean(profile?.model)||'未选择（模型列表请求不指定模型）'}`,`接口：${endpoint}`,`端口：${port}`,`单次请求／重试上限：${MODEL_REQUEST_TIMEOUT_MS/60000} 分钟`].join('\n');
+ const parameters=profile&&path==='generate'?([['maxTokens','请求最大输出'],['temperature','temperature'],['topP','top_p'],['frequencyPenalty','frequency_penalty'],['presencePenalty','presence_penalty']] as const).flatMap(([field,label])=>typeof profile[field]==='number'&&Number.isFinite(profile[field])?[label+'：'+profile[field]+(field==='maxTokens'?' tokens':'')]:[]):[];
+ return [`任务：${tasks[path]||'模型请求'}`,`模型：${clean(profile?.model)||'未选择（模型列表请求不指定模型）'}`,`接口：${endpoint}`,`端口：${port}`,...parameters,`单次请求／重试上限：${MODEL_REQUEST_TIMEOUT_MS/60000} 分钟`].join('\n');
 }
 class ModelRequestFailure extends Error {}
 export function modelRequestFailure(error:unknown,context:string,elapsedMs:number):unknown{
