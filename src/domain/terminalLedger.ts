@@ -53,18 +53,18 @@ const branchMemos=new WeakMap<object,BranchMemo>();
  * Each entry must stay bit-identical to hash(segments.join('|')), because a changed value
  * would re-judge stored anchors and hide existing messages and memory notes.
  */
-function branchMemo(s:Session):BranchMemo{
- const turns=s.turns,previous=branchMemos.get(s);
- if(previous&&previous.variant.length===turns.length){
+function branchMemo(s:Session,before=s.turns.length):BranchMemo{
+ const turns=s.turns,count=Math.max(0,Math.min(before,turns.length)),previous=branchMemos.get(s);
+ if(previous&&previous.variant.length>=count){
   let same=true;
-  for(let i=0;i<turns.length;i++){
+  for(let i=0;i<count;i++){
    const turn=turns[i],variant=turn.variants[turn.selected];
    if(previous.variant[i]!==variant||previous.input[i]!==turn.input||previous.text[i]!==(variant?.text||'')){same=false;break;}
   }
   if(same)return previous;
  }
- const segments=pathFor(s),variant:(object|undefined)[]=[],input:string[]=[],text:string[]=[];
- for(const turn of turns){const current=turn.variants[turn.selected];variant.push(current);input.push(turn.input);text.push(current?.text||'');}
+ const segments=pathFor(s,count),variant:(object|undefined)[]=[],input:string[]=[],text:string[]=[];
+ for(let i=0;i<count;i++){const turn=turns[i],current=turn.variants[turn.selected];variant.push(current);input.push(turn.input);text.push(current?.text||'');}
  const digests:string[]=[];let state=2166136261;digests.push((state>>>0).toString(16));
  for(let i=0;i<segments.length;i++){
   const chunk=(i?'|':'')+segments[i];
@@ -76,8 +76,8 @@ function branchMemo(s:Session):BranchMemo{
  return memo;
 }
 function pathDigest(s:Session,before=s.turns.length){
- const digests=branchMemo(s).digests;
- return digests[Math.max(0,Math.min(before,digests.length-1))];
+ const count=Math.max(0,Math.min(before,s.turns.length)),digests=branchMemo(s,count).digests;
+ return digests[count];
 }
 export function terminalAnchor(s:Session,before=s.turns.length):TerminalAnchor {let index=before-1;while(index>=0&&s.turns[index].variants[s.turns[index].selected]?.status!=='complete')index--;const t=s.turns[index],v=t?.variants[t.selected],path=[pathDigest(s,index+1)];return {key:t?t.id+':'+v.id+':'+hash(path.join('|')):'opening:'+hash(s.opening),turnId:t?.id||'',variantId:v?.id||'',path};}
 export function terminalAnchorActive(s:Session,a:TerminalAnchor,before=s.turns.length){if(!a.turnId)return a.key==='opening:'+hash(s.opening);const index=s.turns.slice(0,before).findIndex(t=>t.id===a.turnId);if(index<0)return false;const t=s.turns[index],v=t.variants[t.selected];return v?.status==='complete'&&v.id===a.variantId&&a.path.length===1&&a.path[0]===pathDigest(s,index+1);}
@@ -107,6 +107,18 @@ export function terminalJobTurnIndex(s:Session,job:TerminalJob):number{
  return i;
 }
 export function terminalMessageVisible(s:Session,m:TerminalMessage){return !m.archived&&(!m.anchor||terminalAnchorActive(s,m.anchor))&&terminalOriginActive(s,m.origin);}
+/** One branch read for a whole terminal view, rather than scanning the entire
+ * history again for every message. Hashes and legacy visibility stay unchanged.
+ * An unfinished trailing reply cannot change a previously confirmed prefix. */
+export function terminalVisibility(s:Session,before=s.turns.length){
+ const count=Math.max(0,Math.min(before,s.turns.length)),indices=new Map<string,number>(),inputs=new Map<number,string>();
+ for(let i=0;i<count;i++){if(!indices.has(s.turns[i].id))indices.set(s.turns[i].id,i);inputs.set(i,hash(s.turns[i].input));}
+ let complete=count;while(complete>0&&s.turns[complete-1].variants[s.turns[complete-1].selected]?.status!=='complete')complete--;
+ const digests=branchMemo(s,complete).digests,opening='opening:'+hash(s.opening);
+ const anchor=(a:TerminalAnchor)=>{if(!a.turnId)return a.key===opening;const index=indices.get(a.turnId);if(index===undefined)return false;const t=s.turns[index],v=t.variants[t.selected];return v?.status==='complete'&&v.id===a.variantId&&a.path.length===1&&a.path[0]===digests[index+1];};
+ const origin=(o:TerminalOrigin|undefined)=>{if(!o)return true;if(typeof o.turnId!=='string'||typeof o.input!=='string')return false;const index=indices.get(o.turnId);return index!==undefined&&inputs.get(index)===o.input;};
+ return {anchor,origin,message:(m:TerminalMessage)=>!m.archived&&(!m.anchor||anchor(m.anchor))&&origin(m.origin)};
+}
 /** A stored memory segment belongs to the round that wrote it; legacy segments without an
  * origin keep the old anchor-only rule. */
 export function terminalSegmentVisible(s:Session,entry:{origin?:TerminalOrigin},before=s.turns.length){return !entry.origin||terminalOriginActive(s,entry.origin,before);}

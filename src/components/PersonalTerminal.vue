@@ -58,14 +58,6 @@ const roundsByRoom=computed(()=>{
  for(const r of u.t.rooms)rows.set(r.id,r.rounds.filter(x=>!x.archived&&(!x.anchor||!!session&&terminalAnchorActive(session,x.anchor))));
  return rows;
 });
-const lastMessageByConversation=computed(()=>{
- const session=props.w.active,rows=new Map<string,{text:string;at:string}>();
- for(const c of conversations.value){
-  const last=c.messages.filter(m=>!session||terminalMessageVisible(session,m)).at(-1);
-  rows.set(c.id,{text:last?.text||'暂无消息',at:last?.at||''});
- }
- return rows;
-});
 // Drunk/tolerance bars are shown for actual participants only: the player plus NPCs
  // whose invitation was accepted. Declined or waiting invitees are marked 未参加 and
  // never display a drunk state.
@@ -125,7 +117,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <div class="pt-toolbar"><h2>通讯</h2><button v-if="unconfirmedGroups.length" type="button" :disabled="u.working" @click="u.completeGroupManagement">补全未确认群管理（{{unconfirmedGroups.length}}）</button><div class="pt-plus-wrap"><button type="button" aria-label="通讯操作" :aria-expanded="u.plusOpen" @click="u.plusOpen=!u.plusOpen">＋</button><div v-if="u.plusOpen" class="pt-plus-menu"><button type="button" @click="u.go('add')">添加好友</button><button type="button" @click="u.picked=[];u.title='';u.go('new-group')">发起群聊</button></div></div></div>
    <input v-model="u.search" aria-label="搜索会话" placeholder="搜索会话"><div class="pt-tabs"><button v-for="filter in [{id:'all',name:'全部'},{id:'private',name:'私聊'},{id:'group',name:'群聊'}] as const" :key="filter.id" type="button" :class="{active:u.conversationFilter===filter.id}" @click="u.conversationFilter=filter.id">{{filter.name}}</button></div>
    <p v-if="!u.visibleConversations.length" class="pt-empty">还没有会话<br>从好友资料发起私聊，或创建群聊。</p>
-   <button v-for="c in conversations" :key="c.id" class="pt-row" type="button" @click="u.openConversation(c.id)"><span class="pt-avatar"><GroupAvatar v-if="c.group" :conversation="c"/><CharacterAvatar v-else :w="w" :id="c.members[0]||''"/></span><div><strong>{{c.title}}</strong><small>{{lastMessageByConversation.get(c.id)?.text}}</small><small v-if="c.origin==='story'">剧情群聊</small></div><time>{{messageTime(lastMessageByConversation.get(c.id)?.at||'')}}</time><em v-if="c.unread">{{c.unread}}</em><span>›</span></button>
+   <button v-for="c in conversations" :key="c.id" class="pt-row" type="button" @click="u.openConversation(c.id)"><span class="pt-avatar"><GroupAvatar v-if="c.group" :conversation="c"/><CharacterAvatar v-else :w="w" :id="c.members[0]||''"/></span><div><strong>{{c.title}}</strong><small>{{c.lastMessage?.text||'暂无消息'}}</small><small v-if="c.origin==='story'">剧情群聊</small></div><time>{{messageTime(c.lastMessage?.at||'')}}</time><em v-if="c.unread">{{c.unread}}</em><span>›</span></button>
   </template>
   <template v-else-if="u.page==='chat'&&u.conversation">
    <div class="pt-chat-identity"><span class="pt-avatar"><GroupAvatar v-if="u.conversation.group" :conversation="u.conversation"/><CharacterAvatar v-else :w="w" :id="u.conversation.members[0]||''"/></span><div><strong>{{u.conversation.title}}</strong><small>{{u.conversation.group?`${members.length}位成员 · ${groupRole('player')}`:'私聊'}}</small></div><button type="button" @click="u.conversation.group?groupInfo():profile(u.conversation.members[0])">{{u.conversation.group?'群资料':'好友资料'}} ›</button></div>

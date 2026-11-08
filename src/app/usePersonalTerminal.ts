@@ -3,6 +3,7 @@ import {renderKingCommand} from '../domain/kingCommand';
 import {normalizeActorName} from '../domain/dynamicActors';
 import {terminalAvatarImage} from './terminalAvatarImage';
 import {useAvatarAdjustment} from './useAvatarAdjustment';
+import {terminalConversationViews} from './terminalConversationView';
 import {imageUrl} from '../domain/characterImages';
 import {terminalCodeBindings} from '../domain/terminalCodeVariables';
 import {completedStoryRounds} from '../domain/terminalPolicy';
@@ -11,7 +12,7 @@ import {isTerminalMemoryNote} from '../domain/terminalLedger';
 import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
 import {factAudienceCovers} from '../domain/knowledge';
-import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageVisible,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
+import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageVisible,terminalVisibility,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
 import {computed,ref,watch,onMounted,onBeforeUnmount} from 'vue';
 import {markGenerationComplete,startGeneration,finishGeneration} from './generationCompletion';
 import type {ViewModel} from './useWorkspace';
@@ -35,13 +36,14 @@ export function usePersonalTerminal(w:ViewModel){
  const actors=computed(()=>{const known=w.state?.characters||w.active?.initial.characters||[];return [...known,...(t.value.contacts||[]).filter(c=>!known.some(a=>a.id===c.id))];}),name=(id:string)=>id==='player'?(w.active?.persona.name||'我'):actors.value.find(a=>a.id===id)?.name||'未知角色';
  const activeFriends=computed(()=>t.value.friends.filter(f=>!f.anchor||!!w.active&&terminalAnchorActive(w.active,f.anchor)));
  const incoming=computed(()=>activeFriends.value.filter(f=>f.direction==='incoming'&&f.status==='pending'));
- const messages=computed(()=>conversation.value?.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m))||[]);
+ const messages=computed(()=>visibleConversations.value.find(c=>c.id===conversationId.value)?.messages||(previewChat.value?.id===conversationId.value?previewChat.value.messages:[]));
  const friends=computed(()=>activeFriends.value.filter(f=>f.status==='accepted'));
  const previewChat=ref<import('../domain/personalTerminal').TerminalConversation>();
  const conversation=computed(()=>t.value.conversations.find(c=>c.id===conversationId.value)||previewChat.value?.id===conversationId.value&&previewChat.value||undefined);
  const canManage=computed(()=>!!conversation.value&&groupCanManage(conversation.value));
  const isOwner=computed(()=>!!conversation.value&&groupOwner(conversation.value)==='player');
- const visibleConversations=computed(()=>t.value.conversations.filter(c=>(!c.anchor||!!w.active&&terminalAnchorActive(w.active,c.anchor))&&(!c.producedBy||!!w.active&&terminalOriginActive(w.active,c.producedBy))));
+ const visibility=computed(()=>w.active?terminalVisibility(w.active):undefined);
+ const visibleConversations=computed(()=>terminalConversationViews(t.value.conversations,visibility.value));
  const room=computed(()=>t.value.rooms.find(r=>r.id===roomId.value));
  const tolerances=computed(()=>t.value.tolerances||{});
  const toleranceValue=(id:string)=>tolerances.value[id];
@@ -144,7 +146,7 @@ const scopedTask=['chat','invite','react','game-interact','friend','afterparty',
  const refreshGroup=()=>run(async()=>{const id=conversationId.value;await configureGroup(id);if(conversationId.value===id){title.value=conversation.value?.title||'';note.value=conversation.value?.announcement||'';}});
  const completeGroupManagement=()=>run(async()=>{const targets=visibleConversations.value.filter(c=>groupNeedsManagement(c)).map(c=>c.id);if(!targets.length){error.value='没有待补全管理的群聊。';return;}const failed:string[]=[];let done=0;for(const id of targets){try{if(await configureGroup(id))done++;}catch(e){failed.push((t.value.conversations.find(c=>c.id===id)?.title||id)+'：'+(e instanceof Error?e.message:'未完成'));}}if(failed.length)throw Error(`已补全 ${done} 个群，${failed.length} 个待重试：${failed.join('；')}`);error.value=`已补全 ${done} 个群的群主与管理员。`;});
  const readThrough=new Map<string,{sessionId:string;messageId:string}>();let readFlushing=false;
- function openConversation(id:string){const c=t.value.conversations.find(c=>c.id===id);if(!c||c.joined===false){error.value='尚未加入或已退出该会话。';return;}conversationId.value=id;historyPage.value=0;go('chat');const last=c.messages.filter(m=>!w.active||terminalMessageVisible(w.active,m)).at(-1);if(w.active)readThrough.set(id,{sessionId:w.active.id,messageId:last?.id||''});void flushReadMarks();}
+ function openConversation(id:string){const c=t.value.conversations.find(c=>c.id===id);if(!c||c.joined===false){error.value='尚未加入或已退出该会话。';return;}conversationId.value=id;historyPage.value=0;go('chat');const last=visibleConversations.value.find(c=>c.id===id)?.lastMessage;if(w.active)readThrough.set(id,{sessionId:w.active.id,messageId:last?.id||''});void flushReadMarks();}
  async function flushReadMarks(){if(readFlushing||w.busy||working.value||w.loading||!w.active)return;const sid=w.active.id,marks=[...readThrough].filter(([,m])=>m.sessionId===sid);if(!marks.length)return;readFlushing=true;try{await run(async()=>{await commit(next=>{for(const [id,mark]of marks){const c=next.conversations.find(c=>c.id===id);if(!c)continue;const index=c.messages.findIndex(m=>m.id===mark.messageId);if(index>=0)c.unread=Math.min(c.unread,c.messages.slice(index+1).filter(m=>!w.active||terminalMessageVisible(w.active,m)).length);else if(!c.messages.length)c.unread=0;}});for(const [id,mark]of marks)if(readThrough.get(id)===mark)readThrough.delete(id);});}finally{readFlushing=false;}}
  watch(()=>[w.busy,working.value,w.loading],()=>{void flushReadMarks();});
  const sendChat=(retry=false)=>run(async()=>{let c=conversation.value;if(!c)return;if(c.id.startsWith('preview:')){const actor=c.members[0];let created='';await commit(t=>{created=createConversation(t,[actor],name(actor),false).id;});conversationId.value=created;previewChat.value=undefined;c=conversation.value;if(!c)return;}const text=retry?messages.value.at(-1)?.text||'':draft.value.trim();if(!text||text.length>2000)throw Error('消息须为1～2000字。');if(c.group){if(c.joined===false)throw Error('你已退出该群。');}if(!c.members.length)throw Error('群内暂无可识别角色，请先同步群资料。');const cid=c.id;
