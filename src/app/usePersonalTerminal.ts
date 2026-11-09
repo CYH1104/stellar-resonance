@@ -42,8 +42,12 @@ export function usePersonalTerminal(w:ViewModel){
  const conversation=computed(()=>t.value.conversations.find(c=>c.id===conversationId.value)||previewChat.value?.id===conversationId.value&&previewChat.value||undefined);
  const canManage=computed(()=>!!conversation.value&&groupCanManage(conversation.value));
  const isOwner=computed(()=>!!conversation.value&&groupOwner(conversation.value)==='player');
- const visibility=computed(()=>w.active?terminalVisibility(w.active):undefined);
- const visibleConversations=computed(()=>terminalConversationViews(t.value.conversations,visibility.value));
+ const visibleConversations=computed(()=>{
+  // Bind the branch snapshot to this message view, not a separately cached
+  // closure. Task completion also publishes results normalized by raw producers.
+  void w.busy;void w.terminalBusy;
+  return terminalConversationViews(t.value.conversations,w.active?terminalVisibility(w.active):undefined);
+ });
  const room=computed(()=>t.value.rooms.find(r=>r.id===roomId.value));
  const tolerances=computed(()=>t.value.tolerances||{});
  const toleranceValue=(id:string)=>tolerances.value[id];
@@ -580,7 +584,8 @@ const setGroupAvatarPosition=(position:{x:number;y:number})=>run(async()=>{const
  const storySources=computed(()=>{const sources:StoryGroupSource[]=[];for(const [index,turn] of (w.active?.turns||[]).entries()){const v=turn.variants[turn.selected];if(v?.status!=='complete')continue;for(const scene of v.outcome?.theaters||[])if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({anchor:terminalAnchor(w.active!,index+1),key:turn.id+':'+v.id+':'+scene.slot,slot:scene.slot,title:scene.title||'剧情群聊',at:v.createdAt,messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});}if(!sources.length)for(const scene of w.theaters)if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({key:'opening:'+scene.slot+':'+scene.title,slot:scene.slot,title:scene.title||'剧情群聊',at:w.active?.createdAt||'',messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});return sources;});
 
  let failedStorySync:{sessionId:string;terminal:PersonalTerminal;sources:string}|undefined;
- watch([()=>JSON.stringify(storySources.value),working,()=>w.loading,()=>w.busy,()=>w.backupWorking,()=>w.active?.id],([sourceKey])=>{
+ const hasMisarchivedMessages=computed(()=>t.value.conversations.some(c=>c.messages.some(m=>m.archived===true&&(m.source?.startsWith('auto:')||m.source?.startsWith('welcome:')))));
+ watch([()=>JSON.stringify(storySources.value),working,()=>w.loading,()=>w.busy,()=>w.backupWorking,()=>w.active?.id,hasMisarchivedMessages],([sourceKey])=>{
   if(working.value||w.loading||w.busy||w.backupWorking||!w.active)return;
   const sessionId=w.active.id,current=t.value,sources=JSON.parse(String(sourceKey)) as StoryGroupSource[];
   if(failedStorySync?.sessionId===sessionId&&failedStorySync.terminal===current&&failedStorySync.sources===sourceKey)return;

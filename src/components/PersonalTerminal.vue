@@ -5,6 +5,7 @@ import {terminalSyncSummary} from '../domain/terminalSyncReport';
 import {logTarget} from '../app/logNavigation';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
+import {terminalMessageState} from '../app/terminalMessageState';
 import {resetMajorCharacterImages} from '../app/localCharacterImages';
 import {nicknameImage,saveNicknameImage} from '../app/localNicknameImages';
 import NicknameImageSettings from './NicknameImageSettings.vue';
@@ -43,6 +44,7 @@ const currentTitle=computed(()=>u.page==='chat'?u.conversation?.title||'通讯':
 const filteredFriends=computed(()=>u.friends.filter(f=>(u.name(f.id)+f.note).includes(u.search)));
 const searchedMessages=computed(()=>u.messages.filter(m=>!searchMessages.value||m.text.includes(chatSearch.value)));
 const pagedMessages=computed(()=>messagePage(searchedMessages.value,u.historyPage));
+const emptyMessageState=computed(()=>!u.messages.length&&u.conversation&&props.w.active?terminalMessageState(props.w.active,u.conversation):undefined);
 const mineWaiting=computed(()=>u.round?.phase==='respond'&&targetActors(u.round).includes('player')&&!u.round.replies.some(r=>r.id==='player'));
 const npcWaiting=computed(()=>u.round?.phase==='respond'&&targetActors(u.round).some(id=>id!=='player'&&!u.round!.replies.some(r=>r.id===id)));
 const chatSearch=ref(''),searchMessages=ref(false);
@@ -124,7 +126,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
    <input v-if="searchMessages" v-model="chatSearch" aria-label="搜索聊天记录" placeholder="搜索本群聊天记录">
    <button v-if="u.conversation.announcement" type="button" class="pt-announcement pt-announcement-toggle" :aria-expanded="announcementOpen" @click="announcementOpen=!announcementOpen"><span :class="{collapsed:!announcementOpen}">群公告：{{u.conversation.announcement}}</span><small>{{announcementOpen?'收起':'展开'}}</small></button>
    <div class="pt-pagination" v-if="searchedMessages.length>20"><button type="button" :disabled="(u.historyPage+1)*20>=searchedMessages.length" @click="u.historyPage++">更早记录</button><small>第 {{u.historyPage+1}} 页 · 共 {{searchedMessages.length}} 条</small><button type="button" :disabled="u.historyPage===0" @click="u.historyPage--">较新记录</button></div>
-   <div ref="feed" class="pt-chat-feed" role="log" aria-label="终端聊天消息"><p v-if="!u.messages.length" class="pt-empty">从一句问候开始。</p><article v-for="m in pagedMessages" :key="m.id" class="pt-message" :class="{mine:m.sender==='player'}"><span class="pt-avatar"><img v-if="m.sender==='player'&&u.t.avatar" :src="avatarDisplay" :style="u.avatarStyle" alt="我的头像"><CharacterAvatar v-else :w="w" :id="m.sender" :nickname="m.displayName||u.name(m.sender)"/></span><div><small>{{m.displayName||u.name(m.sender)}}</small><p>{{m.text}}</p><time>{{m.source?'剧情记录':messageTime(m.at)}}</time></div></article></div>
+   <div ref="feed" class="pt-chat-feed" role="log" aria-label="终端聊天消息"><div v-if="emptyMessageState" class="pt-empty"><p>{{emptyMessageState.stored?'已有记录暂未显示。':'从一句问候开始。'}}</p><details class="pt-message-state"><summary>查看消息状态</summary><p>已保存 {{emptyMessageState.stored}} 条 · 重新核对可显示 {{emptyMessageState.visible}} 条</p><p>归档 {{emptyMessageState.archived}} 条 · 剧情绑定变化 {{emptyMessageState.anchorChanged}} 条 · 行动来源变化 {{emptyMessageState.sourceChanged}} 条</p></details></div><article v-for="m in pagedMessages" :key="m.id" class="pt-message" :class="{mine:m.sender==='player'}"><span class="pt-avatar"><img v-if="m.sender==='player'&&u.t.avatar" :src="avatarDisplay" :style="u.avatarStyle" alt="我的头像"><CharacterAvatar v-else :w="w" :id="m.sender" :nickname="m.displayName||u.name(m.sender)"/></span><div><small>{{m.displayName||u.name(m.sender)}}</small><p>{{m.text}}</p><time>{{m.source?'剧情记录':messageTime(m.at)}}</time></div></article></div>
    <button v-if="u.messages.at(-1)?.sender==='player'" type="button" class="pt-link" :disabled="u.working" @click="u.sendChat(true)">重试角色回复</button>
    <form class="pt-composer" @submit.prevent="u.sendChat()"><AutoTextarea v-model="u.draft" aria-label="终端消息" placeholder="输入消息…" maxlength="2000" rows="1"/><button type="submit" class="pt-primary" :disabled="u.working||!u.draft.trim()">发送</button></form><small class="pt-composer-hint">发送将调用终端 API</small>
   </template>

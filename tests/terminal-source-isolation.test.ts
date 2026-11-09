@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {createRenderer,reactive,nextTick} from 'vue';
+import {createRenderer,reactive,nextTick,toRaw} from 'vue';
 import {usePersonalTerminal} from '../src/app/usePersonalTerminal';
 import type {ViewModel} from '../src/app/useWorkspace';
 import {emptyTerminal,syncStoryGroups} from '../src/domain/personalTerminal';
@@ -64,4 +64,17 @@ it('queued theater repair preserves concurrent terminal edits and messages inste
  const s=fixture();s.terminal!.conversations[0].messages.forEach(m=>m.archived=true);const save=vi.fn(async()=>{}),{w,terminal}=mountTerminal(s,save);
  w.active!.terminal!.bio='在修复排队时修改的简介';w.active!.terminal!.conversations[0].messages.push({id:'new-arrival',sender:'npc',text:'刚到达的新消息',at:'10:06'});
  await vi.waitFor(()=>expect(save).toHaveBeenCalledTimes(1));await vi.waitFor(()=>expect(terminal.working.value).toBe(false));expect(w.active!.terminal!.bio).toBe('在修复排队时修改的简介');expect(terminal.visibleConversations.value[0].messages).toHaveLength(9);expect(terminal.visibleConversations.value[0].lastMessage?.id).toBe('new-arrival');
+});
+it('a raw completion normalization cannot leave the next committed messages filtered through an old branch snapshot',async()=>{
+ const s=fixture(),{w,terminal}=mountTerminal(s,async()=>{},true);expect(terminal.visibleConversations.value[0].messages).toHaveLength(8);
+ // Simulate a non-Vue producer normalizing its result before publishing the new
+ // terminal records. Refreshing the page recomputes the branch, but should not be required.
+ toRaw(w.active!.turns[0].variants[0]).text='异步返回后归一化的正文';const anchor=terminalAnchor(w.active!);
+ w.active!.terminal!.conversations[0].anchor=anchor;w.active!.terminal!.conversations[0].messages=w.active!.terminal!.conversations[0].messages.map(m=>({...m,anchor}));w.busy=false;await nextTick();
+ expect(terminal.visibleConversations.value[0].messages).toHaveLength(8);terminal.openConversation('group');expect(terminal.messages.value).toHaveLength(8);
+});
+it('a late legacy archive flag on a new round is repaired while the phone stays mounted',async()=>{
+ const {w,terminal}=mountTerminal(fixture(),async()=>{});expect(terminal.visibleConversations.value[0].messages).toHaveLength(8);
+ w.active!.terminal!.conversations[0].messages.forEach(m=>m.archived=true);
+ await vi.waitFor(()=>expect(terminal.visibleConversations.value[0].messages).toHaveLength(8));expect(w.active!.terminal!.conversations[0].messages.every(m=>!m.archived)).toBe(true);
 });
