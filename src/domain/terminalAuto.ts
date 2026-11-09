@@ -71,7 +71,10 @@ export function terminalAutoJobId(s:Session,index:number,mode:TerminalAutoMode,s
  if(!turn)return '';
  if(socialOnly)return `auto:${turn.id}:${variant?.id||'none'}:social`;
  if(mode==='story-first')return `auto:${turn.id}:${variant?.id||'none'}:story-first`;
- return `auto:${turn.id}:terminal-first:${terminalAnchor(s,index).key}`;
+ const legacy=`auto:${turn.id}:terminal-first:${terminalAnchor(s,index).key}`;
+ // Keep existing archives idempotent until the triggering action is explicitly edited.
+ // A different action must never reuse the previous action's committed phone facts.
+ return turn.inputEdited?`${legacy}:input:${terminalOrigin(s,index)!.input}`:legacy;
 }
 /** The prose raises a real contact or invitation that the pre-prose round could not see.
  * This only decides whether to run the post-prose social review; the model still verifies it. */
@@ -104,7 +107,7 @@ export function terminalJobFacts(s:Session,job:TerminalJob):string{
  * really wrote, so it survives a reload and stays byte-identical to the first request. */
 export function terminalCommittedFacts(s:Session,index:number):string{
  const turn=s.turns[index];if(!turn)return '';
- const jobs=(s.terminal?.jobs||[]).filter(job=>job.turnId===turn.id&&job.status==='ready');
+ const jobs=(s.terminal?.jobs||[]).filter(job=>job.turnId===turn.id&&job.status==='ready'&&(job.mode!=='terminal-first'||job.id===terminalAutoJobId(s,index,'terminal-first')));
  const job=jobs.find(job=>job.mode==='terminal-first')||jobs.find(job=>job.mode==='story-first')||jobs.find(job=>job.kind==='messages');
  return job?terminalJobFacts(s,job):'';
 }

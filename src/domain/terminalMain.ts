@@ -4,8 +4,8 @@ import {resolveActorId} from './dynamicActors.ts';
 import {completedStoryRounds,terminalCooldownBlocked,terminalPrivateMessagesMax} from './terminalPolicy.ts';
 import {cleanSocialActions,applySocialActions,type TerminalSocialAction} from './terminalSocial.ts';
 import type {Session} from './contracts';
-import {stateAt,visibleMemories} from './story.ts';
-import {memoryReady} from './memories.ts';
+import {stateAt} from './story.ts';
+import {terminalStoryExcerpt,terminalStoryFacts} from './terminalStoryContext.ts';
 import {emptyTerminal,groupOwner,groupManagementReady,groupAutoAdminLimit,type TerminalCourse} from './personalTerminal.ts';
 import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageId,recordTerminalChat,audienceSnapshot,syncTerminalMemoryNotes,terminalPrivateChats,terminalPrivateChatLimits,isTerminalMemoryNote,type TerminalPrivateChat} from './terminalLedger.ts';
 
@@ -24,7 +24,7 @@ function terminalConfirmedHistory(s:Session,before:number){
  const rows:TerminalMainHistoryMessage[]=[];let used=0;
  for(const turn of s.turns.slice(0,Math.max(0,before)).reverse()){
   const v=turn.variants[turn.selected];if(v?.status!=='complete')continue;const text=(v.text||'').trim();if(!text)continue;
-  const pair:TerminalMainHistoryMessage[]=[{role:'user',content:turn.input.slice(0,1200)},{role:'assistant',content:text.slice(0,2400)}];
+  const pair:TerminalMainHistoryMessage[]=[{role:'user',content:terminalStoryExcerpt(turn.input,1200)},{role:'assistant',content:terminalStoryExcerpt(text,2400)}];
   const size=pair.reduce((n,m)=>n+m.content.length,0);
   if(used+size>terminalContextLimits.historyChars||rows.length+2>terminalContextLimits.historyMessages)break;
   rows.unshift(...pair);used+=size;
@@ -33,16 +33,7 @@ function terminalConfirmedHistory(s:Session,before:number){
 }
 /** Only scoped memory facts reach a terminal round; a fact with no recorded audience is never shared. */
 function terminalMemoryFacts(s:Session,before:number){
- const out:TerminalMainFact[]=[];let used=0;
- for(const m of visibleMemories(s,before)){
-  if(m.kind!=='event'||!memoryReady(m)||isTerminalMemoryNote(m))continue;
-  for(const fact of m.record?.facts||[]){
-   if(!fact.knownBy?.length||!fact.text.trim())continue;
-   if(out.length>=terminalContextLimits.memoryFacts||used+fact.text.length>terminalContextLimits.memoryChars)return out;
-   out.push({text:fact.text.slice(0,800),knownBy:[...fact.knownBy]});used+=fact.text.length;
-  }
- }
- return out;
+ return terminalStoryFacts(s,before);
 }
 export function terminalMainContext(s:Session,before=s.turns.length,hint=''):TerminalMainContext{const t=s.terminal;const stateActors=stateAt(s,before).characters;const actors=[...stateActors,...(t?.contacts||[]).filter(c=>!stateActors.some(a=>a.id===c.id))];const known=new Set(actors.map(c=>c.id));const groups=(t?.conversations||[]).filter(c=>c.group&&c.joined!==false&&(!c.anchor||terminalAnchorActive(s,c.anchor,before))&&(!c.producedBy||terminalOriginActive(s,c.producedBy,before))).slice(0,100);const privateChats=terminalPrivateChats(s,before,hint);const socialGroups=(t?.conversations||[]).filter(c=>c.group&&c.joined===false&&(!c.anchor||terminalAnchorActive(s,c.anchor,before))&&(!c.producedBy||terminalOriginActive(s,c.producedBy,before))).map(c=>({id:c.id,title:c.title,members:c.members,ownerId:groupOwner(c),adminIds:c.adminIds||[],announcement:c.announcement}));const blockedGroupIds=(t?.groupInvitations||[]).filter(i=>terminalAnchorActive(s,i.anchor,before)&&(i.status==="pending"||i.status==="declined"&&terminalCooldownBlocked(i.declinedRound,completedStoryRounds(s,before)+Number(before<s.turns.length)))).map(i=>i.groupId);const history=terminalConfirmedHistory(s,before),memories=terminalMemoryFacts(s,before),names=new Map(actors.map(a=>[a.id,a.name]));let groupBudget=terminalContextLimits.groupHistoryTotalChars;return {socialGroups,blockedGroupIds,protocolVersion:2,privateRecipientIds:[...new Set([...(t?.friends||[]).filter(f=>f.status==="accepted"&&(!f.anchor||terminalAnchorActive(s,f.anchor,before))).map(f=>f.id),...(t?.conversations||[]).filter(c=>!c.group&&c.joined!==false&&(!c.anchor||terminalAnchorActive(s,c.anchor,before))&&(!c.producedBy||terminalOriginActive(s,c.producedBy,before))).flatMap(c=>c.members)])],initialized:!!t?.groupsReady&&groups.length>=2,groups:groups.map(c=>{const past=c.messages.filter(m=>typeof m.text==='string'&&!!m.text.trim()&&!m.archived&&(!m.anchor||terminalAnchorActive(s,m.anchor,before))&&terminalOriginActive(s,m.origin,before)).slice(-terminalContextLimits.groupHistoryMessages).flatMap(m=>{const text=m.text.slice(0,terminalContextLimits.groupHistoryCharsPerMessage);if(text.length>groupBudget)return[];groupBudget-=text.length;return [{speaker:m.displayName||names.get(m.sender)||m.sender,text}];});return {id:c.id,title:c.title,members:[...new Set(c.members.filter(id=>id!=='player'))],ownerId:groupOwner(c),adminIds:c.adminIds||[],announcement:c.announcement,managementReady:groupManagementReady(c),...(past.length?{history:past}:{})};}),newGroupIds:Array.from({length:5},()=>crypto.randomUUID()),friendIds:(t?.friends||[]).filter(f=>f.status==='accepted'&&(!f.anchor||terminalAnchorActive(s,f.anchor,before))).map(f=>f.id).filter(id=>known.has(id)),blockedFriendIds:(t?.friends||[]).filter(f=>(!f.anchor||terminalAnchorActive(s,f.anchor,before))&&(f.status==='pending'||f.status==='accepted'||f.status==='declined'&&terminalCooldownBlocked(f.declinedRound,completedStoryRounds(s,before)+Number(before<s.turns.length)))).map(f=>f.id).filter(id=>known.has(id)),courses:t?.scheduleOrigin&&!terminalOriginActive(s,t.scheduleOrigin,before)?[]:t?.courses||[],contacts:(t?.contacts||[]).map(c=>({id:c.id,name:c.name,...(c.identity?{identity:c.identity}:{})})),...(history.length?{history}:{}),...(memories.length?{memories}:{}),...(privateChats.length?{privateChats}:{})};}
 function cleanPrivateChats(value:unknown):TerminalPrivateChat[]|undefined{

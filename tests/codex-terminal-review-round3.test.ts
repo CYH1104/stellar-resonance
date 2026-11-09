@@ -74,9 +74,7 @@ async function enabled(){
 }
 
 
-// 用户已知此缺陷后要求先发布。保留原断言，用 fails 明确追踪已知失败，修复后须转回普通 it。
-// 发布范围和实际验证见 docs/handoffs/2026-10-27-terminal-release.md。
-it.fails('known issue: changing the triggering input still reuses previous terminal-first job facts',async()=>{
+it('changing the triggering input creates a fresh terminal-first stage instead of reusing old facts',async()=>{
  const {w,session}=await enabled();await w.setTerminalOrder('terminal-first');
  const calls:any[]=[],prose:GenerateRequest[]=[];recordCalls([],calls,prose);
  await w.generate('原行动');await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));

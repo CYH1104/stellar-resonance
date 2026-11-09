@@ -71,16 +71,17 @@ export function importTavernPreset(text:string,filename='导入预设',options:{
     if(p.role==='model')modelRoleCount++;
     const depth=Number(p.injection_depth??4),safeDepth=Number.isFinite(depth)?Math.max(0,Math.min(10000,Math.trunc(depth))):4;
     if(p.injection_depth!==undefined&&p.injection_depth!==safeDepth)warnings.push('条目“'+(p.name||identifier)+'”的注入深度已转换为支持的范围。');
-    const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':identifier==='jailbreak'||historyIndex>=0&&entryIndex>historyIndex?'after':'before',depth:safeDepth,order:compactOrder?orderRanks.indexOf(injectionOrder(p)):injectionOrder(p),...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
+    const item=cleanPreset({id:crypto.randomUUID(),setId:id,setName:name,identifier,name:typeof p.name==='string'?p.name:identifier,content:p.content||'',enabled:hasOrder?record?.enabled===true:p.enabled!==false,role,marker:p.marker===true,position:p.injection_position===1?'in-chat':historyIndex>=0&&entryIndex>=0?(entryIndex>historyIndex?'after':'before'):identifier==='jailbreak'?'after':'before',depth:safeDepth,order:compactOrder?orderRanks.indexOf(injectionOrder(p)):injectionOrder(p),...(Array.isArray(p.injection_trigger)?{triggers:p.injection_trigger}:{})});
     if(p.academy_compatibility!==undefined)item.compatibility=cleanPresetCompatibility(p.academy_compatibility);
     if(importedGroups.has(identifier))item.group=importedGroups.get(identifier);
     if(hasOrder&&!record)item.included=false;return item;
   });
   if(modelRoleCount)warnings.push(`已将 ${modelRoleCount} 条 model 消息角色转换为 assistant；提示词、启停和位置保留。`);
-  // The file's prompts array is the source order. prompt_order only supplies
-  // enablement, inclusion and history placement, never a display reordering.
+  // prompt_order is the execution order, not merely the enabled flags. Keep library
+  // entries absent from it at the end without enabling or losing their source text.
+  if(order.length){const ranks=new Map(order.map((p:any,i:number)=>[p.identifier,i]));entries.sort((a,b)=>(ranks.get(a.identifier)??Number.MAX_SAFE_INTEGER)-(ranks.get(b.identifier)??Number.MAX_SAFE_INTEGER));}
   restoreKnownPromptGroups(entries);
-  detectPresetCompatibility(entries,options.preserveOutputs===true);
+  detectPresetCompatibility(entries,options.preserveOutputs!==false);
   const closed=entries.filter(p=>p.compatibility?.verdict==='disabled'&&p.compatibility.originalEnabled),review=entries.filter(p=>p.compatibility?.verdict==='review');
   if(closed.length)warnings.push(`已关闭 ${closed.length} 条重复输出提示词：${closed.map(p=>p.name).join('、')}。原文保留，可在兼容检测中恢复。`);
   if(review.length)warnings.push(`另有 ${review.length} 条可能涉及自定义输出格式或写作规则，未自动关闭，请在兼容检测中核查。`);

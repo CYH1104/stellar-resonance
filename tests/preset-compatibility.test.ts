@@ -1,5 +1,7 @@
 import {it,expect} from 'vitest';
-import {importTavernPreset,exportTavernPreset} from '../src/domain/presets';
+import {importTavernPreset as importOriginal,exportTavernPreset} from '../src/domain/presets';
+// Legacy opt-in adjustment remains reversible; ordinary imports now preserve switches.
+const importTavernPreset=(text:string,filename?:string,options?:{preserveOutputs?:boolean})=>importOriginal(text,filename,{preserveOutputs:false,...options});
 import {restorePresetCompatibility,confirmPresetCompatibility} from '../src/domain/presetCompatibility';
 import {backup,defaults,parseBackup} from '../src/domain/story';
 const entry=(name:string,content:string,enabled=true)=>({name,content,enabled});
@@ -46,4 +48,11 @@ it('preserve-output option only reports; backup and export preserve reversible d
  const saved=parseBackup(backup({version:1,sessions:[],preferences:prefs}));expect(saved.preferences.presets).toEqual(r.entries);expect(saved.preferences.preservePresetOutputs).toBe(true);
  const again=importTavernPreset(exportTavernPreset(r.entries,prefs.profiles[0]));expect(again.entries[0].compatibility?.originalEnabled).toBe(true);restorePresetCompatibility(again.entries);expect(again.entries[0].enabled).toBe(true);
  const restored=importTavernPreset(exportTavernPreset(again.entries,prefs.profiles[0]));expect(restored.entries[0].enabled).toBe(true);
+});
+
+it('ordinary imports preserve enabled output rules and disabled library entries without opting into legacy adjustment',()=>{
+ const raw=source([entry('状态栏','必须输出状态栏 <custom_panel>日期地点角色</custom_panel>'),entry('小剧场','输出 <custom_scene>故事</custom_scene>',false)]);
+ const r=importOriginal(raw);expect(r.entries.map(p=>p.enabled)).toEqual([true,false]);expect(r.entries.every(p=>p.compatibility?.verdict==='review')).toBe(true);
+ const prefs=defaults();prefs.presets=r.entries;const restored=parseBackup(backup({version:1,sessions:[],preferences:prefs}));expect(restored.preferences.presets).toEqual(r.entries);
+ const roundtrip=importOriginal(exportTavernPreset(r.entries,prefs.profiles[0]));expect(roundtrip.entries.filter(p=>!p.marker).map(p=>p.enabled)).toEqual([true,false]);
 });

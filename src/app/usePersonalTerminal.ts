@@ -11,6 +11,7 @@ import {answerGroupInvitation as answerGroupInvitationEntry} from '../domain/ter
 import {isTerminalMemoryNote} from '../domain/terminalLedger';
 import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
+import {terminalStoryExcerpt,terminalStoryFacts} from '../domain/terminalStoryContext';
 import {factAudienceCovers} from '../domain/knowledge';
 import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageVisible,terminalVisibility,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
 import {computed,ref,watch,onMounted,onBeforeUnmount,toRaw} from 'vue';
@@ -101,9 +102,13 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
   // fact/note retrieval plus their own conversation messages. Raw prose stays for
   // service tasks without a character audience. The retrieval query is the current
   // user input, not the most recent prose, so an old-event question is not drowned out.
-  const story=scoped?[]:s?.turns.slice(-6).map(turn=>({input:turn.input,text:turn.variants[turn.selected]?.text?.slice(-4000)}));
+  const story=scoped?[]:s?.turns.filter(turn=>turn.variants[turn.selected]?.status==='complete').slice(-6).map(turn=>({input:terminalStoryExcerpt(turn.input,1200),text:terminalStoryExcerpt(turn.variants[turn.selected].text,4000)}));
   const lastTurn=s?.turns.at(-1),lastText=lastTurn?lastTurn.variants[lastTurn.selected]?.text?.slice(-1200)||'':'';
-  const memories=scoped&&s?await w.scopedRecall(s,query&&query.trim()||((lastTurn?.input||'')+' '+lastText),audience).then(list=>list.map(m=>m.text.slice(0,700))).catch(()=>[]):s?visibleMemories(s).filter(m=>m.status!=='pending'&&m.status!=='failed').slice(-12).map(m=>m.text.slice(0,700)):[];
+  const recent=scoped&&s?terminalStoryFacts(s,s.turns.length,audience).map(f=>f.text):[];
+  let retrieved:string[]=[];
+  if(scoped&&s){try{retrieved=(await w.scopedRecall(s,query&&query.trim()||((lastTurn?.input||'')+' '+lastText),audience)).map(m=>terminalStoryExcerpt(m.text,700));}catch(e){if(controller?.signal.aborted||operationCancelled)throw e;logTerminalActivity('终端记忆检索降级','检索未完成，保留最近已确认且符合知情范围的剧情事实。');}}
+  const memories=scoped?[...new Set([...recent,...retrieved])].slice(0,16):s?visibleMemories(s).filter(m=>m.status!=='pending'&&m.status!=='failed').slice(-12).map(m=>terminalStoryExcerpt(m.text,700)):[];
+  if(scoped)logTerminalActivity('终端正文记忆','近期已确认知情事实：'+recent.length+' 条；检索结果：'+retrieved.length+' 条。未完成、无知情范围及其他分支的记忆不发送。');
   return {state:terminalContextState(w.state,boundCodes.value,actors.value),story,memories,...(scoped?{audience}:{})};
  }
  async function request(task:string,actorIds:string[],input:string,extra:object={}){
@@ -115,7 +120,13 @@ const scopedTask=['chat','invite','react','game-interact','friend','afterparty',
   // Divination is the target actor's private sign: the NPC never learns that the
   // player peeked, and the player's own reading is scoped to the player alone.
   const audience=task==='divination'?[actorIds[0]]:scopedTask?['player',...actorIds]:[];
-  const result=await Promise.race([new HttpGateway().terminal({task,sessionId:s.id,actorIds,input,persona:s.persona,context:['command','react','game-interact','tolerance'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(audience,scopedTask?input:undefined)),...extra}},p,w.credentials[p.id]||'',signal),cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
+  const pending=(async()=>{
+   const prepared=['command','react','game-interact','tolerance'].includes(task)?{...extra,state:{characters:actors.value.filter(a=>actorIds.includes(a.id))}}:{...(await context(audience,scopedTask?input:undefined)),...extra};
+   signal.throwIfAborted();
+   if(operationCancelled||w.active?.id!==sid||operationEpoch!==w.terminalEpoch||operationAnchor&&!terminalAnchorActive(s,operationAnchor)||signature!==JSON.stringify([requestProfile(task),w.credentials[p.id]]))throw Error('存档、手机开关或API已改变，本次请求未发送。');
+   return new HttpGateway().terminal({task,sessionId:sid,actorIds,input,persona:s.persona,context:prepared},p,w.credentials[p.id]||'',signal);
+  })();
+  const result=await Promise.race([pending,cancellation]).catch(e=>{logTerminalActivity('终端API失败 · '+task,e instanceof Error?e.message:'请求失败',apiCallId,true,typeof (e as any)?.raw==='string'?(e as any).raw:'');throw e;}).finally(()=>{finishGeneration(apiCallId);signal.removeEventListener('abort',aborted);});
   signal.throwIfAborted();if(operationCancelled||operationRoom&&t.value.rooms.find(r=>r.id===operationRoom)?.endedAt)throw Error("游戏已结束，请求未应用。");if(w.active?.id!==sid||operationEpoch!==w.terminalEpoch||operationAnchor&&!terminalAnchorActive(s,operationAnchor)||signature!==JSON.stringify([requestProfile(task),w.credentials[p.id]]))throw Error('存档、手机开关或API已改变，本次回复未应用。');logTerminalActivity('终端API返回 · '+task+'（尚未提交）',JSON.stringify(Object.fromEntries(Object.entries(result).filter(([key])=>key!=='raw'))),apiCallId,false,typeof result.raw==='string'?result.raw:'');operationSucceeded=true;return result;
  }
  async function run(action:()=>Promise<void>){if(w.restoreInterrupted){error.value='上次备份恢复中断，请先恢复覆盖前的完整副本。';return;}if(working.value||ending.value||w.busy||w.backupWorking)return;operationCancelled=false;operationRoom='';operationRound=0;operationCallId=crypto.randomUUID();operationSucceeded=false;operationDone=new Promise<void>(resolve=>{finishOperation=resolve;});working.value=true;w.terminalBusy=true;operationEpoch=w.terminalEpoch;operationSession=w.active?.id||'';operationAnchor=w.active?terminalAnchor(w.active):undefined;error.value='';try{await action();if(operationSucceeded)markGenerationComplete(operationCallId);}catch(e){error.value=e instanceof Error?e.message:'操作失败，原记录已保留。';if(error.value&&!operationCancelled)logTerminalActivity('终端操作失败',error.value,operationCallId,true);}finally{working.value=false;w.terminalBusy=false;controller=undefined;operationSession='';operationAnchor=undefined;operationRoom='';finishOperation();}}

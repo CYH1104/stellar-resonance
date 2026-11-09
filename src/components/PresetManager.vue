@@ -89,9 +89,9 @@ function removePrompt(id:string){props.w.removePresetEntry(id);cancel(id);}
 function rename(name:string){if(props.w.busy)return;for(const p of props.w.presetEntries){p.setId=props.w.currentPreset;p.setName=name;}}
 async function readPreset(file:File){if(importing.value||props.w.busy||importReview.value)return;importing.value=true;try{
  const text=await file.text();
- const preview=importTavernPreset(text,file.name,{preserveOutputs:props.w.preferences.preservePresetOutputs===true});
+ const preview=importTavernPreset(text,file.name,{preserveOutputs:true});
  const rows=preview.entries.flatMap((entry,index)=>entry.compatibility?[{index,entry}]:[]);
- if(rows.length){importReview.value={text,filename:file.name,rows,disabled:rows.map(r=>r.index)};return;}
+ if(rows.length){importReview.value={text,filename:file.name,rows,disabled:rows.filter(r=>!r.entry.enabled).map(r=>r.index)};return;}
  props.w.importPreset(text,file.name);if(!props.w.problem)await props.w.save();
  }catch(e){props.w.problem=e instanceof Error?e.message:'无法读取预设文件';}finally{importing.value=false;}}
 
@@ -123,7 +123,7 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
     <p class="rail-note">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</p>
-    <label class="toggle"><input v-model="w.preferences.preservePresetOutputs" type="checkbox" :disabled="w.busy" />后续导入保留预设自带的状态栏、选项和小剧场（可能重复输出；不恢复外部 HTML 美化）</label>
+    <p class="rail-note">导入保留预设原有顺序与开关；兼容提示不会自动关闭条目。外部美化与扩展脚本的支持情况另行提示。</p>
     <details v-if="compatibilityRows.length" class="import-report" open><summary>预设兼容检测 · {{compatibilityRows.length}} 条</summary><p class="rail-note">只调整导入时的开关，不删除原文；恢复操作保留原本关闭的条目。</p><div class="actions"><button :disabled="w.busy" @click="restoreCompatibility()">恢复全部自动调整</button><button :disabled="w.busy" @click="restoreCompatibility('choices')">只恢复选项类</button></div><ul><li v-for="p in compatibilityRows" :key="p.id"><strong>{{withoutEmoji(p.name)}}</strong> · {{categoryLabels(p)}} · {{p.compatibility!.verdict==='review'?'待核查（未自动关闭）':p.compatibility!.restored?'已恢复原开关':p.enabled?'用户已开启':p.compatibility!.originalEnabled?'已自动关闭':'原本关闭'}}：{{p.compatibility!.reason}}</li></ul></details>
     
     <div class="field-grid"><label>当前预设<select v-model="w.preferences.activePreset" :disabled="w.busy"><option v-for="s in w.presetSets" :key="s.id" :value="s.id">{{s.name}}</option></select></label><label>预设名称<input :value="w.presetSets.find(s=>s.id===w.currentPreset)?.name" maxlength="180" :disabled="w.busy" @input="rename(($event.target as HTMLInputElement).value)" /></label></div>
@@ -152,7 +152,7 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
       <p v-if="!shown.length" class="empty">没有匹配条目。</p>
     </details>
     <DialogShell v-if="importReview" title="导入前确认条目开关" @close="!importing&&(importReview=undefined)">
-      <p>导入检查默认开启。扫描到的以下条目默认全部关闭，勾选表示开启，可自行选择或全部开启。搜索仅筛选列表，不改变开关；所有原文都会保留。</p>
+      <p>以下条目保持文件原有开关，勾选表示开启；仅在你调整时改变。搜索只筛选列表，不改变开关；所有原文都会保留。</p>
       <div class="actions"><button :disabled="importing" @click="importReview.disabled=importReview.rows.map(r=>r.index)">全部关闭</button><button :disabled="importing" @click="importReview.disabled=[]">全部开启</button></div>
       <label class="import-search">搜索条目<input v-model="importSearch" placeholder="名称、关键词或内容" /></label><div class="import-review-list" style="max-height:50vh;overflow:auto;display:grid;gap:16px;padding:4px"><article v-for="row in reviewRows" :key="row.index" class="import-report"><label class="toggle"><input :checked="!importReview.disabled.includes(row.index)" @change="setReviewEnabled(row.index,($event.target as HTMLInputElement).checked)" type="checkbox" :disabled="importing" />开启：{{withoutEmoji(row.entry.name)}}</label><p>{{categoryLabels(row.entry)}} · {{row.entry.compatibility!.verdict==='disabled'?'建议关闭':'可能有影响，请自行判断'}} · {{row.entry.compatibility!.originalEnabled?'原本开启':'原本关闭'}}</p><p>{{row.entry.compatibility!.reason}}</p><details><summary>查看条目原文</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.entry.content}}</pre></details></article></div>
       <div class="actions"><button :disabled="importing" @click="importReview=undefined">取消导入</button><button class="primary" :disabled="importing||w.busy" @click="confirmImport">确认并导入（关闭 {{importReview.disabled.length}} 条）</button></div>
