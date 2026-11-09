@@ -31,7 +31,15 @@ export interface StoryGroupSource {anchor?:TerminalAnchor;key:string;slot:number
 export function syncStoryGroups(t:PersonalTerminal,sources:StoryGroupSource[],actors:{id:string;name:string}[],playerName:string){
  let changed=false;const active=new Set(sources.flatMap(s=>s.messages.map((_,i)=>s.key+':'+i)));
 
- for(const c of t.conversations)for(const m of c.messages)if(m.source&&!m.source.startsWith('main:')){const archived=!active.has(m.source);if(!!m.archived!==archived){m.archived=archived;changed=true;}}
+ for(const c of t.conversations)for(const m of c.messages){
+  if(!m.source)continue;
+  // The old theater synchronizer also archived independent terminal and welcome
+  // messages. Recover only those owned sources; branch/origin guards still apply.
+  if(m.source.startsWith('auto:')||m.source.startsWith('welcome:')){if(m.archived===true){delete m.archived;changed=true;}continue;}
+  if(m.source.startsWith('main:'))continue;
+  if(c.origin!=='story'&&!c.storyKey)continue;
+  const archived=!active.has(m.source);if(!!m.archived!==archived){m.archived=archived;changed=true;}
+ }
  for(const source of sources){const key=source.slot+':'+source.title.trim();let c=t.conversations.find(c=>c.storyKey===key);if(!c){if(t.conversations.length>=100)throw Error('会话数量已达上限，剧情群聊未同步。');c={id:terminalId(),title:source.title.trim().slice(0,60)||'剧情群聊',members:[],group:true,announcement:'',messages:[],unread:0,anchor:source.anchor,ownerId:'',adminIds:[],origin:'story',storyKey:key,joined:true,managementReady:false};t.conversations.push(c);changed=true;}if(c.joined===false)continue;
   for(const [i,m]of source.messages.entries()){const messageKey=source.key+':'+i;const existing=c.messages.find(m=>m.source===messageKey);if(existing){if(existing.text!==m.content||existing.displayName!==m.speaker){existing.text=m.content;existing.displayName=m.speaker;changed=true;}continue;}const actor=uniqueActorByName(actors,m.speaker),mine=m.speaker===playerName;const sender=mine?'player':actor?.id||'story-unknown';const known=audienceSnapshot(c.members);if(actor&&!c.managementReady&&!c.members.includes(actor.id)){c.members.push(actor.id);known.push(actor.id);}c.messages.push({id:terminalId(),sender,displayName:m.speaker,text:m.content,at:source.at,anchor:source.anchor,source:messageKey,knownBy:known});c.unread++;changed=true;}
  }return changed;

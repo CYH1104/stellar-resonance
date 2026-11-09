@@ -13,7 +13,7 @@ import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
 import {factAudienceCovers} from '../domain/knowledge';
 import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageVisible,terminalVisibility,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
-import {computed,ref,watch,onMounted,onBeforeUnmount} from 'vue';
+import {computed,ref,watch,onMounted,onBeforeUnmount,toRaw} from 'vue';
 import {markGenerationComplete,startGeneration,finishGeneration} from './generationCompletion';
 import type {ViewModel} from './useWorkspace';
 import {taskApi,auxiliaryApis} from '../domain/apis';
@@ -89,7 +89,7 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
  if(!current.endedAt&&(kingOverLimit(current,tolerances.value).length||roundLimit(current))){void run(async()=>{await recoverDrunkEnd(id);});return;}
  go(current.endedAt?'history':'room');}
  function toggle(id:string){picked.value=picked.value.includes(id)?picked.value.filter(i=>i!==id):[...picked.value,id];}
- async function commit(update:(next:PersonalTerminal)=>void){const session=w.active;if(!session)throw Error('请先打开存档。');if(operationSession&&session.id!==operationSession||operationAnchor&&!terminalAnchorActive(session,operationAnchor))throw Error('剧情分支已改变，记录未应用。');if(operationCancelled)throw Error('请求已停止。');if(operationEpoch!==w.terminalEpoch)throw Error('手机终端已停用，记录未应用。');if(operationRoom){const r=t.value.rooms.find(r=>r.id===operationRoom);if(!r||r.endedAt||(r.rounds.at(-1)?.number||0)!==operationRound)throw Error('游戏已结束或轮次已改变。');}await exclusiveWrite(async()=>{if(w.active!==session)throw Error('存档已切换，记录未应用。');const next:PersonalTerminal=structuredClone(JSON.parse(JSON.stringify(t.value)));update(next);for(const old of t.value.rooms)if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.rooms.find(r=>r.id===old.id)))throw Error("游戏已结束，只能回看记录。");for(const room of next.rooms)for(const round of room.rounds){if(!round.anchor)continue;for(const anchor of [round.anchor,...[...new Map((round.interactions||[]).flatMap(i=>i.anchor&&terminalAnchorActive(session,i.anchor)?[[i.anchor.key,i.anchor] as const]:[])).values()].filter(a=>a.key!==round.anchor!.key)]){const b=terminalBucket(next,anchor),game={id:room.id+':'+round.number,name:room.name,round:round.number,king:name(round.king),command:round.command,penalties:round.replies.filter(r=>r.refused).map(r=>name(r.id)+'：'+r.penalty).join('；'),complete:round.phase==='complete',knownBy:audienceSnapshot(room.members.filter(id=>id!=='player'&&room.invitations[id]==='accepted')),...(room.endedAt?{endedAt:room.endedAt}:{}),interactions:(round.interactions||[]).filter(i=>(!i.anchor||i.anchor.key===anchor.key)&&(!i.anchor||terminalAnchorActive(session,i.anchor))).map(i=>name('player')+'：'+i.text+'；'+i.replies.map(r=>name(r.id)+'：'+r.text+(r.refused?'；惩罚：'+r.penalty:'')).join('；')).join('\n')};const i=b.games.findIndex(g=>g.id===game.id);if(i<0)b.games.push(game);else b.games[i]=game;}}const previous=session.terminal,priorNotes=session.memories.filter(isTerminalMemoryNote).map(m=>JSON.parse(JSON.stringify(m)));session.terminal=next;syncTerminalMemoryNotes(session);try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('终端保存失败，请先导出当前存档。');}catch(e){if(session.terminal===next){session.terminal=previous;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];}throw e;}});w.indexTerminalNotes();}
+ async function commit(update:(next:PersonalTerminal)=>void){const session=w.active;if(!session)throw Error('请先打开存档。');if(operationSession&&session.id!==operationSession||operationAnchor&&!terminalAnchorActive(session,operationAnchor))throw Error('剧情分支已改变，记录未应用。');if(operationCancelled)throw Error('请求已停止。');if(operationEpoch!==w.terminalEpoch)throw Error('手机终端已停用，记录未应用。');if(operationRoom){const r=t.value.rooms.find(r=>r.id===operationRoom);if(!r||r.endedAt||(r.rounds.at(-1)?.number||0)!==operationRound)throw Error('游戏已结束或轮次已改变。');}await exclusiveWrite(async()=>{if(w.active!==session)throw Error('存档已切换，记录未应用。');const next:PersonalTerminal=structuredClone(JSON.parse(JSON.stringify(t.value)));update(next);for(const old of t.value.rooms)if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.rooms.find(r=>r.id===old.id)))throw Error("游戏已结束，只能回看记录。");for(const room of next.rooms)for(const round of room.rounds){if(!round.anchor)continue;for(const anchor of [round.anchor,...[...new Map((round.interactions||[]).flatMap(i=>i.anchor&&terminalAnchorActive(session,i.anchor)?[[i.anchor.key,i.anchor] as const]:[])).values()].filter(a=>a.key!==round.anchor!.key)]){const b=terminalBucket(next,anchor),game={id:room.id+':'+round.number,name:room.name,round:round.number,king:name(round.king),command:round.command,penalties:round.replies.filter(r=>r.refused).map(r=>name(r.id)+'：'+r.penalty).join('；'),complete:round.phase==='complete',knownBy:audienceSnapshot(room.members.filter(id=>id!=='player'&&room.invitations[id]==='accepted')),...(room.endedAt?{endedAt:room.endedAt}:{}),interactions:(round.interactions||[]).filter(i=>(!i.anchor||i.anchor.key===anchor.key)&&(!i.anchor||terminalAnchorActive(session,i.anchor))).map(i=>name('player')+'：'+i.text+'；'+i.replies.map(r=>name(r.id)+'：'+r.text+(r.refused?'；惩罚：'+r.penalty:'')).join('；')).join('\n')};const i=b.games.findIndex(g=>g.id===game.id);if(i<0)b.games.push(game);else b.games[i]=game;}}const previous=session.terminal,priorNotes=session.memories.filter(isTerminalMemoryNote).map(m=>JSON.parse(JSON.stringify(m)));session.terminal=next;syncTerminalMemoryNotes(session);try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('终端保存失败，请先导出当前存档。');}catch(e){if(toRaw(session.terminal)===next){session.terminal=previous;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];}throw e;}});w.indexTerminalNotes();}
 
  async function context(audience:string[]=[],query?:string){const s=w.active;
   const scoped=audience.length>0&&!!s;
@@ -418,7 +418,17 @@ async function persistedDivination(day:string,actorId:string):Promise<TerminalDi
  const session=w.active;if(!session)throw Error('请先打开存档。');
  const existing=findDivination(t.value,day,actorId);
  if(existing&&persistedKeys.has(persistedKey(session.id,existing)))return existing;
- await commit(next=>{ensureDivination(next,day,actorId);});
+ let pending:TerminalDivination|undefined;
+ try{await commit(next=>{pending=ensureDivination(next,day,actorId);});}
+ catch(e){
+  // A failed draw stays locked and retryable in memory, without claiming it was
+  // persisted. Other terminal mutations still roll back normally. A later retry
+  // must save these same cards before it may call the interpretation API.
+  if(pending?.reading.status==='pending'&&w.active===session&&!operationCancelled&&operationEpoch===w.terminalEpoch&&operationAnchor&&terminalAnchorActive(session,operationAnchor)&&!findDivination(t.value,day,actorId)){
+   const next:PersonalTerminal=JSON.parse(JSON.stringify(t.value));(next.divinations||=[]).push(pending);session.terminal=next;
+  }
+  throw e;
+ }
  const winning=findDivination(t.value,day,actorId);
  if(!winning)throw Error('占卜保存后未能读取，请刷新页面。');
  persistedKeys.add(persistedKey(session.id,winning));
@@ -568,7 +578,24 @@ const setGroupAvatarPosition=(position:{x:number;y:number})=>run(async()=>{const
  const storyClock=computed(()=>terminalStoryClock(w.state,[...(w.active?.turns||[]).slice(-6).reverse().filter(t=>t.variants[t.selected]?.status==='complete').map(t=>t.variants[t.selected]?.text||''),w.active?.opening||''].join('\n')));
  const clock=storyClock;
  const storySources=computed(()=>{const sources:StoryGroupSource[]=[];for(const [index,turn] of (w.active?.turns||[]).entries()){const v=turn.variants[turn.selected];if(v?.status!=='complete')continue;for(const scene of v.outcome?.theaters||[])if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({anchor:terminalAnchor(w.active!,index+1),key:turn.id+':'+v.id+':'+scene.slot,slot:scene.slot,title:scene.title||'剧情群聊',at:v.createdAt,messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});}if(!sources.length)for(const scene of w.theaters)if(scene.kind==='group'&&(scene.messages?.length||scene.content?.trim()))sources.push({key:'opening:'+scene.slot+':'+scene.title,slot:scene.slot,title:scene.title||'剧情群聊',at:w.active?.createdAt||'',messages:scene.messages?.length?scene.messages:[{speaker:scene.title||'剧情群聊',content:scene.content}]});return sources;});
- watch([()=>JSON.stringify(storySources.value),working,()=>w.loading],()=>{if(working.value||w.loading||!w.active)return;try{const next=JSON.parse(JSON.stringify(t.value));if(syncStoryGroups(next,storySources.value,actors.value,w.active.persona.name)){for(const source of storySources.value){if(!source.anchor)continue;const c=next.conversations.find((c:any)=>c.storyKey===source.slot+':'+source.title.trim());if(c)recordTerminalChat(next,source.anchor,c,source.messages.map(m=>m.speaker),source.messages.map(m=>m.speaker+'：'+m.content).join('；').slice(0,4000),[],audienceSnapshot(c.members));}void run(()=>commit(t=>Object.assign(t,next)));}}catch(e){error.value=e instanceof Error?e.message:'剧情群同步失败，原记录已保留。';}},{immediate:true});
+
+ let failedStorySync:{sessionId:string;terminal:PersonalTerminal;sources:string}|undefined;
+ watch([()=>JSON.stringify(storySources.value),working,()=>w.loading,()=>w.busy,()=>w.backupWorking,()=>w.active?.id],([sourceKey])=>{
+  if(working.value||w.loading||w.busy||w.backupWorking||!w.active)return;
+  const sessionId=w.active.id,current=t.value,sources=JSON.parse(String(sourceKey)) as StoryGroupSource[];
+  if(failedStorySync?.sessionId===sessionId&&failedStorySync.terminal===current&&failedStorySync.sources===sourceKey)return;
+  try{
+   // Preflight avoids a save on every render; mutate only the live queued clone,
+   // so an unrelated write cannot be overwritten by this earlier snapshot.
+   if(!syncStoryGroups(JSON.parse(JSON.stringify(current)),sources,actors.value,w.active.persona.name))return;
+   void run(async()=>{try{
+    await commit(next=>{
+     if(!syncStoryGroups(next,sources,actors.value,w.active!.persona.name))return;
+     for(const source of sources){if(!source.anchor)continue;const c=next.conversations.find(c=>c.storyKey===source.slot+':'+source.title.trim());if(c)recordTerminalChat(next,source.anchor,c,source.messages.map(m=>m.speaker),source.messages.map(m=>m.speaker+'：'+m.content).join('；').slice(0,4000),[],audienceSnapshot(c.members));}
+    });failedStorySync=undefined;
+   }catch(e){failedStorySync={sessionId,terminal:t.value,sources:String(sourceKey)};throw e;}});
+  }catch(e){error.value=e instanceof Error?e.message:'剧情群同步失败，原记录已保留。';}
+ },{immediate:true});
  const unread=computed(()=>visibleConversations.value.filter(c=>c.joined!==false).reduce((n,c)=>n+c.unread,0));
  const automaticSeen=new Set<string>();
  async function processAutomatic(retry=false){if(working.value||w.busy||w.loading||!w.active)return;const sid=w.active.id;if(!retry&&automaticSeen.has(sid))return;automaticSeen.add(sid);}
