@@ -1,6 +1,7 @@
 import {computed,ref,type ComputedRef} from 'vue';
 import type {Preferences,Session} from '../domain/contracts';
 import {stateAt} from '../domain/story';
+import {runWorldbooks} from '../domain/worldbookRunner';
 import {cleanWorldbooks,cleanWorldbookIds,importWorldbook,exportWorldbook,newWorldbook,resolveWorldbooks,worldbookImportReview,type Worldbook,type WorldEntry} from '../domain/worldbooks';
 export function useWorldbooks(p:Preferences,active:ComputedRef<Session|undefined>,sessions:()=>Session[],locked:()=>boolean,save:()=>Promise<void>,problem:(s:string)=>void,notice:(s:string)=>void,download:(name:string,text:string)=>void){
   const selectedWorldbookId=ref('');
@@ -30,7 +31,17 @@ export function mergeWorldbookBackup(p:Preferences,incoming:Preferences,sessions
   for(const s of sessions)s.worldbookIds=(s.worldbookIds||[]).flatMap(id=>mapping.has(id)?[mapping.get(id)!]:[]);
   p.worldbooks=merged;
 }
-export function sessionLore(p:Preferences,s:Session,index:number,input:string,seed:string,charName:string){
+export function sessionLoreContext(s:Session,index:number,input:string,seed:string,charName:string,generationType='normal'){
   const messages=[s.opening,...s.turns.slice(Math.max(0,index-500),index).flatMap(t=>{const v=t.variants[t.selected];return v?.status==='complete'?[t.input,v.text]:[];}),input];
-  return resolveWorldbooks((p.worldbooks||[]).filter(b=>(s.worldbookIds||[]).includes(b.id)),{messages,userName:s.persona.name,charName,persona:Object.values(s.persona).filter(v=>typeof v==='string').join('\n'),seed,actors:stateAt(s,index).characters});
+  const actors=stateAt(s,index).characters;
+  // Only data already present in this save; do not fabricate unavailable card fields or
+  // expose server-private descriptions, creator notes, or hidden character thoughts.
+  const characterDescription=actors.filter(a=>a.present||a.name===charName).map(a=>[a.name,a.identity,a.ability,a.spiritAnimal].filter(Boolean).join('\n')).join('\n');
+  return {messages,userName:s.persona.name,charName,persona:Object.values(s.persona).filter(v=>typeof v==='string').join('\n'),seed,actors,characterDescription,scenario:s.opening,generationType};
+}
+export function sessionLore(p:Preferences,s:Session,index:number,input:string,seed:string,charName:string,generationType='normal'){
+  return resolveWorldbooks((p.worldbooks||[]).filter(b=>(s.worldbookIds||[]).includes(b.id)),sessionLoreContext(s,index,input,seed,charName,generationType));
+}
+export function sessionLoreAsync(p:Preferences,s:Session,index:number,input:string,seed:string,charName:string,generationType='normal',signal?:AbortSignal){
+  return runWorldbooks((p.worldbooks||[]).filter(b=>(s.worldbookIds||[]).includes(b.id)),sessionLoreContext(s,index,input,seed,charName,generationType),signal);
 }

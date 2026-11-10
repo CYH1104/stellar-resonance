@@ -31,7 +31,7 @@ import {accountStorage} from '../storage/accountScope';
 import {useFormatErrors} from './useFormatErrors';
 import {recordDiagnostic} from './developerDiagnostics';
 import {mergeRepairTheaters,reconcileRepairScenes} from '../domain/roundHealth';
-import {useWorldbooks,mergeWorldbookBackup,sessionLore} from './useWorldbooks';
+import {useWorldbooks,mergeWorldbookBackup,sessionLoreAsync} from './useWorldbooks';
 import {activeCommitments,buildRecallQuery,memoryContext,memoryReady,memorySignature,memoryState,memoryText,normalizeMemoryResult,vectorCurrent,visibleSourceStillMatches,type MemoryRequest} from '../domain/memories';
 import {factId,factLabel} from '../domain/knowledge';
 import {syncCharacterFacts} from '../domain/characterFacts';
@@ -608,7 +608,7 @@ export function useWorkspace() {
     if(restoreInterrupted.value){problem.value='上次恢复中断，请先恢复覆盖前的完整副本。';return;}
     const session=active.value;if(!session||busy.value||backupWorking.value)return;if(terminalBusy.value){problem.value='终端正在处理消息，请稍候再推进剧情。';return;}
     if(!authorized.value){problem.value='请先验证访问资格';return;}
-    const p=copy(storyProfile.value!);const storyKey=key(p);
+    const p=copy(storyProfile.value!);const storyKey=key(p),storyRoute=connectionSignature(p);
     if(!ensureApiConfiguration())return;
     if(localService.value&&session.sourceDataset!==localService.value.dataset){problem.value='这是旧版演示存档，请新建一份服务器世界卡存档测试。原存档仍保留。';return;}
     if(localService.value&&!connectionReady(p)){problem.value='请在API 设置填写服务地址、模型名称，并确认使用此服务。';panel.value='settings';return;}
@@ -621,6 +621,7 @@ export function useWorkspace() {
     const logBefore=copy(repairBefore||stateAt(session,index));
     const generationType=continuePartial?'continue':firstAttempt?'normal':'regenerate';continuationAttempt.value=0;repairingState.value=stateOnly;
     protectedGeneration={sessionId:session.id,turnId:turn.id,variantId:variant.id,checkpoint:copy(variant)};busy.value=true;problem.value='';generationStarted.value=Date.now();generationPhase.value='正在检索本地记忆…';controller=new AbortController();let done=false,inputCommitted=false;const callId=crypto.randomUUID();activeCallId=callId;const callErrors:string[]=[];let modelRaw='',completionInfo='',incompleteCode='MODEL_RESPONSE_INCOMPLETE';let recallTrace:RecallTrace|undefined;let stopBinding:(()=>void)|undefined;let streamTimer:ReturnType<typeof setTimeout>|undefined,pendingDelta='';const flushStream=()=>{clearTimeout(streamTimer);streamTimer=undefined;if(pendingDelta){variant.text+=pendingDelta;pendingDelta='';}};syncTerminalMemoryNotes(session);
+    const requestAnchor=terminalAnchor(session,index).key;
     try {
       await persist();inputCommitted=true;
       // 终端在前的顺序：先以已确认历史与本轮输入产生通讯，正文随后消费已确认的通讯事实。
@@ -630,7 +631,10 @@ export function useWorkspace() {
       // 不重复落库；事实随任务存进存档，页面重载后同样可恢复。
       else if((continuePartial||stateOnly)&&terminalEnabled.value)terminalFacts=terminalCommittedFacts(session,index);
       const recalled=stateOnly?visibleMemories(session,index).slice(-8):await recall(session,turn.input,index,true,trace=>{recallTrace=trace;});
-      const lore=sessionLore(requestPreferences,session,index,turn.input,turn.id,localService.value?.narratorName||'星穹学院');
+      const loreInput=turn.input,loreVariant=turn.selected,loreSignal=controller.signal;
+      const lore=await sessionLoreAsync(requestPreferences,session,index,loreInput,turn.id,localService.value?.narratorName||'星穹学院',generationType,loreSignal);
+      loreSignal.throwIfAborted();
+      if(active.value?.id!==session.id||session.turns[index]!==turn||turn.input!==loreInput||turn.selected!==loreVariant||turn.variants[loreVariant]!==variant||terminalAnchor(session,index).key!==requestAnchor||!storyProfile.value||connectionSignature(storyProfile.value)!==storyRoute)throw Error('存档、剧情或接口已改变，世界书扫描结果未用于请求。');
       worldbookRuntimeWarnings.value=lore.warnings;
       worldbookRuntimeDiagnostics.value=lore.diagnostics;
       const request:GenerateRequest={...(terminalFacts?{terminalFacts}:{}),stateEnabled:requestPreferences.stateEnabled!==false,previousTheaters:visibleTheaters(session).filter(scene=>requestPreferences.theaters?.some(t=>t.enabled&&t.slot===scene.slot)).map(({round,...scene})=>({...scene,content:scene.content.slice(0,1200),...(scene.diary?{diary:{...scene.diary,content:scene.diary.content.slice(0,1200)}}:{}),...(scene.messages?{messages:scene.messages.slice(-6).map(m=>({...m,content:m.content.slice(0,400)}))}:{})})),worldInfo:lore.entries,suggestionsEnabled:requestPreferences.suggestionsEnabled!==false,randomEventInstruction:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?requestPreferences.randomEventInstruction:undefined,specialEvent:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.randomEvent.proposal):undefined,sessionId:session.id,turnId:turn.id,persona:copy(session.persona),opening:session.opening,input:turn.input,historyStart:Math.max(0,index-12),history:session.turns.slice(Math.max(0,index-12),index).flatMap(t=>{const v=selected(t);return v?.status==='complete'?[{role:'user' as const,content:t.input},{role:'assistant' as const,content:v.text}]:[];}),memories:(()=>{const phone=terminalCapability.value;const chunks=phone?[...terminalRecall(session,index)]:[];const latestKey=phone?terminalLatestBucket(session,index)?.anchor.key:'';for(const m of recalled)if(phone&&isTerminalMemoryNote(m)&&terminalNoteKey(m)!==latestKey)chunks.push(...memoryChunks(m.text));return [...chunks,...memoryContext(recalled.filter(m=>!isTerminalMemoryNote(m)),activeCommitments(memoryLedger(session,index)))].slice(0,8);})(),state:stateAt(session,index),dice:randomEventsAvailable&&!continuePartial&&!stateOnly&&turn.randomEvent?.status==='accepted'?copy(turn.dice):undefined,profile:copy(p),presets:[],promptEntries:stateOnly?[]:copy(activePromptEntries(presetEntries.value,generationType)),generationType,theaterSettings:copy(requestPreferences.theaters)?.map(t=>t.kind==='group'?{...t,enabled:false}:t),continuation:partial?{partial,...(stateOnly?{mode:'state' as const}:{})}:undefined,forumContext:(requestPreferences.theaters?.some(t=>t.slot===1&&t.enabled)?visibleForum(session,index):[]).slice(0,6).map(post=>({authorName:post.authorName,content:post.content.slice(0,1000),replies:(session.forumActivity?.[post.key]?.replies||[]).slice(-3).map(reply=>(reply.kind==='ai'?reply.authorName:session.persona.name)+'：'+reply.text)}))};

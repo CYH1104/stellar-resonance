@@ -24,10 +24,10 @@ describe('酒馆世界书 JSON',()=>{
     expect(()=>importWorldbook('bad')).toThrow();expect(()=>importWorldbook('{"entries":{},"__proto__":{}}')).toThrow();
     const b=book([{constant:true}]);expect(()=>cleanWorldbooks([b,b])).toThrow();expect(()=>cleanLoreInsertions([{content:'x'.repeat(100001),position:1,depth:4,role:'system',order:1}])).toThrow();
   });
-  it('高级选项明确提示并跳过相关条目，不执行正则／脚本／向量或定时机制',()=>{
-    for(const raw of [{key:['/a+/i']},{sticky:2},{vectorized:true},{automationId:'call'},{position:7,outletName:'x'},{content:'{{getvar::x}}'},{triggers:['continue']},{matchScenario:true}]){
+  it('扩展兼容提示不禁用整条设定，仍遵循原开关和触发规则',()=>{
+    for(const raw of [{sticky:2},{vectorized:true},{automationId:'call'},{position:7,outletName:'x'},{content:'{{getvar::x}}'}]){
       const b=importWorldbook(JSON.stringify({entries:{0:{content:'正文',constant:true,...raw}}}));
-      expect(worldEntryWarnings(b.entries[0]).length).toBeGreaterThan(0);expect(resolveWorldbooks([b],ctx('a')).entries).toHaveLength(0);
+      expect(worldEntryWarnings(b.entries[0]).length).toBeGreaterThan(0);expect(resolveWorldbooks([b],ctx('a')).entries).toHaveLength(1);
     }
   });
 });

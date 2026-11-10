@@ -1,4 +1,4 @@
-/** Declarative lorebook data only. Never evaluate imported scripts, templates or regex. */
+/** Declarative lorebook data. Extension scripts are never executed. */
 export interface LoreScope {mode:'global'|'characters';characterIds:string[]}
 export interface WorldEntry {
   id:string; title:string; content:string; keys:string[]; secondaryKeys:string[];
@@ -12,7 +12,7 @@ export interface Worldbook {
   id:string; name:string; entries:WorldEntry[]; scanDepth:number; recursive:boolean;
   caseSensitive:boolean; wholeWords:boolean; budget:number; extra:string; scope?:LoreScope;
 }
-export interface LoreContext {messages:string[]; userName:string; charName:string; persona?:string; seed:string; actors?:{id:string;name:string}[]}
+export interface LoreContext {messages:string[]; userName:string; charName:string; persona?:string; seed:string; actors?:{id:string;name:string}[];characterDescription?:string;characterPersonality?:string;characterDepthPrompt?:string;scenario?:string;creatorNotes?:string;characterTags?:string[];generationType?:string}
 export interface LoreDiagnostic {id:string;book:string;title:string;status:'disabled'|'empty'|'unsupported'|'unmatched'|'group-lost'|'probability'|'budget'|'scope-unavailable'|'inserted';detail?:string}
 export function loreDiagnosticLabel(status:LoreDiagnostic['status']):string{return {disabled:'未启用',empty:'正文为空',unsupported:'设置暂不支持',unmatched:'未命中或未到递归层', 'group-lost':'同组未选中',probability:'概率未命中',budget:'超出预算','scope-unavailable':'作用对象未登记',inserted:'已插入'}[status];}
 export interface LoreInsertion {content:string;position:number;depth:number;role:'system'|'user'|'assistant';order:number}
@@ -95,26 +95,22 @@ export function importWorldbook(text:string,filename='世界书.json',id:string=
   });
   return cleanWorldbooks([book])[0];
 }
-/** Features requiring Tavern runtime are explicit and block only affected entries. */
+/** These options need additional runtime support, but never disable a whole entry. */
 export function worldEntryWarnings(entry:WorldEntry):string[]{
   const r=rawOptions(entry),warnings:string[]=[];
   if(![0,1,4].includes(entry.position))warnings.push('作者注、示例对话或 Outlet 插入位置');
-  if([...entry.keys,...entry.secondaryKeys].some(k=>/^\/.+\/[a-z]*$/i.test(k)))warnings.push('正则关键词');
-  for(const [names,label] of [ [['sticky','cooldown','delay'],'粘滞／冷却／延迟'],[['vectorized'],'世界书向量触发'],[['automationId','automation_id'],'自动化脚本'],[['matchCharacterDescription','match_character_description','matchCharacterPersonality','match_character_personality','matchCharacterDepthPrompt','match_character_depth_prompt','matchScenario','match_scenario','matchCreatorNotes','match_creator_notes'],'额外角色字段扫描'] ] as [string[],string][]){if(names.some(k=>r[k]))warnings.push(label);}
-  if(Array.isArray(r.triggers)&&r.triggers.length)warnings.push('生成类型过滤');
-  if(r.characterFilter?.names?.length||r.characterFilter?.tags?.length||r.characterFilterNames?.length||r.characterFilterTags?.length)warnings.push('角色／标签过滤');
-  if(r.ignoreBudget)warnings.push('忽略预算');
+  for(const [names,label] of [ [['sticky','cooldown','delay'],'粘滞／冷却／延迟'],[['vectorized'],'世界书向量触发'],[['automationId','automation_id'],'自动化脚本'] ] as [string[],string][]){if(names.some(k=>r[k]))warnings.push(label);}
   if(/\{\{(?!user\}\}|char\}\}|persona\}\}|charIfNotGroup\}\})/i.test(entry.content+entry.keys.join('')+entry.secondaryKeys.join(''))||/^\s*@@/m.test(entry.content))warnings.push('高级宏或激活装饰器');
   return warnings;
 }
-export function worldbookWarnings(book:Worldbook):string[]{return book.entries.flatMap(e=>{const w=worldEntryWarnings(e);return w.length?[`${e.title||e.id}：${w.join('、')}，该条目暂不参与触发。`]:[];});}
+export function worldbookWarnings(book:Worldbook):string[]{return book.entries.flatMap(e=>{const w=worldEntryWarnings(e);return w.length?[`${e.title||e.id}：${w.join('、')}尚未完整接入；条目仍按开关、常驻或关键词规则参与触发。`]:[];});}
 /** Import review does not remove unsupported settings or silently change activation. */
 export function worldbookImportReview(book:Worldbook){
  return book.entries.flatMap(entry=>{
-  const unsupported=worldEntryWarnings(entry),reasons=[...unsupported.map(w=>`暂不支持：${w}（即使保留开启，也暂不参与触发）`)];
+  const unsupported=worldEntryWarnings(entry),reasons=[...unsupported.map(w=>`扩展选项尚未完整接入：${w}；不影响条目按常驻／关键词参与触发`)];
   if(!entry.enabled)reasons.unshift('原文件已关闭');
   if(!entry.constant&&!entry.keys.some(k=>k.trim()))reasons.push('非常驻且没有主要关键词，没有普通关键词触发入口');
-  return reasons.length?[{entry,reasons,recommended:!entry.enabled||unsupported.length>0}]:[];
+  return reasons.length?[{entry,reasons,recommended:!entry.enabled}]:[];
  });
 }
 export function exportWorldbook(book:Worldbook):string {
@@ -130,6 +126,8 @@ function expand(s:string,ctx:LoreContext):string{
 }
 function random(seed:string):number{let h=2166136261;for(let i=0;i<seed.length;i++)h=Math.imul(h^seed.charCodeAt(i),16777619);return (h>>>0)/4294967296;}
 function matches(haystack:string,key:string,sensitive:boolean,whole:boolean):boolean {
+  const literal=key.match(/^\/(.*)\/([a-z]*)$/is);
+  if(literal){try{return new RegExp(literal[1],literal[2]).test(haystack);}catch{/* Tavern falls back to literal matching for invalid regex syntax. */}}
   if(!key.trim())return false;const h=sensitive?haystack:haystack.toLowerCase(),k=sensitive?key:key.toLowerCase();
   if(!whole)return h.includes(k);
   // Whole word Latin keys use word boundaries; CJK keys retain substring behavior.
@@ -141,15 +139,29 @@ export function resolveWorldbooks(books:Worldbook[],ctx:LoreContext):{entries:Lo
   const picked=new Set<string>(),checked=new Set<string>(),injections:LoreInsertion[]=[],activated:string[]=[],warnings:string[]=[];
   const spent=new Map<string,number>(),usedGroups=new Set<string>(),diagnoses=new Map<string,LoreDiagnostic>();let recursiveText='';let total=0;
   const diagnose=(c:typeof candidates[number],status:LoreDiagnostic['status'],detail?:string)=>diagnoses.set(c.id,{id:c.id,book:c.book.name,title:c.e.title,status,...(detail?{detail}:{})});
-  for(const c of candidates)diagnose(c,!c.e.enabled?'disabled':!c.e.content.trim()?'empty':c.unsupported.length?'unsupported':'unmatched',c.unsupported.join('、')||undefined);
+  for(const c of candidates)diagnose(c,!c.e.enabled?'disabled':!c.e.content.trim()?'empty':'unmatched');
   for(let step=0;step<=20;step++){
     let added=false;const next:string[]=[];
     const eligible:(typeof candidates[number]&{score:number})[]=[];
     for(const c of candidates){
-      const {book,e,unsupported,raw,id}=c;if(picked.has(id)||checked.has(id)||!e.enabled||!e.content.trim()||unsupported.length||step>0&&(!book.recursive||e.excludeRecursion)||e.delayUntilRecursion>step)continue;
+      const {book,e,raw,id}=c;if(picked.has(id)||checked.has(id)||!e.enabled||!e.content.trim()||step>0&&(!book.recursive||e.excludeRecursion)||e.delayUntilRecursion>step)continue;
+      if(Array.isArray(raw.triggers)&&raw.triggers.length&&!raw.triggers.includes(ctx.generationType||'normal'))continue;
+      const filter=raw.characterFilter;
+      if(filter&&typeof filter==='object'){
+        if(Array.isArray(filter.names)&&filter.names.length){const hit=filter.names.includes(ctx.charName);if(filter.isExclude?hit:!hit)continue;}
+        if(Array.isArray(filter.tags)&&filter.tags.length){const hit=filter.tags.some((tag:unknown)=>typeof tag==='string'&&ctx.characterTags?.includes(tag));if(filter.isExclude?hit:!hit)continue;}
+      }
       const depth=e.scanDepth??book.scanDepth,sensitive=e.caseSensitive??book.caseSensitive,whole=e.wholeWords??book.wholeWords;
       const scan=ctx.messages.slice(-depth||ctx.messages.length).join('\n');
-      const source=(depth===0?'':scan)+(step>0?'\n'+recursiveText:'')+(raw.matchPersonaDescription||raw.match_persona_description?'\n'+(ctx.persona||''):'');
+      const fields:[string[],string|undefined][]=[
+        [['matchPersonaDescription','match_persona_description'],ctx.persona],
+        [['matchCharacterDescription','match_character_description'],ctx.characterDescription],
+        [['matchCharacterPersonality','match_character_personality'],ctx.characterPersonality],
+        [['matchCharacterDepthPrompt','match_character_depth_prompt'],ctx.characterDepthPrompt],
+        [['matchScenario','match_scenario'],ctx.scenario],
+        [['matchCreatorNotes','match_creator_notes'],ctx.creatorNotes]
+      ];
+      const source=depth===0?'':scan+fields.filter(([keys,value])=>value&&keys.some(k=>raw[k]===true||raw[k]===1)).map(([,value])=>'\n\x01'+value).join('')+(step>0?'\n\x01'+recursiveText:'');
       const test=(k:string)=>matches(source,expand(k,ctx),sensitive,whole);
       if(!e.constant){if(!e.keys.some(test))continue;if(e.selective&&e.secondaryKeys.length){const any=e.secondaryKeys.some(test),all=e.secondaryKeys.every(test);if(![any,!all,!any,all][e.logic])continue;}}
       const primary=e.keys.filter(test).length,secondary=e.secondaryKeys.filter(test).length;
@@ -170,7 +182,7 @@ export function resolveWorldbooks(books:Worldbook[],ctx:LoreContext):{entries:Lo
       for(const c of scored)if(c!==winner)losers.add(c.id);
     }
     for(const c of eligible){
-      const {book,e,id}=c;checked.add(id);
+      const {book,e,id,raw}=c;checked.add(id);
       if(losers.has(id)){diagnose(c,'group-lost',c.group.names.join(', '));continue;}
       if(e.useProbability&&random(ctx.seed+':'+id)*100>=e.probability){diagnose(c,'probability');continue;}
       let content:string;try{content=expand(e.content,ctx);}catch{diagnose(c,'budget','宏展开超出预算');warnings.push(`${book.name}／${e.title}：宏展开超出预算，未插入。`);continue;}
@@ -181,8 +193,10 @@ export function resolveWorldbooks(books:Worldbook[],ctx:LoreContext):{entries:Lo
         content='Scope: apply the following lore only to these NPCs, never to other actors: '+JSON.stringify(actors.map(a=>({id:a.id,name:a.name})))+'\n'+content;
       }
       const used=spent.get(book.id)||0;
-      if(used+content.length>book.budget||total+content.length>100000){diagnose(c,'budget');warnings.push(`${book.name}／${e.title}：超出世界书字数预算，未插入。`);continue;}
-      picked.add(id);spent.set(book.id,used+content.length);total+=content.length;activated.push(id);injections.push({content,position:e.position,depth:e.depth,role:e.role,order:e.order});added=true;if(book.recursive&&!e.preventRecursion)next.push(content);
+      if(raw.ignoreBudget!==true&&used+content.length>book.budget||total+content.length>100000){diagnose(c,'budget');warnings.push(`${book.name}／${e.title}：超出世界书字数预算，未插入。`);continue;}
+      const position=[0,1,4].includes(e.position)?e.position:1;
+      if(c.unsupported.length)warnings.push(`${book.name}／${e.title}：${c.unsupported.join('、')}尚未完整接入；已按常驻／关键词触发${position!==e.position?'，内容置于角色定义后':''}。`);
+      picked.add(id);spent.set(book.id,used+(raw.ignoreBudget===true?0:content.length));total+=content.length;activated.push(id);injections.push({content,position,depth:e.depth,role:e.role,order:e.order});added=true;if(book.recursive&&!e.preventRecursion)next.push(content);
       for(const name of c.group.names)usedGroups.add(name);diagnose(c,'inserted');
     }
     if(!added||!next.length)break;recursiveText+='\n'+next.join('\n');

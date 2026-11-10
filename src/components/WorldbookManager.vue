@@ -6,8 +6,10 @@ import FileImportButton from './FileImportButton.vue';
 import LoreScopeEditor from './LoreScopeEditor.vue';
 import {computed,ref,watch,onScopeDispose} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
-import {newWorldEntry,worldbookWarnings,worldEntryWarnings,worldEntryGroup,setWorldEntryGroup,resolveWorldbooks,WORLD_FILE_LIMIT,type Worldbook,type WorldEntry,type LoreGroup,loreDiagnosticLabel} from '../domain/worldbooks';
+import {newWorldEntry,worldbookWarnings,worldEntryWarnings,worldEntryGroup,setWorldEntryGroup,WORLD_FILE_LIMIT,type Worldbook,type WorldEntry,type LoreGroup,loreDiagnosticLabel} from '../domain/worldbooks';
 import DialogShell from './DialogShell.vue';
+import {runWorldbooks} from '../domain/worldbookRunner';
+import {sessionLoreContext} from '../app/useWorldbooks';
 const props=defineProps<{w:ViewModel}>();
 const importSearch=ref('');
 const reviewRows=computed(()=>(props.w.worldbookImportPending?.rows||[]).filter(row=>!importSearch.value.trim()||JSON.stringify(row.entry).toLowerCase().includes(importSearch.value.trim().toLowerCase())));
@@ -26,7 +28,21 @@ async function editEntry(e?:WorldEntry){if(entryDraft.value)return;if(!book.valu
 function saveEntry(){if(!entryDraft.value)return;const split=(s:string)=>s.split(/[\n,，]/).map(k=>k.trim()).filter(Boolean);entryDraft.value.keys=split(keyText.value);entryDraft.value.secondaryKeys=split(secondaryText.value);setWorldEntryGroup(entryDraft.value,{...groupDraft.value,names:split(groupNames.value)});props.w.saveWorldEntry(entryBookId.value,clone(entryDraft.value));if(!props.w.problem)entryDraft.value=undefined;}
 function toggle(e:WorldEntry){if(book.value)props.w.saveWorldEntry(book.value.id,{...clone(e),enabled:!e.enabled});}
 function saveBook(){if(!bookDraft.value)return;props.w.updateWorldbook(clone(bookDraft.value));if(!props.w.problem)bookDraft.value=undefined;}
-function test(){try{const ctx={messages:[...(props.w.active?[props.w.active.opening,...props.w.active.turns.flatMap(t=>{const v=t.variants[t.selected];return v?.status==='complete'?[t.input,v.text]:[];})]:[]),testInput.value],userName:props.w.active?.persona.name||'user',charName:props.w.localService?.narratorName||'群星共振世界卡',persona:Object.values(props.w.active?.persona||{}).filter(v=>typeof v==='string').join('\n'),actors:scopeActors.value,seed:props.w.active?.turns.at(-1)?.id||'preview'};const result=resolveWorldbooks(props.w.worldbooks.filter(b=>props.w.boundWorldbookIds.includes(b.id)),ctx);preview.value=result.diagnostics.map(d=>`${d.book}／${d.title}：${loreDiagnosticLabel(d.status)}${d.detail?' · '+d.detail:''}`);props.w.problem='';}catch(e){props.w.problem=e instanceof Error?e.message:'测试失败';}}
+const testing=ref(false);let testController:AbortController|undefined;
+onScopeDispose(()=>testController?.abort());
+async function test(){
+ testController?.abort();const current=new AbortController();testController=current;testing.value=true;
+ const sid=props.w.active?.id;
+ try{
+  const session=props.w.active,charName=props.w.localService?.narratorName||'群星共振世界卡';
+  const ctx=session?sessionLoreContext(session,session.turns.length,testInput.value,session.turns.at(-1)?.id||'preview',charName):{messages:[testInput.value],userName:'user',charName,actors:scopeActors.value,seed:'preview'};
+  const books=props.w.worldbooks.filter(b=>props.w.boundWorldbookIds.includes(b.id)),signature=JSON.stringify(books);
+  const result=await runWorldbooks(books,ctx,current.signal);
+  if(current.signal.aborted||sid!==props.w.active?.id)return;
+  if(signature!==JSON.stringify(props.w.worldbooks.filter(b=>props.w.boundWorldbookIds.includes(b.id))))throw Error('世界书设置已改变，请重新测试。');
+  preview.value=result.diagnostics.map(d=>`${d.book}／${d.title}：${loreDiagnosticLabel(d.status)}${d.detail?' · '+d.detail:''}`);props.w.problem='';
+ }catch(e){if(!current.signal.aborted)props.w.problem=e instanceof Error?e.message:'测试失败';}finally{if(testController===current)testing.value=false;}
+}
 let drag:{id:string;y:number;moved:boolean;target?:string;after?:boolean}|undefined;let ignoreClick=false;
 function dragEntry(e:PointerEvent,id:string){if(locked.value||e.button!==0)return;drag={id,y:e.clientY,moved:false};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);}
 function moveEntry(e:PointerEvent){if(!drag)return;if(Math.abs(e.clientY-drag.y)>5)drag.moved=true;if(!drag.moved)return;document.querySelectorAll('.worldbook-entry.drop-before,.worldbook-entry.drop-after').forEach(e=>e.classList.remove('drop-before','drop-after'));const row=document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-world-entry]');if(!row||row.dataset.worldEntry===drag.id)return;const r=row.getBoundingClientRect();drag.target=row.dataset.worldEntry;drag.after=e.clientY>r.top+r.height/2;row.classList.add(drag.after?'drop-after':'drop-before');}
@@ -54,14 +70,14 @@ const unregister=configurationEditors()?.('worldbook-editor',{dirty:()=>!!entryD
       <div v-if="book" class="worldbook-editor">
         <header class="worldbook-toolbar"><h2>{{withoutEmoji(book.name)}}</h2><div class="actions"><button :disabled="locked" @click="bookDraft=clone(book)">世界书设置</button><button :disabled="locked" @click="w.duplicateWorldbook()">复制</button><button :disabled="locked" @click="w.exportUserWorldbook()">导出</button><button :disabled="locked" @click="deletingBook=book">删除</button></div></header>
         <p v-if="book.entries.some(e=>!e.enabled&&worldEntryGroup(e).names.length)" class="hint">本书有已关闭的包含组条目。group 现已支持；之前导入时关闭的条目会保留关闭状态，请按需手动启用。</p>
-        <details v-if="warnings.length" class="worldbook-warning"><summary>兼容提示（{{warnings.length}} 条）</summary><p>以下条目保留在本地及导出文件中，暂不触发：</p><ul><li v-for="line in warnings" :key="line">{{line}}</li></ul></details>
+        <details v-if="warnings.length" class="worldbook-warning"><summary>兼容提示（{{warnings.length}} 条）</summary><p>以下扩展选项尚未完整接入；条目仍按原开关、常驻或关键词参与触发，原设置保留在导出文件中：</p><ul><li v-for="line in warnings" :key="line">{{line}}</li></ul></details>
         <div class="field-grid"><label>搜索条目<input v-model="query" placeholder="名称、关键词或内容" /></label><div class="actions"><button class="primary" :disabled="locked" @click="editEntry()">增加条目</button></div></div>
         <p v-if="!shown.length" class="empty">{{query?'没有匹配的条目':'还没有条目'}}</p>
         <details v-for="e in shown" :key="e.id" class="worldbook-entry" :data-world-entry="e.id" :class="{'worldbook-disabled':!e.enabled}">
-          <summary><button type="button" class="world-entry-drag" aria-label="拖动条目排序" :disabled="locked" @pointerdown.stop="dragEntry($event,e.id)" @click.stop.prevent>≡</button><span>{{e.constant?'常驻 ·':'关键词 ·'}} {{withoutEmoji(e.title||'未命名条目')}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length"> · 暂不兼容</span></span></summary>
+          <summary><button type="button" class="world-entry-drag" aria-label="拖动条目排序" :disabled="locked" @pointerdown.stop="dragEntry($event,e.id)" @click.stop.prevent>≡</button><span>{{e.constant?'常驻 ·':'关键词 ·'}} {{withoutEmoji(e.title||'未命名条目')}}</span><span class="worldbook-entry-meta">{{e.enabled?'已启用':'已关闭'}} · {{e.order}}<span v-if="worldEntryWarnings(e).length"> · 扩展选项提示</span></span></summary>
           <div class="worldbook-entry-body"><p v-if="e.keys.length" class="worldbook-keywords">{{e.keys.join('、')}}</p><p class="worldbook-content">{{e.content||'（空条目）'}}</p><div class="actions"><button :disabled="locked" @click="toggle(e)">{{e.enabled?'关闭':'启用'}}</button><button :disabled="locked" @click="editEntry(e)">编辑</button><button :disabled="locked" @click="deletingEntry=e">删除</button></div></div>
         </details>
-        <details class="subsection"><summary>测试触发</summary><label>测试输入<textarea v-model="testInput" rows="3" /></label><button @click="test">检查启用的世界书</button><div v-if="preview" role="status"><p v-if="!preview.length">未触发条目</p><ul v-else><li v-for="item in preview" :key="item">{{item}}</li></ul></div></details>
+        <details class="subsection"><summary>测试触发</summary><label>测试输入<textarea v-model="testInput" rows="3" /></label><button :disabled="testing" @click="test">{{testing?'检查中…':'检查启用的世界书'}}</button><div v-if="preview" role="status"><p v-if="!preview.length">未触发条目</p><ul v-else><li v-for="item in preview" :key="item">{{item}}</li></ul></div></details>
       </div>
     </div>
     <DialogShell v-if="w.worldbookImportPending" :title="'确认世界书条目 · '+w.worldbookImportPending.book.name" @close="w.cancelWorldbookImport()">

@@ -34,8 +34,8 @@ it('a group already inserted cannot activate another member through recursion; b
  const r=resolveWorldbooks([b],ctx);expect(r.activated).toEqual(['book:e0']);expect(r.diagnostics[1].status).toBe('group-lost');
  const c=make([{probability:0},{content:'x'.repeat(200)}]);c.budget=100;expect(resolveWorldbooks([c],ctx).diagnostics.map(d=>d.status)).toEqual(['probability','budget']);
 });
-it('keeps unsupported timers blocked and disabled/empty/unmatched entries distinguishable',()=>{
- const b=make([{enabled:false},{content:''},{constant:false,keys:['没有']},{...g('G',{sticky:2})}]);expect(resolveWorldbooks([b],ctx).diagnostics.map(d=>d.status)).toEqual(['disabled','empty','unmatched','unsupported']);
+it('timing option warnings do not block base activation; disabled/empty/unmatched stay distinguishable',()=>{
+ const b=make([{enabled:false},{content:''},{constant:false,keys:['没有']},{...g('G',{sticky:2})}]);expect(resolveWorldbooks([b],ctx).diagnostics.map(d=>d.status)).toEqual(['disabled','empty','unmatched','inserted']);
 });
 it('scope inherits the book, permits per-entry global override, preserves macros and original content',()=>{
  const b=make([{content:'{{char}} 与 {{user}}'},{scope:{mode:'global',characterIds:[]}}]);b.scope={mode:'characters',characterIds:['a','b']};
