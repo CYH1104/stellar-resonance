@@ -68,6 +68,16 @@ async function workspace(){
  vi.spyOn(HttpGateway.prototype,'bootstrap').mockResolvedValue(undefined);scope=effectScope();const w=scope.run(()=>useWorkspace())!;await vi.waitFor(()=>expect(w.loading.value).toBe(false));
  const s=newSession('本地会话',persona(),'开场');s.id='local-session';w.sessions.value.push(s);w.sessionId.value=s.id;await w.save();return w;
 }
+it('parser configuration round-trips through complete local/cloud restore and recovery, with failure and version protection',async()=>{
+ await seed();const w=await workspace();const one={version:1 as const,enabled:true,tags:['foundation','ecot']},two={version:1 as const,enabled:false,tags:['other']};
+ w.preferences.presetOutputParsing={legacy:one};await w.save();const cloud=await w.createCloudWorkspaceBackup();expect(parseCloudSave(cloud).snapshot.preferences.presetOutputParsing).toEqual({legacy:one});
+ const local=backup((await new IndexedDbRepository().read())!);w.preferences.presetOutputParsing={legacy:two};await w.save();
+ expect(await w.importBackup(local,true)).toBe(true);expect(w.preferences.presetOutputParsing).toEqual({legacy:one});await w.undoCloudRestore();expect(w.preferences.presetOutputParsing).toEqual({legacy:two});
+ await w.restoreCloudSave(cloud);expect(w.preferences.presetOutputParsing).toEqual({legacy:one});await w.undoCloudRestore();expect(w.preferences.presetOutputParsing).toEqual({legacy:two});
+ const newer=JSON.parse(cloud);newer.snapshot.preferences.presetOutputParsing.legacy.version=2;await expect(w.restoreCloudSave(JSON.stringify(newer))).rejects.toThrow();expect(w.preferences.presetOutputParsing).toEqual({legacy:two});
+ const write=IndexedDbRepository.prototype.write;let failed=false;vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async function(this:IndexedDbRepository,value,recovery){if(!failed&&value.preferences.presetOutputParsing?.legacy.enabled){failed=true;throw Error('parser-write-failed');}return write.call(this,value,recovery);});
+ await expect(w.restoreCloudSave(cloud)).rejects.toThrow('parser-write-failed');expect(w.preferences.presetOutputParsing).toEqual({legacy:two});expect((await new IndexedDbRepository().read())!.preferences.presetOutputParsing).toEqual({legacy:two});expect((await new PersonaLibrary().list())[0].id).toBe('archive-a');
+});
 it('uses the real export/import pipeline to merge colliding persona IDs, rebind session IDs, and undo the complete workspace',async()=>{
  const library=await seed(),w=await workspace(),archive=await collectWorkspaceArchive(),s=newSession('导入会话',persona(),'开场');s.id='session-source';
  const text=backup({version:1,sessions:[s],preferences:defaults(),archive});expect(await w.importBackup(text)).toBe(true);

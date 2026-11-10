@@ -2,6 +2,7 @@ import {importRegexRules,injectsHtml,type RegexRule} from './regex.ts';
 import type {Preset,Profile} from './contracts';
 import {cleanPromptGroup,importPromptGroups,exportPromptGroups,restoreKnownPromptGroups} from './promptGroups.ts';
 import {detectPresetCompatibility,cleanPresetCompatibility} from './presetCompatibility.ts';
+import {cleanOutputParsing,type OutputParsing} from './outputParsing.ts';
 export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
 export const promptTriggers=[{value:'normal',label:'正常回复'},{value:'continue',label:'续写'},{value:'regenerate',label:'重演／重试'},{value:'swipe',label:'切换生成'},{value:'impersonate',label:'代写玩家'},{value:'quiet',label:'后台生成'}];
 export function newPresetEntries(id:string,name:string):Preset[]{
@@ -95,9 +96,10 @@ export function importTavernPreset(text:string,filename='导入预设',options:{
   const other=Object.keys(raw).filter(key=>!accepted.includes(key)&&!special.includes(key)&&/^[a-z][a-z0-9_]{0,64}$/i.test(key)&&!/(?:key|token|url|proxy|password|secret|header)/i.test(key));if(other.length)warnings.push(`其他未执行的酒馆选项：${other.slice(0,12).join('、')}${other.length>12?` 等${other.length}项`:''}。`);
   warnings.push('模型思维链强制隐藏；导入的思考展示选项不能覆盖此规则。');
   warnings.push('仅应用提示词及受支持的采样参数；文件中的服务地址、模型与凭据不会导入。');
-  const regexRules=importRegexRules(raw,id);if(regexRules.length)warnings.push(`已导入 ${regexRules.length} 条正则，可在聊天顶栏“正则”中编辑和开关。显示侧 HTML 注入规则停用，使用内置渲染；提示词侧规则保留。`);return {id,name,entries,parameters,warnings,regexRules};
+  const outputParsing=cleanOutputParsing(raw.extensions?.academy_output_parser);
+  const regexRules=importRegexRules(raw,id);if(regexRules.length)warnings.push(`已导入 ${regexRules.length} 条正则，可在聊天顶栏“正则”中编辑和开关。显示侧 HTML 注入规则停用，使用内置渲染；提示词侧规则保留。`);return {id,name,entries,parameters,warnings,regexRules,outputParsing};
 }
-export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:RegexRule[]=[]){
+export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:RegexRule[]=[],outputParsing?:OutputParsing){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
   const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
   const historyIndex=entries.indexOf(anchor);
@@ -105,5 +107,5 @@ export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:R
   const listed=entries.filter(p=>p.included!==false&&p!==anchor);
   const ordered=[...listed.filter(beforeHistory),...(anchor.included!==false?[anchor]:[]),...listed.filter(p=>!beforeHistory(p))];
   const grouping=exportPromptGroups(entries);
-  return JSON.stringify({...((grouping||regexRules.length)?{extensions:{...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})}}:{}),name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.compatibility?{academy_compatibility:{...p.compatibility,...(p.compatibility.verdict==='disabled'&&p.enabled?{restored:true}:{})}}:{}),...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
+  return JSON.stringify({extensions:{academy_output_parser:cleanOutputParsing(outputParsing),...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})},name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.compatibility?{academy_compatibility:{...p.compatibility,...(p.compatibility.verdict==='disabled'&&p.enabled?{restored:true}:{})}}:{}),...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }

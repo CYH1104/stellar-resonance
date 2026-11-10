@@ -1,5 +1,7 @@
 # 完整备份与兼容性约定
 
+2026-11-10：预设辅助区块解析配置 `preferences.presetOutputParsing` 接入完整设置备份；预设文件使用 `extensions.academy_output_parser`。本地下载/导入、云端载荷覆盖及覆盖前恢复均验证往返；旧文件缺少字段使用默认配置，未知配置版本/字段拒绝写入。详见 [基础自动解析](BASIC_OUTPUT_PARSING.md)。
+
 ## 格式
 
 - 内部 Snapshot 仍为 version 1，可选 archive 描述独立持久化资料。

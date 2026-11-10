@@ -1,3 +1,4 @@
+import {cleanOutputParsing,outputParsingTags} from '../src/domain/outputParsing.ts';
 import {createCloudBackup} from './cloud-backup.mjs';
 import {cleanCompletionRequestShape} from '../src/domain/completionRequestShape.ts';
 const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.upstreamStatus>=100&&error.upstreamStatus<=599?{upstreamStatus:error.upstreamStatus}:{};
@@ -240,6 +241,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         }
         if(path==='/api/place'){const place=source.places.find(p=>p.id===data.id);if(!place)throw modelError(404,'PLACE_NOT_FOUND');json(response,200,{id:place.id,name:place.name,description:place.intro||place.note});return;}
         if(path==='/api/generate'){
+          try{data.outputParsing=cleanOutputParsing(data.outputParsing);}catch{throw modelError(400,'INVALID_OUTPUT_PARSING');}
           if(Object.hasOwn(data,'presentCharacterIds'))throw modelError(400,'CAST_IS_AI_CONTROLLED');
           // 正文请求不再携带终端上下文：手机通讯走独立的 /api/personal-terminal 任务。
           // 旧页面仍可能带上该字段，直接丢弃而不是报错。
@@ -251,7 +253,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           const generation=data;
           const selected=await connection(current,generation),{requestId,messages,state,theaterSettings,dice,card:generationCard,presetDiagnostics,repairLore}=buildMessages(source,{...data,stateSeparate:false},privateBooks);
           if(terminalEnabled)messages.splice(3,0,terminalCodePrompt(Object.entries(terminalCodeBindings({...data.state,characters:terminalActors(source,data.state)})).map(([id,code])=>({id,code})),terminalActors(source,data.state),data.stateEnabled!==false));
-          if(partial){partial=stripReasoning(partial);if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
+          if(partial){partial=stripReasoning(partial,outputParsingTags(data.outputParsing));if(!partial.trim())throw modelError(400,'INVALID_CONTINUATION');}
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const firstSignal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const initialMessages=stateOnly?repairedMessages(messages,partial,generationCard,state,{requestId,theaterSettings,persona:data.persona,dice,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,input:data.input,worldInfo:repairLore,repairPlan}):partial?continuedMessages(messages,partial,state.player.name):messages;
@@ -261,7 +263,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'request',model:generation.profile.model,stateAuxiliary:false,presets:presetDiagnostics,profile:generation.profile})})}\n\n`);
           let lastProgress=0;const onProgress=stats=>{if(Date.now()-lastProgress<1000)return;lastProgress=Date.now();if(!response.destroyed)response.write(`data: ${JSON.stringify({type:'progress',phase:stats.visibleChars?'receiving':stats.contentChars||stats.reasoningChars?'hidden':'waiting'})}\n\n`);};
           const validationCodes=[];const heartbeat=setInterval(()=>{if(!response.destroyed)response.write(': keepalive\n\n');},15000);
-          try{for await(const event of streamStory({card:generationCard,state,options:{requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
+          try{for await(const event of streamStory({card:generationCard,state,options:{outputParsing:data.outputParsing,requestId,repairPlan,input:data.input,stateEnabled:data.stateEnabled,suggestionsEnabled:data.suggestionsEnabled,theaterSettings,persona:data.persona,dice,requireDynamicState:!repairPlan,captureFormatErrors:data.captureFormatErrors===true,singleStateCall:data.singleStateCall===true},messages,partial,stateOnly,connection:selected,profile:generation.profile,key:generation.key,firstResponse:upstream,firstSignal,signal:controller.signal,fetchImpl,onProgress})){if(event.type==='diagnostic')validationCodes.push(event.diagnostic.code);if(event.type==='done'){if(developerAllowed(account))response.write(`data: ${JSON.stringify({type:'developer-trace',trace:developerTrace(initialMessages,{stage:'complete',model:generation.profile.model,elapsedMs:performance.now()-developerStarted,stateAuxiliary:false,outcome:event.outcome,validationCodes})})}\n\n`);}response.write(`data: ${JSON.stringify(event)}\n\n`);}response.end();}
           catch(error){const code=error.code||'MODEL_STREAM_INTERRUPTED';controller.abort();if(!response.destroyed)response.end(`data: ${JSON.stringify({type:'error',code,...completionFailureFields(error),...(error.reasonCode?{reasonCode:error.reasonCode}:{})})}\n\n`);}
           finally{clearInterval(heartbeat);}
           return;

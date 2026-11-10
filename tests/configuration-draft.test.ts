@@ -39,3 +39,11 @@ it('flushes registered preset/worldbook editors before collecting the saved snap
  expect(base.preferences.presets[0].content).toBe('本次输入的预设');
  expect(draft.dirty.value).toBe(false);
 });
+it('parser settings stay isolated on save failure; preset clone/delete preserve their own settings',async()=>{
+ const {base,draft}=setup();const config={version:1 as const,enabled:true,tags:['foundation','ecot']};
+ draft.view.preferences.presetOutputParsing={legacy:config};draft.view.duplicatePresetSet();const id=draft.view.currentPreset;
+ expect(draft.view.preferences.presetOutputParsing![id]).toEqual(config);draft.view.preferences.presetOutputParsing![id].tags.push('other');expect(draft.view.preferences.presetOutputParsing!.legacy.tags).not.toContain('other');
+ vi.mocked(base.commitConfiguration).mockRejectedValueOnce(Error('保存失败'));expect(await draft.save()).toBe(false);expect(base.preferences.presetOutputParsing).toEqual({});expect(draft.dirty.value).toBe(true);
+ expect(await draft.save()).toBe(true);expect(base.preferences.presetOutputParsing![id].tags).toContain('other');
+ draft.view.removePresetSet();expect(draft.view.preferences.presetOutputParsing![id]).toBeUndefined();expect(draft.view.preferences.presetOutputParsing!.legacy).toEqual(config);
+});

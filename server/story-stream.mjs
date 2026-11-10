@@ -1,3 +1,4 @@
+import {outputParsingTags} from '../src/domain/outputParsing.ts';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {featurePrompts,featureContract} from './feature-prompts.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
@@ -47,9 +48,10 @@ export function repairedMessages(messages,story,card,state,options={},code='INVA
 /** Initial response plus at most three continuation requests; state is committed once. */
 export async function* streamStory({card,state,options,messages,partial='',stateOnly=false,connection,profile,key,firstResponse,firstSignal,signal,fetchImpl=fetch,attemptTimeoutMs=MODEL_REQUEST_TIMEOUT_MS,onProgress}){
   options={...options,validationWarnings:[]};
+  const extraTags=outputParsingTags(options.outputParsing);
   if(partial)options={...options,dice:undefined};
   const decoder=new StoryDecoder();if(partial)decoder.push(partial);
-  let reasoningFilter=new ReasoningFilter();
+  let reasoningFilter=new ReasoningFilter(extraTags);
   let response=firstResponse,attemptSignal=firstSignal||AbortSignal.any([signal,AbortSignal.timeout(attemptTimeoutMs)]),repairing=stateOnly,repairReason='INVALID_MODEL_STATE';
   if(repairing)decoder.beginStateRepair();
   const maxAttempts=options.singleStateCall?0:MAX_CONTINUATIONS;
@@ -61,7 +63,7 @@ export async function* streamStory({card,state,options,messages,partial='',state
       yield repairing?{type:'repair',attempt,maxAttempts:MAX_CONTINUATIONS,code:repairReason}:{type:'continuation',attempt,maxAttempts:MAX_CONTINUATIONS};signal.throwIfAborted();
       attemptSignal=AbortSignal.any([signal,AbortSignal.timeout(attemptTimeoutMs)]);
       const nextMessages=repairing?repairedMessages(messages,decoder.story,card,state,options,repairReason):continuedMessages(messages,decoder.raw,state.player.name);
-      if(repairing){decoder.beginStateRepair();reasoningFilter=new ReasoningFilter();}
+      if(repairing){decoder.beginStateRepair();reasoningFilter=new ReasoningFilter(extraTags);}
       else reasoningFilter.beginResponse();
       try{response=await openCompletion({connection,profile,key,messages:nextMessages,signal:attemptSignal,fetchImpl});}
       catch(error){signal.throwIfAborted();readError=error;response=undefined;}
@@ -79,7 +81,7 @@ export async function* streamStory({card,state,options,messages,partial='',state
     }
     signal.throwIfAborted();
     // A preset may return only comments. Retry once with an explicit visible-story request.
-    if(readError?.code==='MODEL_NO_VISIBLE_CONTENT'&&attempt===0&&maxAttempts>0&&!decoder.raw.trim()){reasoningFilter=new ReasoningFilter();continue;}
+    if(readError?.code==='MODEL_NO_VISIBLE_CONTENT'&&attempt===0&&maxAttempts>0&&!decoder.raw.trim()){reasoningFilter=new ReasoningFilter(extraTags);continue;}
     if(readError)yield {type:'diagnostic',diagnostic:{kind:'generation',...diagnosticStats(),code:readError.code,attempt,stage:'rejected'}};
     // Compatibility may recover missing fields, but it must not turn a known
     // interrupted response into a successful turn. Keep the delivered prose and

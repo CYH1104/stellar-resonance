@@ -12,6 +12,7 @@ import {promptFolders,orderedPromptFolders} from '../domain/promptGroups';
 import {cleanPreset,pinnedPromptIds,importTavernPreset} from '../domain/presets';
 import DialogShell from './DialogShell.vue';
 import PresetPromptEditor from './PresetPromptEditor.vue';
+import OutputParserSettings from './OutputParserSettings.vue';
 import {compatibilityCategories,restorePresetCompatibility,type CompatibilityCategory} from '../domain/presetCompatibility';
 const props=defineProps<{w:ViewModel}>();
 const importSearch=ref('');
@@ -122,6 +123,7 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
     <header class="panel-heading"><div><p class="eyebrow">PRESETS / 提示词管理</p><h1>预设</h1></div><div class="actions preset-primary-actions"><FileImportButton label="导入酒馆预设" accept=".json,application/json" :disabled="w.busy||importing" @change="importFile" /><SaveStatus :status="autoSave.status.value" :error="autoSave.error.value" :saved-at="autoSave.lastSaved.value" /><button type="button" @click="saveAll">保存预设</button><button v-if="autoSave.error.value" :disabled="w.busy" @click="autoSave.retry()">重试保存</button></div></header>
     <p class="preset-import-hint" role="status">{{importing?'正在导入并保存…':'选择或拖入酒馆 JSON 预设，导入后自动选中并保存在当前浏览器。'}}</p>
     <p class="preset-counts">共 {{counts.total}} 条 · 列表 {{counts.listed}} 条 · 开启 {{counts.enabled}} 条提示词</p>
+    <OutputParserSettings :w="w" />
     <p class="rail-note">如果正文显示异常，请检查预设中是否仍开启了美化、小剧场等条目；可尝试关闭后重试。</p>
     <p class="rail-note">导入保留预设原有顺序与开关；兼容提示不会自动关闭条目。外部美化与扩展脚本的支持情况另行提示。</p>
     <details v-if="compatibilityRows.length" class="import-report" open><summary>预设兼容检测 · {{compatibilityRows.length}} 条</summary><p class="rail-note">只调整导入时的开关，不删除原文；恢复操作保留原本关闭的条目。</p><div class="actions"><button :disabled="w.busy" @click="restoreCompatibility()">恢复全部自动调整</button><button :disabled="w.busy" @click="restoreCompatibility('choices')">只恢复选项类</button></div><ul><li v-for="p in compatibilityRows" :key="p.id"><strong>{{withoutEmoji(p.name)}}</strong> · {{categoryLabels(p)}} · {{p.compatibility!.verdict==='review'?'待核查（未自动关闭）':p.compatibility!.restored?'已恢复原开关':p.enabled?'用户已开启':p.compatibility!.originalEnabled?'已自动关闭':'原本关闭'}}：{{p.compatibility!.reason}}</li></ul></details>
