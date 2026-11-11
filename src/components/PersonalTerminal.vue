@@ -2,6 +2,7 @@
 import {computed,reactive,ref,nextTick,watch,onBeforeUnmount} from 'vue';
 import {useImagePreview} from '../app/imagePreview';
 import {terminalSyncSummary} from '../domain/terminalSyncReport';
+import {terminalJobNotice} from '../domain/terminalJobNotice';
 import {logTarget} from '../app/logNavigation';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePersonalTerminal} from '../app/usePersonalTerminal';
@@ -26,7 +27,7 @@ const props=withDefaults(defineProps<{w:ViewModel;active?:boolean}>(),{active:tr
 const u=reactive(usePersonalTerminal(props.w));
 const avatarDisplay=useImagePreview(()=>u.t.avatar);
 const syncVariant=computed(()=>{const turn=props.w.active?.turns.at(-1);return turn?.variants[turn.selected];});
-const pendingMainFollowup=computed(()=>props.w.active?.terminal?.jobs?.filter(j=>j.target==='auto'&&j.status!=='ready'&&terminalAnchorActive(props.w.active!,j.anchor))||[]);
+const pendingMainFollowup=computed(()=>{const job=props.w.active&&terminalJobNotice(props.w.active);return job?[job]:[];});
 const syncSummary=computed(()=>terminalSyncSummary(syncWarnings.value,syncVariant.value?.outcome?.terminal?.report));
 const syncWarnings=computed(()=>props.w.active?.turns.at(-1)?.variants[props.w.active.turns.at(-1)!.selected]?.outcome?.stateUpdate?.codes?.filter(code=>code.startsWith('STATE_TERMINAL_'))||[]);
 const syncNoticeVisible=ref(false);let syncNoticeTimer:ReturnType<typeof setTimeout>|undefined;

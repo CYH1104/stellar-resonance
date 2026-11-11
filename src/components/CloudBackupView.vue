@@ -4,7 +4,8 @@ import type {ViewModel} from '../app/useWorkspace';
 import {parseCloudSave,type CloudSave} from '../domain/cloudBackup';
 import {accountStorage} from '../storage/accountScope';
 import {readCloudToken,writeCloudToken} from '../storage/cloudTokens';
-import {createCloudBackup,type CloudTransportError} from '../domain/cloudTransport.mjs';
+import type {CloudTransportError} from '../domain/cloudTransport.mjs';
+import {requestCloudBackup,type BackupTransport} from '../gateway/cloudBackup';
 import DialogShell from './DialogShell.vue';
 const props=defineProps<{w:ViewModel}>();
 type Provider='github'|'gitee';
@@ -14,6 +15,7 @@ function savedRepository(provider:Provider){try{return accountStorage.getItem('c
 const configs=reactive({github:{repository:savedRepository('github'),token:readCloudToken('github')},gitee:{repository:savedRepository('gitee'),token:readCloudToken('gitee')}});
 const provider=ref<Provider>('gitee'),connection=ref<Repo>(),files=ref<File[]>([]),selected=ref(''),working=ref(false),message=ref(''),error=ref('');
 const helpOpen=ref(false);
+const transport=ref<BackupTransport>('direct');
 const preview=ref<{cloud:CloudSave;text:string;file:string}>(),uploadConfirm=ref(false),undoConfirm=ref(false);
 const config=computed(()=>configs[provider.value]);
 
@@ -22,8 +24,8 @@ let controller:AbortController|undefined,disposed=false;
 const errors:Record<string,string>={CLOUD_INVALID_FILE_METADATA:'平台返回的文件信息不完整，已停止上传，避免误用更新接口。',CLOUD_REQUEST_REJECTED:'平台拒绝了请求参数（400），不一定是令牌权限问题。',CLOUD_VALIDATION_FAILED:'平台校验未通过（422）：可能是仓库初始化、分支、文件参数或平台文件限制。请保留此提示以便定位。',CLOUD_RATE_LIMITED:'平台请求过于频繁（429），请稍后重试。',CLOUD_FILE_TOO_LARGE:'备份超过平台允许的文件大小，请使用本地备份。',CLOUD_INVALID_CONFIGURATION:'请填写正确的仓库名称和访问令牌。',CLOUD_TOKEN_INVALID:'令牌无效或已过期，请重新填写。',CLOUD_PERMISSION_DENIED:'令牌权限不足、访问受限或调用次数达到限制。请检查仓库读写权限。',CLOUD_PRIVATE_REPOSITORY_REQUIRED:'同名仓库不是私有仓库。请更换仓库名，或先在平台将仓库设为私有。',CLOUD_REPOSITORY_NOT_FOUND:'仓库不存在，请先连接仓库。',CLOUD_CONNECTION_FAILED:'无法连接备份平台，请检查网络后重试。',CLOUD_CONFLICT:'仓库已被其他设备更新，请刷新列表后重试。',CLOUD_UPSTREAM_FAILED:'平台未能完成请求，请检查令牌权限、仓库限制后重试。',CLOUD_BACKUP_NOT_FOUND:'备份不存在或超过大小限制，请刷新列表。',CLOUD_INVALID_BACKUP:'存档格式不兼容，原数据未被覆盖。',LOCAL_SESSION_REQUIRED:'本地服务会话已过期，请刷新页面后重试。'};
 async function api(action:string,extra:object={}){
  controller=new AbortController();const signal=controller.signal;
- try{const data=await createCloudBackup(fetch,signal)({provider:provider.value,repository:config.value.repository.trim(),token:config.value.token.trim(),action,...extra});if(disposed)throw Error('页面已关闭。');return data;}
- catch(e){const detail=e as CloudTransportError;if(detail.code==='CLOUD_CONNECTION_FAILED')throw Error('浏览器无法直连备份平台，请检查网络或平台跨域限制。未通过本服务器中转。');throw Error((errors[detail.code||'']||detail.message||'备份操作失败。')+'（步骤：'+({connect:'连接仓库',list:'读取列表',upload:'上传备份',download:'拉取备份'}[action]||action)+(detail.cloudStep?' / '+detail.cloudStep:'')+(detail.upstreamStatus?'；平台状态：'+detail.upstreamStatus:'')+'）'+(detail.cloudDetail?' 平台原因：'+detail.cloudDetail:''));}
+ try{const data=await requestCloudBackup({provider:provider.value,repository:config.value.repository.trim(),token:config.value.token.trim(),action,...extra},transport.value,signal);if(disposed)throw Error('页面已关闭。');return data;}
+ catch(e){const detail=e as CloudTransportError;const text=detail.code==='CLOUD_CONNECTION_FAILED'?'浏览器直连请求失败；可选择“服务器中转”后重新上传。':detail.code==='CLOUD_REQUEST_TIMEOUT'?'备份传输超时，本地数据保留；上传是否已提交需刷新列表确认。':detail.code==='CLOUD_RELAY_UNREACHABLE'?'无法连接本站备份传输服务，请稍后重试。':detail.code==='CLOUD_RELAY_SESSION_REQUIRED'?'本站登录会话已失效，请保留当前页面并重新登录。':detail.code==='CLOUD_RELAY_TOO_LARGE'?'备份超过本站中转请求大小，请使用浏览器直连或下载完整备份。':detail.code==='CLOUD_RELAY_FAILED'?'本站未能完成备份传输，请保留本地备份后重试。':errors[detail.code||'']||detail.message||'备份操作失败。';throw Error(text+'（步骤：'+({connect:'连接仓库',list:'读取列表',upload:'上传备份',download:'拉取备份'}[action]||action)+(detail.cloudStep?' / '+detail.cloudStep:'')+(detail.upstreamStatus?'；平台状态：'+detail.upstreamStatus:'')+'）'+(detail.cloudDetail?' 平台原因：'+detail.cloudDetail:''));}
 }
 async function run(action:()=>Promise<void>){if(working.value)return;working.value=true;error.value=message.value='';try{await action();}catch(e){if(!disposed)error.value=e instanceof Error?e.message:'操作失败，本地存档已保留。';}finally{working.value=false;controller=undefined;}}
 async function refresh(){const r=await api('list');files.value=r.files;selected.value=files.value.some(f=>f.name===selected.value)?selected.value:files.value[0]?.name||'';}
@@ -45,6 +47,8 @@ onBeforeUnmount(()=>{for(const stop of tokenWatchStops)stop();disposed=true;cont
  <div class="actions" aria-label="备份操作"><button :disabled="working||taskBlocked" @click="run(async()=>{await w.saveCurrentCloudBackup();message='全部数据备份文件已下载。';})">下载所有数据</button><button :disabled="working||taskBlocked||!connection" @click="prepareUpload">上传备份</button><button :disabled="working||taskBlocked||!connection||!selected" @click="download">拉取备份</button></div>
  <div class="actions provider-switch" aria-label="备份平台"><button :disabled="working" :aria-pressed="provider==='gitee'" @click="provider='gitee'">国内 · Gitee</button><button :disabled="working" :aria-pressed="provider==='github'" @click="provider='github'">GitHub</button></div>
  </div>
+ <label>备份传输方式<select v-model="transport" :disabled="working"><option value="direct">浏览器直连（默认）</option><option value="server">服务器中转（直连失败时使用）</option></select></label>
+ <p v-if="transport==='server'" class="token-help" role="status">本次备份内容和仓库令牌会临时经过本站服务器，再发送到所选平台；不会保存令牌或自动改用其他平台。此选择仅在当前页面有效。</p>
  <Transition name="cloud-switch" mode="out-in"><div :key="provider" :data-provider="provider" class="provider-content">
  <label>仓库名称<input v-model="config.repository" :disabled="working" maxlength="100" autocomplete="off"></label>
  <label>访问令牌<input v-model="config.token" :disabled="working" type="password" autocomplete="off" placeholder="填写你自己账号的访问令牌"></label>
