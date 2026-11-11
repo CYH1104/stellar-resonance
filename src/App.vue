@@ -3,7 +3,8 @@ const CloudBackupView=defineAsyncComponent(()=>import('./components/CloudBackupV
 import DialogShell from './components/DialogShell.vue';
 import {useConfigurationDraft} from './app/useConfigurationDraft';
 import {configurationEditorsKey} from './app/configurationEditors';
-import {provide,defineAsyncComponent} from 'vue';
+import {provide,defineAsyncComponent,defineComponent,h} from 'vue';
+import AsyncPageStatus from './components/AsyncPageStatus.vue';
 import {disposeRetrieval} from './memory/retrieval';
 onUnmounted(disposeRetrieval);
 import {preloadRegexWorker,disposeRegexWorker} from './domain/regexRunner';
@@ -56,7 +57,7 @@ const SavesView=defineAsyncComponent(()=>import('./components/SavesView.vue'));
 
 import OpeningView from './components/OpeningView.vue';
 
-const PersonaLibrary=defineAsyncComponent(()=>import('./components/PersonaLibrary.vue'));
+const PersonaLibrary=defineAsyncComponent({loader:()=>import('./components/PersonaLibrary.vue'),delay:100,timeout:20000,loadingComponent:AsyncPageStatus,errorComponent:defineComponent({props:['error'],setup(props){return()=>h(AsyncPageStatus,{error:props.error,retry:async()=>{await w.flushInputDrafts();await w.save();if(w.storageStatus==='failed')throw Error(w.storageError||'保存失败');location.reload();}});}})});
 import {PersonaLibrary as PersonaRepository} from './storage/personaLibrary';
 
 import type {Persona} from './domain/contracts';
