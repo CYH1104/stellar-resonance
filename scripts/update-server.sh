@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Always deploy the latest shared main snapshot; never merge server changes.
 set -Eeuo pipefail
+# 默认一次更新两个端口。单实例入口仅留给明确指定的故障恢复，不作为日常发布方式。
+if [ "${STELLAR_SINGLE_INSTANCE_UPDATE:-0}" != 1 ]; then
+  exec bash "$(dirname "${BASH_SOURCE[0]}")/update-both-server.sh" "$@"
+fi
 STAGE='检查环境'
 trap 'status=$?; printf "\n更新失败：%s（退出码 %s）。请查看上方报错。\n" "$STAGE" "$status" >&2; exit "$status"' ERR
 update_server() {

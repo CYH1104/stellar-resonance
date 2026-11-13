@@ -10,11 +10,12 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
   . "$NVM_DIR/nvm.sh"
   nvm use 24 --silent >/dev/null
 fi
-mkdir -p server/.local
+mkdir -p server/.local/instances/test
 exec 201>server/.local/auto-update.lock
 flock -n 201 || exit 0
 # A manual deployment already owns the regular update lock: leave it alone.
 flock -n server/.local/update.lock true || exit 0
+flock -n server/.local/instances/test/update.lock true || exit 0
 export GIT_TERMINAL_PROMPT=0
 export GIT_CONFIG_COUNT=3
 export GIT_CONFIG_KEY_0=http.version GIT_CONFIG_VALUE_0=HTTP/1.1
@@ -25,7 +26,9 @@ target="${remote%%[[:space:]]*}"
 [[ "$target" =~ ^[[:xdigit:]]{40}$ ]] || { echo '无法读取远程 main 提交。' >&2; exit 1; }
 deployed=''
 if [ -f server/.local/last-deployed-main ]; then read -r deployed < server/.local/last-deployed-main; fi
-if [ "$target" = "$deployed" ] && [ "$target" = "$(git rev-parse HEAD)" ]; then exit 0; fi
+tested=''
+if [ -f server/.local/instances/test/last-deployed-main ]; then read -r tested < server/.local/instances/test/last-deployed-main; fi
+if [ "$target" = "$deployed" ] && [ "$target" = "$tested" ] && [ "$target" = "$(git rev-parse HEAD)" ]; then exit 0; fi
 # Failed builds must retry even if git reset has already moved HEAD to target.
 if [ -f server/.local/auto-update-failed ]; then
   read -r failed_sha failed_at < server/.local/auto-update-failed || true

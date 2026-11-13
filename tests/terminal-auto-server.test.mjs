@@ -63,14 +63,14 @@ test('terminal-first accepts an independent request with empty prose and no soci
   }finally{await close(app.server);}
 });
 
-test('the stable channel still rejects the independent terminal task',async()=>{
+test('8807 phone requires its own configured connection before any model call',async()=>{
   const app=await createLocalServer({projectRoot:root,port:0,card,channel:'stable',fetchImpl:async()=>{throw Error('must not call upstream');}});
   try{
     const base=`http://127.0.0.1:${await app.start()}`;
     const boot=await fetch(base+'/api/bootstrap');
     const cookie=boot.headers.get('set-cookie').split(';')[0];
     const response=await fetch(base+'/api/personal-terminal',{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(request())});
-    assert.equal(response.status,403);
-    assert.equal((await response.json()).code,'TERMINAL_DISABLED');
+    assert.equal(response.status,412);
+    assert.equal((await response.json()).code,'MODEL_NOT_CONFIGURED');
   }finally{await close(app.server);}
 });

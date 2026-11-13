@@ -1,4 +1,4 @@
-// 运行通道：stable（稳定版，手机终端关闭）/ test（测试版，手机终端开启）。
+// 两个部署实例使用相同功能（均支持手机终端）；通道名继续用于账号、Cookie 与目录隔离。
 // 通道必须是部署配置，而不是用户可导入导出的开关：导入备份不应改变正在运行的功能面。
 export const CHANNELS = ['stable', 'test'];
 export const TEST_PORT = 9000;
@@ -10,18 +10,18 @@ export function normalizeChannel(value) {
   return raw;
 }
 
-// 9000 是手机测试通道，其余端口（默认 8807）是稳定通道。
+// 沿用原端口身份：9000 为 test，其余端口（默认 8807）为 stable，不迁移账号目录。
 export function channelForPort(port) {
   return Number(port) === TEST_PORT ? 'test' : 'stable';
 }
 
-// 显式配置优先；没有配置时按端口判断，保证线上 8807 不需要额外环境变量也是稳定版。
+// 显式配置优先；没有配置时按端口判断，保持原实例身份与 Cookie 名称。
 export function resolveChannel({ explicit = '', port } = {}) {
   return normalizeChannel(explicit) || channelForPort(port);
 }
 
 export function terminalEnabledFor(channel) {
-  return normalizeChannel(channel) === 'test';
+  return !!normalizeChannel(channel);
 }
 
 const INSTANCE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;

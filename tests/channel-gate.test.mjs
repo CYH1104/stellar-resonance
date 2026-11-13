@@ -1,4 +1,4 @@
-// 双通道门控：稳定版（stable）关闭手机终端功能面，测试版（test）保留。
+// 双端功能相同：手机能力一致，账号、会话 Cookie 与数据目录继续隔离。
 // 这里跑的是真实路由与真实提示词拼装，只有上游 fetch 被替换，用来精确观察实际发出的请求。
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,73 +24,26 @@ async function start(channel,{privateDir,calls}={}){
 const close=async server=>{server.closeAllConnections();await new Promise(done=>server.close(done));};
 
 const profile={id:'channel-main',model:'synthetic',apiBaseUrl:'https://synthetic.example/v1',temperature:.7,maxTokens:1600};
-const state={player:{id:'player',name:'玩家',present:true},characters:[]};
+const state={player:{id:'player',name:'玩家',present:true},characters:[],variables:{终端码:{player:'81111111111'}}};
 const terminalContext={initialized:false,groups:[],newGroupIds:Array.from({length:5},(_,i)=>`g-${i}`),friendIds:[],courses:[]};
 const generation={sessionId:'channel-session',turnId:'channel-turn',persona:{name:'玩家'},opening:'开场',input:'我走进教室。',history:[],presets:[],memories:[],state,profile,key:'synthetic-key',terminalContext,theaterSettings:defaultTheaters().map(t=>({...t,enabled:false}))};
 
-test('stable channel exposes no phone surface and never sends terminal prompts',async()=>{
-  const calls=[];
-  const {app,base,post}=await start('stable',{calls});
+for(const channel of ['stable','test'])test(channel+' exposes the same phone routes and prompt assembly',async()=>{
+  const calls=[], {app,base,post}=await start(channel,{calls});
   try{
     const health=await (await fetch(base+'/api/health')).json();
-    assert.equal(health.channel,'stable');
-    assert.equal(health.terminal,false);
-    const bootstrap=await (await fetch(base+'/api/bootstrap')).json();
-    assert.equal(bootstrap.capabilities.terminal,false,'bootstrap must tell the client to hide the phone');
-    assert.equal(bootstrap.capabilities.channel,'stable');
-
+    assert.equal(health.channel,channel);assert.equal(health.terminal,true);
+    const boot=await (await fetch(base+'/api/bootstrap')).json();
+    assert.equal(boot.capabilities.terminal,true);assert.equal(boot.capabilities.channel,channel);
     assert.equal((await post('/api/connection',{profileId:profile.id,apiBaseUrl:profile.apiBaseUrl})).status,200);
-
-    // 手机接口整体关闭：本地直接拒绝，不消耗上游额度。
-    const terminalResponse=await post('/api/personal-terminal',{task:'friend',actorIds:[card.characters[0].id],input:'申请好友',persona:{name:'玩家'},context:{state:{characters:[]}},profile,key:'synthetic-key'});
-    assert.equal(terminalResponse.status,403);
-    assert.equal((await terminalResponse.json()).code,'TERMINAL_DISABLED');
-    const codeResponse=await post('/api/terminal-code',{sessionId:'s',state,self:true});
-    assert.equal(codeResponse.status,403);
-    assert.equal((await codeResponse.json()).code,'TERMINAL_DISABLED');
-    assert.equal(calls.length,0,'a closed phone surface must not call the upstream');
-
-    // 正文生成照常：不注入终端码提示词，也不因缺少终端批次而告警。
-    const generated=await post('/api/generate',generation);
-    assert.equal(generated.status,200);
-    const stream=await generated.text();
-    assert.ok(stream.includes('"type":"done"'),stream.slice(0,300));
-    assert.ok(!stream.includes('STATE_TERMINAL_MISSING'),'stable must not ask for terminal batching');
-    assert.equal(calls.length,1);
-    const sent=JSON.stringify(calls[0]);
-    assert.ok(!sent.includes('终端通讯录是当前会话的私有剧情数据'),'the phone-only terminal-code prompt must not be sent');
-  }finally{await close(app.server);}
-});
-
-test('test channel keeps phone gating open',async()=>{
-  const calls=[];
-  const {app,base,post}=await start('test',{calls});
-  try{
-    const health=await (await fetch(base+'/api/health')).json();
-    assert.equal(health.channel,'test');
-    assert.equal(health.terminal,true);
-    const bootstrap=await (await fetch(base+'/api/bootstrap')).json();
-    assert.equal(bootstrap.capabilities.terminal,true);
-
-    assert.equal((await post('/api/connection',{profileId:profile.id,apiBaseUrl:profile.apiBaseUrl})).status,200);
-    const generated=await post('/api/generate',generation);
-    assert.equal(generated.status,200);
-    assert.equal(calls.length,1);
-    assert.ok(JSON.stringify(calls[0]).includes('终端通讯录是当前会话的私有剧情数据'),'the test channel still sends the terminal-code prompt');
-  }finally{await close(app.server);}
-});
-
-test('a stale client sending phone context does not break stable generation',async()=>{
-  const calls=[];
-  const {app,post}=await start('stable',{calls});
-  try{
-    assert.equal((await post('/api/connection',{profileId:profile.id,apiBaseUrl:profile.apiBaseUrl})).status,200);
-    // 旧页面（升级前缓存的 bundle）仍会带 terminalContext；稳定版直接丢弃，而不是报错。
-    const broken={...generation,terminalContext:{initialized:'nope',groups:[],newGroupIds:[],friendIds:[]}};
-    const generated=await post('/api/generate',broken);
-    assert.equal(generated.status,200);
-    assert.ok((await generated.text()).includes('"type":"done"'));
-    assert.equal(calls.length,1);
+    const code=await post('/api/terminal-code',{sessionId:'s',state,self:true});
+    assert.equal(code.status,200);assert.ok((await code.json()).code);
+    const generated=await post('/api/generate',generation);assert.equal(generated.status,200);
+    assert.ok((await generated.text()).includes('"type":"done"'));assert.equal(calls.length,1);
+    assert.ok(JSON.stringify(calls[0]).includes('终端通讯录是当前会话的私有剧情数据'));
+    // Existing users can still generate without enabling or configuring the phone.
+    const withoutPhone=await post('/api/generate',{...generation,terminalContext:undefined});
+    assert.equal(withoutPhone.status,200);assert.ok((await withoutPhone.text()).includes('"type":"done"'));
   }finally{await close(app.server);}
 });
 
