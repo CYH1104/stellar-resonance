@@ -9,7 +9,8 @@ import {registerBackupFlusher} from '../app/backupFlushers';
 import type {ViewModel} from '../app/useWorkspace';
 import type {Preset,PresetPromptGroup} from '../domain/contracts';
 import {promptFolders,orderedPromptFolders} from '../domain/promptGroups';
-import {cleanPreset,pinnedPromptIds,importTavernPreset} from '../domain/presets';
+import {cleanPreset,pinnedPromptIds,importTavernPreset,isPresetTail} from '../domain/presets';
+import PresetTailEntry from './PresetTailEntry.vue';
 import DialogShell from './DialogShell.vue';
 import PresetPromptEditor from './PresetPromptEditor.vue';
 import OutputParserSettings from './OutputParserSettings.vue';
@@ -34,8 +35,8 @@ async function restoreCompatibility(category?:CompatibilityCategory){if(props.w.
 const counts=computed(()=>({total:props.w.presetEntries.length,listed:props.w.presetEntries.filter(p=>p.included!==false).length,enabled:props.w.presetEntries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker).length}));
 const selectedFolder=ref('');
 const query=ref(''),library=ref(''),dragged=ref(''),drafts=ref<Record<string,Preset>>({}),originals=ref<Record<string,Preset>>({}),expanded=ref<string[]>([]),deleting=ref(false);
-const rows=computed(()=>props.w.presetEntries.filter(p=>p.included!==false));
-const unused=computed(()=>props.w.presetEntries.filter(p=>p.included===false));
+const rows=computed(()=>props.w.presetEntries.filter(p=>p.included!==false&&!isPresetTail(p)));
+const unused=computed(()=>props.w.presetEntries.filter(p=>p.included===false&&!isPresetTail(p)));
 const shown=computed(()=>rows.value.filter(p=>!query.value.trim()||(p.name+' '+p.content+' '+p.identifier).toLowerCase().includes(query.value.trim().toLowerCase())));
 const folders=computed(()=>promptFolders(rows.value));
 const orderedFolders=computed(()=>orderedPromptFolders(rows.value));
@@ -50,7 +51,7 @@ function editGroup(id?:string){const folder=folderOptions.value.find(g=>g.id===i
 async function saveGroup(){if(props.w.busy||!groupForm.value?.name.trim())return;const form=groupForm.value;
  const old=folderOptions.value.find(g=>g.id===form.id);const group:PresetPromptGroup={id:form.id,name:form.name.trim(),order:old?.order??Math.min(10000,Math.max(-1,...folderOptions.value.map(g=>g.order))+1),enabled:old?.enabled??true,collapsed:old?.collapsed??false};
  if(!form.members.length){props.w.addPresetEntry();const entry=props.w.presetEntries.at(-1);if(entry)form.members.push(entry.id);}
- for(const p of props.w.presetEntries){if(form.members.includes(p.id))p.group={...group};else if(p.group?.id===form.id)p.group=null;}
+ for(const p of props.w.presetEntries.filter(p=>!isPresetTail(p))){if(form.members.includes(p.id))p.group={...group};else if(p.group?.id===form.id)p.group=null;}
  selectedFolder.value=group.id;
  await props.w.save();if(!props.w.problem)groupForm.value=undefined;
 }
@@ -153,13 +154,14 @@ registerBackupFlusher(async()=>{await autoSave.flush();if(autoSave.error.value)t
       </div>
       <p v-if="!shown.length" class="empty">没有匹配条目。</p>
     </details>
+    <PresetTailEntry :w="w" />
     <DialogShell v-if="importReview" title="导入前确认条目开关" @close="!importing&&(importReview=undefined)">
       <p>以下条目保持文件原有开关，勾选表示开启；仅在你调整时改变。搜索只筛选列表，不改变开关；所有原文都会保留。</p>
       <div class="actions"><button :disabled="importing" @click="importReview.disabled=importReview.rows.map(r=>r.index)">全部关闭</button><button :disabled="importing" @click="importReview.disabled=[]">全部开启</button></div>
       <label class="import-search">搜索条目<input v-model="importSearch" placeholder="名称、关键词或内容" /></label><div class="import-review-list" style="max-height:50vh;overflow:auto;display:grid;gap:16px;padding:4px"><article v-for="row in reviewRows" :key="row.index" class="import-report"><label class="toggle"><input :checked="!importReview.disabled.includes(row.index)" @change="setReviewEnabled(row.index,($event.target as HTMLInputElement).checked)" type="checkbox" :disabled="importing" />开启：{{withoutEmoji(row.entry.name)}}</label><p>{{categoryLabels(row.entry)}} · {{row.entry.compatibility!.verdict==='disabled'?'建议关闭':'可能有影响，请自行判断'}} · {{row.entry.compatibility!.originalEnabled?'原本开启':'原本关闭'}}</p><p>{{row.entry.compatibility!.reason}}</p><details><summary>查看条目原文</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{row.entry.content}}</pre></details></article></div>
       <div class="actions"><button :disabled="importing" @click="importReview=undefined">取消导入</button><button class="primary" :disabled="importing||w.busy" @click="confirmImport">确认并导入（关闭 {{importReview.disabled.length}} 条）</button></div>
     </DialogShell>
-    <DialogShell v-if="groupForm" :title="'管理分组 · '+(groupForm.name||'新分组')" @close="groupForm=undefined"><label>分组名称<input v-model="groupForm.name" maxlength="200" :disabled="w.busy" /></label><p class="rail-note">分组名称只修改分组，不会修改条目名称。可勾选已有条目加入；未勾选时创建一条空白条目。</p><div class="prompt-group-members"><label v-for="p in w.presetEntries" :key="p.id" class="toggle"><input v-model="groupForm.members" type="checkbox" :value="p.id" :disabled="w.busy" />{{withoutEmoji(p.name)||'未命名条目'}}</label></div><div class="actions"><button :disabled="w.busy||!groupForm.name.trim()" @click="saveGroup">保存分组</button><button @click="groupForm=undefined">取消</button></div></DialogShell>
+    <DialogShell v-if="groupForm" :title="'管理分组 · '+(groupForm.name||'新分组')" @close="groupForm=undefined"><label>分组名称<input v-model="groupForm.name" maxlength="200" :disabled="w.busy" /></label><p class="rail-note">分组名称只修改分组，不会修改条目名称。可勾选已有条目加入；未勾选时创建一条空白条目。</p><div class="prompt-group-members"><label v-for="p in w.presetEntries.filter(p=>!isPresetTail(p))" :key="p.id" class="toggle"><input v-model="groupForm.members" type="checkbox" :value="p.id" :disabled="w.busy" />{{withoutEmoji(p.name)||'未命名条目'}}</label></div><div class="actions"><button :disabled="w.busy||!groupForm.name.trim()" @click="saveGroup">保存分组</button><button @click="groupForm=undefined">取消</button></div></DialogShell>
     <DialogShell v-if="deletingGroup" title="删除这个分组？" @close="deletingGroup=undefined"><p>删除“{{deletingGroup.name}}”后，其中的小条目会放回“未分组”，提示词内容和各自开关保留。</p><div class="actions"><button @click="deletingGroup=undefined">取消</button><button class="danger" :disabled="w.busy" @click="removeGroup">确认删除分组</button></div></DialogShell>
     <DialogShell v-if="deleting" title="删除当前预设？" @close="deleting=false"><p>将删除《{{w.presetSets.find(s=>s.id===w.currentPreset)?.name}}》的条目及采样参数。已导出的文件会保留。</p><div class="actions"><button @click="deleting=false">取消</button><button class="danger" :disabled="w.busy" @click="removeSet">确认删除</button></div></DialogShell>
   </section>

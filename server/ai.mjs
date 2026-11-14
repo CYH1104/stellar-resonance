@@ -32,7 +32,7 @@ import {cleanSpecialEvent} from '../src/domain/randomEvents.ts';
 import { validateOutcome } from '../src/domain/story.ts';
 import { normalizePersona } from '../src/domain/persona.ts';
 import {cleanTheaters,cleanTheaterScenes,determinePairing} from '../src/domain/theaters.ts';
-import {applyPromptEntries} from './presets.mjs';
+import {applyPromptEntries,finalizePresetTail} from './presets.mjs';
 import {spiritAnimalOf,mentalPowerLevelOf,identityOf,abilityOf} from './card.mjs';
 import {cleanDice,cleanDiceEvent,dicePlan} from '../src/domain/dice.ts';
 import {ReasoningFilter,scrubModelData,stripReasoning} from '../src/domain/reasoning.ts';
@@ -142,7 +142,7 @@ function buildMessagesWithinContext(card, request, privateBooks,stripOutput) {
   messages.push(...request.history.map(m=>historyMessage(m,participants,stripOutput)),{role:'user',content:request.input});
   let entries;try{entries=request.promptEntries?.map(entry=>({...entry,content:renderMvuMacros(entry.content,dataFromState(promptState))}));}catch{throw modelError(400,'INVALID_GENERATION_REQUEST');}
   const requestId=request.requestId||randomUUID();
-  return {requestId,messages:anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,suggestionsEnabled:request.suggestionsEnabled!==false,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
+  return {requestId,messages:finalizePresetTail(anchorNarration(((m,i)=>applyStateProtocol(m,i,featureContract(theaterPlans,request.suggestionsEnabled!==false),{state,requestId,theaterSettings:theaterPlans,repairPlan:request.continuation?.repairPlan,suggestionsEnabled:request.suggestionsEnabled!==false,stateEnabled:request.stateEnabled!==false&&!request.stateSeparate}))(applyWorldInfo(applyWorldEntries(applyPromptEntries(messages,entries,request.persona,participants.char.name,request.generationType),card.world.entries,request),storyWorldInfo(privateBooks,request,participants.char.name)),request.input),state.player,request.input)),state,theaterSettings,dice,card,repairLore:request.continuation?.mode==='state'?storyWorldInfo(privateBooks,request,participants.char.name):undefined};
 }
 
 export function normalizeModelState(card, state, raw,options={}) {

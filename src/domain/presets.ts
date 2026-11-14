@@ -3,7 +3,11 @@ import type {Preset,Profile} from './contracts';
 import {cleanPromptGroup,importPromptGroups,exportPromptGroups,restoreKnownPromptGroups} from './promptGroups.ts';
 import {detectPresetCompatibility,cleanPresetCompatibility} from './presetCompatibility.ts';
 import {cleanOutputParsing,type OutputParsing} from './outputParsing.ts';
-export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions'];
+export const presetTailIdentifier='academy_preset_tail';
+export const isPresetTail=(p:Preset)=>p.identifier===presetTailIdentifier;
+export function blankPresetTail(id:string,name:string):Preset{return {id:crypto.randomUUID(),setId:id,setName:name,identifier:presetTailIdentifier,name:'预设尾部',role:'user',content:'',enabled:false,included:true,position:'after',marker:false};}
+export function updatePresetTail(entries:Preset[],id:string,name:string,patch:Partial<Pick<Preset,'enabled'|'role'|'content'>>){const found=entries.find(p=>setId(p)===id&&isPresetTail(p)),value=cleanPreset({...found||blankPresetTail(id,name),...patch,position:'after',marker:false,included:true,group:null});if(found){Object.assign(found,value);return found;}entries.push(value);return value;}
+export const pinnedPromptIds=['main','nsfw','jailbreak','chatHistory','worldInfoBefore','worldInfoAfter','personaDescription','charDescription','charPersonality','scenario','dialogueExamples','enhanceDefinitions',presetTailIdentifier];
 export const promptTriggers=[{value:'normal',label:'正常回复'},{value:'continue',label:'续写'},{value:'regenerate',label:'重演／重试'},{value:'swipe',label:'切换生成'},{value:'impersonate',label:'代写玩家'},{value:'quiet',label:'后台生成'}];
 export function newPresetEntries(id:string,name:string):Preset[]{
   const labels:Record<string,string>={main:'主提示词',nsfw:'辅助提示词',jailbreak:'历史后提示词',chatHistory:'聊天历史',worldInfoBefore:'服务器世界资料（前）',worldInfoAfter:'服务器世界资料（后）',personaDescription:'玩家人设',charDescription:'角色设定',charPersonality:'角色性格',scenario:'当前场景',dialogueExamples:'对话示例',enhanceDefinitions:'补充设定提示'};
@@ -25,7 +29,7 @@ export function reorderPresetEntries(entries:Preset[],from:number,to:number){
 }
 export const setId=(p:Preset)=>p.setId||'legacy';
 export function presetGroups(list:Preset[]){return [...new Map(list.map(p=>[setId(p),{id:setId(p),name:p.setName||'原有预设'}])).values()];}
-export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.included!==false&&p.enabled&&p.group?.enabled!==false&&!p.marker&&p.content.trim()&&(!p.triggers?.length||p.triggers.includes(generationType)));}
+export function activePromptEntries(entries:Preset[],generationType='normal'){return entries.filter(p=>p.enabled&&p.content.trim()&&(isPresetTail(p)||p.included!==false&&p.group?.enabled!==false&&!p.marker&&(!p.triggers?.length||p.triggers.includes(generationType))));}
 export function cleanPreset(p:Preset):Preset{
   if(!p||typeof p.id!=='string'||typeof p.name!=='string'||typeof p.content!=='string'||typeof p.enabled!=='boolean')throw new Error('预设条目格式不正确');
   if(p.role!==undefined&&!['system','user','assistant'].includes(p.role)||p.position!==undefined&&!['before','after','in-chat'].includes(p.position))throw new Error('预设角色或位置不正确');
@@ -38,6 +42,7 @@ export function cleanPreset(p:Preset):Preset{
   if(p.marker!==undefined){if(typeof p.marker!=='boolean')throw new Error('预设标记不正确');out.marker=p.marker;}
   if(p.included!==undefined){if(typeof p.included!=='boolean')throw new Error('预设列表状态不正确');out.included=p.included;}
   if(p.triggers!==undefined){if(!Array.isArray(p.triggers)||p.triggers.some(n=>!['normal','continue','impersonate','swipe','regenerate','quiet'].includes(n)))throw new Error('预设触发类型不正确');out.triggers=[...p.triggers];}
+  if(isPresetTail(out)){out.position='after';out.marker=false;out.included=true;out.group=null;delete out.triggers;}
   return out;
 }
 export function importTavernPreset(text:string,filename='导入预设',options:{preserveOutputs?:boolean}={}){
@@ -101,11 +106,12 @@ export function importTavernPreset(text:string,filename='导入预设',options:{
 }
 export function exportTavernPreset(entries:Preset[],profile:Profile,regexRules:RegexRule[]=[],outputParsing?:OutputParsing){
   const anchor=entries.find(p=>p.identifier==='chatHistory')||{id:'chatHistory',identifier:'chatHistory',name:'Chat History',content:'',enabled:true,marker:true} as Preset;
-  const prompts=[...entries,...(entries.includes(anchor)?[]:[anchor])];
+  const sorted=[...entries.filter(p=>!isPresetTail(p)),...entries.filter(isPresetTail)];
+  const prompts=[...sorted,...(entries.includes(anchor)?[]:[anchor])];
   const historyIndex=entries.indexOf(anchor);
   const beforeHistory=(p:Preset)=>p.position!=='after'&&(p.position!=='in-chat'||historyIndex<0||entries.indexOf(p)<historyIndex);
-  const listed=entries.filter(p=>p.included!==false&&p!==anchor);
-  const ordered=[...listed.filter(beforeHistory),...(anchor.included!==false?[anchor]:[]),...listed.filter(p=>!beforeHistory(p))];
+  const listed=sorted.filter(p=>p.included!==false&&p!==anchor);
+  const ordered=[...listed.filter(p=>!isPresetTail(p)&&beforeHistory(p)),...(anchor.included!==false?[anchor]:[]),...listed.filter(p=>!isPresetTail(p)&&!beforeHistory(p)),...listed.filter(isPresetTail)];
   const grouping=exportPromptGroups(entries);
   return JSON.stringify({extensions:{academy_output_parser:cleanOutputParsing(outputParsing),...(grouping?{baibaiToolkit:{presetPromptGroups:grouping}}:{}),...(regexRules.length?{regex_scripts:regexRules.map(({setId,...rule})=>rule)}:{})},name:entries[0]?.setName||'群星共振预设',temperature:profile.temperature,openai_max_tokens:profile.maxTokens,top_p:profile.topP??1,frequency_penalty:profile.frequencyPenalty??0,presence_penalty:profile.presencePenalty??0,prompts:prompts.map(p=>({identifier:p.identifier||p.id,name:p.name,role:p.role||'system',content:p.content,marker:!!p.marker,injection_position:p.position==='in-chat'?1:0,injection_depth:p.depth??4,injection_order:p.order??100,...(p.compatibility?{academy_compatibility:{...p.compatibility,...(p.compatibility.verdict==='disabled'&&p.enabled?{restored:true}:{})}}:{}),...(p.triggers?{injection_trigger:p.triggers}:{})})),prompt_order:[{character_id:100001,order:ordered.map(p=>({identifier:p.identifier||p.id,enabled:p.enabled}))}]},null,2);
 }
