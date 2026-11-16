@@ -37,7 +37,7 @@ export function mergeRepairOutcome(previous:Outcome,incoming:Outcome,before:Worl
   }
   // Absolute snapshots preserve previous valid fields without replaying any numeric delta.
   const {id:_playerId,...player}=runtimeActorPatch(target.player);
-  const result:Outcome={...clean,event:previous.event,player,characters:target.characters.map(actor=>before.characters.some(a=>a.id===actor.id)?runtimeActorPatch(actor):actor),
+  const result:Outcome={...clean,...(previous.openingScene?{openingScene:copy(previous.openingScene)}:{}),event:previous.event,player,characters:target.characters.map(actor=>before.characters.some(a=>a.id===actor.id)?runtimeActorPatch(actor):actor),
     suggestions:clean.suggestions?.length?clean.suggestions:previous.suggestions,
     ...(previous.diceEvent?{diceEvent:previous.diceEvent}:{}),forum:previous.forum?.length?previous.forum:clean.forum};
   delete result.mvu;

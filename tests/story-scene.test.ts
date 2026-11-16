@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {applyMvu} from '../src/domain/mvu';
-import {terminalStoryClock,scenePaths} from '../src/domain/storyScene';
+import {terminalStoryClock,scenePaths,sceneSnapshotLabel} from '../src/domain/storyScene';
 import {newSession,stateAt,backup,parseBackup,defaults} from '../src/domain/story';
 it('initializes only scene values on the first scene patch and restores them per variant and backup',()=>{
  const s=newSession('剧情日期',{name:'玩家',appearance:'',personality:'',background:''},'');
@@ -15,6 +15,12 @@ it('initializes only scene values on the first scene patch and restores them per
 it('uses narrative values for legacy saves and never uses the computer clock',()=>{
  expect(terminalStoryClock(undefined,'2042年3月5日 星期三 18:42 图书馆')).toMatchObject({time:'18:42',label:'2042年3月5日',day:3});
  expect(terminalStoryClock()).toMatchObject({time:'— : —',label:'剧情日期待明确',day:0});
+});
+it('keeps fictional calendar labels without inventing Gregorian weekdays or reading the wall clock',()=>{
+ expect(terminalStoryClock(undefined,'星历578年09月01日 08:00')).toMatchObject({label:'星历578年09月01日',time:'08:00',day:0});
+ expect(terminalStoryClock(undefined,'2042-03-05 08:00').day).toBe(0);
+ expect(sceneSnapshotLabel({日期:'2042-03-05',时间:'08:00',地点:'教室'})).toBe('2042-03-05 · 08:00 · 教室');
+ expect(sceneSnapshotLabel({日期:'星历578年09月01日',星期:'星期三',时间:'08:00',地点:'教室'})).toContain('星期三');
 });
 it('does not add scene fields to unrelated patches and rejects malformed scene time',()=>{
  const state={player:{id:'player',name:'玩家',present:true},characters:[],variables:{score:1}};

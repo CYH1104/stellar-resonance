@@ -2,7 +2,7 @@ import {MODEL_REQUEST_TIMEOUT_MS} from '../src/domain/requestTimeout.ts';
 import {buildMessages,completionChunks,openCompletion,modelError,StoryDecoder} from './ai.mjs';
 import {streamStory} from './story-stream.mjs';
 import {internalPrompt} from './internal-prompts.mjs';
-import {dataFromState} from '../src/domain/mvu.ts';
+import {dataFromState,applyMvu} from '../src/domain/mvu.ts';
 import {storyWorldInfo} from './worldbooks.mjs';
 export async function* separatedState({source,data,privateBooks,firstResponse,firstSignal,signal,stateConnection,fetchImpl,onProgress}){
  const main=buildMessages(source,{...data,stateSeparate:true},privateBooks),visible=new StoryDecoder();let story='';
@@ -20,7 +20,15 @@ export async function* separatedState({source,data,privateBooks,firstResponse,fi
  {role:'user',content:JSON.stringify({canonicalProse:storyForState,input:data.input,persona:data.persona,currentVariables:dataFromState(built.state).stat_data,world:built.card.world,worldInfo:storyWorldInfo(privateBooks||[],stateData,built.card.world?.name||'')})}];
  try{const upstream=await openCompletion({connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,messages,signal:stateSignal,fetchImpl});
  for await(const event of streamStory({card:built.card,state:built.state,options,messages,partial:storyForState,stateOnly:true,connection:stateConnection,profile:data.stateApi.profile,key:data.stateApi.key,firstResponse:upstream,signal:stateSignal,fetchImpl,onProgress})){
-  if(event.type==='done')yield {type:'done',outcome:{...primary,...(event.outcome.mvu?{mvu:event.outcome.mvu}:{}),characters:event.outcome.characters,stateUpdate:event.outcome.stateUpdate,...(event.outcome.player?{player:event.outcome.player}:{})}};
+  // Main-story scene/code patches remain authoritative after the auxiliary actor review.
+   if(event.type==='done'){
+    let mvu=event.outcome.mvu;
+    if(mvu&&primary.mvu?.length){
+     const reviewed=applyMvu(built.state,mvu),merged=applyMvu(reviewed,primary.mvu);
+     mvu=[...mvu,{op:'replace',path:'/custom',value:merged.variables||{}}];
+    }
+    yield {type:'done',outcome:{...primary,...(mvu?{mvu}:{}),characters:event.outcome.characters,stateUpdate:event.outcome.stateUpdate,...(event.outcome.player?{player:event.outcome.player}:{})}};
+   }
   else if(event.type!=='delta')yield event;
  }}catch(error){signal.throwIfAborted();yield {type:'diagnostic',diagnostic:{kind:'generation',code:'STATE_AUX_RETAINED',stage:'accepted',attempt:0}};yield {type:'done',outcome:{...primary,stateUpdate:{status:'retained',received:false,storyComplete:primary.stateUpdate?.storyComplete??true,codes:['STATE_AUX_RETAINED']}}};}
 }

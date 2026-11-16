@@ -27,6 +27,21 @@ test('malformed scene values retain previous state without discarding prose',()=
  const out=decode('正文<UpdateVariable><JSONPatch>'+JSON.stringify([{op:'replace',path:scenePaths.时间,value:'99:99'}])+'</JSONPatch></UpdateVariable><SR_DONE>',false);
  assert.equal(out.mvu,undefined);assert.ok(out.stateUpdate.codes.includes('STATE_SCENE_RETAINED'));
 });
+test('first fictional calendar is permitted only when world and history have not established one',()=>{
+ for(const stateEnabled of [true,false]){
+  const text=stateProtocol({state,stateEnabled});
+  assert.ok(text.includes('优先遵守世界设定、世界书'));
+  assert.ok(text.includes('允许在首次实际场景中建立'));
+  assert.ok(text.includes('此后沿用该历法，不每轮重新创建日期'));
+  assert.ok(text.includes('绝不采用电脑、服务器或现实当前日期时间'));
+  assert.ok(text.includes('不能用正文结尾转场后的值覆盖开场'));
+  assert.ok(text.includes('虚构星历不能套用现实公历推算星期'));
+ }
+ const openingScene={日期:'星历578年09月01日',时间:'08:00',地点:'教室',人物:['玩家','开场同伴']};
+ const ops=[{op:'replace',path:scenePaths.日期,value:'星历578年09月01日'},{op:'replace',path:scenePaths.时间,value:'19:00'},{op:'replace',path:scenePaths.地点,value:'图书馆'}];
+ const text='正文：星历578年09月01日从教室出发，19:00到达图书馆。<SR_STATE>'+JSON.stringify({event:'到达',openingScene})+'</SR_STATE><UpdateVariable><JSONPatch>'+JSON.stringify(ops)+'</JSONPatch></UpdateVariable><SR_DONE>';
+ const result=decode(text,false);assert.deepEqual(result.openingScene,openingScene);assert.equal(storyScene(applyMvu(state,result.mvu)).时间,'19:00');
+});
 test('both prompt modes define scene output in the same response and repair does not advance it',()=>{
  for(const stateEnabled of [true,false]){const text=stateProtocol({state,stateEnabled});assert.ok(text.includes(scenePaths.时间));assert.ok(text.includes('不额外'));}
  assert.ok(!stateProtocol({state,repairPlan:{}}).includes('[剧情时间地点 MVU'));

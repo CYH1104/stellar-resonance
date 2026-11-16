@@ -2,6 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';
 import {buildMessages,openCompletion,normalizeModelState} from '../server/ai.mjs';
 import {separatedState} from '../server/separate-state.mjs';
 import {streamStory} from '../server/story-stream.mjs';
+import {applyMvu} from '../src/domain/mvu.ts';
 import {defaultTheaters} from '../src/domain/theaters.ts';
 const card={world:{name:'学院',greeting:[],entries:[{uid:'w',constant:true,position:0,content:'WORLD_BOOK_SENTINEL',order:1}]},places:[],characters:[{id:'one',name:'甲',intro:'DISPLAY_INTRO_SENTINEL',hiddenPrompt:'DISPLAY_HIDDEN_SENTINEL',title:'DISPLAY_TITLE_SENTINEL'}]};
 const main={id:'main',model:'story-model',temperature:.7,maxTokens:1600},aux={...main,id:'aux',model:'state-model'};
@@ -18,6 +19,22 @@ test('variable-only auxiliary sees worldbook and prose, inserts new NPC and make
  assert.ok(!sent.includes('DISPLAY_INTRO_SENTINEL'));
  const outcome=events.at(-1).outcome;assert.equal(outcome.characters.find(c=>c.id==='new-clerk').affinity,0);
  assert.ok(!outcome.stateUpdate.codes.includes('STATE_MVU_REJECTED'));
+});
+test('auxiliary MVU retains primary ending scene while opening scene remains independent',async()=>{
+ const openingScene={日期:'星历578年09月01日',时间:'08:30',地点:'教室',人物:['玩家','甲']};
+ const primary={event:'离开教室',openingScene};
+ const sceneOps=[{op:'replace',path:'/custom/时间地点/日期',value:'星历578年09月01日'},{op:'replace',path:'/custom/时间地点/时间',value:'18:00'},{op:'replace',path:'/custom/时间地点/地点',value:'图书馆'}];
+ const raw='离开教室来到图书馆。<SR_STATE>'+JSON.stringify(primary)+'</SR_STATE><UpdateVariable><JSONPatch>'+JSON.stringify(sceneOps)+'</JSONPatch></UpdateVariable><SR_DONE>';
+ const auxiliary='<UpdateVariable><JSONPatch>[{"op":"replace","path":"/characters/one/affinity","value":2},{"op":"add","path":"/custom/reviewerFlag","value":true}]</JSONPatch></UpdateVariable><done>';
+ for(const fail of [false,true]){
+  const events=[];let calls=0;
+  for await(const e of separatedState({source:card,data:{...data,state:{...data.state,variables:{reviewerFlag:false},characters:[{...data.state.characters[0],affinity:0,present:true}]}},privateBooks:[],firstResponse:json(raw),signal:new AbortController().signal,stateConnection:{url:'https://synthetic.example'},fetchImpl:async()=>{calls++;return fail?new Response('failed',{status:401}):json(auxiliary);}}))events.push(e);
+  const out=events.at(-1).outcome;assert.equal(calls,1);assert.deepEqual(out.openingScene,openingScene);
+  const baseState=buildMessages(card,{...data,state:{...data.state,variables:{时间地点:{日期:'',时间:'',地点:''}}}}).state;const after=applyMvu(baseState,out.mvu);
+  assert.deepEqual(after.variables.时间地点,{日期:'星历578年09月01日',时间:'18:00',地点:'图书馆'});
+  // Actor MVU is normalized into outcome.characters; custom MVU remains a patch transaction.
+  if(!fail){assert.equal(out.characters.find(c=>c.id==='one').affinity,2);assert.equal(after.variables.reviewerFlag,true);}
+ }
 });
 test('a disabled suggestion prompt does not discard buttons already returned by the model',()=>{
  const built=buildMessages(card,data);
