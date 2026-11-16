@@ -4,7 +4,7 @@ import {htmlRenderDocument,readHtmlTheme,type HtmlRenderContext,type HtmlRenderT
 const props=defineProps<{content:string;context?:HtmlRenderContext;highlighted?:boolean}>();
 const frame=ref<HTMLIFrameElement>(),height=ref(180),errors=ref<string[]>([]),raw=ref(false);
 const channel='academy-html-'+crypto.randomUUID();
-const theme=ref<HtmlRenderTheme>({color:'#20242a',background:'#fffaf3',scheme:'light'});let observer:MutationObserver|undefined;
+const theme=ref<HtmlRenderTheme>({color:'#20242a',background:'#fffaf3',scheme:'light'});let observer:MutationObserver|undefined,layoutObserver:ResizeObserver|undefined;
 const initialContext=shallowRef<HtmlRenderContext>(JSON.parse(JSON.stringify(props.context||{})));
 const document=computed(()=>htmlRenderDocument(props.content,channel,initialContext.value,props.highlighted,typeof location==='undefined'?'':location.origin,theme.value));
 function syncContext(){frame.value?.contentWindow?.postMessage({channel,kind:'context',context:JSON.parse(JSON.stringify(props.context||{}))},'*');}
@@ -16,6 +16,7 @@ function message(event:MessageEvent){
 }
 watch(()=>props.content,()=>{errors.value=[];raw.value=false;initialContext.value=JSON.parse(JSON.stringify(props.context||{}));});
 watch(()=>props.context,syncContext,{deep:true});
-onMounted(()=>{window.addEventListener('message',message);updateTheme();observer=new MutationObserver(updateTheme);for(let node:HTMLElement|null=frame.value?.parentElement||null;node;node=node.parentElement)observer.observe(node,{attributes:true,attributeFilter:['style','class','data-theme']});});onBeforeUnmount(()=>{window.removeEventListener('message',message);observer?.disconnect();});
+function refreshLayout(){syncContext();updateTheme();}
+onMounted(()=>{window.addEventListener('message',message);refreshLayout();layoutObserver=new ResizeObserver(refreshLayout);if(frame.value?.parentElement)layoutObserver.observe(frame.value.parentElement);observer=new MutationObserver(updateTheme);for(let node:HTMLElement|null=frame.value?.parentElement||null;node;node=node.parentElement)observer.observe(node,{attributes:true,attributeFilter:['style','class','data-theme']});});onBeforeUnmount(()=>{window.removeEventListener('message',message);observer?.disconnect();layoutObserver?.disconnect();});
 </script>
-<template><div class="html-message-renderer"><iframe ref="frame" class="regex-html-frame interactive-html-frame" sandbox="allow-scripts" :srcdoc="document" :style="{height:height+'px'}" title="HTML 美化内容" referrerpolicy="no-referrer" @load="syncContext" /><details v-if="errors.length" class="rail-note"><summary>美化脚本提示（{{errors.length}}）</summary><p v-for="error in errors" :key="error">{{error}}</p></details><button class="html-source-toggle" type="button" @click="raw=!raw">{{raw?'收起原文':'查看原文'}}</button><pre v-if="raw" class="html-source-text">{{content}}</pre></div></template>
+<template><div class="html-message-renderer"><iframe ref="frame" class="regex-html-frame interactive-html-frame" sandbox="allow-scripts" :srcdoc="document" :style="{height:height+'px'}" title="HTML 美化内容" referrerpolicy="no-referrer" @load="refreshLayout" /><details v-if="errors.length" class="rail-note"><summary>美化脚本提示（{{errors.length}}）</summary><p v-for="error in errors" :key="error">{{error}}</p></details><button class="html-source-toggle" type="button" @click="raw=!raw">{{raw?'收起原文':'查看原文'}}</button><pre v-if="raw" class="html-source-text">{{content}}</pre></div></template>

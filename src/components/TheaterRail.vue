@@ -19,7 +19,7 @@ const revision=computed(()=>JSON.stringify([props.w.active?.id,props.w.forum,pro
 <template><section class="theater-rail-content" aria-label="右侧小剧场">
 
   <div class="theater-windows">
-    <section v-for="s in w.preferences.theaters?.filter(t=>t.enabled&&t.slot!==2)" :key="s.slot" class="theater-window" :class="{expanded:opened===s.slot}"><button type="button" class="theater-collapse-toggle" :aria-expanded="opened===s.slot" @click="opened=opened===s.slot?null:s.slot"><span>{{s.title}}</span><span aria-hidden="true">{{opened===s.slot?'−':'+'}}</span></button><div v-if="opened===s.slot" class="theater-pane"><TheaterScroll :revision="revision+String(opened)"><ResizablePanel :preferences="w.preferences" :panel-key="'theater-'+s.slot" :label="s.title" :default-height="380">
+    <section v-for="s in w.preferences.theaters?.filter(t=>t.enabled&&t.slot!==2)" :key="s.slot" class="theater-window" :class="{expanded:opened===s.slot}"><button type="button" class="theater-collapse-toggle" :aria-expanded="opened===s.slot" @click="opened=opened===s.slot?null:s.slot"><span>{{s.title}}</span><span aria-hidden="true">{{opened===s.slot?'−':'+'}}</span></button><div v-show="opened===s.slot" class="theater-pane"><TheaterScroll :revision="revision+String(opened)"><ResizablePanel :preferences="w.preferences" :panel-key="'theater-'+s.slot" :label="s.title" :default-height="380">
       <ForumFeed v-if="s.kind==='forum'" :w="w" :title="s.title" />
       <GroupChatPhone v-else-if="s.kind==='group'" :scene="w.theaters.find(t=>t.slot===s.slot&&t.kind==='group')" :title="s.title" :player-name="w.state?.player.name||w.active?.persona.name||''" />
       <SpiritDiaryView v-else-if="isSpiritDiary(s)" :scene="w.theaters.find(t=>t.slot===s.slot&&t.kind===s.kind)" :title="s.title" />
