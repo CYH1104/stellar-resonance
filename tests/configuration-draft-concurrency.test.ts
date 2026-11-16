@@ -52,6 +52,40 @@ async function workspaceWithDraft(){
 }
 
 describe('a configuration draft survives edits made while it is saving',()=>{
+ it('saves consecutive preset edits after cleanPreset changes object property order',async()=>{
+  const {w,draft}=await workspaceWithDraft();
+  // PresetManager.edit adds defaults before spreading the entry. cleanPreset persists a different key order.
+  const original=draft.view.preferences.presets[0]!;
+  draft.view.preferences.presets[0]={role:'system',position:'before',depth:4,order:100,...original,content:'first edit'};
+  expect(await draft.save()).toBe(true);
+  expect(JSON.stringify(w.preferences.presets[0])).not.toBe(JSON.stringify(draft.view.preferences.presets[0]));
+  expect(draft.dirty.value).toBe(false);
+  draft.view.preferences.presets[0]!.content='second edit';
+  expect(await draft.save()).toBe(true);
+  expect(w.preferences.presets[0]!.content).toBe('second edit');
+  expect(draft.dirty.value).toBe(false);
+ });
+ it('retains preset text typed during a normalized save and allows saving it next',async()=>{
+  const {w,draft}=await workspaceWithDraft();
+  draft.view.preferences.presets[0]={role:'system',position:'before',depth:4,order:100,...draft.view.preferences.presets[0]!,content:'saved text'};
+  let release!:()=>void;
+  vi.mocked(IndexedDbRepository.prototype.writeConfiguration).mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+  const pending=draft.save();
+  await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+  draft.view.preferences.presets[0]!.content='later typing';release();
+  expect(await pending).toBe(true);
+  expect(w.preferences.presets[0]!.content).toBe('saved text');
+  expect(draft.view.preferences.presets[0]!.content).toBe('later typing');expect(draft.dirty.value).toBe(true);
+  expect(await draft.save()).toBe(true);expect(w.preferences.presets[0]!.content).toBe('later typing');
+ });
+ it('still refuses a real external preset edit after a normalized save',async()=>{
+  const {w,draft}=await workspaceWithDraft();
+  draft.view.preferences.presets[0]={role:'system',position:'before',depth:4,order:100,...draft.view.preferences.presets[0]!,content:'baseline'};
+  expect(await draft.save()).toBe(true);
+  draft.view.preferences.presets[0]!.content='local edit';w.preferences.presets[0]!.content='external edit';
+  expect(await draft.save()).toBe(false);expect(draft.error.value).toContain('设置已在其他操作中改变');
+  expect(w.preferences.presets[0]!.content).toBe('external edit');expect(draft.view.preferences.presets[0]!.content).toBe('local edit');expect(draft.dirty.value).toBe(true);
+ });
  it('does not clear dirty for edits made after the confirmation started',async()=>{
   const {w,draft}=await workspaceWithDraft();
   const p=draft.view.preferences.profiles[0]!;

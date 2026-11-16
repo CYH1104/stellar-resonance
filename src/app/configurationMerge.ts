@@ -1,6 +1,6 @@
 import {copy} from '../domain/story';
 import type {Preferences,Profile} from '../domain/contracts';
-const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+import {sameConfigurationValue as same} from './configurationEqual';
 export const configurationConflict='设置已在其他操作中改变，请取消后重新编辑';
 
 function mergeProfiles(current:Profile[],origin:Profile[]|undefined,draft:Profile[]|undefined):Profile[]{

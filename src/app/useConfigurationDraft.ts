@@ -12,7 +12,7 @@ import {presetGroups,setId,cleanSampling,importTavernPreset,exportTavernPreset,n
 import {confirmPresetCompatibility} from '../domain/presetCompatibility';
 import {exportApiSettings,parseApiSettings} from '../domain/apiTransfer';
 import {useWorldbooks} from './useWorldbooks';
-const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+import {sameConfigurationValue as same} from './configurationEqual';
 export function useConfigurationDraft(base:ViewModel){
  const preferences=reactive(copy(base.preferences)),credentials=reactive(copy(base.credentials)),rememberApiKeys=ref(base.rememberApiKeys),presetWarnings=ref<string[]>([]);
  const busy=computed(()=>base.busy),backupWorking=computed(()=>base.backupWorking),problem=computed({get:()=>base.problem,set:v=>base.problem=v}),notice=computed({get:()=>base.notice,set:v=>base.notice=v});
