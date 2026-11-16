@@ -28,7 +28,7 @@ it('结构化日记随存档恢复且保持与精神体OS独立，旧文字场�
 });
 it('四窗口以折叠栏展示手机及日记，只保留高度手柄',async()=>{
   const preferences=defaults();preferences.theaters![0].enabled=false;preferences.theaters![3]={slot:4,enabled:true,kind:'custom',title:'精神体日记',instruction:legacyDiaryInstruction};const w={preferences,theaters:[diary,{slot:2,kind:'group',title:'群聊',content:'',messages:[{speaker:'楚昭南',content:'报到了吗？'}]}],state:{player:{name:'祁言'}}} as unknown as ViewModel;
-  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).not.toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('<summary');expect(html).not.toContain('resize-both');expect(html).toContain('调整精神体日记高度');
+  const html=await renderToString(createSSRApp(TheaterRail,{w}));expect(html).not.toContain('aria-label="手机群聊"');expect(html).toContain('aria-label="精神体日记"');expect(html).toContain('aria-expanded="true"');expect(html).not.toContain('<details');expect(html).not.toContain('resize-both');expect(html).toContain('调整精神体日记高度');
 });
 
 
