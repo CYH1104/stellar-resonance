@@ -320,7 +320,7 @@ const secretNames = new Set(['apikey', 'api_key', 'key', 'authorization', 'acces
 function inspect(value: unknown, depth = 0, path = ''): void {
   if (depth > 18) throw new Error('备份结构过深');
   if (!value || typeof value !== 'object') return;
-  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|groupInvitations\/\d+|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
+  const anchor=record(value)&&/^sessions\/\d+\/terminal\/(?:conversations\/\d+(?:\/messages\/\d+)?|rooms\/\d+\/rounds\/\d+(?:\/interactions\/\d+)?|partyRooms\/\d+\/rounds\/\d+|groupInvitations\/\d+|friends\/\d+|jobs\/\d+|memories\/\d+)\/anchor$/.test(path)&&Object.keys(value).every(k=>['key','turnId','variantId','path'].includes(k))&&typeof value.key==='string'&&value.key.length<=500&&/^(?:opening:[0-9a-f]{1,8}|[^\r\n]{1,128}:[^\r\n]{1,128}:[0-9a-f]{1,8})$/.test(value.key)&&typeof value.turnId==='string'&&typeof value.variantId==='string'&&Array.isArray(value.path);
   for (const [k,v] of Object.entries(value)) { if (secretNames.has(k.toLowerCase())&&!(k==='key'&&anchor)) throw new Error('备份含凭据或不允许的字段'); inspect(v, depth+1,path?path+'/'+k:k); }
 }
 export interface SaveFailureLocation{sessionId?:string;turnId?:string;variantId?:string;round?:number}

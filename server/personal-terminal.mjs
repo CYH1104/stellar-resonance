@@ -1,3 +1,4 @@
+import {partyPlan,parsePartyResult} from './party-game.mjs';
 import {cleanTerminalBatch,cleanTerminalMainContext} from "../src/domain/terminalMain.ts";
 import {terminalAutoPrompt} from './terminal-main.mjs';
 import {renderKingCommand} from '../src/domain/kingCommand.ts';
@@ -34,6 +35,7 @@ const instructions={
 };
 export function terminalActors(card,state){const actors=[...card.characters];if(state?.characters!==undefined){if(!Array.isArray(state.characters)||state.characters.length>300)throw modelError(400,'INVALID_TERMINAL_REQUEST');for(const a of state.characters)if(!actors.some(c=>c.id===a?.id)){try{actors.push(newDynamicActor(a));}catch{throw modelError(400,'INVALID_TERMINAL_REQUEST');}}}return actors;}
 export function terminalPlan(card,data){
+ if(typeof data?.task==='string'&&data.task.startsWith('party-'))return partyPlan(card,data);
  const roster=terminalActors(card,data.context?.state);
  // Tolerance covers the player too: inject the player pseudo-actor so ids may include 'player'.
  if(['tolerance','afterparty','divination'].includes(data.task)&&!roster.some(c=>c.id==='player'))roster.push({id:'player',name:data.persona?.name||'玩家',identity:'玩家'});
@@ -102,6 +104,7 @@ export function terminalFollowupPlan(card,data,task,context){
 }
 function terminalResultError(reason,retryable=false){const error=modelError(502,'INVALID_TERMINAL_RESULT');error.reason=reason;error.retryable=retryable;return error;}
 export function parseTerminalResult(content,plan){
+ if(typeof plan?.task==='string'&&plan.task.startsWith('party-'))return parsePartyResult(content,plan);
  let r;const str=(s,max=3000)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
  try{let text=stripReasoning(content).trim();text=text.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i,'$1');r=JSON.parse(text);}catch{throw terminalResultError('MODEL_JSON_INVALID',true);}
  try{
