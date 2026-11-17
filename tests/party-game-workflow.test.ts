@@ -22,12 +22,18 @@ it('retries failed initial invitations without creating another room and preserv
  await u.create('eleven');expect(u.error.value).toBe('超时');const id=u.room.value!.id;expect(u.retryActionLabel.value).toBe('重试邀请请求');expect(w.active!.terminal!.partyRooms).toHaveLength(2);
  await u.retryRequest();expect(u.room.value!.id).toBe(id);expect(w.active!.terminal!.partyRooms).toHaveLength(2);expect(u.pendingInvites.value).toEqual([]);expect(u.declinedInvites.value).toEqual(['b']);expect(spy).toHaveBeenCalledTimes(2);
 });
+it('sends immediately, clears the composer and saves a room-scoped pending reply until the API resolves',async()=>{
+ const {w,u}=fixture();u.room.value!.invitations.b='declined';u.beginInvite('b');u.inviteNote.value='我带你去看比赛。';let resolve!:(value:any)=>void;
+ const spy=vi.spyOn(HttpGateway.prototype,'terminal').mockImplementation(()=>new Promise(r=>{resolve=r;}));
+ (w as any).connectProfile=async()=>true;const pending=u.sendInvite();expect(u.inviteTarget.value).toBeNull();expect(u.inviteNote.value).toBe('');await vi.waitFor(()=>expect(spy).toHaveBeenCalledTimes(1));expect(u.pendingInvite.value).toMatchObject({roomId:'party-room',ids:['b'],names:['乙']});expect(w.active!.terminal!.partyRooms![0].inviteNotes!.b).toBe('我带你去看比赛。');expect(spy).toHaveBeenCalledTimes(1);
+ u.page.value='list';expect(u.pendingInvite.value?.roomId).toBe('party-room');resolve({decisions:[{id:'b',accepted:true,reply:'好，我参加。'}]});await pending;expect(u.pendingInvite.value).toBeUndefined();expect(u.room.value!.invitations.b).toBe('accepted');expect(u.room.value!.inviteReplies.b).toBe('好，我参加。');
+});
 it('persuasion targets only declined invitees, keeps the note on failure and roundtrips it in backups',async()=>{
  const {w,u}=fixture();u.room.value!.invitations.b='declined';u.room.value!.inviteReplies.b='现在没空';
  u.beginInvite('a');expect(u.inviteTarget.value).toBeNull();u.beginInvite('b');u.inviteNote.value='只玩一会儿，结束后我陪你去训练。';
  const spy=vi.spyOn(HttpGateway.prototype,'terminal').mockRejectedValueOnce(Error('超时')).mockResolvedValueOnce({decisions:[{id:'b',accepted:true,reply:'那我参加'}]});
- await u.sendInvite();expect(u.inviteTarget.value).toBe('b');expect(u.inviteNote.value).toContain('训练');expect(u.room.value!.invitations.b).toBe('declined');expect(u.room.value!.inviteNotes!.b).toContain('训练');
- await u.sendInvite();expect(u.inviteTarget.value).toBeNull();expect(u.room.value!.invitations.b).toBe('accepted');expect(spy.mock.calls[1][0]).toMatchObject({actorIds:['b'],input:expect.stringContaining('只玩一会儿')});
+ await u.sendInvite();expect(u.inviteTarget.value).toBeNull();expect(u.inviteNote.value).toBe('');expect(u.room.value!.invitations.b).toBe('declined');expect(u.room.value!.inviteNotes!.b).toContain('训练');
+ u.page.value='list';await u.retryRequest();expect(u.inviteTarget.value).toBeNull();expect(u.page.value).toBe('list');expect(u.room.value!.invitations.b).toBe('accepted');expect(spy.mock.calls[1][0]).toMatchObject({actorIds:['b'],input:expect.stringContaining('只玩一会儿')});
  const snapshot={version:1 as const,sessions:[w.active!],preferences:defaults()};expect(parseBackup(backup(snapshot)).sessions[0].terminal!.partyRooms![0].inviteNotes!.b).toContain('训练');expect(parseCloudSave(createCloudSave(snapshot,snapshot.preferences)).snapshot.sessions[0].terminal!.partyRooms![0].inviteNotes!.b).toContain('训练');
 });
 it('commits bottle/card before NPC calls and failed requests never spin again',async()=>{

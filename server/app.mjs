@@ -198,7 +198,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         }
         if(path==='/api/personal-terminal'){
           if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
-          const plan=terminalPlan(source,data),selected=await connection(current,data),privateCards=['party-eleven','party-eleven-talk'].includes(plan.task);
+          const plan=terminalPlan(source,data,privateBooks),selected=await connection(current,data),privateCards=['party-eleven','party-eleven-talk'].includes(plan.task);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const clipRaw=(value,limit=48000)=>{if(typeof value!=='string')return '';if(value.length<=limit)return value;const marker=`\n…[已截断，原长度 ${value.length} 字符]`;return value.slice(0,Math.max(0,limit-marker.length))+marker;};
@@ -221,7 +221,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
           }
           let raw=combinedRaw(content,corrected);
           if(plan.task==='react'){
-            const review=terminalFollowupPlan(source,data,'review',{command:data.input,result});
+            const review=terminalFollowupPlan(source,data,'review',{command:data.input,result},privateBooks);
             const upstream=await openCompletion({connection:selected,profile:{...data.profile,maxTokens:1000},key:data.key,messages:review.messages,signal,fetchImpl});
             let checked='';for await(const part of completionChunks(upstream,{signal})){checked+=part;if(checked.length>4000)throw modelError(502,'INVALID_TERMINAL_RESULT');}
             try{signal.throwIfAborted();parseTerminalResult(checked,review);}catch(error){error.raw=terminalRaw(checked);throw error;}

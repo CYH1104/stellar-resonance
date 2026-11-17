@@ -25,11 +25,11 @@ it('offers simultaneous wave decision and user speech instead of a per-character
  const {stub}=fixture();stub.playerNeedsChoice.value=true;
  const html=await render(),buttons=labels(html);
  expect(buttons).toContain('要牌并同步判定');expect(buttons).toContain('停牌并同步判定');expect(buttons).not.toContain('统一发牌');expect(buttons.some(text=>/^让 .* 行动$/.test(text))).toBe(false);expect(html).not.toContain('轮到 甲');
- expect(html).toContain('本波发言或动作');expect(html).toContain('提交时与本波决定一起锁定');expect(html).toContain('公开发言可诈唬');
+ expect(html).toContain('本轮发言或动作');expect(html).toContain('提交时与本波决定一起锁定');expect(html).toContain('公开发言可诈唬');
 });
 it('allows stopped players to speak while collecting all participant decisions, including retries',async()=>{
  const {round,stub}=fixture();round.stopped=['player'];stub.error.value='本波请求失败';stub.retryActionLabel.value='重试本波判定';
- const html=await render(),buttons=labels(html);expect(buttons).toContain('全员判定并发言');expect(buttons).toContain('重试本波判定');expect(buttons).not.toContain('要牌并同步判定');expect(html).toContain('本波发言或动作');
+ const html=await render(),buttons=labels(html);expect(buttons).toContain('全员判定并发言');expect(buttons).toContain('重试本波判定');expect(buttons).not.toContain('要牌并同步判定');expect(html).toContain('本轮发言或动作');
 });
 it('shows one unified deal gate only after all decisions and keeps card details and choices private',async()=>{
  fixture('ready');const html=await render();expect(html).toContain('全员已决定，等待统一发牌');expect(labels(html)).toContain('统一发牌');expect(labels(html)).not.toContain('全员判定并发言');
