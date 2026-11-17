@@ -6,7 +6,7 @@ function request(task,party,ids=['a']){return {task,actorIds:ids,input:'游戏�
 const eleven={kind:'eleven',round:1,participants,banker:'player',hand:['S-A','H-9'],score:10,maxCards:5,stood:[]};
 test('party requests dispatch through terminal contract and carry only own cards to the chosen actor',()=>{
  const p=terminalPlan(card,request('party-eleven',eleven));const raw=JSON.stringify(p.messages);
- assert.ok(raw.includes('S-A'));assert.ok(!raw.includes('PRIVATE-B'));assert.ok(!raw.includes('opponentHands'));assert.deepEqual(parseTerminalResult('{"choice":"stand","text":"我停牌。"}',p),{choice:'stand',text:'我停牌。'});
+ assert.ok(raw.includes('S-A'));assert.ok(!raw.includes('PRIVATE-B'));assert.ok(!raw.includes('opponentHands'));assert.deepEqual(parseTerminalResult('{"choice":"stand","text":"我停牌。"}',p),{choice:'stand'});
  for(const patch of [{deck:['S-K']},{opponentHands:{b:['S-K']}},{score:11.5}])assert.throws(()=>terminalPlan(card,request('party-eleven',{...eleven,...patch})),e=>e.code==='INVALID_TERMINAL_REQUEST');
 });
 test('party result cannot rewrite random choices, roster or penalties',()=>{

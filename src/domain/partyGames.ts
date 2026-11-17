@@ -4,7 +4,8 @@ import type {TerminalAnchor} from './terminalLedger';
 export type PartyKind='eleven'|'truth';
 export interface PartyReply {id:string;text:string}
 interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[]}
-export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string}
+export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt'}
+export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[]}
 export interface TruthCard {id:string;truth:string;dare:string}
 export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;phase:'choose'|'respond'|'complete'}
 export type PartyRound=ElevenRound|TruthRound;
@@ -81,7 +82,7 @@ export function startPartyRound(room:PartyRoom,anchor?:TerminalAnchor,random:Par
   if(room.bankerOrder.length!==participants.length||room.bankerOrder.some(id=>!participants.includes(id)))throw Error('本局坐庄开始后不能改变参与者');
   const banker=room.bankerOrder[room.bankerIndex||0];if(!banker||!participants.includes(banker))throw Error('坐庄顺序已结束或参与者变化');
   const deck=shuffled(cards,random),hands:Record<string,string[]>={};for(const id of participants)hands[id]=[deck.pop()!];
-  round={kind:'eleven',number:room.rounds.length+1,banker,deck,hands,stopped:[],turn:seatsAfter(participants,banker)[0],phase:'playing'};
+  round={kind:'eleven',number:room.rounds.length+1,banker,deck,hands,stopped:[],turn:'',phase:'playing',flow:'waves-v1',waves:[{number:1,choices:{},speeches:[],status:'deciding'}]};
  }
  if(anchor)round.anchor=structuredClone(anchor);room.rounds.push(round);return round;
 }
@@ -93,12 +94,49 @@ function settleEleven(room:PartyRoom,round:ElevenRound){
  if((room.bankerIndex||0)>=(room.bankerOrder?.length||0)){room.endedAt=new Date().toISOString();room.endReason='bankers-complete';}
 }
 export function elevenAct(room:PartyRoom,actor:string,action:'hit'|'stand'):ElevenRound{
- const round=current(room);if(room.endedAt||round.kind!=='eleven'||round.phase!=='playing'||round.turn!==actor||!['hit','stand'].includes(action))throw Error('不是该角色的行动阶段');
+ const round=current(room);if(room.endedAt||round.kind!=='eleven'||round.flow!==undefined||round.phase!=='playing'||round.turn!==actor||!['hit','stand'].includes(action))throw Error('不是该角色的行动阶段');
  if(action==='hit'){if(round.hands[actor].length>=5||!round.deck.length)throw Error('不能继续要牌');round.hands[actor].push(round.deck.pop()!);const rank=handRank(round.hands[actor]);if(rank.halfPoints>=23||round.hands[actor].length===5)round.stopped.push(actor);}
  else round.stopped.push(actor);
  if(round.stopped.includes(actor)){const next=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(next)round.turn=next;else settleEleven(room,round);}
  return round;
 }
+/** Adopt only unfinished legacy rounds without shuffling, dealing, replaying speech or settling. */
+export function ensureElevenWaves(room:PartyRoom):ElevenRound{
+ const round=current(room);if(round.kind!=='eleven')throw Error('不是十一点半牌局');
+ if(round.phase==='complete')return round;
+ if(room.endedAt)throw Error('游戏已结束，只能回看');
+ if(round.flow===undefined){round.flow='waves-v1';round.turn='';round.waves=[{number:1,choices:{},speeches:[],status:'deciding'}];}
+ return round;
+}
+function decidingWave(room:PartyRoom){const round=ensureElevenWaves(room),wave=round.waves?.at(-1);if(round.phase!=='playing'||round.flow!=='waves-v1'||!wave||wave.status!=='deciding')throw Error('当前波次不能修改');return {round,wave};}
+export function elevenWaveChoice(room:PartyRoom,actor:string,choice:'hit'|'stand'):ElevenRound{
+ const {round,wave}=decidingWave(room);
+ if(!Object.hasOwn(round.hands,actor)||round.stopped.includes(actor)||Object.hasOwn(wave.choices,actor)||!['hit','stand'].includes(choice)||round.hands[actor].length>=5||handRank(round.hands[actor]).halfPoints>=23)throw Error('该角色已锁定选择或无需继续选择');
+ wave.choices[actor]=choice;
+ if(Object.keys(round.hands).filter(id=>id!=='player').every(id=>wave.speeches.some(s=>s.id===id))&&Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id)))wave.status='ready';
+ return round;
+}
+export function elevenWaveSpeech(room:PartyRoom,speeches:PartyReply[]):ElevenRound{
+ const {round,wave}=decidingWave(room),participants=Object.keys(round.hands),npcs=participants.filter(id=>id!=='player');
+ if(!Array.isArray(speeches)||speeches.length<npcs.length||speeches.length>participants.length||new Set(speeches.map(s=>s?.id)).size!==speeches.length||speeches.some(s=>!s||Object.keys(s).some(k=>k!=='id'&&k!=='text')||!participants.includes(s.id)||typeof s.text!=='string'||!s.text.trim()||s.text.length>3000)||npcs.some(id=>!speeches.some(s=>s.id===id)))throw Error('每位角色都需要本波公开发言');
+ if(wave.playerText!==undefined&&((wave.playerText.trim()?speeches.find(s=>s.id==='player')?.text!==wave.playerText:speeches.some(s=>s.id==='player'))))throw Error('不能改写玩家已锁定的发言');
+ if(wave.speeches.length&&JSON.stringify(wave.speeches)!==JSON.stringify(speeches))throw Error('本波公开发言已经锁定');
+ wave.speeches=speeches.map(s=>({...s}));if(wave.playerText===undefined)wave.playerText=wave.speeches.find(s=>s.id==='player')?.text||'';
+ if(participants.filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id)))wave.status='ready';
+ return round;
+}
+export function advanceElevenWave(room:PartyRoom):ElevenRound{
+ const round=ensureElevenWaves(room),wave=round.waves?.at(-1);
+ if(round.phase!=='playing'||!wave||wave.status!=='ready')throw Error('本波尚未完成选择和公开发言');
+ const participants=room.members.filter(id=>Object.hasOwn(round.hands,id)),active=participants.filter(id=>!round.stopped.includes(id));
+ if(active.some(id=>!Object.hasOwn(wave.choices,id))||participants.filter(id=>id!=='player').some(id=>!wave.speeches.some(s=>s.id===id)))throw Error('本波选择或发言缺失');
+ for(const id of active){if(wave.choices[id]==='stand')round.stopped.push(id);else{if(round.hands[id].length>=5||!round.deck.length)throw Error('不能继续发牌');round.hands[id].push(round.deck.pop()!);if(round.hands[id].length===5||handRank(round.hands[id]).halfPoints>=23)round.stopped.push(id);}}
+ wave.status='dealt';
+ if(participants.every(id=>round.stopped.includes(id)))settleEleven(room,round);
+ else{if(round.waves!.length>=5)throw Error('波次数量已达上限');round.waves!.push({number:wave.number+1,choices:{},speeches:[],status:'deciding'});}
+ return round;
+}
+
 export function chooseTruth(room:PartyRoom,actor:string,choice:'truth'|'dare'):TruthRound{
  const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='choose'||round.target!==actor||!['truth','dare'].includes(choice))throw Error('不能改写已选题目');round.choice=choice;round.phase='respond';return round;
 }
@@ -128,6 +166,34 @@ function afterparty(value:unknown,room:PartyRoom){
  if(a.scenes!==undefined){if(!Array.isArray(a.scenes)||!a.scenes.length||a.scenes.length>8||new Set(a.scenes.map(s=>s?.actorId)).size!==a.scenes.length)fail();for(const s of a.scenes){keys(s,['actorId','status','participants','text','summary','error','draft']);if(!participants.includes(s.actorId)||!['pending','ready','failed'].includes(s.status)||!ids(s.participants,1,2)||!s.participants.includes('player')||s.participants.some(id=>!participants.includes(id))||s.actorId!=='player'&&!s.participants.includes(s.actorId)||s.text!==undefined&&!text(s.text,8000)||s.draft!==undefined&&!text(s.draft,8000)||s.summary!==undefined&&!text(s.summary,400)||s.error!==undefined&&!text(s.error,2000)||s.status==='ready'&&(!s.text||s.text.replace(/\s/gu,'').length<1200))fail();}if(a.status==='ready'&&a.scenes.some(s=>s.status!=='ready'))fail();}
  else if(a.status==='ready'&&(!a.text||a.text.replace(/\s/gu,'').length<1200))fail();
 }
+function validateElevenWaves(round:ElevenRound){
+ if(round.flow!=='waves-v1'||round.turn!==''||!Array.isArray(round.waves)||!round.waves.length||round.waves.length>5)fail();
+ const participants=Object.keys(round.hands),npcs=participants.filter(id=>id!=='player'),waves=round.waves!;
+ for(const [i,wave]of waves.entries()){
+  keys(wave,['number','choices','speeches','playerText','status']);
+  if(wave.playerText!==undefined&&!text(wave.playerText,500))fail();
+  if(wave.number!==i+1||!obj(wave.choices)||Object.entries(wave.choices).some(([id,choice])=>!participants.includes(id)||!['hit','stand'].includes(choice))||!Array.isArray(wave.speeches)||wave.speeches.length>participants.length||new Set(wave.speeches.map(s=>s?.id)).size!==wave.speeches.length||!['deciding','ready','dealt'].includes(wave.status))fail();
+  for(const speech of wave.speeches){keys(speech,['id','text']);if(!participants.includes(speech.id)||!text(speech.text,3000,false))fail();}
+  if((wave.status!=='deciding'||wave.speeches.length>0)&&npcs.some(id=>!wave.speeches.some(s=>s.id===id)))fail();
+  if(wave.speeches.length&&wave.playerText!==undefined&&(wave.playerText.trim()?wave.speeches.find(s=>s.id==='player')?.text!==wave.playerText:wave.speeches.some(s=>s.id==='player')))fail();
+  if(i<waves.length-1&&wave.status!=='dealt'||i===waves.length-1&&(round.phase==='complete'?wave.status!=='dealt':wave.status==='dealt'))fail();
+ }
+ // Replay only known wave draws from the existing hand prefixes. A migrated legacy hand may
+ // start with several cards or already-stopped people; it is never presumed to start at one.
+ const counts=new Map(participants.map(id=>[id,waves.filter(w=>w.status==='dealt'&&w.choices[id]==='hit').length]));
+ const hands=Object.fromEntries(participants.map(id=>[id,round.hands[id].slice(0,round.hands[id].length-counts.get(id)!)]));
+ if(participants.some(id=>hands[id].length<1))fail();
+ const stopped=new Set(round.stopped.filter(id=>!waves.some(w=>Object.hasOwn(w.choices,id))));
+ for(const wave of waves){
+  const active=participants.filter(id=>!stopped.has(id));
+  if(Object.keys(wave.choices).some(id=>stopped.has(id))||active.some(id=>(hands[id].length>=5||handRank(hands[id]).halfPoints>=23)))fail();
+  if(wave.status!=='deciding'&&active.some(id=>!Object.hasOwn(wave.choices,id)))fail();
+  if(wave.status==='ready'&&npcs.some(id=>!wave.speeches.some(s=>s.id===id)))fail();
+  if(wave.status==='dealt')for(const id of active){if(wave.choices[id]==='stand')stopped.add(id);else{hands[id].push(round.hands[id][hands[id].length]);if(hands[id].length>5)fail();if(hands[id].length===5||handRank(hands[id]).halfPoints>=23)stopped.add(id);}}
+ }
+ if(participants.some(id=>hands[id].length!==round.hands[id].length)||stopped.size!==round.stopped.length||round.stopped.some(id=>!stopped.has(id)))fail();
+ if(round.phase==='playing'&&(round.winner!==undefined||stopped.size===participants.length)||round.phase==='complete'&&(!round.winner||stopped.size!==participants.length))fail();
+}
 export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(afterparty:KingAfterparty,room:PartyRoom)=>void):PartyRoom[]{
  if(!Array.isArray(value)||value.length>20||new Set(value.map(r=>r?.id)).size!==value.length)fail();
  for(const room of value as PartyRoom[]){
@@ -138,7 +204,7 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
   if(active.length&&participants.length<3||room.endReason==='round-limit'&&(room.kind!=='truth'||active.length!==10)||room.endReason==='bankers-complete'&&(room.kind!=='eleven'||room.bankerIndex!==room.bankerOrder?.length)||room.endReason==='drunk'&&(!room.endTriggers?.length||!room.afterparty))fail();
   const usedTruth=new Set<string>();let lastNumber=0;
   for(const round of room.rounds){
-   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','banker','deck','hands','stopped','turn','phase','winner']:['kind','number','anchor','archived','replies','target','card','choice','text','refused','phase']);
+   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','banker','deck','hands','stopped','turn','phase','winner','flow','waves']:['kind','number','anchor','archived','replies','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
    if(round.replies!==undefined&&(!Array.isArray(round.replies)||round.replies.length>8||new Set(round.replies.map(r=>r?.id)).size!==round.replies.length))fail();for(const reply of round.replies||[]){keys(reply,['id','text']);if(reply.id==='player'||!participants.includes(reply.id)||!text(reply.text,3000,false))fail();}
    if(round.kind==='truth'){
@@ -147,8 +213,9 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
     if(!participants.includes(round.banker)||!obj(round.hands)||!ids(Object.keys(round.hands),3,8)||Object.keys(round.hands).some(id=>!participants.includes(id))||!Array.isArray(round.deck)||!ids(round.stopped,0,8)||round.stopped.some(id=>!Object.hasOwn(round.hands,id))||!['playing','complete'].includes(round.phase)||!text(round.turn,128)||round.winner!==undefined&&!Object.hasOwn(round.hands,round.winner))fail();
     if(!Object.hasOwn(round.hands,round.banker)||round.phase==='playing'&&!room.endedAt&&Object.keys(round.hands).length!==participants.length)fail();
     const dealt=Object.values(round.hands);if(dealt.some(hand=>!Array.isArray(hand)||hand.length<1||hand.length>5))fail();const partition=[...round.deck,...dealt.flat()];if(partition.length!==52||new Set(partition).size!==52||partition.some(c=>!cards.includes(c)))fail();
-    if(round.phase==='playing'&&(!Object.hasOwn(round.hands,round.turn)||round.stopped.includes(round.turn)||round.winner!==undefined)||round.phase==='complete'&&(round.turn!==''||!round.winner||round.stopped.length!==dealt.length))fail();
-    if(round.phase==='playing'){const expected=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(round.turn!==expected)fail();for(const [id,hand]of Object.entries(round.hands))if((hand.length===5||handRank(hand).halfPoints>=23)&&!round.stopped.includes(id))fail();}
+    if(round.flow!==undefined||round.waves!==undefined)validateElevenWaves(round);
+     else if(round.phase==='playing'&&(!Object.hasOwn(round.hands,round.turn)||round.stopped.includes(round.turn)||round.winner!==undefined)||round.phase==='complete'&&(round.turn!==''||!round.winner||round.stopped.length!==dealt.length))fail();
+    if(round.flow===undefined&&round.phase==='playing'){const expected=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(round.turn!==expected)fail();for(const [id,hand]of Object.entries(round.hands))if((hand.length===5||handRank(hand).halfPoints>=23)&&!round.stopped.includes(id))fail();}
     if(round.phase==='complete'){const priority=[round.banker,...seatsAfter(Object.keys(round.hands),round.banker).filter(id=>id!==round.banker)];let winner=priority[0];for(const id of priority.slice(1))if(compareHands(round.hands[id],round.hands[winner])>0)winner=id;if(round.winner!==winner)fail();}
    }
   }

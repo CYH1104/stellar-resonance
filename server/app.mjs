@@ -198,7 +198,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         }
         if(path==='/api/personal-terminal'){
           if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
-          const plan=terminalPlan(source,data),selected=await connection(current,data);
+          const plan=terminalPlan(source,data),selected=await connection(current,data),privateCards=['party-eleven','party-eleven-talk'].includes(plan.task);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const clipRaw=(value,limit=48000)=>{if(typeof value!=='string')return '';if(value.length<=limit)return value;const marker=`\n…[已截断，原长度 ${value.length} 字符]`;return value.slice(0,Math.max(0,limit-marker.length))+marker;};
@@ -227,8 +227,8 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
             try{signal.throwIfAborted();parseTerminalResult(checked,review);}catch(error){error.raw=terminalRaw(checked);throw error;}
             raw=clipRaw(raw+'\n\n[复核]\n'+checked,48000);
           }
-          json(response,200,{...result,raw:terminalRaw(raw)});return;
-          }catch(error){if(typeof error?.raw!=='string')error.raw=terminalRaw(content+(corrected?'\n\n[纠正稿]\n'+corrected:''));throw error;}
+          json(response,200,{...result,...(!privateCards?{raw:terminalRaw(raw)}:{})});return;
+          }catch(error){if(privateCards)delete error.raw;else if(typeof error?.raw!=='string')error.raw=terminalRaw(content+(corrected?'\n\n[纠正稿]\n'+corrected:''));throw error;}
         }
         if(path==='/api/new-game'){json(response,200,createGame(data,source));return;}
         if(path==='/api/persona'){

@@ -4,7 +4,7 @@ import {usePartyGames} from '../src/app/usePartyGames';
 import {HttpGateway} from '../src/gateway/http';
 import {newSession,defaults,backup,parseBackup} from '../src/domain/story';
 import {emptyTerminal} from '../src/domain/personalTerminal';
-import {createPartyRoom,startPartyRound,chooseTruth,partyParticipants} from '../src/domain/partyGames';
+import {createPartyRoom,startPartyRound,chooseTruth,partyParticipants,cards,elevenWaveChoice,elevenWaveSpeech} from '../src/domain/partyGames';
 import {snapshotRows,rowsSnapshot} from '../src/storage/recordSnapshot';
 import {createCloudSave,parseCloudSave,mergeCloudSession} from '../src/domain/cloudBackup';
 import type {ViewModel} from '../src/app/useWorkspace';
@@ -41,8 +41,22 @@ it('player refusal settles once and drunken end is saved before a failed afterpa
  expect(u.room.value!.endedAt).toBeTruthy();expect(u.room.value!.endReason).toBe('drunk');expect(u.room.value!.drunk.player).toBe(2);expect(u.room.value!.afterparty!.scenes![0].status).toBe('failed');
  expect(w.saveTerminal).toHaveBeenCalled();await u.retryAfterparty('player');expect(u.room.value!.drunk.player).toBe(2);expect(spy).toHaveBeenCalledTimes(2);
 });
+it('wave choices and public speeches persist without revealing private points',()=>{
+ const {w,u}=fixture('eleven');const r=u.room.value!;startPartyRound(r);const rr=r.rounds[0];if(rr.kind!=='eleven')throw Error();const wave=rr.waves![0];elevenWaveChoice(r,'player','hit');elevenWaveChoice(r,'a','stand');elevenWaveChoice(r,'b','hit');elevenWaveSpeech(r,[{id:'a',text:'我牌很小。'},{id:'b',text:'我先观望。'},{id:'player',text:'我继续看看。'}]);expect(wave.choices).toEqual({player:'hit',a:'stand',b:'hit'});expect(wave.speeches.map(x=>x.id)).toEqual(['a','b','player']);expect(JSON.stringify(wave)).not.toMatch(/score|points|deck/i);
+});
 it('failed game write restores the locked round and drunk values',async()=>{
- const {w,u}=fixture('eleven');await u.start();const r=u.round.value!;if(r.kind!=='eleven')throw Error();r.turn='player';const old=JSON.stringify(w.active!.terminal);vi.mocked(w.saveTerminal).mockRejectedValueOnce(Error('磁盘满'));await u.stand();expect(u.error.value).toBe('磁盘满');expect(JSON.stringify(w.active!.terminal)).toBe(old);
+ const {w,u}=fixture('eleven');await u.start();const r=u.round.value!;if(r.kind!=='eleven')throw Error();const old=JSON.stringify(w.active!.terminal);vi.mocked(w.saveTerminal).mockRejectedValueOnce(Error('磁盘满'));await u.stand();expect(u.error.value).toBe('磁盘满');expect(JSON.stringify(w.active!.terminal)).toBe(old);
+});
+it('collects every NPC decision before one unified deal and keeps stopped actors talking',async()=>{
+ const {w,u}=fixture('eleven');await u.start();const rr=u.round.value!;if(rr.kind!=='eleven')throw Error();rr.hands={player:['S-2'],a:['H-3'],b:['C-4']};rr.deck=cards.filter(c=>!Object.values(rr.hands).flat().includes(c));
+ const requests:any[]=[];let talk=0;vi.spyOn(HttpGateway.prototype,'terminal').mockImplementation(async(data:any)=>{requests.push(JSON.parse(JSON.stringify(data)));if(data.task==='party-eleven')return {choice:data.actorIds[0]==='a'?'stand':'hit',text:'真实点数不该保存'};if(data.task==='party-eleven-talk'){talk++;return {replies:[{id:'a',text:'我的点数是3'},{id:'b',text:'牌太小了，我还想赌一把。'}]};}throw Error('unexpected');});
+ u.draft.value='你们猜我有多少？';await u.hit();expect(u.error.value).toBe('');expect(u.wave.value!.status).toBe('ready');expect(Object.values((u.round.value as any).hands).map((h:any)=>h.length)).toEqual([1,1,1]);expect(requests.filter(r=>r.task==='party-eleven')).toHaveLength(2);const publicRequest=requests.find(r=>r.task==='party-eleven-talk');expect(publicRequest.actorIds).toEqual(['a','b']);expect(JSON.stringify(publicRequest)).not.toMatch(/hand|score|deck|choices|真实点数/);expect(u.wave.value!.speeches.find(x=>x.id==='a')!.text).not.toContain('3');expect(u.wave.value!.speeches.some(x=>x.id==='player')).toBe(true);
+ await u.dealWave();expect(Object.values((u.round.value as any).hands).map((h:any)=>h.length)).toEqual([2,1,2]);expect((u.round.value as any).stopped).toContain('a');u.draft.value='我再看看。';await u.stand();expect(talk).toBe(2);expect(requests.filter(r=>r.task==='party-eleven'&&r.actorIds[0]==='a')).toHaveLength(1);expect(u.wave.value!.speeches.find(x=>x.id==='a')).toBeTruthy();expect(w.scopedRecall).not.toHaveBeenCalled();
+ const snap={version:1 as const,sessions:[w.active!],preferences:defaults()};for(const restored of [parseBackup(backup(snap)),parseCloudSave(createCloudSave(snap,snap.preferences)).snapshot,rowsSnapshot(snapshotRows(snap))!])expect(restored.sessions[0].terminal!.partyRooms).toEqual(w.active!.terminal!.partyRooms);
+});
+it('retries only missing private decisions, preserves player text and never redeals on a failed talk',async()=>{
+ const {u}=fixture('eleven');await u.start();let fail=true;const calls:any[]=[];vi.spyOn(HttpGateway.prototype,'terminal').mockImplementation(async(data:any)=>{calls.push(data);if(data.task==='party-eleven'){if(data.actorIds[0]==='b'&&fail){fail=false;throw Error('断线');}return {choice:'stand'};}return {replies:[{id:'a',text:'等着看吧。'},{id:'b',text:'我不着急。'}]};});
+ u.draft.value='这句要保留。';const initial=JSON.stringify((u.round.value as any).hands);await u.hit();expect(u.error.value).toBe('断线');expect(u.wave.value!.choices.a).toBe('stand');expect(u.wave.value!.playerText).toBe('这句要保留。');await u.retryRequest();expect(u.wave.value!.status).toBe('ready');expect(JSON.stringify((u.round.value as any).hands)).toBe(initial);expect(calls.filter(d=>d.task==='party-eleven'&&d.actorIds[0]==='a')).toHaveLength(1);
 });
 it('both party game records survive local/cloud/record and overwrite recovery snapshots including anchors',()=>{
  const {w}=fixture('eleven'),s=w.active!,r=s.terminal!.partyRooms![0];startPartyRound(r, {key:'opening:123',turnId:'',variantId:'',path:[]});

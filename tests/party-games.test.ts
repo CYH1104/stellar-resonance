@@ -1,7 +1,8 @@
 import {it,expect} from 'vitest';
 import {cards,cardLabel,cardCode,handRank,compareHands,createPartyRoom,partyParticipants,startPartyRound,elevenAct,chooseTruth,finishTruth,settlePartyEnd,endPartyRoom,validatePartyRooms,truthCards,type PartyRoom,type ElevenRound,type TruthRound} from '../src/domain/partyGames';
 function room(kind:'eleven'|'truth'='eleven'){const r=createPartyRoom(kind,['a','b'],'聚会','轻松','room');r.invitations={a:'accepted',b:'accepted'};return r;}
-function customHands(r:PartyRoom,hands:Record<string,string[]>){r.bankerOrder=['player','a','b'];r.bankerIndex=0;const round=startPartyRound(r,undefined,()=>0) as ElevenRound;round.hands=hands;round.deck=cards.filter(c=>!Object.values(hands).flat().includes(c));round.stopped=[];round.turn='a';return round;}
+function customHands(r:PartyRoom,hands:Record<string,string[]>){r.bankerOrder=['player','a','b'];r.bankerIndex=0;const round=startPartyRound(r,undefined,()=>0) as ElevenRound;round.hands=hands;round.deck=cards.filter(c=>!Object.values(hands).flat().includes(c));round.stopped=[];round.turn='a';return legacy(round);}
+function legacy(r:ElevenRound){delete r.flow;delete r.waves;r.turn=Object.keys(r.hands).find(id=>id!==r.banker)||r.banker;return r;}
 function standAll(r:PartyRoom){let round=r.rounds.at(-1) as ElevenRound;while(round.phase==='playing')elevenAct(r,round.turn,'stand');return round;}
 it('uses exact half-points and the agreed hierarchy and eleven suit counts',()=>{
  expect(cards).toHaveLength(52);expect(new Set(cards).size).toBe(52);expect(cardLabel(cardCode('S','A'))).toBe('♠A');
@@ -14,7 +15,7 @@ it('uses exact half-points and the agreed hierarchy and eleven suit counts',()=>
 });
 it('locks the deal, partitions the deck and acts in seat order with banker last',()=>{
  const r=room(),anchor={key:'key',turnId:'t',variantId:'v',path:['t:v']};r.bankerOrder=['player','a','b'];r.bankerIndex=0;
- const first=startPartyRound(r,anchor,n=>n-1) as ElevenRound;expect(first.turn).toBe('a');expect(first.deck).toHaveLength(49);expect(new Set([...first.deck,...Object.values(first.hands).flat()]).size).toBe(52);
+ const first=legacy(startPartyRound(r,anchor,n=>n-1) as ElevenRound);expect(first.turn).toBe('a');expect(first.deck).toHaveLength(49);expect(new Set([...first.deck,...Object.values(first.hands).flat()]).size).toBe(52);
  anchor.path.push('changed');expect(first.anchor!.path).toEqual(['t:v']);const saved=JSON.stringify(r);expect(()=>startPartyRound(r)).toThrow();expect(JSON.stringify(r)).toBe(saved);
  const restored=JSON.parse(saved);validatePartyRooms([restored]);expect(restored.rounds[0]).toEqual(first);
  expect(()=>elevenAct(r,'player','hit')).toThrow();elevenAct(r,'a','stand');expect(first.turn).toBe('b');
