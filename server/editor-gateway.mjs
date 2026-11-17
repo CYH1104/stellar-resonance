@@ -35,7 +35,7 @@ export async function createEditorGateway({projectRoot,privateDir=resolve(projec
     if(path==='/editor/logout'&&req.method==='POST'){const token=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookiePrefix))?.slice(cookiePrefix.length);if(token)sessions.delete(hash(token).toString('hex'));cookie(res,'',0);json(res,200,{ok:true});return;}
     if(path==='/editor/accounts'||path==='/editor/accounts.js'){
       if(req.method!=='GET'){json(res,405,{code:'GET_REQUIRED'});return;}
-      res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"});res.end(await readFile(resolve(projectRoot,path.endsWith('.js')?'server/auth-ui/admin-accounts.js':'server/auth-ui/admin-accounts.html')));return;
+      res.writeHead(200,{'Content-Type':path.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"});const content=await readFile(resolve(projectRoot,path.endsWith('.js')?'server/auth-ui/admin-accounts.js':'server/auth-ui/admin-accounts.html'),'utf8');res.end(path.endsWith('.js')?'const relayPolicyEnabled='+JSON.stringify(relayPolicy?.enabled!==false)+';\n'+content:content);return;
     }
     if(path.startsWith('/editor/api/accounts/')){
       if(!accounts){json(res,503,{code:'ACCOUNTS_UNAVAILABLE'});return;}

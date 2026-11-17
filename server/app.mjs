@@ -68,7 +68,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
   // 身份仍按真实项目根计算：从发布快照运行的实例必须和部署脚本、启动器认出彼此。
   const projectId=createHash('sha256').update(identityRoot||projectRoot).digest('hex').slice(0,16),instance=randomBytes(16).toString('hex');
   const accounts=authRequired?await createAccounts({directory:accountDir,requireInvite:invitesRequired}):null;
-  const relayPolicy=createRelayPolicy(resolve(accountDir,'relay-policy.json'),{required:authRequired});
+  const relayPolicy=createRelayPolicy(resolve(accountDir,'relay-policy.json'),{required:authRequired,enabled:channel!=='test'});
   fetchImpl=relayPolicy.guard(fetchImpl);
   const editorGateway=await createEditorGateway({projectRoot:runtimeRoot,privateDir:dataDir,editorPort,accounts,relayPolicy,editorCookie,gameOrigin:()=>external?.origin||`http://127.0.0.1:${server.address()?.port||port}`,protectedAccess:authRequired,secure:external?.protocol==='https:'});
   const capabilities={continue:true,keyRequired:true,embeddings:true,terminal:terminalEnabled,channel};
