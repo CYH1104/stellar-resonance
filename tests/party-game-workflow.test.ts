@@ -25,8 +25,8 @@ it('retries failed initial invitations without creating another room and preserv
 it('sends immediately, clears the composer and saves a room-scoped pending reply until the API resolves',async()=>{
  const {w,u}=fixture();u.room.value!.invitations.b='declined';u.beginInvite('b');u.inviteNote.value='我带你去看比赛。';let resolve!:(value:any)=>void;
  const spy=vi.spyOn(HttpGateway.prototype,'terminal').mockImplementation(()=>new Promise(r=>{resolve=r;}));
- (w as any).connectProfile=async()=>true;const pending=u.sendInvite();expect(u.inviteTarget.value).toBeNull();expect(u.inviteNote.value).toBe('');await vi.waitFor(()=>expect(spy).toHaveBeenCalledTimes(1));expect(u.pendingInvite.value).toMatchObject({roomId:'party-room',ids:['b'],names:['乙']});expect(w.active!.terminal!.partyRooms![0].inviteNotes!.b).toBe('我带你去看比赛。');expect(spy).toHaveBeenCalledTimes(1);
- u.page.value='list';expect(u.pendingInvite.value?.roomId).toBe('party-room');resolve({decisions:[{id:'b',accepted:true,reply:'好，我参加。'}]});await pending;expect(u.pendingInvite.value).toBeUndefined();expect(u.room.value!.invitations.b).toBe('accepted');expect(u.room.value!.inviteReplies.b).toBe('好，我参加。');
+ (w as any).connectProfile=async()=>true;const pendingPromise=u.sendInvite();expect(u.inviteTarget.value).toBeNull();expect(u.inviteNote.value).toBe('');await vi.waitFor(()=>expect(spy).toHaveBeenCalledTimes(1));expect(u.pendingInvite.value).toMatchObject({roomId:'party-room',ids:['b'],names:['乙']});expect(w.active!.terminal!.partyRooms![0].inviteNotes!.b).toBe('我带你去看比赛。');expect(spy).toHaveBeenCalledTimes(1);
+ u.page.value='list';expect(u.pendingInvite.value?.roomId).toBe('party-room');resolve({decisions:[{id:'b',accepted:true,reply:'好，我参加。'}]});await pendingPromise;expect(u.pendingInvite.value).toBeUndefined();expect(u.room.value!.invitations.b).toBe('accepted');expect(u.room.value!.inviteReplies.b).toBe('好，我参加。');
 });
 it('persuasion targets only declined invitees, keeps the note on failure and roundtrips it in backups',async()=>{
  const {w,u}=fixture();u.room.value!.invitations.b='declined';u.room.value!.inviteReplies.b='现在没空';
