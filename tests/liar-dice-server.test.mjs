@@ -9,6 +9,9 @@ test('one NPC request returns one legal move and all table dialogue without othe
  assert.throws(()=>parseTerminalResult(JSON.stringify({action:'bid',bid:{count:2,face:6,pure:false},replies:out.replies}),plan));assert.throws(()=>parseTerminalResult(JSON.stringify({action:'open',replies:out.replies}),plan));
  const leak=data();leak.context.party.opponentDice={player:[6,6,6,6,6]};assert.throws(()=>terminalPlan(card,leak));
 });
+test('a legacy pending NPC move can receive only public speech without another action or private hand',()=>{
+ const d=data('party-liar-reply');delete d.context.party.ownDice;const action={id:'a',action:'bid',bid:{count:3,face:6,pure:false},text:'',replies:[]};d.context.party.moves=[action];d.context.party.lastAction=action;d.context.party.lastBid=action.bid;d.context.party.turn='b';const plan=terminalPlan(card,d);assert.ok(!Object.hasOwn(plan.party,'ownDice'));assert.equal(parseTerminalResult(JSON.stringify({replies:[{id:'a',text:'我可不急。'},{id:'b',text:'那就看看。'}]}),plan).replies.length,2);
+});
 test('player action response has all NPC speech but no private roll or model action',()=>{
  const d=data('party-liar-reply');delete d.context.party.ownDice;d.context.party.lastAction={id:'player',action:'bid',bid:{count:3,face:6,pure:true},text:'我叫三个斋六。',replies:[]};d.context.party.lastBid={count:3,face:6,pure:true};d.context.party.turn='a';d.context.party.moves=[d.context.party.lastAction];const plan=terminalPlan(card,d);assert.equal(Object.hasOwn(JSON.parse(plan.messages.at(-1).content).party,'ownDice'),false);
  const out=parseTerminalResult(JSON.stringify({replies:[{id:'a',text:'内心想着：他肯定骗人。'},{id:'b',text:'我可能有，也可能没有。'}]}),plan);assert.equal(out.replies[0].text,'想知道？开了再看。');assert.equal(out.replies[1].text,'我可能有，也可能没有。');assert.throws(()=>parseTerminalResult(JSON.stringify({action:'open',replies:out.replies}),plan));

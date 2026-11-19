@@ -1,4 +1,4 @@
-import {applyLiarMove,completeLiarMove,lastLiarBid,liarBidLabel,type LiarRound,type LiarBid} from '../domain/liarDice';
+import {applyLiarMove,applyLiarTurn,completeLiarMove,lastLiarBid,liarBidLabel,type LiarRound,type LiarBid} from '../domain/liarDice';
 import {sanitizeDiceSpeech} from '../domain/diceSpeech';
 import {computed,ref,watch,onScopeDispose} from 'vue';
 import {sanitizeElevenSpeech} from '../domain/elevenSpeech';
@@ -107,33 +107,60 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
  // Kept only as a controller compatibility alias; no separate deal button remains in the UI.
  const dealWave=()=>run(()=>stepEleven(),'重试本轮角色回应');
 
- const start=()=>room.value?.kind==='eleven'?run(startEleven,'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():startEleven()):startOther();
+ const start=()=>room.value?.kind==='eleven'?run(startEleven,'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():startEleven()):room.value?.kind==='liar'?run(startLiar,'重试本轮角色行动',()=>round.value?.kind==='liar'&&(round.value.phase==='playing'||round.value.moves.at(-1)?.pending)?advanceLiarChain():startLiar()):startOther();
  function liarPublicMoves(rr:LiarRound){return rr.moves.slice(-12).map(m=>({id:m.id,action:m.action,...(m.bid?{bid:m.bid}:{}),text:m.text,replies:m.replies}));}
  function liarParty(rr:LiarRound){return {...partyContext(room.value!),round:rr.number,starter:rr.starter,turn:rr.turn,moves:liarPublicMoves(rr),...(lastLiarBid(rr)?.bid?{lastBid:lastLiarBid(rr)!.bid}:{})};}
  function safeDiceReplies(rows:{id:string;text:string}[],rr:LiarRound){return rows.map(x=>({id:x.id,text:sanitizeDiceSpeech(x.text,rr.dice[x.id]||[])}));}
- async function finishLiarTalk(){const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='liar'||!rr.moves.at(-1)?.pending)throw Error('没有等待接话的行动。');const id=rm.id,fingerprint=JSON.stringify(rr),move=rr.moves.at(-1)!;
-  const result=await request('party-liar-reply',partyParticipants(rm).filter(id=>id!=='player'),'请全桌角色接一句说出口的话，不要内心独白，不要透视骰子。',{party:{...liarParty(rr),lastAction:liarPublicMoves(rr).at(-1),playerInput:move.text}});
+ async function finishLiarTalk(){
+  const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='liar'||!rr.moves.at(-1)?.pending)throw Error('没有等待接话的行动。');const id=rm.id,fingerprint=JSON.stringify(rr),move=rr.moves.at(-1)!;
+  const result=await request('party-liar-reply',partyParticipants(rm).filter(id=>id!=='player'),'本次行动已经保存。请全桌角色接一句说出口的话，不要内心独白，不要透视骰子。',{party:{...liarParty(rr),lastAction:liarPublicMoves(rr).at(-1),playerInput:move.text}});
   if(JSON.stringify(round.value)!==fingerprint)throw Error('当前叫号已改变，回复未应用。');
   await write(t=>{completeLiarMove(t.partyRooms!.find(x=>x.id===id)!,safeDiceReplies(result.replies,rr));},!!rm.endedAt);
-  await afterEnd();
  }
- const liarBid=(bid:LiarBid)=>run(async()=>{const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.turn!=='player')throw Error('尚未轮到你叫号。');const text=draft.value.trim().slice(0,500);await write(t=>{applyLiarMove(t.partyRooms!.find(x=>x.id===rm.id)!,'player','bid',bid,text);});draft.value='';await finishLiarTalk();},'重试本次桌上接话',finishLiarTalk);
- const liarOpen=()=>run(async()=>{const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.turn!=='player')throw Error('尚未轮到你开骰。');const text=draft.value.trim().slice(0,500);await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyLiarMove(r,'player','open',undefined,text);settlePartyEnd(r,t.tolerances||{});});draft.value='';if(room.value?.endedAt)page.value='history';await finishLiarTalk();},'重试本次桌上接话',finishLiarTalk);
- async function liarNpc(){const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='liar')throw Error('请先开始大话骰。');if(rr.moves.at(-1)?.pending){await finishLiarTalk();return;}activeRoom();if(rr.phase!=='playing'||rr.turn==='player')throw Error('当前不需要角色叫号。');
-  const actor=rr.turn,fingerprint=JSON.stringify(rr),id=rm.id;
-  const result=await request('party-liar-turn',[actor],'轮到你叫号或开骰；同一次返回所有角色说出口的接话，不要内心独白。',{party:{...liarParty(rr),ownDice:rr.dice[actor]}});
+ async function liarNpc(){
+  const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.phase!=='playing'||rr.turn==='player')throw Error('当前不需要角色叫号。');
+  const actor=rr.turn,fingerprint=JSON.stringify(rr),id=rm.id,playerInput=[...rr.moves].reverse().find(m=>m.id==='player')?.text||'';
+  const result=await request('party-liar-turn',[actor],'轮到你叫号或开骰；同一次返回所有角色说出口的接话，有玩家留言须自然回应，不要内心独白。',{party:{...liarParty(rr),ownDice:rr.dice[actor],playerInput}});
   if(JSON.stringify(round.value)!==fingerprint)throw Error('当前牌局已改变，回复未应用。');
-  await write(t=>{const r=t.partyRooms!.find(x=>x.id===id)!;applyLiarMove(r,actor,result.action,result.bid,'',safeDiceReplies(result.replies,rr));settlePartyEnd(r,t.tolerances||{});});await afterEnd();
+  await write(t=>{const r=t.partyRooms!.find(x=>x.id===id)!;applyLiarTurn(r,actor,result.action,result.bid,safeDiceReplies(result.replies,rr));settlePartyEnd(r,t.tolerances||{});});
  }
+ async function advanceLiarChain(){
+  const id=roomId.value;
+  for(let steps=0;steps<18;steps++){
+   guard();if(roomId.value!==id)throw Error('房间已切换，自动叫号停止。');const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='liar')throw Error('请先开始大话骰。');
+   const last=rr.moves.at(-1);
+   if(rm.endedAt||rr.phase==='complete'){if(last?.pending)await finishLiarTalk();await afterEnd();return;}
+   if(last?.pending&&!(last.id==='player'&&last.action==='bid')){await finishLiarTalk();continue;}
+   if(rr.turn==='player')return;
+   await liarNpc();
+  }
+  throw Error('自动叫号轮次异常，原记录已保留。');
+ }
+ const resumeLiar=()=>run(advanceLiarChain,'重试本轮角色行动',advanceLiarChain);
+ async function startLiar(){
+  const r=activeRoom();if(partyParticipants(r).length<3)throw Error('至少需要两位好友接受邀请。');await ensureTolerance(r);
+  await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;settlePartyEnd(rm,t.tolerances||{});if(!rm.endedAt)startPartyRound(rm,anchor);});
+  draft.value='';page.value=room.value?.endedAt?'history':'play';if(room.value?.endedAt){await afterEnd();return;}await advanceLiarChain();
+ }
+ const liarBid=(bid:LiarBid)=>run(async()=>{
+  if(round.value?.kind==='liar'&&round.value.moves.at(-1)?.pending){await advanceLiarChain();return;}
+  const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.turn!=='player')throw Error('尚未轮到你叫号。');const text=draft.value.trim().slice(0,500);
+  await write(t=>{applyLiarMove(t.partyRooms!.find(x=>x.id===rm.id)!,'player','bid',bid,text);});draft.value='';await advanceLiarChain();
+ },'重试本轮角色行动',advanceLiarChain);
+ const liarOpen=()=>run(async()=>{
+  if(round.value?.kind==='liar'&&round.value.moves.at(-1)?.pending){await advanceLiarChain();return;}
+  const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.turn!=='player')throw Error('尚未轮到你开骰。');const text=draft.value.trim().slice(0,500);
+  await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyLiarMove(r,'player','open',undefined,text);settlePartyEnd(r,t.tolerances||{});});draft.value='';if(room.value?.endedAt)page.value='history';await advanceLiarChain();
+ },'重试本次开骰回应',advanceLiarChain);
 
  const choose=(choice:'truth'|'dare')=>run(async()=>{const r=activeRoom();await write(t=>{chooseTruth(t.partyRooms!.find(x=>x.id===r.id)!,'player',choice);});});
  async function completeTruth(actor:string,text:string,refused:boolean){const r=activeRoom();await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;finishTruth(rm,actor,text,refused);settlePartyEnd(rm,t.tolerances||{});});draft.value='';await afterEnd();}
  const answer=(refused=false)=>run(async()=>{if(!draft.value.trim()&&!refused)throw Error('请填写你的回答或行动。');await completeTruth('player',draft.value.trim()||'我选择拒绝，并喝下这一杯。',refused);});
- const npcAction=()=>run(async()=>{if(round.value?.kind==='eleven'){await stepEleven();return;}if(round.value?.kind==='liar'){if(round.value.phase==='complete'){if(round.value.moves.at(-1)?.pending)await finishLiarTalk();else throw Error('本局已结算。');return;}await liarNpc();return;}const r=activeRoom(),rr=round.value;if(!rr)throw Error('请先开始一轮。');const fingerprint=JSON.stringify(rr);
+ const npcAction=()=>run(async()=>{if(round.value?.kind==='eleven'){await stepEleven();return;}if(round.value?.kind==='liar'){await advanceLiarChain();return;}const r=activeRoom(),rr=round.value;if(!rr)throw Error('请先开始一轮。');const fingerprint=JSON.stringify(rr);
 
    {if(rr.target==='player'||rr.phase==='complete')throw Error('当前不需要角色行动。');const result=await request('party-truth',[rr.target],rr.phase==='choose'?'看到双选题卡后选择真心话或大冒险，不提前执行。':'按人设完成已选题目，或明确拒绝并接受罚酒。',{party:{...partyContext(r),round:rr.number,stage:rr.phase==='choose'?'choose':'respond',target:rr.target,card:rr.card,...(rr.choice?{choice:rr.choice}:{})}});if(JSON.stringify(round.value)!==fingerprint)throw Error('挑战已改变，回复未应用。');if(rr.phase==='choose')await write(t=>{chooseTruth(t.partyRooms!.find(x=>x.id===r.id)!,rr.target,result.choice);});else await completeTruth(rr.target,result.text,result.refused);}
  });
- const reactions=()=>run(async()=>{const r=activeRoom(),text=draft.value.trim();if(!text)throw Error('请填写你的发言或动作。');if(text.length>2000)throw Error('发言最多2000字。');const ids=partyParticipants(r).filter(id=>id!=='player'),rr=round.value;if(!rr)throw Error('请先开始游戏。');if(rr.kind==='liar'){await liarNpc();return;}if(rr.kind==='eleven'&&rr.phase==='playing'){await stepEleven();return;}const fingerprint=JSON.stringify(rr),result=await request('party-reactions',ids,text,{party:{...partyContext(r),round:rr.number,summary:summary(r).slice(0,5000),playerInput:text}});if(JSON.stringify(round.value)!==fingerprint)throw Error('当前轮已改变。');await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!,last=rm.rounds.at(-1)!;const previous=last.replies||[];last.replies=result.replies.map((p:{id:string;text:string})=>({id:p.id,text:((previous.find(x=>x.id===p.id)?.text||'')+'\n'+name('player')+'：'+text+'\n'+p.text).trim().slice(-3000)}));});draft.value='';});
+ const reactions=()=>run(async()=>{const r=activeRoom(),text=draft.value.trim();if(!text)throw Error('请填写你的发言或动作。');if(text.length>2000)throw Error('发言最多2000字。');const ids=partyParticipants(r).filter(id=>id!=='player'),rr=round.value;if(!rr)throw Error('请先开始游戏。');if(rr.kind==='liar'){await advanceLiarChain();return;}if(rr.kind==='eleven'&&rr.phase==='playing'){await stepEleven();return;}const fingerprint=JSON.stringify(rr),result=await request('party-reactions',ids,text,{party:{...partyContext(r),round:rr.number,summary:summary(r).slice(0,5000),playerInput:text}});if(JSON.stringify(round.value)!==fingerprint)throw Error('当前轮已改变。');await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!,last=rm.rounds.at(-1)!;const previous=last.replies||[];last.replies=result.replies.map((p:{id:string;text:string})=>({id:p.id,text:((previous.find(x=>x.id===p.id)?.text||'')+'\n'+name('player')+'：'+text+'\n'+p.text).trim().slice(-3000)}));});draft.value='';});
  const end=()=>run(async()=>{const r=activeRoom();await write(t=>{endPartyRoom(t.partyRooms!.find(x=>x.id===r.id)!);});page.value='history';});
  async function afterparty(onlyActor?:string){const session=w.active!,r=room.value;if(!r?.endedAt||!r.afterparty?.scenes)return;for(const initial of r.afterparty.scenes){if(initial.status==='ready'||onlyActor&&initial.actorId!==onlyActor)continue;const id=r.id,actorId=initial.actorId,rm=room.value!,entry=rm.afterparty!.scenes!.find(x=>x.actorId===actorId)!,fingerprint=JSON.stringify(rm),participants=entry.participants;
   try{const result=await request('afterparty',participants.filter(id=>id!=='player'),'为'+gameName(r.kind)+'结束后指定醉酒角色与玩家写独处小剧场。',{afterparty:{room:{name:r.name,style:r.style},targetActorId:participants.find(id=>id!=='player')||actorId,drunkActorId:actorId,playerDrunk:actorId==='player',participants:participants.map(id=>({id,name:name(id),drunk:r.drunk[id]||0,tolerance:tolerance(id)})),triggers:[name(actorId)],rounds:r.rounds.filter(visible).slice(-6).map(rr=>({number:rr.number,summary:rr.kind==='truth'?rr.text||'':rr.phase==='complete'?'赢家'+name(rr.winner!):'本局未完成'}))},...(entry.draft?{priorDraft:entry.draft}:{})});
@@ -143,5 +170,5 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
  const retryAfterparty=(actorId?:string)=>run(()=>afterparty(actorId));
  function back(){inviteTarget.value=null;inviteNote.value='';draft.value='';if(page.value==='list')return;page.value=page.value==='create'||page.value==='room'||page.value==='history'?'list':'room';}
   function enter(kind:PartyKind){currentKind.value=kind;page.value='list';inviteTarget.value=null;inviteNote.value='';draft.value='';}
- return {rooms,room,round,wave,elevenPrepared,elevenBatchPending,playerNeedsChoice,dealWave,liarBid,liarOpen,history,currentKind,page,picked,title,style,draft,error,working,inviteTarget,inviteNote,pendingInvite,pendingInvites,declinedInvites,retryActionLabel,retryRequest,retryInvites,friends,name,tolerance,participants,create,open,invite,beginInvite,sendInvite,start,hit,stand,npcAction,choose,answer,reactions,end,retryAfterparty,back,enter,stop:cancel};
+ return {rooms,room,round,wave,elevenPrepared,elevenBatchPending,playerNeedsChoice,dealWave,resumeLiar,liarBid,liarOpen,history,currentKind,page,picked,title,style,draft,error,working,inviteTarget,inviteNote,pendingInvite,pendingInvites,declinedInvites,retryActionLabel,retryRequest,retryInvites,friends,name,tolerance,participants,create,open,invite,beginInvite,sendInvite,start,hit,stand,npcAction,choose,answer,reactions,end,retryAfterparty,back,enter,stop:cancel};
 }

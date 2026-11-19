@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {isLegalLiarBid,legalLiarBids,countLiarDice,applyLiarMove,completeLiarMove,validateLiarRound,type LiarRound} from '../src/domain/liarDice';
+import {isLegalLiarBid,minimumLiarCount,legalLiarBids,countLiarDice,applyLiarTurn,applyLiarMove,completeLiarMove,validateLiarRound,type LiarRound} from '../src/domain/liarDice';
 import {createPartyRoom,startPartyRound,validatePartyRooms,settlePartyEnd} from '../src/domain/partyGames';
 const lines=[{id:'a',text:'我先看看。'},{id:'b',text:'别急。'}];
 function room(){const r=createPartyRoom('liar',['a','b'],'','','liar');r.invitations={a:'accepted',b:'accepted'};return r;}
@@ -9,6 +9,17 @@ it('enforces opening floor, same-mode order and confirmed 斋/非 transitions',(
  expect(isLegalLiarBid(bid(5,2),bid(5,6),5)).toBe(true);expect(isLegalLiarBid(bid(5,6),bid(5,5),5)).toBe(false);expect(isLegalLiarBid(bid(5,6),bid(6,1),5)).toBe(true);
  expect(isLegalLiarBid(bid(5,6),bid(5,1,true),5)).toBe(true);expect(isLegalLiarBid(bid(5,1,true),bid(6,6),5)).toBe(false);expect(isLegalLiarBid(bid(5,1,true),bid(7,1),5)).toBe(true);
  expect(isLegalLiarBid(bid(5),bid(26),5)).toBe(false);expect(legalLiarBids(bid(25,6,true),5)).toEqual([]);
+});
+it('the editable count floor agrees with every legal bid including mode and face changes',()=>{
+ for(const previous of [undefined,bid(3,5,false),bid(3,5,true),bid(15,6,false),bid(15,6,true)])for(const pure of [false,true])for(let face=1;face<=6;face++){
+  const minimum=minimumLiarCount(previous,pure,face,3),legal=legalLiarBids(previous,3).filter(b=>b.pure===pure&&b.face===face);if(minimum<=15){expect(legal[0].count).toBe(minimum);expect(isLegalLiarBid(previous,{count:minimum-1,pure,face},3)).toBe(false);}else expect(legal).toEqual([]);
+ }
+ expect(minimumLiarCount(bid(3,5,true),false,6,3)).toBe(5);expect(minimumLiarCount(bid(3,5,true),true,6,3)).toBe(3);expect(minimumLiarCount(bid(3,5,true),true,5,3)).toBe(4);
+});
+it('the next NPC action atomically completes player dialogue and keeps only one table response',()=>{
+ const r=room(),rr=startPartyRound(r,undefined,()=>0) as LiarRound;applyLiarMove(r,'player','bid',bid(3,2,false),'别被我吓到。');const before=JSON.stringify(r);expect(()=>applyLiarTurn(r,'a','bid',bid(2,6),lines)).toThrow();expect(JSON.stringify(r)).toBe(before);
+ applyLiarTurn(r,'a','bid',bid(3,3,false),lines);expect(rr.moves[0]).toMatchObject({pending:false,replyWithNext:true,replies:[]});expect(rr.moves[1].replies).toEqual(lines);expect(rr.turn).toBe('b');validatePartyRooms([r]);
+ for(const mutate of [(x:any)=>x.moves.pop(),(x:any)=>x.moves[0].pending=true,(x:any)=>x.moves[0].replies=lines,(x:any)=>x.moves[1].replyWithNext=true]){const bad=JSON.parse(JSON.stringify(rr));mutate(bad);expect(()=>validateLiarRound(bad,['player','a','b'])).toThrow();}
 });
 it('counts wild ones only in non-斋 calls and never double counts face one',()=>{
  const dice={player:[1,1,2,3,6],a:[1,2,2,4,5],b:[2,2,4,5,6]};expect(countLiarDice(dice,bid(3,2))).toBe(8);expect(countLiarDice(dice,bid(3,2,true))).toBe(5);expect(countLiarDice(dice,bid(3,1))).toBe(3);

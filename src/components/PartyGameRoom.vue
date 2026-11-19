@@ -19,6 +19,9 @@ function prepare(kind:'eleven'|'truth'|'liar'){u.currentKind=kind;u.picked=[];u.
 function handleBack(){if(u.inviteTarget!==null){u.inviteTarget=null;u.inviteNote='';return true;}if(u.page==='list')return false;u.back();return true;}
 function enter(kind:'eleven'|'truth'|'liar'){u.enter(kind);}
 watch(()=>props.kind,kind=>{if(kind)enter(kind);});
+watch(()=>[props.active,u.page,u.room?.id,u.round?.number,u.round?.kind==='liar'?u.round.turn:'',u.round?.kind==='liar'?u.round.moves.at(-1)?.pending:false,u.working,u.error],()=>{
+ if(props.active&&u.page==='play'&&!u.working&&!u.error&&!u.room?.endedAt&&u.round?.kind==='liar'&&((u.round.phase==='playing'&&u.round.turn!=='player')||u.round.moves.at(-1)?.pending)&&typeof u.resumeLiar==='function')void u.resumeLiar();
+},{immediate:true});
 defineExpose({handleBack,enter});
 function initial(id:string){return Array.from(u.name(id)||'我')[0];}
 function points(cards:Parameters<typeof handRank>[0]){return cards.length?handRank(cards).halfPoints/2:'—';}
@@ -31,7 +34,7 @@ function waveRecords(round:ElevenRound){return round.waves||[];}
 <template>
  <section class="party-game-room" aria-label="终端聚会游戏"><div v-if="u.inviteTarget!==null" class="party-invite-overlay" @click.self="u.inviteTarget=null"><form class="party-invite-dialog" role="dialog" aria-modal="true" aria-label="重新邀请留言" @submit.prevent="u.sendInvite()" @keydown.esc.prevent="u.inviteTarget=null"><h3>再次邀请{{inviteName}}</h3><p>想对角色说些什么？发送后可返回列表等候回信。</p><label>邀请留言<textarea v-model="u.inviteNote" maxlength="2000" rows="4" :disabled="u.working" placeholder="写给角色的话…" /></label><div class="party-actions"><button type="submit" class="party-primary" :disabled="u.working">发送邀请</button><button type="button" @click="u.inviteTarget=null">取消</button></div></form></div>
   <header class="party-heading"><h2>{{u.room&&['room','play','history'].includes(u.page)?u.room.name:kinds[props.kind||'eleven']}}</h2></header>
-  <div v-if="u.error&&!u.inviteTarget" class="party-error" role="alert"><p>{{u.error}}</p><button v-if="u.retryActionLabel&&!(u.elevenBatchPending&&u.room&&['room','play','history'].includes(u.page))" type="button" :disabled="u.working" @click="u.retryRequest()">{{u.retryActionLabel}}</button></div>
+  <div v-if="u.error&&!u.inviteTarget" class="party-error" role="alert"><p>{{u.error}}</p><button v-if="u.retryActionLabel&&!(u.room?.kind==='liar'&&u.page==='play')&&!(u.elevenBatchPending&&u.room&&['room','play','history'].includes(u.page))" type="button" :disabled="u.working" @click="u.retryRequest()">{{u.retryActionLabel}}</button></div>
   <p v-if="u.working" class="party-working" role="status"><template v-if="u.pendingInvite">正在等待{{u.pendingInvite.names.join('、')}}回信，可返回列表查看。</template><template v-else>正在处理，请稍候…</template> <button type="button" @click="u.stop()">停止请求</button></p>
   <template v-if="u.page==='list'">
    <p>邀请好友入座，一起玩一局。</p>
@@ -98,7 +101,7 @@ function waveRecords(round:ElevenRound){return round.waves||[];}
        <article v-for="wave in waveRecords(u.round)" :key="wave.number" class="party-panel"><h4>第 {{wave.number}} 波 · {{wave.status==='dealt'?'已统一发牌':'待发牌'}}</h4><div v-for="(speech,index) in wave.speeches" :key="speech.id+':'+index"><strong>{{u.name(speech.id)}}</strong><p>{{speech.text}}</p></div></article>
       </section>
     </template>
-    <template v-else-if="u.round.kind==='liar'"><LiarDiceTable :round="u.round" :participants="u.participants" :name="u.name" :working="u.working" v-model:draft="u.draft" @bid="u.liarBid" @open="u.liarOpen" @npc-action="u.npcAction" /></template>
+    <template v-else-if="u.round.kind==='liar'"><LiarDiceTable :round="u.round" :participants="u.participants" :name="u.name" :working="u.working" :error="u.error" v-model:draft="u.draft" @bid="u.liarBid" @open="u.liarOpen" @npc-action="u.npcAction" /></template>
     <template v-else>
      <div :key="u.room.id+':'+u.round.number+':'+u.round.target" class="party-bottle-stage" role="status" :aria-label="'酒瓶选中'+u.name(u.round.target)"><svg class="party-bottle" aria-hidden="true" viewBox="0 0 48 96" width="48" height="96"><path d="M18 4h12v26l9 14v40c0 5-5 8-15 8S9 89 9 84V44l9-14Z" fill="#316b61" stroke="#bad7bd" stroke-width="2"/><path d="M16 5h16v8H16Z" fill="#dab578"/><rect x="11" y="51" width="26" height="25" rx="2" fill="#e4d6af"/><path d="M24 57v13m-5-5 5 5 5-5" fill="none" stroke="#35554c" stroke-width="2"/></svg><p>瓶口指向：<strong>{{u.name(u.round.target)}}</strong></p></div>
      <article class="party-panel"><h3>本轮题卡</h3><p><strong>真心话</strong>　{{u.round.card.truth}}</p><p><strong>大冒险</strong>　{{u.round.card.dare}}</p></article>

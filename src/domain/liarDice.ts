@@ -2,7 +2,7 @@ import type {PartyRoom,PartyReply} from './partyGames';
 import type {TerminalAnchor} from './terminalLedger';
 
 export interface LiarBid {count:number;face:number;pure:boolean}
-export interface LiarMove {id:string;action:'bid'|'open';bid?:LiarBid;text:string;replies:PartyReply[];pending?:boolean}
+export interface LiarMove {id:string;action:'bid'|'open';bid?:LiarBid;text:string;replies:PartyReply[];pending?:boolean;replyWithNext?:boolean}
 export interface LiarRound {kind:'liar';number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[];rulesVersion:'liar-v1';dice:Record<string,number[]>;starter:string;turn:string;phase:'playing'|'complete';moves:LiarMove[];winner?:string;loser?:string;actual?:number}
 const fail=():never=>{throw Error('大话骰记录或叫号不正确');};
 const obj=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -14,6 +14,12 @@ export function isLegalLiarBid(previous:LiarBid|undefined,next:unknown,n:number)
  if(!validLiarBid(next,n))return false;if(!previous)return true;
  if(previous.pure===next.pure)return next.count>previous.count||next.count===previous.count&&next.face>previous.face;
  return previous.pure?next.count>=previous.count+2:next.count>=previous.count;
+}
+export function minimumLiarCount(previous:LiarBid|undefined,pure:boolean,face:number,n:number){
+ if(!Number.isInteger(face)||face<1||face>6)return Infinity;
+ if(!previous)return n;
+ if(previous.pure!==pure)return Math.max(n,previous.count+(previous.pure?2:0));
+ return Math.max(n,previous.count+(face<=previous.face?1:0));
 }
 export function legalLiarBids(previous:LiarBid|undefined,n:number){const bids:LiarBid[]=[];for(let count=n;count<=n*5;count++)for(const pure of [false,true])for(let face=1;face<=6;face++){const b={count,face,pure};if(isLegalLiarBid(previous,b,n))bids.push(b);}return bids;}
 export const liarBidLabel=(b:LiarBid)=>`${b.count}个${b.pure?'斋':'非'}${b.face}`;
@@ -33,13 +39,20 @@ export function applyLiarMove(room:PartyRoom,actor:string,action:'bid'|'open',bi
  const move:LiarMove={id:actor,action,...(action==='bid'?{bid:{...bid!}}:{}),text:textLine,replies:replies.map(x=>({...x})),pending:!replies.length};r.moves.push(move);
  if(action==='bid')r.turn=ids[(ids.indexOf(actor)+1)%ids.length];else{const actual=countLiarDice(r.dice,previous!.bid!);r.actual=actual;r.winner=actual>=previous!.bid!.count?previous!.id:actor;r.loser=r.winner===actor?previous!.id:actor;r.phase='complete';r.turn='';room.drunk[r.loser]=(room.drunk[r.loser]||0)+1;}return r;
 }
+/** Save the next NPC action and all table speech in the same commit as completing a player's bid. */
+export function applyLiarTurn(room:PartyRoom,actor:string,action:'bid'|'open',bid:LiarBid|undefined,replies:PartyReply[]){
+ const round=current(room),previous=round.moves.at(-1);checkReplies(replies,Object.keys(round.dice));
+ const folded=!!previous?.pending&&previous.id==='player'&&previous.action==='bid';
+ if(folded){previous!.pending=false;previous!.replyWithNext=true;}
+ try{return applyLiarMove(room,actor,action,bid,'',replies);}catch(error){if(folded){previous!.pending=true;delete previous!.replyWithNext;}throw error;}
+}
 export function completeLiarMove(room:PartyRoom,replies:PartyReply[]):LiarRound{const r=current(room),move=r.moves.at(-1);if(!move||!move.pending)throw Error('没有等待回应的行动');checkReplies(replies,Object.keys(r.dice));move.replies=replies.map(x=>({...x}));move.pending=false;return r;}
 export function validateLiarRound(value:unknown,participants:string[]):asserts value is LiarRound{
  keys(value,['kind','number','anchor','archived','rulesVersion','dice','starter','turn','phase','moves','winner','loser','actual']);const r=value as LiarRound;
  if(r.kind!=='liar'||r.rulesVersion!=='liar-v1'||!integer(r.number,1,500)||r.archived!==undefined&&typeof r.archived!=='boolean'||!obj(r.dice)||Object.keys(r.dice).length!==participants.length||participants.some(id=>!Object.hasOwn(r.dice,id))||!participants.includes(r.starter)||!['playing','complete'].includes(r.phase)||!Array.isArray(r.moves)||r.moves.length>500)fail();
  for(const dice of Object.values(r.dice))if(!Array.isArray(dice)||dice.length!==5||dice.some(v=>!integer(v,1,6)))fail();
  let turn=r.starter,previous:LiarMove|undefined,opened=false,winner:string|undefined,loser:string|undefined,actual:number|undefined;
- for(const [i,move]of r.moves.entries()){keys(move,['id','action','bid','text','replies','pending']);if(opened||move.id!==turn||!text(move.text,500)||typeof move.pending!=='boolean'||!Array.isArray(move.replies))fail();if(move.pending){if(i!==r.moves.length-1||move.replies.length)fail();}else checkReplies(move.replies,participants);
+ for(const [i,move]of r.moves.entries()){keys(move,['id','action','bid','text','replies','pending','replyWithNext']);if(opened||move.id!==turn||!text(move.text,500)||typeof move.pending!=='boolean'||!Array.isArray(move.replies))fail();if(move.replyWithNext!==undefined&&move.replyWithNext!==true)fail();if(move.replyWithNext){const next=r.moves[i+1];if(move.id!=='player'||move.action!=='bid'||move.pending||move.replies.length||!next||next.id==='player'||next.pending||next.replyWithNext)fail();}else if(move.pending){if(i!==r.moves.length-1||move.replies.length)fail();}else checkReplies(move.replies,participants);
   if(move.action==='bid'){if(!isLegalLiarBid(previous?.bid,move.bid,participants.length))fail();previous=move;turn=participants[(participants.indexOf(turn)+1)%participants.length];}
   else if(move.action==='open'){if(move.bid!==undefined||!previous||!previous.bid||previous.id===move.id)throw Error('无效开骰记录');opened=true;actual=countLiarDice(r.dice,previous.bid!);winner=actual>=previous.bid!.count?previous.id:move.id;loser=winner===move.id?previous.id:move.id;turn='';}else fail();
  }
