@@ -1,3 +1,4 @@
+import {diceSpeechFallback} from './diceSpeech.ts';
 export const elevenSpeechFallback='想看我的底牌？等亮牌再说。';
 
 const chineseDigits:Record<string,number>={零:0,〇:0,一:1,二:2,两:2,兩:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,壹:1,贰:2,貳:2,叁:3,參:3,肆:4,伍:5,陆:6,陸:6,柒:7,捌:8,玖:9};
@@ -22,7 +23,8 @@ function ownPoints(hand:readonly string[]):number|undefined{
  if(!Array.isArray(hand)||!hand.length||hand.length>5||new Set(hand).size!==hand.length)return;
  let units=0;for(const card of hand){const m=/^[SHCD]-(A|[2-9]|10|J|Q|K)$/.exec(card);if(!m)return;units+=m[1]==='A'?2:/[JQK]/.test(m[1])?1:Number(m[1])*2;}return units/2;
 }
-/** Bounded display grammar, not a guarantee against arbitrary ciphers or semantic innuendo.
+/** Legacy-only compatibility filter; new chat uses sanitizeElevenPublicLine and never emits a canned replacement.
+ * Bounded display grammar, not a guarantee against arbitrary ciphers or semantic innuendo.
  * Apply before writing replies to history/model context/memory; never store the rejected text.
  * Numeric mentions equal to the speaker's real score are conservatively blocked even without 点.
  * Explicit card/suit descriptions are blocked regardless of whether they are true.
@@ -39,4 +41,41 @@ export function sanitizeElevenSpeech(text:unknown,ownHand:readonly string[]):str
  const tokens=normalized.match(/\d+(?:[.点]\d+|点?半)?|[零〇一二两兩三四五六七八九十拾壹贰貳叁參肆伍陆陸柒捌玖]+(?:点(?:[零〇一二两兩三四五六七八九\d]+|半))?|半/g)||[];
  for(let token of tokens){if(token.endsWith('半')&&token!=='半'&&!token.endsWith('点半'))token=token.slice(0,-1)+'点半';token=token.replace('点', '.');if(/[一二两兩三四五六七八九十拾零〇壹贰貳叁參肆伍陆陸柒捌玖半]/.test(token))token=token.replace('.', '点');const value=numberValue(token);if(value!==undefined&&Math.abs(value-points)<1e-9)return elevenSpeechFallback;}
  return text.trim();
+}
+
+/** Modern chat never turns rejected private text into a fabricated character line. */
+export function isElevenSpeechPlaceholder(value:unknown){return typeof value==='string'&&[elevenSpeechFallback,diceSpeechFallback].includes(value.trim());}
+function publicNormalized(text:string){return text.normalize('NFKC').replace(/[\p{Cf}\p{M}]/gu,'').replace(/\s+/gu,'').replace(/([\d一二两兩三四五六七八九十])(?:½|1⁄2)/g,'$1点五').replace(/½|1⁄2/g,'0.5').replace(/[．。·]/g,'.').replace(/點/g,'点').replace(/(\d+)点五/g,'$1.5');}
+function explicitCards(text:string){
+ const normalized=publicNormalized(text);
+ return /[♠♥♡♣♦♤♧♢]|黑桃|红桃|紅桃|红心|紅心|梅花|草花|方片|方块|方塊|花色/i.test(normalized)||/(?:^|[^a-z])[SHCD][-:：]?(?:A|[2-9]|10|J|Q|K)(?![a-z])/i.test(normalized)||/(?:^|[^a-z])[AJQK](?![a-z])/i.test(normalized)||/(?:我的牌(?:是|有)?|底牌(?:是|有)?|手牌(?:是|有)?|拿到|拿了|抽到).{0,5}(?:10|[2-9二两兩三四五六七八九十])(?![张張])/.test(normalized)||/(?:10|[2-9二两兩三四五六七八九十])(?:和|加|、|,|，|与|與|\+)(?:10|[2-9二两兩三四五六七八九十])/.test(normalized);
+}
+function claimsOwnScore(text:string,points:number){
+ const normalized=publicNormalized(text),pattern=/\d+(?:[.点]\d+|点?半)?|[零〇一二两兩三四五六七八九十拾壹贰貳叁參肆伍陆陸柒捌玖]+(?:点(?:[零〇一二两兩三四五六七八九\d]+|半))?|半/g;
+ for(const match of normalized.matchAll(pattern)){
+  let token=match[0];if(token.endsWith('半')&&token!=='半'&&!token.endsWith('点半'))token=token.slice(0,-1)+'点半';const value=numberValue(token);if(value===undefined||Math.abs(value-points)>1e-9)continue;
+  const before=normalized.slice(0,match.index),after=normalized.slice(match.index!+match[0].length);
+  const explicit=match[0].includes('点')||match[0].includes('.')||/^(?:个)?点(?!钟|鐘)/.test(after),bare=/^(?:啊|呀|呢|吧|哦)?[.。！？!?，,；;]*$/.test(after);
+  const self=/(?:我|咱|本人|手里|手裡|手上|目前|现在|只有|才|总共|合计)[^。！？!?，,；;]{0,10}$/.test(before);
+  if((!before||self)&&(explicit||bare))return true;
+ }
+ return false;
+}
+export function sanitizeElevenPublicLine(value:unknown,hand:readonly string[],revealed=false):string{
+ if(typeof value!=='string'||!value.trim()||value.length>200||isElevenSpeechPlaceholder(value))return '';
+ const points=ownPoints(hand);if(points===undefined)return '';
+ if(/[<>【】*]|\\(?:u|x|n|r)|&#|%[a-f\d]{2}|内心(?:独白|想着|想道|盘算|活动)|(?:心里|心中)(?:想着|想道|盘算|计算|[:：])|心声|心理活动|思考过程|旁白|心想|暗想|暗自|OS\s*[:：]|[（(][^）)]*(?:心想|暗想|心理活动)/i.test(value)||/^[他她].{0,12}(?:说道|笑道|想着|挑眉|皱眉)/.test(value))return '';
+ if(revealed)return value.trim();
+ return (value.match(/[^。！？!?；;\n]+[。！？!?；;\n]?/gu)||[]).flatMap(sentence=>{
+  if(explicitCards(sentence))return [];
+  return (sentence.match(/[^，,]+[，,]?/gu)||[]).filter(part=>!claimsOwnScore(part,points));
+ }).join('').trim().replace(/^[，,；;]+/u,'').trim();
+}
+/** Repeated speakers are allowed; repeated long verbatim lines by one NPC in the same hand are not. */
+export function filterElevenDialogue(lines:readonly {id:string;text:string}[],history:readonly {id:string;text:string}[]=[]){
+ const key=(line:{id:string;text:string})=>line.id+'\u0000'+line.text.normalize('NFKC').replace(/\s+/gu,'').trim();
+ const long=(text:string)=>Array.from(text.replace(/[\s。！？!?，,；;、]/gu,'')).length>=8;
+ const seen=new Set(history.filter(line=>line.id!=='player'&&long(line.text)).map(key)),out:{id:string;text:string}[]=[];
+ for(const line of lines){if(line.id!=='player'&&(isElevenSpeechPlaceholder(line.text)||!line.text.trim()))continue;const k=key(line);if(line.id!=='player'&&long(line.text)){if(seen.has(k))continue;seen.add(k);}out.push({id:line.id,text:line.text});}
+ return out;
 }

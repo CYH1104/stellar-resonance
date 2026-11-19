@@ -1,3 +1,4 @@
+import {filterElevenDialogue} from './elevenSpeech.ts';
 import type {PartyRound,ElevenRound,TruthRound,PartyReply} from './partyGames';
 export interface DialogueLine {id:string;text:string}
 const valid=(line:PartyReply|undefined):line is DialogueLine=>!!line&&typeof line.id==='string'&&typeof line.text==='string'&&!!line.text.trim();
@@ -14,7 +15,7 @@ export function elevenDialogueLines(round:ElevenRound):DialogueLine[]{
  if(round.dialogueVersion===1)lines.push(...copy(round.replies));
  // Old completed records may hold public replies outside their wave history. Hide old unfinished replies.
  else if(round.phase==='complete')lines.push(...copy(round.replies));
- return lines;
+ return filterElevenDialogue(lines);
 }
 export function truthDialogueLines(round:TruthRound):DialogueLine[]{
  const choice=round.choiceDialogue?.version===1?copy(round.choiceDialogue.lines):[];

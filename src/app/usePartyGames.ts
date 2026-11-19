@@ -2,7 +2,7 @@ import type {GameDialogue} from '../domain/gameDialogue';
 import {rerollLiar,confirmLiarRoll,liarChallengeOptions,applyLiarMove,applyLiarTurn,completeLiarMove,lastLiarBid,liarBidLabel,type LiarRound,type LiarBid} from '../domain/liarDice';
 import {sanitizeDiceSpeech} from '../domain/diceSpeech';
 import {computed,ref,watch,onScopeDispose} from 'vue';
-import {sanitizeElevenSpeech} from '../domain/elevenSpeech';
+import {sanitizeElevenPublicLine,filterElevenDialogue} from '../domain/elevenSpeech';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../domain/requestTimeout';
 import type {ViewModel} from './useWorkspace';
 import {HttpGateway} from '../gateway/http';
@@ -73,15 +73,18 @@ export function usePartyGames(w:ViewModel){
 function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)return;roomId.value=id;draft.value='';if(!working.value){error.value='';retryAction=undefined;retryActionLabel.value='';}inviteTarget.value=null;inviteNote.value='';page.value=room.value?.endedAt?'history':'room';}
  async function afterEnd(){if(room.value?.endedAt){page.value='history';if(room.value.endReason==='drunk')await afterparty();}}
  const startOther=()=>run(async()=>{const r=activeRoom();if(partyParticipants(r).length<3)throw Error('至少需要两位好友接受邀请。');await ensureTolerance(r);await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;settlePartyEnd(rm,t.tolerances||{});if(!rm.endedAt)startPartyRound(rm,anchor);});if(room.value?.endedAt){await afterEnd();return;}draft.value='';page.value='play';});
- function elevenSpoken(text:string,id:string,round:ElevenRound){const spoken=sanitizeDiceSpeech(text);return round.phase==='complete'||elevenHandRank(round,round.hands[id]).kind==='bust'?spoken:sanitizeElevenSpeech(spoken,round.hands[id]);}
+ function elevenSpoken(text:string,id:string,round:ElevenRound){return sanitizeElevenPublicLine(text,round.hands[id],round.phase==='complete'||elevenHandRank(round,round.hands[id]).kind==='bust');}
  async function syncElevenBatch(){
   const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='eleven'||!rr.batch?.pending)throw Error('没有等待补全的角色回应。');
   const id=rm.id,fingerprint=JSON.stringify(rr),npcs=partyParticipants(rm).filter(id=>id!=='player'),missing=partyParticipants(rm).filter(id=>tolerance(id)===undefined),w=rr.waves!.at(-1)!;
-  const result=await request('party-eleven-batch',npcs,'一次返回全部角色的公开发言和下一步要牌决定；如有玩家留言须自然回应，允许诈唬，不要内心独白或真实报牌。',{party:{kind:'eleven',limitHalf:elevenLimitHalf(rr),round:rr.number,wave:w.number,phase:rr.phase,banker:rr.banker,participants:partyParticipants(rm).map(id=>({id,name:name(id)})),privateHands:npcs.map(id=>({id,hand:rr.hands[id],stopped:rr.stopped.includes(id),...(rr.phase==='playing'&&w.choices[id]?{lockedChoice:w.choices[id]}:{})})),missingTolerances:missing,publicTable:partyParticipants(rm).map(id=>({id,cardCount:rr.hands[id].length,stopped:rr.stopped.includes(id),...(elevenHandRank(rr,rr.hands[id]).kind==='bust'?{bust:true,hand:[...rr.hands[id]],score:elevenHandRank(rr,rr.hands[id]).halfPoints/2}:{})})),...(rr.phase==='complete'?{settlement:isElevenAllBust(rr)?{kind:'all-bust'}:{kind:'winner',winner:rr.winner}}:{}),publicLines:(rr.waves||[]).flatMap(x=>x.speeches).slice(-24),playerInput:rr.batch.playerInput}});
+  const result=await request('party-eleven-batch',npcs,'一次返回全部角色的公开发言和下一步要牌决定；如有玩家留言须自然回应，允许诈唬，不要内心独白或真实报牌。',{party:{kind:'eleven',limitHalf:elevenLimitHalf(rr),round:rr.number,wave:w.number,phase:rr.phase,banker:rr.banker,participants:partyParticipants(rm).map(id=>({id,name:name(id)})),privateHands:npcs.map(id=>({id,hand:rr.hands[id],stopped:rr.stopped.includes(id),...(rr.phase==='playing'&&w.choices[id]?{lockedChoice:w.choices[id]}:{})})),missingTolerances:missing,publicTable:partyParticipants(rm).map(id=>({id,cardCount:rr.hands[id].length,stopped:rr.stopped.includes(id),...(elevenHandRank(rr,rr.hands[id]).kind==='bust'?{bust:true,hand:[...rr.hands[id]],score:elevenHandRank(rr,rr.hands[id]).halfPoints/2}:{})})),...(rr.phase==='complete'?{settlement:isElevenAllBust(rr)?{kind:'all-bust'}:{kind:'winner',winner:rr.winner}}:{}),publicLines:filterElevenDialogue((rr.waves||[]).flatMap(x=>x.speeches)).slice(-24),playerInput:rr.batch.playerInput}});
   if(JSON.stringify(round.value)!==fingerprint)throw Error('本轮牌局已改变，角色回应未保存。');
-  const dialogue:GameDialogue|undefined=result.dialogue?{version:1,lines:result.dialogue.lines.map((line:{id:string;text:string})=>({id:line.id,text:elevenSpoken(line.text,line.id,rr)}))}:undefined;
-   const rows=result.characters.map((row:{id:string;choice:'hit'|'stand'|null;text:string})=>({...row,text:row.text?elevenSpoken(row.text,row.id,rr):''}));
-  await write(t=>{const r=t.partyRooms!.find(r=>r.id===id)!;t.tolerances||={};for(const a of result.tolerances||[])if(missing.includes(a.id)&&t.tolerances[a.id]===undefined)t.tolerances[a.id]=a.value;
+  const prior=[...(rr.waves||[]).flatMap(wave=>wave.speeches),...(rr.batch.finalReplies||[]),...(rr.replies||[])];
+   const candidates=result.dialogue?.lines||result.characters.filter((row:{text?:string})=>row.text).map((row:{id:string;text:string})=>({id:row.id,text:row.text}));
+   const lines=filterElevenDialogue(candidates.map((line:{id:string;text:string})=>({id:line.id,text:elevenSpoken(line.text,line.id,rr)})).filter((line:{text:string})=>line.text),prior);
+   const dialogue:GameDialogue={version:1,lines};
+   const rows=result.characters.map((row:{id:string;choice:'hit'|'stand'|null;text:string})=>({...row,text:lines.find(line=>line.id===row.id)?.text||''}));
+   await write(t=>{const r=t.partyRooms!.find(r=>r.id===id)!;t.tolerances||={};for(const a of result.tolerances||[])if(missing.includes(a.id)&&t.tolerances[a.id]===undefined)t.tolerances[a.id]=a.value;
    if(missing.some(id=>t.tolerances![id]===undefined))throw Error('酒量结果不完整，请重试本轮回应。');applyElevenBatchResult(r,rows,dialogue);settlePartyEnd(r,t.tolerances||{});
   },!!rm.endedAt);
   await afterEnd();
