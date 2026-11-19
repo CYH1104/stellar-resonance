@@ -1,6 +1,7 @@
+import {rememberCompletionErrorContext,upstreamErrorDetail} from './upstream-error-detail.mjs';
 import {outputParsingTags} from '../src/domain/outputParsing.ts';
 import {cleanSceneSnapshot} from '../src/domain/storyScene.ts';
-import {completionRejectionReason,textCompletionMessages,completionRequestShape,completionHttpCode,classifyCompletionRejection} from './completion-errors.mjs';
+import {completionRejectionDetails,textCompletionMessages,completionRequestShape,completionHttpCode,classifyCompletionRejection} from './completion-errors.mjs';
 import {isTerminalCodePath,validTerminalCode} from '../src/domain/terminalCodeVariables.ts';
 import {cleanTerminalBatch} from '../src/domain/terminalMain.ts';
 import {playerIdentityContext} from './player-identity.mjs';
@@ -462,7 +463,7 @@ export async function* completionChunks(response,{reasoningFilter=new ReasoningF
       if(!format&&buffer.length>8192)throw modelError(502,'INVALID_MODEL_RESPONSE');
       if(ended&&!format){const tail=finish();if(tail)yield tail;return;}
     }
-    const errorEvent=value=>{if(value?.error){const reason=classifyCompletionRejection(JSON.stringify(value).slice(0,16384));throw Object.assign(modelError(502,'UPSTREAM_FAILED'),reason?{reason}:{});}};
+    const errorEvent=(value,explicit=false)=>{if(value?.error||value?.type==='error'||explicit){const reason=classifyCompletionRejection(JSON.stringify(value).slice(0,16384));throw Object.assign(modelError(502,'UPSTREAM_FAILED'),reason?{reason}:{},upstreamErrorDetail(value,response));}};
     if(format==='json'){
       while(!ended){const next=await read();buffer+=decoder.decode(next.value,{stream:!next.done});ended=next.done;}
       let value;try{value=JSON.parse(buffer);}catch{throw modelError(502,'INVALID_MODEL_RESPONSE');}
@@ -474,7 +475,7 @@ export async function* completionChunks(response,{reasoningFilter=new ReasoningF
       const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');
       if(!data)return {visible:'',end:false};if(data==='[DONE]')return {visible:'',end:true};
       let event;try{event=JSON.parse(data);}catch{throw modelError(502,'INVALID_MODEL_RESPONSE');}
-      errorEvent(event);
+      errorEvent(event,block.split('\n').some(line=>/^event:\s*error\s*$/i.test(line)));
       const choice=event?.choices?.[0];return {visible:accept(choice),end:!!choice?.finish_reason};
     };
     while(true){
@@ -496,6 +497,7 @@ export async function openCompletion({connection,key,profile,messages,signal,fet
   const body={model:profile.model,messages:textMessages,temperature:profile.temperature,max_tokens:profile.maxTokens,...sampling,stream:true};
   try{response=await fetchImpl(connection.url,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify(body)});}
   catch(error){if(signal.reason?.name==='TimeoutError')throw modelError(504,'MODEL_TIMEOUT');if(signal.aborted)throw error;throw modelError(502,'MODEL_UNREACHABLE');}
-  if(!response.ok){const reason=await completionRejectionReason(response);throw Object.assign(modelError(502,completionHttpCode(response.status)),{upstreamStatus:response.status,...([400,422].includes(response.status)||response.status>=500?{requestShape:completionRequestShape(body)}:{}),...(reason?{reason}:{})});}
+  const errorContext={secrets:[key],requestTexts:textMessages.map(message=>message.content)};rememberCompletionErrorContext(response,errorContext);
+  if(!response.ok){const details=await completionRejectionDetails(response,errorContext);throw Object.assign(modelError(502,completionHttpCode(response.status)),{upstreamStatus:response.status,...([400,422].includes(response.status)||response.status>=500?{requestShape:completionRequestShape(body)}:{}),...details});}
   return response;
 }

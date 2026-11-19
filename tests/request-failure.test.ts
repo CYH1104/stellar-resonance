@@ -9,7 +9,7 @@ const profile=()=>({...defaults().profiles[0],model:'actual-embedding-model',api
 it('identifies the actual auxiliary model and port without URL credentials or keys',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:'MODEL_TIMEOUT',detail:'synthetic-secret'}),{status:504}));
  const p=profile();let text='';try{await new HttpGateway().embed(['test'],p,'synthetic-secret',new AbortController().signal);}catch(e){text=(e as Error).message;}
- expect(text).toContain('模型：actual-embedding-model');expect(text).toContain('任务：向量模型');expect(text).toContain('接口：https://relay.example:8443');expect(text).toContain('端口：8443');expect(text).toContain('10 分钟');expect(text).not.toContain('synthetic-secret');
+ expect(text).toContain('模型：actual-embedding-model');expect(text).toContain('任务：向量模型');expect(text).toContain('接口：https://relay.example:8443');expect(text).not.toContain('端口：');expect(text).toContain('10 分钟');expect(text).not.toContain('synthetic-secret');
 });
 it('captures the failing model before edits and supplies the default HTTPS port',async()=>{
  const p={...profile(),apiBaseUrl:'https://user:synthetic-secret@relay.example/v1'};
@@ -17,7 +17,7 @@ it('captures the failing model before edits and supplies the default HTTPS port'
  vi.stubGlobal('fetch',()=>new Promise<Response>(resolve=>{release=resolve;}));
  const result=new HttpGateway().probe(p,'synthetic-secret','text',new AbortController().signal).catch(e=>(e as Error).message);
  p.model='later-edited-model';p.apiBaseUrl='https://new.example';release(new Response('{}',{status:502}));const text=await result;
- expect(text).toContain('actual-embedding-model');expect(text).toContain('端口：443');expect(text).toContain('relay.example');expect(text).not.toMatch(/later-edited|new.example|synthetic-secret|user:/);
+ expect(text).toContain('actual-embedding-model');expect(text).not.toContain('端口：');expect(text).toContain('relay.example');expect(text).not.toMatch(/later-edited|new.example|synthetic-secret|user:/);
 });
 it('includes source context for SSE failures and interruptions',async()=>{
  const request={sessionId:'s',turnId:'t',persona:{name:'玩家'},state:initialState('玩家'),profile:profile()} as GenerateRequest;

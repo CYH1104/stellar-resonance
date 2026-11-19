@@ -4,7 +4,7 @@ import {createLocalServer} from '../server/app.mjs';import {defaultTheaters} fro
 test('real HTTP providers: switching the same API slot changes endpoint, model and key; late old failure and cancellation cannot redirect the next call',async()=>{
  const calls=[],waiters=[];let releaseSlow,slowStarted;const started=new Promise(resolve=>slowStarted=resolve);
  const provider=createServer(async(req,res)=>{let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);calls.push({path:req.url,key:req.headers.authorization,body});
-  if(req.url==='/a'&&body.max_tokens!==512){slowStarted();await new Promise(resolve=>{releaseSlow=resolve;waiters.push(resolve);});res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'system message not supported PRIVATE_PROVIDER_CONTENT'}}));return;}
+  if(req.url==='/a'&&body.max_tokens!==512){slowStarted();await new Promise(resolve=>{releaseSlow=resolve;waiters.push(resolve);});res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'system message not supported synthetic-key-a'}}));return;}
   // B uses a visible text-completion field and a wrong SSE MIME on its JSON.
   const content='合成正文。<SR_STATE>{"event":"合成推进"}</SR_STATE><SR_DONE>';
   res.writeHead(200,{'Content-Type':req.url==='/b'?'text/event-stream':'application/json'});res.end(JSON.stringify({choices:[req.url==='/b'?{text:content}:{message:{content}}]}));
@@ -22,7 +22,7 @@ test('real HTTP providers: switching the same API slot changes endpoint, model a
   const old=post('/api/generate',{...request,profile:profileA,key:'synthetic-key-a'});await started;
   assert.equal((await post('/api/connection',{profileId:'main',apiBaseUrl:profileB.apiBaseUrl})).status,200);
   const next=await post('/api/generate',{...request,profile:profileB,key:'synthetic-key-b'});assert.equal(next.status,200);assert.ok((await next.text()).includes('合成正文'));
-  releaseSlow();const failed=await old,result=await failed.json();assert.equal(result.upstreamStatus,500);assert.equal(result.code,'UPSTREAM_SERVER_ERROR');assert.equal(result.reason,'UPSTREAM_MESSAGE_ROLES');assert.equal(result.requestShape.toolFields,0);assert.ok(result.requestShape.system>=1);assert.ok(!JSON.stringify(result).includes('PRIVATE_PROVIDER'));
+  releaseSlow();const failed=await old,result=await failed.json();assert.equal(result.upstreamStatus,500);assert.equal(result.code,'UPSTREAM_SERVER_ERROR');assert.equal(result.reason,'UPSTREAM_MESSAGE_ROLES');assert.equal(result.requestShape.toolFields,0);assert.ok(result.requestShape.system>=1);assert.ok(result.upstreamMessage.includes('system message not supported'));assert.ok(!JSON.stringify(result).includes('synthetic-key-a'));
   assert.deepEqual(calls.map(c=>[c.path,c.body.model,c.key]),[['/a','model-a','Bearer synthetic-key-a'],['/a','model-a','Bearer synthetic-key-a'],['/b','model-b','Bearer synthetic-key-b']]);
   assert.equal((await post('/api/generate',{...request,profile:profileA,key:'synthetic-key-a'})).status,412);assert.equal(calls.length,3);
   const cancelled=new AbortController();cancelled.abort();await assert.rejects(()=>post('/api/generate',{...request,profile:profileB,key:'synthetic-key-b'},cancelled.signal),e=>e.name==='AbortError');

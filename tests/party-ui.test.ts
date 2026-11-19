@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-import {createSSRApp,ref} from 'vue';
+import {createSSRApp,defineComponent,h,ref} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {defaults,newSession} from '../src/domain/story';
 import {emptyTerminal} from '../src/domain/personalTerminal';
@@ -72,4 +72,10 @@ it('shows the real drunkenness progress after starting instead of hiding it alto
  const current=room('truth','已开始转瓶');const round:TruthRound={kind:'truth',number:1,target:'a',card:{id:'card',truth:'最开心的事？',dare:'讲一个笑话。'},phase:'choose'};current.rounds=[round];current.drunk.a=1;
  const stub=partyStub([current],current,'play');stub.tolerance=()=>5;controllers.party.mockReturnValue(stub);
  const html=await renderParty('truth');expect(html).toContain('aria-label="参与者醉酒度与酒量"');expect(html).toMatch(/<progress\b[^>]*value="1"[^>]*max="5"/);expect(html).not.toContain('待确认');
+});
+
+it('offers atmosphere presets without submitting and keeps manual edits',async()=>{
+ const stub=partyStub([],undefined,'create');controllers.party.mockReturnValue(stub);let state:any;
+ const Harness=defineComponent({setup(){state=(PartyGameRoom as any).setup({w:workspace(),kind:'truth',active:true},{expose(){},emit(){}});return ()=>h('div');}});await renderToString(createSSRApp(Harness));
+ for(const preset of ['搞笑','休闲','欢乐','暧昧']){state.selectAtmosphere(preset);expect(stub.style.value).toBe(preset);}expect(stub.create).not.toHaveBeenCalled();stub.style.value='欢乐，带一点暧昧';const html=await renderParty('truth');expect(html).toContain('欢乐，带一点暧昧');expect(html).toContain('maxlength="40"');for(const preset of ['搞笑','休闲','欢乐','暧昧'])expect(html).toMatch(new RegExp('<button[^>]*type="button"[^>]*>'+preset+'</button>'));stub.working.value=true;state.selectAtmosphere('搞笑');expect(stub.style.value).toBe('欢乐，带一点暧昧');
 });

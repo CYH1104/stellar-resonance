@@ -15,7 +15,7 @@ test('game interaction parses multiple paragraphs intact and only lets present N
 
 import {openCompletion,completionChunks} from '../server/ai.mjs';
 test('upstream refusal retains HTTP status without exposing provider secrets',async()=>{
- await assert.rejects(openCompletion({connection:{url:'https://example.invalid'},key:'private',profile:{model:'model',temperature:1,maxTokens:100},messages:[],signal:new AbortController().signal,fetchImpl:async()=>new Response('provider secret',{status:400})}),e=>e.code==='UPSTREAM_REJECTED'&&e.upstreamStatus===400&&!JSON.stringify(e).includes('provider secret'));
+ await assert.rejects(openCompletion({connection:{url:'https://example.invalid'},key:'private',profile:{model:'model',temperature:1,maxTokens:100},messages:[],signal:new AbortController().signal,fetchImpl:async()=>new Response('provider secret',{status:400})}),e=>e.code==='UPSTREAM_REJECTED'&&e.upstreamStatus===400&&e.upstreamMessage==='provider secret'&&!JSON.stringify(e).includes('private'));
 });
 test('empty output distinguishes exhausted output budget and refusal',async()=>{
  for(const [message,finish_reason,code] of [[{content:null},'length','MODEL_OUTPUT_LIMIT'],[{content:null,refusal:'no'},'stop','MODEL_REFUSAL'],[{content:null},'stop','MODEL_EMPTY_RESPONSE']]){

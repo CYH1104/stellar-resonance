@@ -13,8 +13,8 @@ test('text requests contain only roles and verbatim text, without tool/function 
  assert.deepEqual(sent.messages,[{role:'user',content}]);for(const field of ['tools','tool_choice','function_call','functions'])assert.equal(field in sent,false);
  assert.throws(()=>textCompletionMessages([{role:'tool',content:'result'}]),/INVALID_TEXT_MESSAGES/);
 });
-test('a tool refusal reaches the HTTP error as a safe category and keeps the original status',async()=>{
- await assert.rejects(()=>openCompletion({connection:{url:'https://synthetic.example/v1/chat/completions'},key:'synthetic-key',profile:{model:'synthetic',temperature:1,maxTokens:4096},messages:[{role:'user',content:'text'}],signal:new AbortController().signal,fetchImpl:async()=>Response.json({error:{message:'Tool calling is not supported PRIVATE_PROMPT PRIVATE_KEY'}},{status:400})}),e=>e.code==='UPSTREAM_REJECTED'&&e.upstreamStatus===400&&e.reason==='UPSTREAM_TOOL_CALLS_UNSUPPORTED'&&!JSON.stringify(e).includes('PRIVATE'));
+test('a tool refusal preserves its message and HTTP status while redacting the actual credential',async()=>{
+ await assert.rejects(()=>openCompletion({connection:{url:'https://synthetic.example/v1/chat/completions'},key:'synthetic-key',profile:{model:'synthetic',temperature:1,maxTokens:4096},messages:[{role:'user',content:'text'}],signal:new AbortController().signal,fetchImpl:async()=>Response.json({error:{message:'Tool calling is not supported synthetic-key'}},{status:400})}),e=>e.code==='UPSTREAM_REJECTED'&&e.upstreamStatus===400&&e.reason==='UPSTREAM_TOOL_CALLS_UNSUPPORTED'&&e.upstreamMessage.includes('Tool calling is not supported')&&!JSON.stringify(e).includes('synthetic-key'));
 });
 test('500 errors keep safe nested reasons and serialized request counts without leaking content or keys',async()=>{
  const messages=[{role:'system',content:'PRIVATE_SYSTEM'},{role:'assistant',content:'PRIVATE_HISTORY'},{role:'system',content:'PRIVATE_WORLD'},{role:'user',content:' '}];

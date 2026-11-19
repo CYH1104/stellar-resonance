@@ -35,7 +35,7 @@ function fakeFetch(url,options){
   }
   const payload=JSON.parse(options.body);calls.push({url,...options,payload});
   if(payload.model.startsWith('probe-')){
-    if(payload.model==='probe-auth')return new Response('synthetic-private-key-and-error',{status:401});
+    if(payload.model==='probe-auth')return new Response('Credential rejected synthetic-key',{status:401});
     if(payload.model==='probe-network')throw new TypeError('synthetic-private-network-detail');
     if(Array.isArray(payload.input))return new Response(JSON.stringify({data:[{index:0,embedding:[0.5,0.1,0.2]}]}));
     return new Response(JSON.stringify({choices:[{message:payload.model==='probe-reasoning'?{reasoning_content:'synthetic-private-thought',content:null}:{content:'OK'}}]}),{headers:{'Content-Type':'application/json'}});
@@ -61,7 +61,7 @@ function fakeFetch(url,options){
     const {wish}=JSON.parse(action);const persona=wish==='bad-persona'?{name:'新生',privateWorldbook:'不能返回'}:{name:'林星',appearance:'黑发',personality:'慢热',background:'入学新生',spiritAnimal:'白色小猫',other:'喜欢安静'};
     return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(persona)}}]}),{headers:{'Content-Type':'application/json'}});
   }
-  if(action==='auth-error')return new Response('synthetic-key-and-private-internal',{status:401});
+  if(action==='auth-error')return new Response('Credential rejected synthetic-key',{status:401});
   if(payload.messages.some(m=>m.role==='user'&&m.content==='invalid'))return new Response(JSON.stringify({choices:[{message:{content:'正文仍可阅读，但状态不合法。<SR_STATE>{"presentCharacterIds":["invented"],"event":"错误"}</SR_STATE>'}}]}),{headers:{'Content-Type':'application/json'}});
   const ids=action==='leave'?[]:['pro-02'];
   const context=JSON.parse(payload.messages[2].content.split(':\n')[1]),plan=context.dicePlan;
@@ -110,7 +110,7 @@ test('next model full scene clears departed actors, independent of mentioned nam
   const r=await request('leave');r.state.characters[1].present=true;const result=events(await(await post('/api/generate',r)).text());assert.ok(result.at(-1).outcome.characters.every(c=>c.present===false));
 });
 test('invalid state emits a precise reason after bounded repairs and no committed update',async()=>{const count=calls.length;const result=events(await(await post('/api/generate',await request('invalid'))).text());assert.equal(calls.length-count,4);assert.equal(result.at(-1).type,'error');assert.equal(result.at(-1).code,'STATE_REPAIR_LIMIT');assert.equal(result.at(-1).reasonCode,'UNKNOWN_MODEL_CHARACTER');assert.ok(!result.some(e=>e.type==='done'));assert.ok(!JSON.stringify(result).includes('invented'));});
-test('upstream error bodies and credentials are not returned',async()=>{const response=await post('/api/generate',await request('auth-error'));assert.equal(response.status,502);const failure=await response.json();assert.deepEqual(failure,{code:'UPSTREAM_AUTH',upstreamStatus:401});assert.ok(!JSON.stringify(failure).includes('synthetic-key'));});
+test('upstream error text is returned while the actual credential is hidden',async()=>{const response=await post('/api/generate',await request('auth-error'));assert.equal(response.status,502);const failure=await response.json();assert.deepEqual(failure,{code:'UPSTREAM_AUTH',upstreamStatus:401,upstreamMessage:'Credential rejected [已隐藏凭据]'});assert.ok(!JSON.stringify(failure).includes('synthetic-key'));});
 test('client roster, changed endpoints, missing keys and unconfigured embeddings are rejected',async()=>{
   assert.equal((await post('/api/generate',{...await request(),presentCharacterIds:['pro-01']})).status,400);
   assert.equal((await post('/api/generate',{...await request(),profile:{...profile,apiBaseUrl:'https://other.example/v1'}})).status,412);
@@ -208,7 +208,7 @@ test('probe performs one small real text or embedding call before configuration,
 });
 test('probe exposes safe specific failures and rejects unsafe URLs or missing credentials before fetching',async()=>{
   for(const [model,code]of [['probe-auth','UPSTREAM_AUTH'],['probe-network','MODEL_UNREACHABLE'],['probe-reasoning','MODEL_REASONING_ONLY']]){
-    const r=await post('/api/probe',{profile:{...profile,model},key:'synthetic-key',kind:'text'});assert.equal(r.status,502);assert.deepEqual(await r.json(),{code,...(model==='probe-auth'?{upstreamStatus:401}:{})});
+    const r=await post('/api/probe',{profile:{...profile,model},key:'synthetic-key',kind:'text'});assert.equal(r.status,502);assert.deepEqual(await r.json(),{code,...(model==='probe-auth'?{upstreamStatus:401,upstreamMessage:'Credential rejected [已隐藏凭据]'}:{})});
   }
   const count=calls.length;
   for(const body of [{profile:{...profile,apiBaseUrl:'https://secret@example.com/v1'},key:'synthetic-key',kind:'text'},{profile,key:'',kind:'text'},{profile,key:'synthetic-key',kind:'unsupported'}])assert.equal((await post('/api/probe',body)).status,400);

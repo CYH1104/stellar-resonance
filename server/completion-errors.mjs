@@ -1,3 +1,4 @@
+import {upstreamErrorDetail} from './upstream-error-detail.mjs';
 /** Return only fixed diagnostic categories. Provider text may echo a private
  * prompt or credential and must never be forwarded, persisted or logged. */
 function classifySingleRejection(body){
@@ -35,14 +36,13 @@ export function classifyCompletionRejection(body){
  }
  return undefined;
 }
-export async function completionRejectionReason(response){
- if(response.status<400||!response.body){void response.body?.cancel().catch(()=>{});return undefined;}
+export async function completionRejectionDetails(response,context={}){
+ if(response.status<400||!response.body){void response.body?.cancel().catch(()=>{});return {};}
  const reader=response.body.getReader();let timer;
- try{
-  const read=async()=>{let size=0,text='';const decoder=new TextDecoder();while(true){const {value,done}=await reader.read();if(done)return classifyCompletionRejection(text+decoder.decode());size+=value.byteLength;if(size>16384)return undefined;text+=decoder.decode(value,{stream:true});}};
-  return await Promise.race([read().catch(()=>undefined),new Promise(resolve=>{timer=setTimeout(()=>resolve(undefined),750);})]);
- }finally{clearTimeout(timer);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
+ try{const read=async()=>{let size=0,body='';const decoder=new TextDecoder();while(true){const part=await reader.read();if(part.done){body+=decoder.decode();const reason=classifyCompletionRejection(body);return {...(reason?{reason}:{}),...upstreamErrorDetail(body,context)};}size+=part.value.byteLength;if(size>16384)return {};body+=decoder.decode(part.value,{stream:true});}};return await Promise.race([read().catch(()=>({})),new Promise(resolve=>{timer=setTimeout(()=>resolve({}),750);})]);}
+ finally{clearTimeout(timer);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
 }
+export async function completionRejectionReason(response){return (await completionRejectionDetails(response)).reason;}
 /** Metadata about the serialized request only; never include message text, URLs,
  * model names, credentials or provider strings in this object. */
 export function completionRequestShape(body){

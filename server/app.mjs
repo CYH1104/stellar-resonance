@@ -2,7 +2,7 @@ import {cleanOutputParsing,outputParsingTags} from '../src/domain/outputParsing.
 import {createCloudBackup} from './cloud-backup.mjs';
 import {cleanCompletionRequestShape} from '../src/domain/completionRequestShape.ts';
 const upstreamStatusField=error=>Number.isInteger(error?.upstreamStatus)&&error.upstreamStatus>=100&&error.upstreamStatus<=599?{upstreamStatus:error.upstreamStatus}:{};
-const completionFailureFields=error=>{const requestShape=cleanCompletionRequestShape(error?.requestShape);return {...upstreamStatusField(error),...(typeof error?.reason==='string'?{reason:error.reason}:{}),...(requestShape?{requestShape}:{})};};
+const completionFailureFields=error=>{const requestShape=cleanCompletionRequestShape(error?.requestShape);return {...upstreamStatusField(error),...(Number.isInteger(error?.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?{providerStatus:error.providerStatus}:{}),...(typeof error?.providerCode==='string'&&error.providerCode.length<=120?{providerCode:error.providerCode}:{}),...(typeof error?.upstreamMessage==='string'&&error.upstreamMessage.length<=4100?{upstreamMessage:error.upstreamMessage}:{}),...(typeof error?.reason==='string'?{reason:error.reason}:{}),...(requestShape?{requestShape}:{})};};
 import {majorCharacter} from '../src/domain/characterImages.ts';
 import {terminalCodeBindings} from '../src/domain/terminalCodeVariables.ts';
 import {terminalCodePrompt} from './terminal-codes.mjs';
