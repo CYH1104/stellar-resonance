@@ -10,7 +10,7 @@ it('uses exact half-points and the agreed hierarchy and eleven suit counts',()=>
  const flower=['S-J','S-Q','S-K','H-J','H-Q'],five=['S-A','H-A','C-A','D-A','D-J'],eleven=['S-10','S-A','H-J'];
  expect(compareHands(flower,five)).toBeGreaterThan(0);expect(compareHands(five,eleven)).toBeGreaterThan(0);expect(compareHands(eleven,['S-10','H-A'])).toBeGreaterThan(0);
  expect(compareHands(['S-10','S-A','H-J'],['H-10','H-A','S-J'])).toBeGreaterThan(0);
- expect(compareHands(['S-10','H-A','C-J'],['S-9','H-2','C-Q'])).toBe(0);
+ expect(compareHands(['S-10','H-A','C-J'],['S-9','H-2','C-Q'])).toBeGreaterThan(0);
  expect(handRank(['S-10','H-2']).kind).toBe('bust');expect(()=>handRank(['S-A','S-A'])).toThrow();
 });
 it('locks the deal, partitions the deck and acts in seat order with banker last',()=>{
@@ -25,10 +25,11 @@ it('settles one global winner, penalizes all losers once and keeps or advances b
  const snapshot=JSON.stringify(r);expect(()=>elevenAct(r,'player','stand')).toThrow();expect(JSON.stringify(r)).toBe(snapshot);
  customHands(r,{player:['S-8'],a:['H-10'],b:['C-9']});standAll(r);expect(r.bankerIndex).toBe(1);expect(r.drunk).toEqual({player:1,a:1,b:2});
 });
-it('gives exact ties to banker or first seat after banker, and all bust to banker',()=>{
+it('keeps exact maximum-card ties on banker/seat priority and gives no winner when everyone busts',()=>{
  const r=room();customHands(r,{player:['S-10'],a:['H-10'],b:['C-10']});expect(standAll(r).winner).toBe('player');
- const x=room();customHands(x,{player:['S-8'],a:['H-10'],b:['C-10']});expect(standAll(x).winner).toBe('a');
- const y=room();customHands(y,{player:['S-10','H-10'],a:['C-10','D-10'],b:['S-9','H-9']});expect(standAll(y).winner).toBe('player');expect(y.drunk).toEqual({player:0,a:1,b:1});
+ const tied=room();customHands(tied,{player:['S-8'],a:['H-10'],b:['C-10']});expect(standAll(tied).winner).toBe('a');
+ const x=room();const allBust=customHands(x,{player:['S-10','H-10'],a:['C-9','D-9'],b:['S-8','C-8']});while(allBust.phase==='playing')elevenAct(x,allBust.turn,'stand');expect(allBust.outcome).toBe('all-bust');expect(allBust.winner).toBeUndefined();expect(x.drunk).toEqual({player:1,a:1,b:1});expect(x.bankerIndex).toBe(0);expect(validatePartyRooms([x])).toEqual([x]);
+ const y=room();customHands(y,{player:['S-A','H-9'],a:['C-10','D-8'],b:['S-9','H-8']});expect(standAll(y).winner).toBe('player');expect(y.drunk).toEqual({player:0,a:1,b:1});
 });
 it('automatically stops at eleven and at five cards and completes the banker rotation',()=>{
  const r=room();const round=customHands(r,{player:['D-2'],a:['S-10','H-A'],b:['C-2']});round.deck=round.deck.filter(c=>c!=='S-J');round.deck.push('S-J');elevenAct(r,'a','hit');expect(round.stopped).toContain('a');expect(round.turn).toBe('b');

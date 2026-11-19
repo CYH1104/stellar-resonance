@@ -8,7 +8,7 @@ export interface PartyReply {id:string;text:string}
 interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[];dialogueVersion?:1}
 export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt';dialogueVersion?:1}
 export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:string;finalReplies?:PartyReply[];dialogueVersion?:1}
-export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
+export interface ElevenRound extends RoundBase {kind:'eleven';rulesVersion?:'eleven-v2';outcome?:'all-bust';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
 export interface TruthCard {id:string;truth:string;dare:string}
 export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;choiceDialogue?:GameDialogue;dialogue?:GameDialogue;phase:'choose'|'respond'|'complete'}
 export type PartyRound=ElevenRound|TruthRound|LiarRound;
@@ -28,33 +28,42 @@ export function handRank(hand:readonly string[]):HandRank{
  const kind=halfPoints>23?'bust':hand.length===5&&parsed.every(([,r])=>/[JQK]/.test(r))?'flowers':hand.length===5?'five':halfPoints===23?'eleven':'ordinary';
  return {kind,category:{bust:0,ordinary:1,eleven:2,five:3,flowers:4}[kind],halfPoints};
 }
-/** Positive means a beats b. Ties are resolved by room seat/banker priority, never by suits except 11.5. */
+/** Positive means a beats b. Version 2 first compares the highest single-card value for tied hand types/total points. */
 export function compareHands(a:readonly string[],b:readonly string[]){
- const x=handRank(a),y=handRank(b);if(x.category!==y.category)return x.category-y.category;
- if(x.kind==='eleven'){for(const suit of suits){const delta=a.filter(c=>c.startsWith(suit+'-')).length-b.filter(c=>c.startsWith(suit+'-')).length;if(delta)return delta;}return 0;}
- return x.kind==='ordinary'||x.kind==='five'?x.halfPoints-y.halfPoints:0;
+ return compareHandsVersion(a,b,true);
 }
+function highestCardValue(hand:readonly string[]){return Math.max(...hand.map(card=>{const rank=parseCard(card)[1];return rank==='A'?2:/[JQK]/.test(rank)?1:Number(rank)*2;}));}
+function compareHandsVersion(a:readonly string[],b:readonly string[],version2:boolean){
+ const x=handRank(a),y=handRank(b);if(x.category!==y.category)return x.category-y.category;
+ if(x.kind==='eleven'){
+  if(version2){const high=highestCardValue(a)-highestCardValue(b);if(high)return high;}
+  for(const suit of suits){const delta=a.filter(c=>c.startsWith(suit+'-')).length-b.filter(c=>c.startsWith(suit+'-')).length;if(delta)return delta;}return 0;
+ }
+ if(x.kind==='ordinary'||x.kind==='five'){
+  const total=x.halfPoints-y.halfPoints;if(total)return total;
+  if(version2)return highestCardValue(a)-highestCardValue(b);
+ }
+ return 0;
+}
+function compareHandsLegacy(a:readonly string[],b:readonly string[]){return compareHandsVersion(a,b,false);}
+function allBust(round:ElevenRound){return Object.values(round.hands).length>0&&Object.values(round.hands).every(hand=>handRank(hand).kind==='bust');}
+export function isElevenAllBust(round:ElevenRound){return round.outcome==='all-bust';}
+export function elevenHandVisible(round:ElevenRound,id:string){const hand=round.hands[id];return !!hand&&(id==='player'||round.phase==='complete'||handRank(hand).kind==='bust');}
 /** Explain the already-settled result without choosing a different winner. */
 export function elevenWinnerReason(round:ElevenRound):string{
- if(round.phase!=='complete'||!round.winner)return '本局尚未结算。';
- const ids=Object.keys(round.hands),winner=round.winner;if(!ids.includes(winner)||!ids.includes(round.banker))return '结算信息不完整。';
- const rank=handRank(round.hands[winner]),others=ids.filter(id=>id!==winner);
- if(ids.every(id=>handRank(round.hands[id]).kind==='bust'))return '所有人均已爆牌，不比较爆牌后的点数，按现行规则由庄家优先获胜。';
- let opponent=others[0];for(const id of others.slice(1))if(compareHands(round.hands[id],round.hands[opponent])>0)opponent=id;
- if(!opponent)return '本局只有一位参与者。';
- const other=handRank(round.hands[opponent]),tied=compareHands(round.hands[winner],round.hands[opponent])===0;
- if(tied){
-  const same=rank.kind==='eleven'?'同为11.5点且♠、♥、♣、♦张数完全相同':'同牌型、同点数';
-  return same+(winner===round.banker?'，按现行规则庄家优先获胜。':'且庄家不在最高并列中，按庄家后的既定座位顺序决定赢家。');
- }
+ if(round.phase!=='complete')return '本局尚未结算。';
+ if(isElevenAllBust(round))return '全员爆牌，本局无胜负，每位参与者各喝一杯，庄位保持不变。';
+ const ids=Object.keys(round.hands),winner=round.winner;if(!winner||!ids.includes(winner)||!ids.includes(round.banker))return '结算信息不完整。';
+ const v2=round.rulesVersion==='eleven-v2',compare=v2?compareHands:compareHandsLegacy,rank=handRank(round.hands[winner]),others=ids.filter(id=>id!==winner);
+ if(allBust(round))return '历史旧局按旧规则结算：全员爆牌均为最低牌型，原记录由庄家优先获胜。';
+ let opponent=others[0];for(const id of others.slice(1))if(compare(round.hands[id],round.hands[opponent])>0)opponent=id;if(!opponent)return '本局只有一位参与者。';
+ const other=handRank(round.hands[opponent]),high=highestCardValue(round.hands[winner]),otherHigh=highestCardValue(round.hands[opponent]);
+ if(v2&&rank.kind===other.kind&&rank.halfPoints===other.halfPoints&&high!==otherHigh)return '同牌型、同总点数，比较最大单张：'+high/2+'点大于'+otherHigh/2+'点。';
+ if(compare(round.hands[winner],round.hands[opponent])===0){const same=rank.kind==='eleven'?'同为11.5点'+(v2?'且最大单张相同':'')+'，花色张数也相同':'同牌型、同点数'+(v2?'且最大单张相同':'');return same+(winner===round.banker?'，庄家优先。':'，庄家不在最高并列中，按庄家后座位顺序决定赢家。')+(v2?'':'（历史旧规则）');}
  if(rank.kind==='flowers')return '五花牌优先于五张不过、十一点半和普通牌。';
- if(rank.kind==='five')return other.kind==='five'?`同为五张不过，比较点数，赢家为${rank.halfPoints/2}点。`:'五张不过优先于普通十一点半、普通点数和爆牌。';
- if(rank.kind==='eleven'){
-  if(other.kind!=='eleven')return '普通十一点半优先于未达到十一点半的普通牌和爆牌。';
-  const symbols={S:'♠',H:'♥',C:'♣',D:'♦'};
-  for(const suit of suits){const left=round.hands[winner].filter(c=>c.startsWith(suit+'-')).length,right=round.hands[opponent].filter(c=>c.startsWith(suit+'-')).length;if(left!==right)return `同为11.5点，依次比较♠、♥、♣、♦张数；赢家在${symbols[suit]}张数上占优（${left}对${right}）。`;}
- }
- return other.kind==='bust'?`赢家为未爆牌的${rank.halfPoints/2}点，其他人均已爆牌。`:`未爆牌的普通牌按点数比较，${rank.halfPoints/2}点更大。`;
+ if(rank.kind==='five')return other.kind==='five'?'同为五张不过，比较总点数，'+rank.halfPoints/2+'点更大。':'五张不过优先于普通十一点半、普通牌和爆牌。';
+ if(rank.kind==='eleven'){if(other.kind!=='eleven')return '十一点半优先于未达到十一点半的普通牌和爆牌。';const symbols={S:'♠',H:'♥',C:'♣',D:'♦'};for(const suit of suits){const left=round.hands[winner].filter(c=>c.startsWith(suit+'-')).length,right=round.hands[opponent].filter(c=>c.startsWith(suit+'-')).length;if(left!==right)return '同为11.5点'+(v2?'且最大单张相同':'')+'，依次比较♠、♥、♣、♦张数；赢家在'+symbols[suit]+'张数上占优（'+left+'对'+right+'）。';}}
+ return other.kind==='bust'?'赢家为未爆牌的'+rank.halfPoints/2+'点，其余人均已爆牌。':'未爆牌的普通牌按总点数比较，'+rank.halfPoints/2+'点更大。';
 }
 function randomIndex(n:number){const bytes=new Uint32Array(1),limit=Math.floor(0x100000000/n)*n;do{crypto.getRandomValues(bytes);}while(bytes[0]>=limit);return bytes[0]%n;}
 function pick(n:number,random:PartyRandom){const value=random(n);if(!Number.isInteger(value)||value<0||value>=n)throw Error('随机来源不正确');return value;}
@@ -109,20 +118,26 @@ export function startPartyRound(room:PartyRoom,anchor?:TerminalAnchor,random:Par
   if(room.bankerOrder.length!==participants.length||room.bankerOrder.some(id=>!participants.includes(id)))throw Error('本局坐庄开始后不能改变参与者');
   const banker=room.bankerOrder[room.bankerIndex||0];if(!banker||!participants.includes(banker))throw Error('坐庄顺序已结束或参与者变化');
   const deck=shuffled(cards,random),hands:Record<string,string[]>={};for(const id of participants)hands[id]=[deck.pop()!];
-  round={kind:'eleven',number:room.rounds.length+1,banker,deck,hands,stopped:[],turn:'',phase:'playing',flow:'waves-v1',waves:[{number:1,choices:{},speeches:[],status:'deciding'}]};
+  round={kind:'eleven',rulesVersion:'eleven-v2',number:room.rounds.length+1,banker,deck,hands,stopped:[],turn:'',phase:'playing',flow:'waves-v1',waves:[{number:1,choices:{},speeches:[],status:'deciding'}]};
  }
  if(anchor)round.anchor=structuredClone(anchor);room.rounds.push(round);return round;
 }
 function settleEleven(room:PartyRoom,round:ElevenRound){
- const ids=Object.keys(round.hands),priority=[round.banker,...seatsAfter(ids,round.banker).filter(id=>id!==round.banker)];let winner=priority[0];
- for(const id of priority.slice(1))if(compareHands(round.hands[id],round.hands[winner])>0)winner=id;
- round.winner=winner;round.phase='complete';round.turn='';for(const id of ids)if(id!==winner)room.drunk[id]=(room.drunk[id]||0)+1;
+ const ids=Object.keys(round.hands),v2=round.rulesVersion==='eleven-v2';round.turn='';round.phase='complete';
+ if(v2&&allBust(round)){round.outcome='all-bust';delete round.winner;for(const id of ids)room.drunk[id]=(room.drunk[id]||0)+1;return;}
+ delete round.outcome;const priority=[round.banker,...seatsAfter(ids,round.banker).filter(id=>id!==round.banker)];let winner=priority[0];
+ const compare=v2?compareHands:compareHandsLegacy;for(const id of priority.slice(1))if(compare(round.hands[id],round.hands[winner])>0)winner=id;
+ round.winner=winner;for(const id of ids)if(id!==winner)room.drunk[id]=(room.drunk[id]||0)+1;
  if(winner!==round.banker)room.bankerIndex=(room.bankerIndex||0)+1;
  if((room.bankerIndex||0)>=(room.bankerOrder?.length||0)){room.endedAt=new Date().toISOString();room.endReason='bankers-complete';}
 }
+
 export function elevenAct(room:PartyRoom,actor:string,action:'hit'|'stand'):ElevenRound{
  const round=current(room);if(room.endedAt||round.kind!=='eleven'||round.flow!==undefined||round.phase!=='playing'||round.turn!==actor||!['hit','stand'].includes(action))throw Error('不是该角色的行动阶段');
- if(action==='hit'){if(round.hands[actor].length>=5||!round.deck.length)throw Error('不能继续要牌');round.hands[actor].push(round.deck.pop()!);const rank=handRank(round.hands[actor]);if(rank.halfPoints>=23||round.hands[actor].length===5)round.stopped.push(actor);}
+ if(action==='hit'&&(round.hands[actor].length>=5||!round.deck.length))throw Error('不能继续要牌');
+  if(round.rulesVersion!==undefined&&round.rulesVersion!=='eleven-v2'||round.outcome!==undefined)fail();
+  if(round.rulesVersion===undefined)round.rulesVersion='eleven-v2';
+  if(action==='hit'){if(round.hands[actor].length>=5||!round.deck.length)throw Error('不能继续要牌');round.hands[actor].push(round.deck.pop()!);const rank=handRank(round.hands[actor]);if(rank.halfPoints>=23||round.hands[actor].length===5)round.stopped.push(actor);}
  else round.stopped.push(actor);
  if(round.stopped.includes(actor)){const next=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(next)round.turn=next;else settleEleven(room,round);}
  return round;
@@ -131,7 +146,9 @@ export function elevenAct(room:PartyRoom,actor:string,action:'hit'|'stand'):Elev
 export function ensureElevenWaves(room:PartyRoom):ElevenRound{
  const round=current(room);if(round.kind!=='eleven')throw Error('不是十一点半牌局');
  if(round.phase==='complete')return round;
- if(room.endedAt)throw Error('游戏已结束，只能回看');
+  if(room.endedAt)throw Error('游戏已结束，只能回看');
+  if(round.rulesVersion===undefined)round.rulesVersion='eleven-v2';
+  if(round.outcome!==undefined||round.rulesVersion!=='eleven-v2')fail();
  if(round.flow===undefined){round.flow='waves-v1';round.turn='';round.waves=[{number:1,choices:{},speeches:[],status:'deciding'}];}
  return round;
 }
@@ -205,6 +222,13 @@ function afterparty(value:unknown,room:PartyRoom){
  if(a.scenes!==undefined){if(!Array.isArray(a.scenes)||!a.scenes.length||a.scenes.length>8||new Set(a.scenes.map(s=>s?.actorId)).size!==a.scenes.length)fail();for(const s of a.scenes){keys(s,['actorId','status','participants','text','summary','error','draft']);if(!participants.includes(s.actorId)||!['pending','ready','failed'].includes(s.status)||!ids(s.participants,1,2)||!s.participants.includes('player')||s.participants.some(id=>!participants.includes(id))||s.actorId!=='player'&&!s.participants.includes(s.actorId)||s.text!==undefined&&!text(s.text,8000)||s.draft!==undefined&&!text(s.draft,8000)||s.summary!==undefined&&!text(s.summary,400)||s.error!==undefined&&!text(s.error,2000)||s.status==='ready'&&(!s.text||s.text.replace(/\s/gu,'').length<1200))fail();}if(a.status==='ready'&&a.scenes.some(s=>s.status!=='ready'))fail();}
  else if(a.status==='ready'&&(!a.text||a.text.replace(/\s/gu,'').length<1200))fail();
 }
+function validateElevenResult(round:ElevenRound){
+ if(round.rulesVersion!==undefined&&round.rulesVersion!=='eleven-v2')fail();
+ if(round.phase==='playing'){if(round.winner!==undefined||round.outcome!==undefined)fail();return;}
+ if(round.rulesVersion==='eleven-v2'&&allBust(round)){if(round.outcome!=='all-bust'||round.winner!==undefined)fail();return;}
+ if(round.outcome!==undefined||!round.winner)fail();
+ const ids=Object.keys(round.hands),priority=[round.banker,...seatsAfter(ids,round.banker).filter(id=>id!==round.banker)],compare=round.rulesVersion==='eleven-v2'?compareHands:compareHandsLegacy;let winner=priority[0];for(const id of priority.slice(1))if(compare(round.hands[id],round.hands[winner])>0)winner=id;if(round.winner!==winner)fail();
+}
 function validateElevenWaves(round:ElevenRound){
  if(round.flow!=='waves-v1'||round.turn!==''||!Array.isArray(round.waves)||!round.waves.length||round.waves.length>5)fail();
  const participants=Object.keys(round.hands),npcs=participants.filter(id=>id!=='player'),waves=round.waves!;
@@ -235,7 +259,7 @@ function validateElevenWaves(round:ElevenRound){
   if(wave.status==='dealt')for(const id of active){if(wave.choices[id]==='stand')stopped.add(id);else{hands[id].push(round.hands[id][hands[id].length]);if(hands[id].length>5)fail();if(hands[id].length===5||handRank(hands[id]).halfPoints>=23)stopped.add(id);}}
  }
  if(participants.some(id=>hands[id].length!==round.hands[id].length)||stopped.size!==round.stopped.length||round.stopped.some(id=>!stopped.has(id)))fail();
- if(round.phase==='playing'&&(round.winner!==undefined||stopped.size===participants.length)||round.phase==='complete'&&(!round.winner||stopped.size!==participants.length))fail();
+ if(round.phase==='playing'&&(round.winner!==undefined||stopped.size===participants.length)||round.phase==='complete'&&(!round.winner&&!isElevenAllBust(round)||stopped.size!==participants.length))fail();
 }
 
 export function markElevenBatch(room:PartyRoom,playerInput=''){
@@ -299,7 +323,7 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
   const usedTruth=new Set<string>();let lastNumber=0;
   for(const round of room.rounds){
     if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);if(round.dialogueVersion!==undefined)validateRoundReplies(round,participants);continue;}
-   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','target','card','choice','text','refused','phase']);
+   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch','rulesVersion','outcome']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
    validateRoundReplies(round,participants);
    if(round.kind==='truth'){
@@ -311,13 +335,14 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
     if(!Object.hasOwn(round.hands,round.banker)||round.phase==='playing'&&!room.endedAt&&Object.keys(round.hands).length!==participants.length)fail();
     const dealt=Object.values(round.hands);if(dealt.some(hand=>!Array.isArray(hand)||hand.length<1||hand.length>5))fail();const partition=[...round.deck,...dealt.flat()];if(partition.length!==52||new Set(partition).size!==52||partition.some(c=>!cards.includes(c)))fail();
     if(round.flow!==undefined||round.waves!==undefined)validateElevenWaves(round);
-     else if(round.phase==='playing'&&(!Object.hasOwn(round.hands,round.turn)||round.stopped.includes(round.turn)||round.winner!==undefined)||round.phase==='complete'&&(round.turn!==''||!round.winner||round.stopped.length!==dealt.length))fail();
+     else if(round.phase==='playing'&&(!Object.hasOwn(round.hands,round.turn)||round.stopped.includes(round.turn)||round.winner!==undefined)||round.phase==='complete'&&(round.turn!==''||!round.winner&&!isElevenAllBust(round)||round.stopped.length!==dealt.length))fail();
     if(round.flow===undefined&&round.phase==='playing'){const expected=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(round.turn!==expected)fail();for(const [id,hand]of Object.entries(round.hands))if((hand.length===5||handRank(hand).halfPoints>=23)&&!round.stopped.includes(id))fail();}
     validateElevenBatch(round);
-     if(round.phase==='complete'){const priority=[round.banker,...seatsAfter(Object.keys(round.hands),round.banker).filter(id=>id!==round.banker)];let winner=priority[0];for(const id of priority.slice(1))if(compareHands(round.hands[id],round.hands[winner])>0)winner=id;if(round.winner!==winner)fail();}
+     validateElevenResult(round);
    }
   }
-  if(active.slice(0,-1).some(r=>r.phase!=='complete'))fail();if(room.afterparty!==undefined){if(room.endReason!=='drunk')fail();afterparty(room.afterparty,room);validateAfterpartyCallback?.(room.afterparty,room);}
+  for(const id of participants){const voidCups=active.filter(r=>r.kind==='eleven'&&r.rulesVersion==='eleven-v2'&&r.phase==='complete'&&r.outcome==='all-bust'&&Object.hasOwn(r.hands,id)).length;if((room.drunk[id]||0)<voidCups)fail();}
+   if(active.slice(0,-1).some(r=>r.phase!=='complete'))fail();if(room.afterparty!==undefined){if(room.endReason!=='drunk')fail();afterparty(room.afterparty,room);validateAfterpartyCallback?.(room.afterparty,room);}
  }
  return value as PartyRoom[];
 }

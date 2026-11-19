@@ -45,7 +45,7 @@ it('direct modern moves can finish silently, and player/unknown speaker/version 
 });
 function completed(hands:ElevenRound['hands'],banker='player'):ElevenRound{return {kind:'eleven',number:1,banker,hands,deck:[],stopped:Object.keys(hands),turn:'',phase:'complete',winner:banker};}
 it('winner explanations reflect all-bust and tie priorities without changing settled results',()=>{
- const all=completed({player:['S-10','H-10'],a:['C-9','D-9']});const before=JSON.stringify(all);expect(elevenWinnerReason(all)).toContain('所有人均已爆牌');expect(elevenWinnerReason(all)).toContain('庄家优先');expect(JSON.stringify(all)).toBe(before);
+ const all=completed({player:['S-10','H-10'],a:['C-9','D-9']});const before=JSON.stringify(all);expect(elevenWinnerReason(all)).toContain('旧规则');expect(elevenWinnerReason(all)).toContain('全员爆牌');expect(elevenWinnerReason(all)).toContain('庄家优先');expect(JSON.stringify(all)).toBe(before);
  expect(elevenWinnerReason(completed({player:['S-10'],a:['H-10']}))).toContain('庄家优先');
  const suits=completed({player:['S-10','S-A','H-J'],a:['H-10','H-A','S-J']});expect(elevenWinnerReason(suits)).toContain('♠');expect(elevenWinnerReason(suits)).toContain('张数上占优');
  expect(elevenWinnerReason(completed({player:['S-10'],a:['H-9']}))).toContain('10点更大');
