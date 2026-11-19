@@ -63,7 +63,7 @@ it('shows one-step player actions, carries the draft and keeps opponents’ card
   expect(html).toContain('3 点');
   expect(html).toContain('甲的暗牌，共2张');
   expect(html).toContain('我可没有说过自己牌小。');
-  for (const secret of ['♥9', '♦Q', '♠K', '♣8', 'H-9', 'D-Q', '9.5 点', '8.5 点', 'LEGACY_PRIVATE_REPLY', '已停牌</small>']) {
+  for (const secret of ['♥9', '♦Q', '♠K', '♣8', 'H-9', 'D-Q', '9.5 点', '8.5 点', 'LEGACY_PRIVATE_REPLY']) {
     expect(html).not.toContain(secret);
   }
   expect(html).not.toMatch(/\b(?:choices|hit|stand)\b/);
@@ -144,9 +144,10 @@ it('shows final replies alongside the completed result and in game history', asy
   for (const page of ['play', 'history'] as const) {
     stub.page.value = page;
     const html = await render();
-    expect(html).toContain('本局结束回应');
-    expect(html).toContain('这局我服。');
-    expect(html).toContain('差一点就赢了。');
+    expect(html).not.toContain('本局结束回应');
+    const plainText=html.replace(/<[^>]*>/g,'');
+    expect(plainText).toContain('甲：这局我服。');
+    expect(plainText).toContain('乙：差一点就赢了。');
     expect(html).toContain('♥9');
     expect(html).toContain('我可没有说过自己牌小。');
     expect(labels(html)).not.toContain(retry);

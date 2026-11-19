@@ -1,15 +1,16 @@
 import {startLiarRound,validateLiarRound,type LiarRound} from './liarDice.ts';
+import {validateGameDialogue,type GameDialogue} from './gameDialogue.ts';
 import type {KingAfterparty} from './personalTerminal';
 import type {TerminalAnchor} from './terminalLedger';
 
 export type PartyKind='eleven'|'truth'|'liar';
 export interface PartyReply {id:string;text:string}
-interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[]}
-export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt'}
-export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:string;finalReplies?:PartyReply[]}
+interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[];dialogueVersion?:1}
+export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt';dialogueVersion?:1}
+export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:string;finalReplies?:PartyReply[];dialogueVersion?:1}
 export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
 export interface TruthCard {id:string;truth:string;dare:string}
-export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;phase:'choose'|'respond'|'complete'}
+export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;choiceDialogue?:GameDialogue;dialogue?:GameDialogue;phase:'choose'|'respond'|'complete'}
 export type PartyRound=ElevenRound|TruthRound|LiarRound;
 export interface PartyRoom {version:1;id:string;kind:PartyKind;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;inviteReplies:Record<string,string>;inviteNotes?:Record<string,string>;rounds:PartyRound[];drunk:Record<string,number>;endedAt?:string;endReason?:'drunk'|'manual'|'round-limit'|'bankers-complete';endTriggers?:string[];afterparty?:KingAfterparty;bankerOrder?:string[];bankerIndex?:number}
 export type PartyRandom=(n:number)=>number;
@@ -32,6 +33,28 @@ export function compareHands(a:readonly string[],b:readonly string[]){
  const x=handRank(a),y=handRank(b);if(x.category!==y.category)return x.category-y.category;
  if(x.kind==='eleven'){for(const suit of suits){const delta=a.filter(c=>c.startsWith(suit+'-')).length-b.filter(c=>c.startsWith(suit+'-')).length;if(delta)return delta;}return 0;}
  return x.kind==='ordinary'||x.kind==='five'?x.halfPoints-y.halfPoints:0;
+}
+/** Explain the already-settled result without choosing a different winner. */
+export function elevenWinnerReason(round:ElevenRound):string{
+ if(round.phase!=='complete'||!round.winner)return '本局尚未结算。';
+ const ids=Object.keys(round.hands),winner=round.winner;if(!ids.includes(winner)||!ids.includes(round.banker))return '结算信息不完整。';
+ const rank=handRank(round.hands[winner]),others=ids.filter(id=>id!==winner);
+ if(ids.every(id=>handRank(round.hands[id]).kind==='bust'))return '所有人均已爆牌，不比较爆牌后的点数，按现行规则由庄家优先获胜。';
+ let opponent=others[0];for(const id of others.slice(1))if(compareHands(round.hands[id],round.hands[opponent])>0)opponent=id;
+ if(!opponent)return '本局只有一位参与者。';
+ const other=handRank(round.hands[opponent]),tied=compareHands(round.hands[winner],round.hands[opponent])===0;
+ if(tied){
+  const same=rank.kind==='eleven'?'同为11.5点且♠、♥、♣、♦张数完全相同':'同牌型、同点数';
+  return same+(winner===round.banker?'，按现行规则庄家优先获胜。':'且庄家不在最高并列中，按庄家后的既定座位顺序决定赢家。');
+ }
+ if(rank.kind==='flowers')return '五花牌优先于五张不过、十一点半和普通牌。';
+ if(rank.kind==='five')return other.kind==='five'?`同为五张不过，比较点数，赢家为${rank.halfPoints/2}点。`:'五张不过优先于普通十一点半、普通点数和爆牌。';
+ if(rank.kind==='eleven'){
+  if(other.kind!=='eleven')return '普通十一点半优先于未达到十一点半的普通牌和爆牌。';
+  const symbols={S:'♠',H:'♥',C:'♣',D:'♦'};
+  for(const suit of suits){const left=round.hands[winner].filter(c=>c.startsWith(suit+'-')).length,right=round.hands[opponent].filter(c=>c.startsWith(suit+'-')).length;if(left!==right)return `同为11.5点，依次比较♠、♥、♣、♦张数；赢家在${symbols[suit]}张数上占优（${left}对${right}）。`;}
+ }
+ return other.kind==='bust'?`赢家为未爆牌的${rank.halfPoints/2}点，其他人均已爆牌。`:`未爆牌的普通牌按点数比较，${rank.halfPoints/2}点更大。`;
 }
 function randomIndex(n:number){const bytes=new Uint32Array(1),limit=Math.floor(0x100000000/n)*n;do{crypto.getRandomValues(bytes);}while(bytes[0]>=limit);return bytes[0]%n;}
 function pick(n:number,random:PartyRandom){const value=random(n);if(!Number.isInteger(value)||value<0||value>=n)throw Error('随机来源不正确');return value;}
@@ -113,11 +136,23 @@ export function ensureElevenWaves(room:PartyRoom):ElevenRound{
  return round;
 }
 function decidingWave(room:PartyRoom){const round=ensureElevenWaves(room),wave=round.waves?.at(-1);if(round.phase!=='playing'||round.flow!=='waves-v1'||!wave||wave.status!=='deciding')throw Error('当前波次不能修改');return {round,wave};}
+function waveSpeechReady(wave:ElevenWave,npcs:string[]){
+ if(wave.dialogueVersion===undefined)return npcs.every(id=>wave.speeches.some(line=>line.id===id));
+ const npcLines=wave.speeches.filter(line=>line?.id!=='player');
+ validateGameDialogue({version:wave.dialogueVersion,lines:npcLines},npcs);
+ const playerLines=wave.speeches.filter(line=>line?.id==='player');
+ if(wave.playerText?.trim()){
+  const line=playerLines[0];
+  if(playerLines.length!==1||line.text!==wave.playerText||Object.keys(line).some(k=>k!=='id'&&k!=='text'))fail();
+ }else if(playerLines.length)fail();
+ return true;
+}
 export function elevenWaveChoice(room:PartyRoom,actor:string,choice:'hit'|'stand'):ElevenRound{
  const {round,wave}=decidingWave(room);
  if(!Object.hasOwn(round.hands,actor)||round.stopped.includes(actor)||Object.hasOwn(wave.choices,actor)||!['hit','stand'].includes(choice)||round.hands[actor].length>=5||handRank(round.hands[actor]).halfPoints>=23)throw Error('该角色已锁定选择或无需继续选择');
+ const speechReady=waveSpeechReady(wave,Object.keys(round.hands).filter(id=>id!=='player'));
  wave.choices[actor]=choice;
- if(Object.keys(round.hands).filter(id=>id!=='player').every(id=>wave.speeches.some(s=>s.id===id))&&Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id)))wave.status='ready';
+ if(speechReady&&Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>['hit','stand'].includes(wave.choices[id])))wave.status='ready';
  return round;
 }
 export function elevenWaveSpeech(room:PartyRoom,speeches:PartyReply[]):ElevenRound{
@@ -126,14 +161,14 @@ export function elevenWaveSpeech(room:PartyRoom,speeches:PartyReply[]):ElevenRou
  if(wave.playerText!==undefined&&((wave.playerText.trim()?speeches.find(s=>s.id==='player')?.text!==wave.playerText:speeches.some(s=>s.id==='player'))))throw Error('不能改写玩家已锁定的发言');
  if(wave.speeches.length&&JSON.stringify(wave.speeches)!==JSON.stringify(speeches))throw Error('本波公开发言已经锁定');
  wave.speeches=speeches.map(s=>({...s}));if(wave.playerText===undefined)wave.playerText=wave.speeches.find(s=>s.id==='player')?.text||'';
- if(participants.filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id)))wave.status='ready';
+ if(participants.filter(id=>!round.stopped.includes(id)).every(id=>['hit','stand'].includes(wave.choices[id])))wave.status='ready';
  return round;
 }
 export function advanceElevenWave(room:PartyRoom):ElevenRound{
  const round=ensureElevenWaves(room),wave=round.waves?.at(-1);
- if(round.phase!=='playing'||!wave||wave.status!=='ready')throw Error('本波尚未完成选择和公开发言');
+ if(round.phase!=='playing'||round.batch?.pending||!wave||wave.status!=='ready')throw Error('本波尚未完成选择和公开发言');
  const participants=room.members.filter(id=>Object.hasOwn(round.hands,id)),active=participants.filter(id=>!round.stopped.includes(id));
- if(active.some(id=>!Object.hasOwn(wave.choices,id))||participants.filter(id=>id!=='player').some(id=>!wave.speeches.some(s=>s.id===id)))throw Error('本波选择或发言缺失');
+ if(active.some(id=>!['hit','stand'].includes(wave.choices[id]))||!waveSpeechReady(wave,participants.filter(id=>id!=='player')))throw Error('本波选择或发言缺失');
  for(const id of active){if(wave.choices[id]==='stand')round.stopped.push(id);else{if(round.hands[id].length>=5||!round.deck.length)throw Error('不能继续发牌');round.hands[id].push(round.deck.pop()!);if(round.hands[id].length===5||handRank(round.hands[id]).halfPoints>=23)round.stopped.push(id);}}
  wave.status='dealt';
  if(participants.every(id=>round.stopped.includes(id)))settleEleven(room,round);
@@ -174,13 +209,17 @@ function validateElevenWaves(round:ElevenRound){
  if(round.flow!=='waves-v1'||round.turn!==''||!Array.isArray(round.waves)||!round.waves.length||round.waves.length>5)fail();
  const participants=Object.keys(round.hands),npcs=participants.filter(id=>id!=='player'),waves=round.waves!;
  for(const [i,wave]of waves.entries()){
-  keys(wave,['number','choices','speeches','playerText','status']);
+  keys(wave,['number','choices','speeches','playerText','status','dialogueVersion']);
   if(wave.playerText!==undefined&&!text(wave.playerText,500))fail();
-  if(wave.number!==i+1||!obj(wave.choices)||Object.entries(wave.choices).some(([id,choice])=>!participants.includes(id)||!['hit','stand'].includes(choice))||!Array.isArray(wave.speeches)||wave.speeches.length>participants.length||new Set(wave.speeches.map(s=>s?.id)).size!==wave.speeches.length||!['deciding','ready','dealt'].includes(wave.status))fail();
-  for(const speech of wave.speeches){keys(speech,['id','text']);if(!participants.includes(speech.id)||!text(speech.text,3000,false))fail();}
-  if((wave.status!=='deciding'||wave.speeches.length>0)&&npcs.some(id=>!wave.speeches.some(s=>s.id===id)))fail();
-  if(wave.speeches.length&&wave.playerText!==undefined&&(wave.playerText.trim()?wave.speeches.find(s=>s.id==='player')?.text!==wave.playerText:wave.speeches.some(s=>s.id==='player')))fail();
-  if(i<waves.length-1&&wave.status!=='dealt'||i===waves.length-1&&(round.phase==='complete'?wave.status!=='dealt':wave.status==='dealt'))fail();
+  if(wave.number!==i+1||!obj(wave.choices)||Object.entries(wave.choices).some(([id,choice])=>!participants.includes(id)||!['hit','stand'].includes(choice))||!Array.isArray(wave.speeches)||!['deciding','ready','dealt'].includes(wave.status))fail();
+   if(wave.dialogueVersion!==undefined){waveSpeechReady(wave,npcs);}
+   else{
+    if(wave.speeches.length>participants.length||new Set(wave.speeches.map(s=>s?.id)).size!==wave.speeches.length)fail();
+    for(const speech of wave.speeches){keys(speech,['id','text']);if(!participants.includes(speech.id)||!text(speech.text,3000,false))fail();}
+    if((wave.status!=='deciding'||wave.speeches.length>0)&&!waveSpeechReady(wave,npcs))fail();
+    if(wave.speeches.length&&wave.playerText!==undefined&&(wave.playerText.trim()?wave.speeches.find(s=>s.id==='player')?.text!==wave.playerText:wave.speeches.some(s=>s.id==='player')))fail();
+   }
+   if(i<waves.length-1&&wave.status!=='dealt'||i===waves.length-1&&(round.phase==='complete'?wave.status!=='dealt':wave.status==='dealt'))fail();
  }
  // Replay only known wave draws from the existing hand prefixes. A migrated legacy hand may
  // start with several cards or already-stopped people; it is never presumed to start at one.
@@ -191,8 +230,8 @@ function validateElevenWaves(round:ElevenRound){
  for(const wave of waves){
   const active=participants.filter(id=>!stopped.has(id));
   if(Object.keys(wave.choices).some(id=>stopped.has(id))||active.some(id=>(hands[id].length>=5||handRank(hands[id]).halfPoints>=23)))fail();
-  if(wave.status!=='deciding'&&active.some(id=>!Object.hasOwn(wave.choices,id)))fail();
-  if(wave.status==='ready'&&npcs.some(id=>!wave.speeches.some(s=>s.id===id)))fail();
+  if(wave.status!=='deciding'&&active.some(id=>!['hit','stand'].includes(wave.choices[id])))fail();
+
   if(wave.status==='dealt')for(const id of active){if(wave.choices[id]==='stand')stopped.add(id);else{hands[id].push(round.hands[id][hands[id].length]);if(hands[id].length>5)fail();if(hands[id].length===5||handRank(hands[id]).halfPoints>=23)stopped.add(id);}}
  }
  if(participants.some(id=>hands[id].length!==round.hands[id].length)||stopped.size!==round.stopped.length||round.stopped.some(id=>!stopped.has(id)))fail();
@@ -207,34 +246,48 @@ export function markElevenBatch(room:PartyRoom,playerInput=''){
 }
 export function elevenBatchPrepared(round:ElevenRound){
  if(round.batch?.pending)return false;const wave=round.waves?.at(-1),npcs=Object.keys(round.hands).filter(id=>id!=='player');
- return round.phase==='playing'&&!!wave&&npcs.every(id=>wave.speeches.some(s=>s.id===id))&&npcs.filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id));
+ return round.phase==='playing'&&!!wave&&waveSpeechReady(wave,npcs)&&npcs.filter(id=>!round.stopped.includes(id)).every(id=>['hit','stand'].includes(wave.choices[id]));
 }
-export function applyElevenBatchResult(room:PartyRoom,rows:{id:string;choice:'hit'|'stand'|null;text:string}[]){
+export function applyElevenBatchResult(room:PartyRoom,rows:{id:string;choice:'hit'|'stand'|null;text?:string}[],dialogue?:GameDialogue){
  const round=current(room);if(round.kind!=='eleven'||!round.batch?.pending)throw Error('本轮回应已经保存');
  const npcs=Object.keys(round.hands).filter(id=>id!=='player'),wave=round.waves?.at(-1);
  if(!wave||round.batch.wave!==wave.number||!Array.isArray(rows)||rows.length!==npcs.length||new Set(rows.map(r=>r?.id)).size!==npcs.length)throw Error('角色批量回应不完整');
- for(const row of rows){const hand=round.hands[row.id];if(!npcs.includes(row.id)||!text(row.text,200,false))throw Error('角色批量回应格式不正确');const active=round.phase==='playing'&&!round.stopped.includes(row.id)&&hand.length<5&&handRank(hand).halfPoints<23;
+ if(dialogue!==undefined)validateGameDialogue(dialogue,npcs);
+ for(const row of rows){
+  if(!row||!npcs.includes(row.id)||(dialogue===undefined?!text(row.text,200,false):row.text!==undefined&&!text(row.text,500)))throw Error('角色批量回应格式不正确');
+  const hand=round.hands[row.id],active=round.phase==='playing'&&!round.stopped.includes(row.id)&&hand.length<5&&handRank(hand).halfPoints<23;
   if(active?!['hit','stand'].includes(row.choice||''):row.choice!==null)throw Error('角色要牌决定不正确');
   if(active&&Object.hasOwn(wave.choices,row.id)&&wave.choices[row.id]!==row.choice)throw Error('不能改写已保存的要牌决定');
  }
- const speeches=rows.map(row=>({id:row.id,text:row.text}));
- if(round.phase==='complete')round.batch.finalReplies=speeches;
+ const speeches=dialogue?dialogue.lines.map(line=>({...line})):rows.map(row=>({id:row.id,text:row.text!}));
+ if(round.phase==='complete'){round.batch.finalReplies=speeches;if(dialogue)round.batch.dialogueVersion=1;}
  else{
   for(const row of rows)if(row.choice!==null)wave.choices[row.id]=row.choice;
-  // Existing accepted legacy speech remains intact; newly dealt waves receive the fresh response.
-  if(!wave.speeches.length)wave.speeches=[...speeches,...(wave.playerText?[{id:'player',text:wave.playerText}]:[])];
-  wave.status=Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id))?'ready':'deciding';
+  if(!wave.speeches.length&&wave.dialogueVersion===undefined){wave.speeches=[...speeches,...(wave.playerText?.trim()?[{id:'player',text:wave.playerText}]:[])];if(dialogue)wave.dialogueVersion=1;}
+  wave.status=waveSpeechReady(wave,npcs)&&Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>['hit','stand'].includes(wave.choices[id]))?'ready':'deciding';
  }
  round.batch.pending=false;return round;
 }
 function validateElevenBatch(round:ElevenRound){
- if(round.batch===undefined)return;const batch=round.batch;keys(batch,['version','pending','wave','playerInput','finalReplies']);
+ if(round.batch===undefined)return;const batch=round.batch;keys(batch,['version','pending','wave','playerInput','finalReplies','dialogueVersion']);
  const wave=round.waves?.at(-1),npcs=Object.keys(round.hands).filter(id=>id!=='player');
  if(batch.version!==1||typeof batch.pending!=='boolean'||!wave||batch.wave!==wave.number||!text(batch.playerInput,500))fail();
- if(batch.finalReplies!==undefined){if(round.phase!=='complete'||batch.pending||!Array.isArray(batch.finalReplies)||batch.finalReplies.length!==npcs.length||new Set(batch.finalReplies.map(r=>r?.id)).size!==npcs.length)fail();for(const r of batch.finalReplies){keys(r,['id','text']);if(!npcs.includes(r.id)||!text(r.text,200,false))fail();}}
+ if(batch.dialogueVersion!==undefined&&(round.phase!=='complete'||batch.pending||batch.finalReplies===undefined))fail();
+ if(batch.finalReplies!==undefined){
+  if(round.phase!=='complete'||batch.pending)fail();
+  if(batch.dialogueVersion!==undefined)validateGameDialogue({version:batch.dialogueVersion,lines:batch.finalReplies},npcs);
+  else{if(!Array.isArray(batch.finalReplies)||batch.finalReplies.length!==npcs.length||new Set(batch.finalReplies.map(r=>r?.id)).size!==npcs.length)fail();for(const r of batch.finalReplies){keys(r,['id','text']);if(!npcs.includes(r.id)||!text(r.text,200,false))fail();}}
+ }
  if(!batch.pending){if(round.phase==='complete'&&!batch.finalReplies||round.phase==='playing'&&!elevenBatchPrepared(round))fail();}
 }
-
+function validateRoundReplies(round:PartyRound,participants:string[]){
+ if(round.dialogueVersion===undefined){
+  if(round.replies!==undefined&&(!Array.isArray(round.replies)||round.replies.length>8||new Set(round.replies.map(r=>r?.id)).size!==round.replies.length))fail();
+  for(const reply of round.replies||[]){keys(reply,['id','text']);if(reply.id==='player'||!participants.includes(reply.id)||!text(reply.text,3000,false))fail();}return;
+ }
+ if(round.dialogueVersion!==1||!Array.isArray(round.replies)||round.replies.length>256)fail();
+ for(const reply of round.replies||[]){keys(reply,['id','text']);if(!participants.includes(reply.id)||!text(reply.text,reply.id==='player'?2000:3000,false))fail();}
+}
 export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(afterparty:KingAfterparty,room:PartyRoom)=>void):PartyRoom[]{
  if(!Array.isArray(value)||value.length>20||new Set(value.map(r=>r?.id)).size!==value.length)fail();
  for(const room of value as PartyRoom[]){
@@ -245,11 +298,13 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
   if(active.length&&participants.length<3||room.endReason==='round-limit'&&(room.kind!=='truth'||active.length!==10)||room.endReason==='bankers-complete'&&(room.kind!=='eleven'||room.bankerIndex!==room.bankerOrder?.length)||room.endReason==='drunk'&&(!room.endTriggers?.length||!room.afterparty))fail();
   const usedTruth=new Set<string>();let lastNumber=0;
   for(const round of room.rounds){
-    if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);continue;}
-   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch']:['kind','number','anchor','archived','replies','target','card','choice','text','refused','phase']);
+    if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);if(round.dialogueVersion!==undefined)validateRoundReplies(round,participants);continue;}
+   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
-   if(round.replies!==undefined&&(!Array.isArray(round.replies)||round.replies.length>8||new Set(round.replies.map(r=>r?.id)).size!==round.replies.length))fail();for(const reply of round.replies||[]){keys(reply,['id','text']);if(reply.id==='player'||!participants.includes(reply.id)||!text(reply.text,3000,false))fail();}
+   validateRoundReplies(round,participants);
    if(round.kind==='truth'){
+     if(round.choiceDialogue!==undefined){if(round.phase==='choose')fail();validateGameDialogue(round.choiceDialogue,participants.filter(id=>id!=='player'));}
+     if(round.dialogue!==undefined){if(round.phase!=='complete')fail();validateGameDialogue(round.dialogue,participants.filter(id=>id!=='player'));}
     keys(round.card,['id','truth','dare']);if(!participants.includes(round.target)||!actorId(round.card.id)||!text(round.card.truth,1000,false)||!text(round.card.dare,1000,false)||!['choose','respond','complete'].includes(round.phase)||round.choice!==undefined&&!['truth','dare'].includes(round.choice)||round.text!==undefined&&!text(round.text,3000,false)||round.refused!==undefined&&typeof round.refused!=='boolean'||round.phase==='choose'&&(round.choice!==undefined||round.text!==undefined||round.refused!==undefined)||round.phase==='respond'&&(round.choice===undefined||round.text!==undefined||round.refused!==undefined)||round.phase==='complete'&&(round.choice===undefined||round.text===undefined||round.refused===undefined))fail();if(!round.archived){if(usedTruth.has(round.card.id))fail();usedTruth.add(round.card.id);}
    }else{
     if(!participants.includes(round.banker)||!obj(round.hands)||!ids(Object.keys(round.hands),3,8)||Object.keys(round.hands).some(id=>!participants.includes(id))||!Array.isArray(round.deck)||!ids(round.stopped,0,8)||round.stopped.some(id=>!Object.hasOwn(round.hands,id))||!['playing','complete'].includes(round.phase)||!text(round.turn,128)||round.winner!==undefined&&!Object.hasOwn(round.hands,round.winner))fail();

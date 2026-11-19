@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {computed,ref,watch} from 'vue';
 import {minimumLiarCount,isLegalLiarBid,lastLiarBid,liarBidLabel,type LiarRound,type LiarBid} from '../domain/liarDice';
-const props=withDefaults(defineProps<{round:LiarRound;participants:string[];name:(id:string)=>string;working:boolean;draft:string;readOnly?:boolean;error?:string}>(),{error:''});
+import {liarDialogueLines} from '../domain/partyDialogueView';
+import GameChat from './GameChat.vue';
+const props=withDefaults(defineProps<{round:LiarRound;participants:string[];name:(id:string)=>string;working:boolean;draft:string;readOnly?:boolean;error?:string;showDialogue?:boolean}>(),{error:'',showDialogue:true});
 const emit=defineEmits<{'update:draft':[value:string];bid:[bid:LiarBid];open:[];npcAction:[]}>();
 const countText=ref(''),pure=ref(false),face=ref(1);
 const pending=computed(()=>props.round.moves.at(-1)?.pending===true),previous=computed(()=>lastLiarBid(props.round));
@@ -37,6 +39,7 @@ function changeFace(event:Event){const point=Number((event.target as HTMLSelectE
 function submitBid(){if(!props.working&&!pending.value&&props.round.phase==='playing'&&props.round.turn==='player'&&chosen.value)emit('bid',chosen.value);}
 const pendingText=computed(()=>props.round.moves.at(-1)?.action==='open'?'开骰已保存，正在等待全桌回应。':'叫号已保存，正在等待下家行动和全桌回应。');
 const diceGlyph=['','⚀','⚁','⚂','⚃','⚄','⚅'];
+const dialogue=computed(()=>liarDialogueLines(props.round));
 </script>
 
 <template>
@@ -63,7 +66,8 @@ const diceGlyph=['','⚀','⚁','⚂','⚃','⚄','⚅'];
    <button v-else-if="round.phase==='playing'&&error&&!working" type="button" @click="emit('npcAction')">重试角色行动</button>
   </div>
   <p v-if="round.phase==='complete'" class="liar-result">实际共有 {{round.actual}} 个符合叫号的骰子。赢家：{{name(round.winner!)}}；{{name(round.loser!)}}罚酒一杯，下局由输家先叫。</p>
-  <ol class="liar-moves"><li v-for="(move,index) in round.moves" :key="index"><h4>{{index+1}}. {{name(move.id)}} · {{move.bid?liarBidLabel(move.bid):'开骰'}}</h4><p v-if="move.text"><b>{{name(move.id)}}：</b>{{move.text}}</p><p v-for="reply in move.replies" :key="reply.id"><b>{{name(reply.id)}}：</b>{{reply.text}}</p><small v-if="move.pending">本轮回应未完成，重试不会重复叫号、开骰或罚酒。</small></li></ol>
+  <details v-if="round.moves.length" class="liar-bid-history"><summary>叫号记录</summary><p v-for="(move,index) in round.moves" :key="index"><strong>{{name(move.id)}}：</strong>{{move.bid?liarBidLabel(move.bid):'开骰'}}</p></details>
+  <GameChat v-if="showDialogue" :lines="dialogue" :name="name" label="大话骰桌上对话" />
  </section>
 </template>
 

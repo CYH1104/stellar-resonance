@@ -44,7 +44,7 @@ it('legacy playing rounds offer migration without showing old potentially leakin
 });
 it('history includes every wave speech and the player but hides undealt choices, opponents cards and old replies',async()=>{
  const {round,stub}=fixture('ready');round.waves!.push({number:2,choices:{},speeches:[{id:'player',text:'第二波玩家发言。'},{id:'a',text:'第二波甲发言。'}],status:'deciding'});stub.page.value='history';
- const html=await render();expect(html).toContain('历史波次发言');for(const speech of ['我说看起来还可以。','我可没说自己点数低。','先聊一会儿。','第二波玩家发言。','第二波甲发言。'])expect(html).toContain(speech);
+ const html=await render();expect(html).not.toContain('第 1 波');for(const speech of ['我说看起来还可以。','我可没说自己点数低。','先聊一会儿。','第二波玩家发言。','第二波甲发言。'])expect(html).toContain(speech);
  for(const secret of ['♥9','♦Q','♠K','♣8','9.5 点','SECRET-LEGACY'])expect(html).not.toContain(secret);expect(html).not.toContain('choices');
 });
 it('completed history reveals cards and retains legacy completed replies',async()=>{
