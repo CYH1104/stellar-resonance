@@ -28,18 +28,18 @@ afterEach(()=>vi.clearAllMocks());
 
 it('offers every game as its own launch button with an independent title',async()=>{
  const html=await renderToString(createSSRApp(PersonalTerminal,{w:workspace()})),entries=buttons(html);
- for(const game of ['国王游戏','每日占卜','十一点半','真心话大冒险','狼人杀','日麻','斗地主']){
+ for(const game of ['国王游戏','每日占卜','十点半','真心话大冒险','狼人杀','日麻','斗地主']){
   const matches=entries.filter(button=>new RegExp('<strong\\b[^>]*>'+game+'</strong>').test(button));expect(matches,game).toHaveLength(1);
-  if(['十一点半','真心话大冒险'].includes(game))expect(matches[0]).not.toMatch(/\bdisabled(?:[ =>])/);
+  if(['十点半','真心话大冒险'].includes(game))expect(matches[0]).not.toMatch(/\bdisabled(?:[ =>])/);
  }
- expect(entries.some(button=>/<strong\b[^>]*>十一点半<\/strong>/.test(button)&&/<strong\b[^>]*>真心话大冒险<\/strong>/.test(button))).toBe(false);
+ expect(entries.some(button=>/<strong\b[^>]*>十点半<\/strong>/.test(button)&&/<strong\b[^>]*>真心话大冒险<\/strong>/.test(button))).toBe(false);
 });
 
 it.each(['eleven','truth'] as const)('shows only %s rooms and its create action without a redundant internal back button',async kind=>{
  const rows=[room('eleven','牌局进行'),room('truth','转瓶进行'),room('eleven','牌局结束',true),room('truth','转瓶结束',true)];controllers.party.mockReturnValue(partyStub(rows));
  const html=await renderParty(kind),text=labels(html),own=kind==='eleven'?'牌局':'转瓶',other=kind==='eleven'?'转瓶':'牌局';
  expect(html).toContain(own+'进行');expect(html).toContain(own+'结束');expect(html).not.toContain(other+'进行');expect(html).not.toContain(other+'结束');
- expect(text.some(value=>value.startsWith(`创建${kind==='eleven'?'十一点半':'真心话大冒险'}房间`))).toBe(true);
+ expect(text.some(value=>value.startsWith(`创建${kind==='eleven'?'十点半':'真心话大冒险'}房间`))).toBe(true);
  expect(text.some(value=>/返回|‹/.test(value))).toBe(false);
 });
 

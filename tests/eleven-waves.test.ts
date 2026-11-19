@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {cards,createPartyRoom,startPartyRound,ensureElevenWaves,elevenWaveChoice,elevenWaveSpeech,advanceElevenWave,elevenAct,validatePartyRooms,type ElevenRound,type PartyRoom} from '../src/domain/partyGames';
-function fixture(){const room=createPartyRoom('eleven',['a','b'],'牌局','轻松','room');room.invitations={a:'accepted',b:'accepted'};const round=startPartyRound(room,undefined,()=>0) as ElevenRound;return {room,round};}
+function fixture(){const room=createPartyRoom('eleven',['a','b'],'牌局','轻松','room');room.invitations={a:'accepted',b:'accepted'};const round=startPartyRound(room,undefined,()=>0) as ElevenRound;round.rulesVersion='eleven-v2';return {room,round};}
 const speeches=[{id:'a',text:'我先观察大家。'},{id:'b',text:'保持镇定。'}];
 const locked=(room:PartyRoom,choice:'hit'|'stand'='stand')=>{const r=ensureElevenWaves(room);for(const id of Object.keys(r.hands).filter(id=>!r.stopped.includes(id)))elevenWaveChoice(room,id,choice);elevenWaveSpeech(room,speeches);};
 function replaceHands(round:ElevenRound,hands:Record<string,string[]>){round.hands=hands;round.deck=cards.filter(c=>!Object.values(hands).flat().includes(c));}

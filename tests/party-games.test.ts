@@ -2,7 +2,7 @@ import {it,expect} from 'vitest';
 import {cards,cardLabel,cardCode,handRank,compareHands,createPartyRoom,partyParticipants,startPartyRound,elevenAct,chooseTruth,finishTruth,settlePartyEnd,endPartyRoom,validatePartyRooms,truthCards,type PartyRoom,type ElevenRound,type TruthRound} from '../src/domain/partyGames';
 function room(kind:'eleven'|'truth'='eleven'){const r=createPartyRoom(kind,['a','b'],'聚会','轻松','room');r.invitations={a:'accepted',b:'accepted'};return r;}
 function customHands(r:PartyRoom,hands:Record<string,string[]>){r.bankerOrder=['player','a','b'];r.bankerIndex=0;const round=startPartyRound(r,undefined,()=>0) as ElevenRound;round.hands=hands;round.deck=cards.filter(c=>!Object.values(hands).flat().includes(c));round.stopped=[];round.turn='a';return legacy(round);}
-function legacy(r:ElevenRound){delete r.flow;delete r.waves;r.turn=Object.keys(r.hands).find(id=>id!==r.banker)||r.banker;return r;}
+function legacy(r:ElevenRound){r.rulesVersion='eleven-v2';delete r.flow;delete r.waves;r.turn=Object.keys(r.hands).find(id=>id!==r.banker)||r.banker;return r;}
 function standAll(r:PartyRoom){let round=r.rounds.at(-1) as ElevenRound;while(round.phase==='playing')elevenAct(r,round.turn,'stand');return round;}
 it('uses exact half-points and the agreed hierarchy and eleven suit counts',()=>{
  expect(cards).toHaveLength(52);expect(new Set(cards).size).toBe(52);expect(cardLabel(cardCode('S','A'))).toBe('♠A');

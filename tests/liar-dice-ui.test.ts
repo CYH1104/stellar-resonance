@@ -6,7 +6,7 @@ import {startLiarRound,type LiarRound,type LiarBid} from '../src/domain/liarDice
 const participants=['player','a','b'],name=(id:string)=>id==='player'?'玩家':id;
 function round(previous?:LiarBid):LiarRound{
  const r=startLiarRound(participants,1,'player',undefined,()=>0);
- r.dice={player:[1,1,1,1,1],a:[6,6,6,6,6],b:[5,5,5,5,5]};
+ r.dice={player:[1,1,1,1,1],a:[6,6,6,6,6],b:[5,5,5,5,5]};r.rulesVersion='liar-v1';
  if(previous)r.moves.push({id:'b',action:'bid',bid:previous,text:'我先叫。',replies:[{id:'a',text:'先看你怎么说。'},{id:'b',text:'敢不敢继续？'}],pending:false});
  return r;
 }

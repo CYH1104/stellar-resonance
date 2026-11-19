@@ -1,0 +1,12 @@
+import {it,expect} from 'vitest';
+import {cards,createPartyRoom,startPartyRound,elevenLimitHalf,elevenHandRank,elevenHandVisible,elevenWaveChoice,elevenWaveSpeech,advanceElevenWave,ensureElevenWaves,validatePartyRooms,type ElevenRound} from '../src/domain/partyGames';
+function room(){const r=createPartyRoom('eleven',['a','b'],'','','ten');r.invitations={a:'accepted',b:'accepted'};r.bankerOrder=['player','a','b'];r.bankerIndex=0;return r;}
+it('new game uses ten-and-a-half while historical hand classification remains contextual',()=>{
+ const r=room(),round=startPartyRound(r,undefined,()=>0) as ElevenRound;expect(r.name).toBe('十点半');expect(round.rulesVersion).toBe('ten-half-v1');expect(elevenLimitHalf(round)).toBe(21);expect(elevenHandRank(round,['S-10','H-J']).kind).toBe('eleven');expect(elevenHandRank(round,['S-10','H-A']).kind).toBe('bust');const old={...round,rulesVersion:'eleven-v2' as const};expect(elevenHandRank(old,['S-10','H-A']).kind).toBe('ordinary');
+});
+it('crossing 10.5 stops and reveals immediately, while exactly 10.5 is the target special hand',()=>{
+ for(const [card,winner] of [['H-A','b'],['H-J','a']] as const){const r=room(),rr=startPartyRound(r,undefined,()=>0) as ElevenRound;rr.hands={player:['S-A'],a:['H-10'],b:['C-8']};rr.deck=cards.filter(c=>!Object.values(rr.hands).flat().includes(c)&&c!==card);rr.deck.push(card);elevenWaveChoice(r,'player','stand');elevenWaveChoice(r,'a','hit');elevenWaveChoice(r,'b','stand');elevenWaveSpeech(r,[{id:'a',text:'我试试看。'},{id:'b',text:'我先停。'}]);advanceElevenWave(r);expect(rr.winner).toBe(winner);expect(rr.stopped).toContain('a');expect(elevenHandVisible(rr,'a')).toBe(true);validatePartyRooms([r]);}
+});
+it('old started and completed rounds keep their 11.5 rule; the next round is ten-half',()=>{
+ const r=room(),old=startPartyRound(r,undefined,()=>0) as ElevenRound;old.rulesVersion='eleven-v2';old.hands={player:['S-10','H-A'],a:['C-8'],b:['D-7']};old.deck=cards.filter(c=>!Object.values(old.hands).flat().includes(c));const saved=JSON.stringify(old.hands);ensureElevenWaves(r);expect(old.rulesVersion).toBe('eleven-v2');expect(JSON.stringify(old.hands)).toBe(saved);old.phase='complete';old.turn='';old.winner='player';old.stopped=Object.keys(old.hands);delete old.flow;delete old.waves;validatePartyRooms([r]);const before=JSON.stringify(old);ensureElevenWaves(r);expect(JSON.stringify(old)).toBe(before);const next=startPartyRound(r,undefined,()=>0) as ElevenRound;expect(next.rulesVersion).toBe('ten-half-v1');validatePartyRooms([r]);
+});
