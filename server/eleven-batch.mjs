@@ -1,0 +1,37 @@
+import {modelError} from './ai.mjs';
+import {newDynamicActor} from '../src/domain/dynamicActors.ts';
+import {handRank} from '../src/domain/partyGames.ts';
+import {sanitizeElevenSpeech} from '../src/domain/elevenSpeech.ts';
+import {sanitizeDiceSpeech} from '../src/domain/diceSpeech.ts';
+import {stripReasoning} from '../src/domain/reasoning.ts';
+import {appendTerminalCharacterContext} from './terminal-character-context.mjs';
+const obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v),text=(v,n)=>typeof v==='string'&&v.length<=n;
+function fail(status=400){throw Object.assign(modelError(status,status===400?'INVALID_TERMINAL_REQUEST':'INVALID_TERMINAL_RESULT'),{retryable:false});}
+function keys(v,allowed){if(!obj(v)||Object.keys(v).some(k=>!allowed.includes(k)))fail();}
+const exact=(values,ids)=>Array.isArray(values)&&values.length===ids.length&&new Set(values).size===values.length&&values.every(id=>ids.includes(id));
+const cardCode=/^[SHCD]-(?:A|[2-9]|10|J|Q|K)$/;
+/** One model sees the NPC batch; role ownership is instructed, not a physical isolation boundary. */
+export function elevenBatchPlan(card,data,privateBooks=[]){try{
+ if(data?.task!=='party-eleven-batch'||!Array.isArray(data.actorIds)||!data.actorIds.length||data.actorIds.length>7||new Set(data.actorIds).size!==data.actorIds.length||!text(data.persona?.name,80)||!data.persona.name.trim()||!text(data.input,2000))fail();
+ const c=data.context;keys(c,['party','state','memories','audience']);if(JSON.stringify(c).length>100000)fail();const p=c.party;keys(p,['kind','round','wave','phase','banker','participants','privateHands','missingTolerances','publicLines','playerInput']);
+ if(p.kind!=='eleven'||!Number.isInteger(p.round)||p.round<1||p.round>500||!Number.isInteger(p.wave)||p.wave<1||p.wave>5||!['playing','complete'].includes(p.phase)||!Array.isArray(p.participants)||p.participants.length<3||p.participants.length>8||!text(p.playerInput,500))fail();
+ const roster=[...card.characters];if(c.state!==undefined){keys(c.state,['characters']);if(!Array.isArray(c.state.characters)||c.state.characters.length>300)fail();for(const a of c.state.characters)if(!roster.some(r=>r.id===a?.id))roster.push(newDynamicActor(a));}
+ for(const a of p.participants){keys(a,['id','name']);if(!text(a.id,128)||!a.id||!text(a.name,80))fail();}
+ const ids=p.participants.map(a=>a.id),npcs=ids.filter(id=>id!=='player');if(ids[0]!=='player'||new Set(ids).size!==ids.length||!exact(data.actorIds,npcs)||npcs.some(id=>!roster.some(a=>a.id===id))||!ids.includes(p.banker)||!exact(c.audience,ids))fail();
+ if(!Array.isArray(p.missingTolerances)||p.missingTolerances.length>ids.length||new Set(p.missingTolerances).size!==p.missingTolerances.length||p.missingTolerances.some(id=>!ids.includes(id))||!Array.isArray(p.privateHands)||!exact(p.privateHands.map(h=>h?.id),npcs))fail();
+ const used=new Set();const privateHands=npcs.map(id=>{const row=p.privateHands.find(h=>h.id===id);keys(row,['id','hand','stopped','lockedChoice']);if(typeof row.stopped!=='boolean'||!Array.isArray(row.hand)||!row.hand.length||row.hand.length>5||row.hand.some(code=>typeof code!=='string'||!cardCode.test(code)||used.has(code)))fail();for(const code of row.hand){if(used.has(code))fail();used.add(code);}const rank=handRank(row.hand),active=p.phase==='playing'&&!row.stopped&&row.hand.length<5&&rank.halfPoints<23;if(row.lockedChoice!==undefined&&(!active||!['hit','stand'].includes(row.lockedChoice)))fail();return {id,hand:[...row.hand],stopped:row.stopped,score:rank.halfPoints/2,canChoose:active,...(row.lockedChoice?{lockedChoice:row.lockedChoice}:{})};});
+ if(!Array.isArray(p.publicLines)||p.publicLines.length>24)fail();const publicLines=p.publicLines.map(r=>{keys(r,['id','text']);if(!ids.includes(r.id)||!text(r.text,500))fail();return {id:r.id,text:r.text};});
+ const participants=ids.map(id=>({id,name:id==='player'?data.persona.name:roster.find(a=>a.id===id).name}));
+ const party={kind:'eleven',round:p.round,wave:p.wave,phase:p.phase,banker:p.banker,participants,privateHands,missingTolerances:[...p.missingTolerances],publicLines,playerInput:p.playerInput};
+ const instruction='你同时扮演十一点半桌上的指定NPC。程序已经统一发牌、计算score、判断爆牌/停牌/结算，你不能发牌、改牌、改变点数、裁定胜负或增减罚酒。A=1，2至10按牌面，J/Q/K=0.5，超过11.5爆牌，最多5张。一次返回全部NPC的下一步私有决定和公开台词。privateHands按角色ID分区：每个角色只能使用自己的hand/score作决定，别人的手牌和选择不属于该角色可知信息；玩家的真实手牌和点数没有提供。canChoose=true时choice为hit或stand；lockedChoice必须原样保留。canChoose=false（已停牌、爆牌、五张、达到11.5或本局结束）时choice必须null，但仍必须说话。'+
+ '若playerInput不为空，角色应自然回应玩家刚说的话再按自己性格接话；为空则根据本人手牌和性格随意说一句。publicLines和playerInput可能是谎话，不可当成程序核实的点数。允许诈唬、撒谎、半真半假、故意含糊或感慨，不得每次真实报点，不得列出具体牌/花色或确定描述其他人的秘密点数、牌面与尚未执行的选择。text必须是说出口的话，不写内心独白、心理活动、旁白、动作或思考，不替玩家说话/行动。'+
+ '只输出{"characters":[{"id":"每个指定NPC","choice":"hit或stand或JSON null","text":"200字内公开台词"}],"tolerances":[{"id":"missingTolerances中的ID","value":1}]}。characters每人恰一项，tolerances只补missingTolerances每人1至10的整数杯数，不得修改已知值；没有缺失时返回空数组。不得返回理由、手牌、点数、额外身份或其他字段。';
+ const messages=[{role:'system',content:instruction},{role:'system',content:JSON.stringify({userReference:{name:data.persona.name,identity:data.persona.identity,primaryGender:data.persona.primaryGender,secondaryGender:data.persona.secondaryGender},actors:npcs.map(id=>{const a=roster.find(a=>a.id===id);return {id,name:a.name,identity:a.identity};})})},{role:'user',content:JSON.stringify({party})}];
+ return appendTerminalCharacterContext({task:data.task,ids:npcs,party,messages,missingTolerances:party.missingTolerances,input:'十一点半批量回应'},card,{...data,input:'十一点半',actorIds:npcs,context:{state:{characters:c.state?.characters||[]},audience:ids}},privateBooks);
+ }catch{fail();}}
+export function parseElevenBatchResult(content,plan){try{
+ if(typeof content!=='string'||content.length>100000)fail(502);const result=JSON.parse(stripReasoning(content).trim().replace(/^```(?:json)?\s*|\s*```$/gi,''));keys(result,['characters','tolerances']);if(!Array.isArray(result.characters)||!exact(result.characters.map(a=>a?.id),plan.ids))fail(502);
+ const characters=plan.ids.map(id=>{const row=result.characters.find(a=>a.id===id),privateRow=plan.party.privateHands.find(a=>a.id===id);keys(row,['id','choice','text']);if(!text(row.text,200)||!row.text.trim()||(privateRow.canChoose?!['hit','stand'].includes(row.choice):row.choice!==null)||privateRow.lockedChoice&&row.choice!==privateRow.lockedChoice)fail(502);return {id,choice:row.choice,text:sanitizeElevenSpeech(sanitizeDiceSpeech(row.text),privateRow.hand)};});
+ const missing=plan.party.missingTolerances,raw=result.tolerances===undefined&&!missing.length?[]:result.tolerances;if(!Array.isArray(raw)||!exact(raw.map(a=>a?.id),missing))fail(502);const tolerances=missing.map(id=>{const row=raw.find(a=>a.id===id);keys(row,['id','value']);if(!Number.isInteger(row.value)||row.value<1||row.value>10)fail(502);return {id,value:row.value};});
+ return {characters,tolerances};
+ }catch{fail(502);}}

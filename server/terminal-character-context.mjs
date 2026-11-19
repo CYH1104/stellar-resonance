@@ -69,7 +69,7 @@ function activeLore(card,data,privateBooks,roster,targets){
 }
 /** Add target-owned acting references plus safe global rules. Never reads client worldInfo or arbitrary paths. */
 export function appendTerminalCharacterContext(plan,card,data,privateBooks=[]){
- const roster=characters(card,data.context?.state),anonymous=data.task==='command',npcDivination=data.task==='divination'&&data.context?.divination?.kind==='npc',eleven=['party-eleven','party-eleven-talk','party-liar-turn','party-liar-reply'].includes(data.task);
+ const roster=characters(card,data.context?.state),anonymous=data.task==='command',npcDivination=data.task==='divination'&&data.context?.divination?.kind==='npc',eleven=['party-eleven','party-eleven-talk','party-eleven-batch','party-liar-turn','party-liar-reply'].includes(data.task);
  const ids=relatedIds(plan,card,data),targets=(plan.ids||[]).filter(id=>id!=='player');
  if(['main-auto','main-followup'].includes(data.task))for(const id of ids)if(id!=='player'&&!targets.includes(id))targets.push(id);
  const block=characterGenderContext(card,data.context?.state,{ids,anonymous});

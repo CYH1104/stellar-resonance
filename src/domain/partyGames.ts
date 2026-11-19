@@ -6,7 +6,8 @@ export type PartyKind='eleven'|'truth'|'liar';
 export interface PartyReply {id:string;text:string}
 interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[]}
 export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt'}
-export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[]}
+export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:string;finalReplies?:PartyReply[]}
+export interface ElevenRound extends RoundBase {kind:'eleven';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
 export interface TruthCard {id:string;truth:string;dare:string}
 export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;phase:'choose'|'respond'|'complete'}
 export type PartyRound=ElevenRound|TruthRound|LiarRound;
@@ -71,7 +72,7 @@ export const truthCards:readonly TruthCard[]=[
 ].map(([id,truth,dare])=>({id,truth,dare}));
 export function startPartyRound(room:PartyRoom,anchor?:TerminalAnchor,random:PartyRandom=randomIndex):PartyRound{
  const previous=activeRounds(room);if(room.endedAt||previous.at(-1)&&previous.at(-1)!.phase!=='complete')throw Error('请先完成当前轮，已结束房间不能继续');
- const prior=previous.at(-1);if(prior?.kind==='liar'&&prior.moves.at(-1)?.pending)throw Error('请先补齐本次桌上回应');
+ const prior=previous.at(-1);if(prior?.kind==='eleven'&&prior.batch?.pending)throw Error('请先补齐本轮角色回应');if(prior?.kind==='liar'&&prior.moves.at(-1)?.pending)throw Error('请先补齐本次桌上回应');
   const participants=partyParticipants(room);if(participants.length<3)throw Error('至少需要你和两位已接受邀请的好友');if(room.rounds.length>=500)throw Error('房间记录已达500轮上限');
  let round:PartyRound;
  if(room.kind==='liar'){const last=previous.at(-1);round=startLiarRound(participants,room.rounds.length+1,last?.kind==='liar'?last.loser:undefined,anchor,random);room.rounds.push(round);return round;}
@@ -197,6 +198,43 @@ function validateElevenWaves(round:ElevenRound){
  if(participants.some(id=>hands[id].length!==round.hands[id].length)||stopped.size!==round.stopped.length||round.stopped.some(id=>!stopped.has(id)))fail();
  if(round.phase==='playing'&&(round.winner!==undefined||stopped.size===participants.length)||round.phase==='complete'&&(!round.winner||stopped.size!==participants.length))fail();
 }
+
+export function markElevenBatch(room:PartyRoom,playerInput=''){
+ const round=current(room);if(round.kind!=='eleven'||!text(playerInput,500))throw Error('批量回应状态不正确');
+ if(round.flow===undefined&&round.phase==='playing')ensureElevenWaves(room);
+ const wave=round.waves?.at(-1);if(!wave)throw Error('没有等待回应的发牌轮次');
+ round.batch={version:1,pending:true,wave:wave.number,playerInput};return round;
+}
+export function elevenBatchPrepared(round:ElevenRound){
+ if(round.batch?.pending)return false;const wave=round.waves?.at(-1),npcs=Object.keys(round.hands).filter(id=>id!=='player');
+ return round.phase==='playing'&&!!wave&&npcs.every(id=>wave.speeches.some(s=>s.id===id))&&npcs.filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id));
+}
+export function applyElevenBatchResult(room:PartyRoom,rows:{id:string;choice:'hit'|'stand'|null;text:string}[]){
+ const round=current(room);if(round.kind!=='eleven'||!round.batch?.pending)throw Error('本轮回应已经保存');
+ const npcs=Object.keys(round.hands).filter(id=>id!=='player'),wave=round.waves?.at(-1);
+ if(!wave||round.batch.wave!==wave.number||!Array.isArray(rows)||rows.length!==npcs.length||new Set(rows.map(r=>r?.id)).size!==npcs.length)throw Error('角色批量回应不完整');
+ for(const row of rows){const hand=round.hands[row.id];if(!npcs.includes(row.id)||!text(row.text,200,false))throw Error('角色批量回应格式不正确');const active=round.phase==='playing'&&!round.stopped.includes(row.id)&&hand.length<5&&handRank(hand).halfPoints<23;
+  if(active?!['hit','stand'].includes(row.choice||''):row.choice!==null)throw Error('角色要牌决定不正确');
+  if(active&&Object.hasOwn(wave.choices,row.id)&&wave.choices[row.id]!==row.choice)throw Error('不能改写已保存的要牌决定');
+ }
+ const speeches=rows.map(row=>({id:row.id,text:row.text}));
+ if(round.phase==='complete')round.batch.finalReplies=speeches;
+ else{
+  for(const row of rows)if(row.choice!==null)wave.choices[row.id]=row.choice;
+  // Existing accepted legacy speech remains intact; newly dealt waves receive the fresh response.
+  if(!wave.speeches.length)wave.speeches=[...speeches,...(wave.playerText?[{id:'player',text:wave.playerText}]:[])];
+  wave.status=Object.keys(round.hands).filter(id=>!round.stopped.includes(id)).every(id=>Object.hasOwn(wave.choices,id))?'ready':'deciding';
+ }
+ round.batch.pending=false;return round;
+}
+function validateElevenBatch(round:ElevenRound){
+ if(round.batch===undefined)return;const batch=round.batch;keys(batch,['version','pending','wave','playerInput','finalReplies']);
+ const wave=round.waves?.at(-1),npcs=Object.keys(round.hands).filter(id=>id!=='player');
+ if(batch.version!==1||typeof batch.pending!=='boolean'||!wave||batch.wave!==wave.number||!text(batch.playerInput,500))fail();
+ if(batch.finalReplies!==undefined){if(round.phase!=='complete'||batch.pending||!Array.isArray(batch.finalReplies)||batch.finalReplies.length!==npcs.length||new Set(batch.finalReplies.map(r=>r?.id)).size!==npcs.length)fail();for(const r of batch.finalReplies){keys(r,['id','text']);if(!npcs.includes(r.id)||!text(r.text,200,false))fail();}}
+ if(!batch.pending){if(round.phase==='complete'&&!batch.finalReplies||round.phase==='playing'&&!elevenBatchPrepared(round))fail();}
+}
+
 export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(afterparty:KingAfterparty,room:PartyRoom)=>void):PartyRoom[]{
  if(!Array.isArray(value)||value.length>20||new Set(value.map(r=>r?.id)).size!==value.length)fail();
  for(const room of value as PartyRoom[]){
@@ -208,7 +246,7 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
   const usedTruth=new Set<string>();let lastNumber=0;
   for(const round of room.rounds){
     if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);continue;}
-   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','banker','deck','hands','stopped','turn','phase','winner','flow','waves']:['kind','number','anchor','archived','replies','target','card','choice','text','refused','phase']);
+   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch']:['kind','number','anchor','archived','replies','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
    if(round.replies!==undefined&&(!Array.isArray(round.replies)||round.replies.length>8||new Set(round.replies.map(r=>r?.id)).size!==round.replies.length))fail();for(const reply of round.replies||[]){keys(reply,['id','text']);if(reply.id==='player'||!participants.includes(reply.id)||!text(reply.text,3000,false))fail();}
    if(round.kind==='truth'){
@@ -220,7 +258,8 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
     if(round.flow!==undefined||round.waves!==undefined)validateElevenWaves(round);
      else if(round.phase==='playing'&&(!Object.hasOwn(round.hands,round.turn)||round.stopped.includes(round.turn)||round.winner!==undefined)||round.phase==='complete'&&(round.turn!==''||!round.winner||round.stopped.length!==dealt.length))fail();
     if(round.flow===undefined&&round.phase==='playing'){const expected=seatsAfter(Object.keys(round.hands),round.banker).find(id=>!round.stopped.includes(id));if(round.turn!==expected)fail();for(const [id,hand]of Object.entries(round.hands))if((hand.length===5||handRank(hand).halfPoints>=23)&&!round.stopped.includes(id))fail();}
-    if(round.phase==='complete'){const priority=[round.banker,...seatsAfter(Object.keys(round.hands),round.banker).filter(id=>id!==round.banker)];let winner=priority[0];for(const id of priority.slice(1))if(compareHands(round.hands[id],round.hands[winner])>0)winner=id;if(round.winner!==winner)fail();}
+    validateElevenBatch(round);
+     if(round.phase==='complete'){const priority=[round.banker,...seatsAfter(Object.keys(round.hands),round.banker).filter(id=>id!==round.banker)];let winner=priority[0];for(const id of priority.slice(1))if(compareHands(round.hands[id],round.hands[winner])>0)winner=id;if(round.winner!==winner)fail();}
    }
   }
   if(active.slice(0,-1).some(r=>r.phase!=='complete'))fail();if(room.afterparty!==undefined){if(room.endReason!=='drunk')fail();afterparty(room.afterparty,room);validateAfterpartyCallback?.(room.afterparty,room);}

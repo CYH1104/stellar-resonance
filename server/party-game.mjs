@@ -1,3 +1,4 @@
+import {elevenBatchPlan,parseElevenBatchResult} from './eleven-batch.mjs';
 import {liarPlan,parseLiarResult} from './liar-dice.mjs';
 import {modelError} from './ai.mjs';
 import {newDynamicActor} from '../src/domain/dynamicActors.ts';
@@ -44,6 +45,7 @@ const instructions={
 
 /** Independent terminal request. Never imports personal-terminal, avoiding a dispatch cycle. */
 export function partyPlan(card,data,privateBooks=[]){
+ if(data?.task==='party-eleven-batch')return elevenBatchPlan(card,data,privateBooks);
  if(['party-liar-turn','party-liar-reply'].includes(data.task))return liarPlan(card,data,privateBooks);
  return appendTerminalCharacterContext(partyPlanWithinContext(card,data),card,data,privateBooks);
 }
@@ -96,6 +98,7 @@ function partyPlanWithinContext(card,data){
 }
 
 export function parsePartyResult(content,plan){
+ if(plan?.task==='party-eleven-batch')return parseElevenBatchResult(content,plan);
  if(['party-liar-turn','party-liar-reply'].includes(plan.task))return parseLiarResult(content,plan);
  try{
   if(typeof content!=='string'||content.length>partyContextMax||!tasks.includes(plan?.task))fail(502);
