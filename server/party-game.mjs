@@ -1,3 +1,4 @@
+import {liarPlan,parseLiarResult} from './liar-dice.mjs';
 import {modelError} from './ai.mjs';
 import {newDynamicActor} from '../src/domain/dynamicActors.ts';
 import {stripReasoning,scrubModelData} from '../src/domain/reasoning.ts';
@@ -43,6 +44,7 @@ const instructions={
 
 /** Independent terminal request. Never imports personal-terminal, avoiding a dispatch cycle. */
 export function partyPlan(card,data,privateBooks=[]){
+ if(['party-liar-turn','party-liar-reply'].includes(data.task))return liarPlan(card,data,privateBooks);
  return appendTerminalCharacterContext(partyPlanWithinContext(card,data),card,data,privateBooks);
 }
 function partyPlanWithinContext(card,data){
@@ -55,7 +57,7 @@ function partyPlanWithinContext(card,data){
   const audience=context.audience;if(!Array.isArray(audience)||audience.length!==ids.length+1||new Set(audience).size!==audience.length||!audience.includes('player')||ids.some(id=>!audience.includes(id)))fail();
   if(context.memories!==undefined&&(!Array.isArray(context.memories)||context.memories.length>32||context.memories.some(m=>!text(m,6000,true))))fail();
   if(context.story!==undefined&&(!Array.isArray(context.story)||context.story.length>12||context.story.some(s=>!object(s)||Object.keys(s).some(k=>!['input','text'].includes(k))||!text(s.input,2000,true)||!text(s.text,16000,true))))fail();
-  const p=context.party;if(!object(p)||!['eleven','truth'].includes(p.kind))fail();
+  const p=context.party;if(!object(p)||!['eleven','truth','liar'].includes(p.kind))fail();
   let party;
   if(data.task==='party-invite'){
    keys(p,['kind','participants']);party={kind:p.kind,participants:canonicalParticipants(p.participants,roster,data.persona,ids)};
@@ -94,6 +96,7 @@ function partyPlanWithinContext(card,data){
 }
 
 export function parsePartyResult(content,plan){
+ if(['party-liar-turn','party-liar-reply'].includes(plan.task))return parseLiarResult(content,plan);
  try{
   if(typeof content!=='string'||content.length>partyContextMax||!tasks.includes(plan?.task))fail(502);
   let raw=stripReasoning(content).trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i,'$1');

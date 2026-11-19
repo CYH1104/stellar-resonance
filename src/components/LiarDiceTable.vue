@@ -1,0 +1,21 @@
+<script setup lang="ts">
+import {computed,ref,watch} from 'vue';
+import {legalLiarBids,lastLiarBid,liarBidLabel,type LiarRound,type LiarBid} from '../domain/liarDice';
+const props=defineProps<{round:LiarRound;participants:string[];name:(id:string)=>string;working:boolean;draft:string;readOnly?:boolean}>();
+const emit=defineEmits<{'update:draft':[value:string];bid:[bid:LiarBid];open:[];npcAction:[]}>();
+const selected=ref('');const pending=computed(()=>props.round.moves.at(-1)?.pending===true),previous=computed(()=>lastLiarBid(props.round));
+const bids=computed(()=>legalLiarBids(previous.value?.bid,props.participants.length));
+watch(()=>JSON.stringify([props.round.number,props.round.moves.length]),()=>selected.value='',{immediate:true});
+const chosen=computed(()=>bids.value.find(b=>JSON.stringify(b)===selected.value));
+const diceGlyph=['','⚀','⚁','⚂','⚃','⚄','⚅'];
+</script>
+<template><section class="liar-table" aria-label="大话骰牌桌">
+ <p>本局先叫：{{name(round.starter)}} · 每人5颗骰子</p>
+ <div class="liar-dice-row"><article v-for="id in participants" :key="id" class="liar-cup"><strong>{{name(id)}}</strong><div v-if="id==='player'||round.phase==='complete'" class="liar-dice" :aria-label="name(id)+'的骰子：'+round.dice[id].join('、')"><span v-for="(face,i) in round.dice[id]" :key="i" :title="face+'点'">{{diceGlyph[face]}}</span></div><div v-else class="liar-dice" :aria-label="name(id)+'的五颗暗骰'"><span v-for="i in 5" :key="i" aria-hidden="true">?</span></div></article></div>
+ <p v-if="round.phase==='playing'" role="status">{{pending?'本次行动已保存，等待全桌接话':'轮到 '+name(round.turn)+' 叫号或开骰'}}</p>
+ <p v-if="previous?.bid" class="liar-current">当前叫号：{{name(previous.id)}} · <b>{{liarBidLabel(previous.bid)}}</b></p><p v-else>尚未起叫，最低数量为 {{participants.length}} 个。</p>
+ <div v-if="!readOnly" class="liar-controls"><button v-if="pending" type="button" :disabled="working" @click="emit('npcAction')">重试本次桌上接话</button><template v-else-if="round.phase==='playing'"><template v-if="round.turn==='player'"><label>你的叫号<select v-model="selected" aria-label="合法叫号" :disabled="working"><option value="">选择数量、斋/非和点数</option><option v-for="bid in bids" :key="JSON.stringify(bid)" :value="JSON.stringify(bid)">{{liarBidLabel(bid)}}</option></select></label><label>你说的话（可选）<textarea :value="draft" maxlength="500" rows="2" :disabled="working" placeholder="可以诈唬、半真半假，或者只感慨一句。" @input="emit('update:draft',($event.target as HTMLTextAreaElement).value)"/></label><div class="liar-actions"><button type="button" :disabled="working||!chosen" @click="chosen&&emit('bid',chosen)">叫号</button><button type="button" :disabled="working||!previous" @click="emit('open')">开上家</button></div></template><button v-else type="button" :disabled="working" @click="emit('npcAction')">请 {{name(round.turn)}} 叫号或开骰</button><small>每次行动一次请求，同时收到全桌角色说出口的接话。</small></template></div>
+ <p v-if="round.phase==='complete'" class="liar-result">实际共有 {{round.actual}} 个符合叫号的骰子。赢家：{{name(round.winner!)}}；{{name(round.loser!)}}罚酒一杯，下局由输家先叫。</p>
+ <ol class="liar-moves"><li v-for="(move,index) in round.moves" :key="index"><h4>{{index+1}}. {{name(move.id)}} · {{move.bid?liarBidLabel(move.bid):'开骰'}}</h4><p v-if="move.text"><b>{{name(move.id)}}：</b>{{move.text}}</p><p v-for="reply in move.replies" :key="reply.id"><b>{{name(reply.id)}}：</b>{{reply.text}}</p><small v-if="move.pending">接话未完成，重试不会重复叫号、开骰或罚酒。</small></li></ol>
+</section></template>
+<style scoped>.liar-table{min-width:0}.liar-dice-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.liar-cup{padding:10px;border:1px solid #71839280;border-radius:9px;background:#152c3d99}.liar-dice{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.liar-dice>span{display:inline-flex;align-items:center;justify-content:center;width:27px;height:30px;background:#e7dfcf;color:#233746;border-radius:4px;font-size:27px;line-height:1}.liar-controls label{display:block}.liar-controls small{display:block;margin-top:10px}.liar-actions{display:flex;gap:10px;margin:10px 0}.liar-current,.liar-result{border-left:2px solid #c8b67c;padding:10px}.liar-moves{padding-left:22px}.liar-moves li{padding:4px 0 12px;border-bottom:1px solid #71839255}.liar-moves h4{margin:10px 0}.liar-moves p{white-space:pre-wrap;overflow-wrap:anywhere}</style>
