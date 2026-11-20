@@ -1,0 +1,24 @@
+import {modelError} from './ai.mjs';
+import {newDynamicActor} from '../src/domain/dynamicActors.ts';
+import {validLandlordStyle} from '../src/domain/landlordStrategy.ts';
+import {appendTerminalCharacterContext} from './terminal-character-context.mjs';
+import {stripReasoning} from '../src/domain/reasoning.ts';
+const obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v),text=(v,n)=>typeof v==='string'&&v.length<=n;
+function fail(status=400){throw Object.assign(modelError(status,status===400?'INVALID_TERMINAL_REQUEST':'INVALID_TERMINAL_RESULT'),{retryable:false});}
+function keys(v,allowed){if(!obj(v)||Object.keys(v).some(k=>!allowed.includes(k)))fail();}
+export function landlordProfilePlan(card,data,privateBooks=[]){try{
+ if(data.task!=='party-landlord-style'||!Array.isArray(data.actorIds)||data.actorIds.length!==2||new Set(data.actorIds).size!==2||data.actorIds.includes('player')||!text(data.persona?.name,80)||!data.persona.name.trim()||!text(data.input,2000))fail();
+ const c=data.context;keys(c,['party','state','audience','memories']);if(JSON.stringify(c).length>100000)fail();keys(c.party,['kind','participants','missingTolerances','knownStyles']);const p=c.party;if(p.kind!=='landlord'||!Array.isArray(p.participants)||p.participants.length!==3)fail();
+ const roster=[...card.characters];if(c.state!==undefined){keys(c.state,['characters']);if(!Array.isArray(c.state.characters)||c.state.characters.length>300)fail();for(const a of c.state.characters)if(!roster.some(r=>r.id===a?.id))roster.push(newDynamicActor(a));}
+ for(const row of p.participants){keys(row,['id','name']);if(!text(row.id,128)||!text(row.name,80))fail();}const ids=p.participants.map(p=>p.id),npcs=ids.filter(id=>id!=='player');if(ids[0]!=='player'||new Set(ids).size!==3||npcs.some(id=>!data.actorIds.includes(id)||!roster.some(a=>a.id===id))||!Array.isArray(c.audience)||new Set(c.audience).size!==3||c.audience.length!==3||ids.some(id=>!c.audience.includes(id)))fail();
+ if(!Array.isArray(p.missingTolerances)||new Set(p.missingTolerances).size!==p.missingTolerances.length||p.missingTolerances.some(id=>!ids.includes(id)))fail();if(p.knownStyles!==undefined&&(!obj(p.knownStyles)||Object.keys(p.knownStyles).length!==2||npcs.some(id=>!validLandlordStyle(p.knownStyles[id]))))fail();
+ const party={kind:'landlord',participants:ids.map(id=>({id,name:id==='player'?data.persona.name:roster.find(a=>a.id===id).name})),missingTolerances:[...p.missingTolerances],...(p.knownStyles?{knownStyles:p.knownStyles}:{})};
+ const messages=[{role:'system',content:'你为三人斗地主配置两名指定NPC的牌风。程序负责所有发牌、合法牌型、出牌与计分；你只按本人真实人设和经验给出可用的策略参数，不给每个人满级，不把好胜等同愚蠢，也不把谨慎等同高手。skill为牌技/观察推算能力1至5，未写打牌经验默认3并结合分析观察能力小幅调整；aggression为冒险和主动抢出牌权1至5；cooperation为农民配合意识1至5。caption为40字以内可公开的打法说明，不泄露隐藏人物资料或秘密。knownStyles存在时逐字段原样保留。返回严格JSON {"styles":[{"id":"NPC ID","skill":3,"aggression":3,"cooperation":3,"caption":"看牌势进退"}],"tolerances":[{"id":"missingTolerances中的ID","value":5}]}；styles精确覆盖两名NPC，酒量只补missingTolerances每人1至10整数杯数。没有任何手牌输入，不可预测真实发牌、不虚构牌局，不输出推理、Markdown或其他字段。'},
+ {role:'system',content:JSON.stringify({userReference:{name:data.persona.name,personality:data.persona.personality||'',primaryGender:data.persona.primaryGender||'',secondaryGender:data.persona.secondaryGender||''},actors:npcs.map(id=>{const a=roster.find(a=>a.id===id);return {id,name:a.name,identity:a.identity,description:[a.intro,a.description,a.str,a.personality,a.background].filter(v=>typeof v==='string').join('\n')};})})},
+ {role:'user',content:JSON.stringify({party,atmosphere:data.input})}];return appendTerminalCharacterContext({task:data.task,ids:npcs,party,messages,input:'按人设配置斗地主牌风'},card,{...data,actorIds:npcs,context:{state:{characters:c.state?.characters||[]},audience:ids}},privateBooks);
+ }catch{fail();}}
+export function parseLandlordProfile(content,plan){try{
+ const result=JSON.parse(stripReasoning(content).trim().replace(/^```(?:json)?\s*|\s*```$/gi,''));keys(result,['styles','tolerances']);if(!Array.isArray(result.styles)||result.styles.length!==2||new Set(result.styles.map(r=>r.id)).size!==2)fail(502);
+ const styles=plan.ids.map(id=>{const row=result.styles.find(r=>r?.id===id);keys(row,['id','skill','aggression','cooperation','caption']);const {id:ignored,...style}=row;void ignored;if(!validLandlordStyle(style)||plan.party.knownStyles&&Object.keys(style).some(k=>style[k]!==plan.party.knownStyles[id][k]))fail(502);return {id,...style};});
+ const missing=plan.party.missingTolerances;if(!Array.isArray(result.tolerances)||result.tolerances.length!==missing.length||new Set(result.tolerances.map(r=>r?.id)).size!==missing.length)fail(502);const tolerances=missing.map(id=>{const row=result.tolerances.find(r=>r?.id===id);keys(row,['id','value']);if(!Number.isInteger(row.value)||row.value<1||row.value>10)fail(502);return {id,value:row.value};});return {styles,tolerances};
+ }catch{fail(502);}}

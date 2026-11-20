@@ -1,9 +1,11 @@
+import {startLandlordRound,applyLandlordAction,landlordScores,landlordOpeningScores,validateLandlordRound,type LandlordRound,type LandlordAction} from './landlord.ts';
+import {validLandlordStyle,type LandlordStyle} from './landlordStrategy.ts';
 import {startLiarRound,validateLiarRound,type LiarRound} from './liarDice.ts';
 import {validateGameDialogue,type GameDialogue} from './gameDialogue.ts';
 import type {KingAfterparty} from './personalTerminal';
 import type {TerminalAnchor} from './terminalLedger';
 
-export type PartyKind='eleven'|'truth'|'liar';
+export type PartyKind='eleven'|'truth'|'liar'|'landlord';
 export interface PartyReply {id:string;text:string}
 interface RoundBase {number:number;anchor?:TerminalAnchor;archived?:boolean;replies?:PartyReply[];dialogueVersion?:1}
 export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;speeches:PartyReply[];playerText?:string;status:'deciding'|'ready'|'dealt';dialogueVersion?:1}
@@ -11,8 +13,8 @@ export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:
 export interface ElevenRound extends RoundBase {kind:'eleven';rulesVersion?:'eleven-v2'|'ten-half-v1';outcome?:'all-bust';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
 export interface TruthCard {id:string;truth:string;dare:string}
 export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;choiceDialogue?:GameDialogue;dialogue?:GameDialogue;phase:'choose'|'respond'|'complete'}
-export type PartyRound=ElevenRound|TruthRound|LiarRound;
-export interface PartyRoom {version:1;id:string;kind:PartyKind;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;inviteReplies:Record<string,string>;inviteNotes?:Record<string,string>;rounds:PartyRound[];drunk:Record<string,number>;endedAt?:string;endReason?:'drunk'|'manual'|'round-limit'|'bankers-complete';endTriggers?:string[];afterparty?:KingAfterparty;bankerOrder?:string[];bankerIndex?:number}
+export type PartyRound=ElevenRound|TruthRound|LiarRound|LandlordRound;
+export interface PartyRoom {version:1;id:string;kind:PartyKind;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;inviteReplies:Record<string,string>;inviteNotes?:Record<string,string>;rounds:PartyRound[];drunk:Record<string,number>;endedAt?:string;endReason?:'drunk'|'manual'|'round-limit'|'bankers-complete';endTriggers?:string[];afterparty?:KingAfterparty;bankerOrder?:string[];bankerIndex?:number;scores?:Record<string,number>;landlordStyles?:Record<string,LandlordStyle>}
 export type PartyRandom=(n:number)=>number;
 export const suits=['S','H','C','D'] as const;
 export const ranks=['A','2','3','4','5','6','7','8','9','10','J','Q','K'] as const;
@@ -74,8 +76,9 @@ function shuffled<T>(values:readonly T[],random:PartyRandom){const out=[...value
 const fail=():never=>{throw Error('终端聚会游戏格式不正确');};
 const actorId=(v:unknown):v is string=>typeof v==='string'&&/^[^\s\u0000-\u001f]{1,128}$/.test(v)&&!['__proto__','prototype','constructor'].includes(v);
 export function createPartyRoom(kind:PartyKind,ids:string[],name:string,style:string,id:string):PartyRoom{
- if(!['eleven','truth','liar'].includes(kind)||!Array.isArray(ids)||ids.length<2||ids.length>7||ids.some(x=>!actorId(x)||x==='player')||new Set(ids).size!==ids.length||!actorId(id)||typeof name!=='string'||name.length>60||typeof style!=='string'||style.length>40)throw Error('请选择2～7位好友并填写有效房间资料');
- return {version:1,id,kind,name:name.trim()||(kind==='eleven'?'十点半':kind==='liar'?'大话骰':'真心话大冒险'),style,members:['player',...ids],invitations:Object.fromEntries(ids.map(x=>[x,'pending'])),inviteReplies:{},inviteNotes:{},rounds:[],drunk:Object.fromEntries(['player',...ids].map(x=>[x,0]))};
+ if(kind==='landlord'&&ids.length!==2)throw Error('斗地主需要恰好两位好友');
+  if(!['eleven','truth','liar','landlord'].includes(kind)||!Array.isArray(ids)||ids.length<2||ids.length>7||ids.some(x=>!actorId(x)||x==='player')||new Set(ids).size!==ids.length||!actorId(id)||typeof name!=='string'||name.length>60||typeof style!=='string'||style.length>40)throw Error('请选择2～7位好友并填写有效房间资料');
+ return {version:1,id,kind,name:name.trim()||(kind==='eleven'?'十点半':kind==='liar'?'大话骰':kind==='landlord'?'斗地主':'真心话大冒险'),style,members:['player',...ids],invitations:Object.fromEntries(ids.map(x=>[x,'pending'])),inviteReplies:{},inviteNotes:{},rounds:[],drunk:Object.fromEntries(['player',...ids].map(x=>[x,0])),...(kind==='landlord'?{scores:landlordOpeningScores(['player',...ids])}:{})};
 }
 export function partyParticipants(room:PartyRoom){return room.members.filter(id=>id==='player'||room.invitations[id]==='accepted');}
 function activeRounds(room:PartyRoom){return room.rounds.filter(r=>!r.archived);}
@@ -110,7 +113,8 @@ export function startPartyRound(room:PartyRoom,anchor?:TerminalAnchor,random:Par
  const prior=previous.at(-1);if(prior?.kind==='eleven'&&prior.batch?.pending)throw Error('请先补齐本轮角色回应');if(prior?.kind==='liar'&&prior.moves.at(-1)?.pending)throw Error('请先补齐本次桌上回应');
   const participants=partyParticipants(room);if(participants.length<3)throw Error('至少需要你和两位已接受邀请的好友');if(room.rounds.length>=500)throw Error('房间记录已达500轮上限');
  let round:PartyRound;
- if(room.kind==='liar'){const last=previous.at(-1);round=startLiarRound(participants,room.rounds.length+1,last?.kind==='liar'?(last.nextStarter||last.loser):undefined,anchor,random);room.rounds.push(round);return round;}
+ if(room.kind==='landlord'){if(participants.length!==3||!room.scores)throw Error('斗地主需要三位参与者及积分');round=startLandlordRound(participants,room.rounds.length+1,room.scores,random,anchor);room.rounds.push(round);return round;}
+  if(room.kind==='liar'){const last=previous.at(-1);round=startLiarRound(participants,room.rounds.length+1,last?.kind==='liar'?(last.nextStarter||last.loser):undefined,anchor,random);room.rounds.push(round);return round;}
   if(room.kind==='truth'){
   if(previous.length>=10)throw Error('本局已完成10轮');
   const used=new Set(previous.filter((r):r is TruthRound=>r.kind==='truth').map(r=>r.card.id)),pool=truthCards.filter(c=>!used.has(c.id));
@@ -203,8 +207,10 @@ export function finishTruth(room:PartyRoom,actor:string,text:string,refused:bool
  const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='respond'||round.target!==actor||typeof text!=='string'||!text.trim()||text.length>3000||typeof refused!=='boolean')throw Error('请完成本轮回应');round.text=text.trim();round.refused=refused;round.phase='complete';if(refused)room.drunk[actor]=(room.drunk[actor]||0)+1;
  if(activeRounds(room).length>=10){room.endedAt=new Date().toISOString();room.endReason='round-limit';}return round;
 }
+export function applyPartyLandlordAction(room:PartyRoom,actor:string,action:LandlordAction,text?:string){const round=current(room);if(room.endedAt||room.kind!=='landlord'||round.kind!=='landlord')throw Error('当前不能进行斗地主操作');applyLandlordAction(round,actor,action,text);room.scores=landlordScores(round);return round;}
 export function settlePartyEnd(room:PartyRoom,tolerances:Record<string,number>){
  if(room.endReason==='manual')return room;
+  if(room.kind==='landlord'){const bankrupt=partyParticipants(room).filter(id=>room.scores?.[id]===0);if(!bankrupt.length)return room;for(const id of bankrupt){if(!Number.isInteger(tolerances[id])||tolerances[id]<1||tolerances[id]>10)throw Error('酒量尚未确定');room.drunk[id]=tolerances[id];}}
  const participants=partyParticipants(room),triggers=participants.filter(id=>Number.isInteger(tolerances[id])&&tolerances[id]>=1&&tolerances[id]<=10&&(room.drunk[id]||0)>=tolerances[id]);
  if(!triggers.length)return room;
  if(room.endReason==='drunk')return room;
@@ -318,13 +324,14 @@ function validateRoundReplies(round:PartyRound,participants:string[]){
 export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(afterparty:KingAfterparty,room:PartyRoom)=>void):PartyRoom[]{
  if(!Array.isArray(value)||value.length>20||new Set(value.map(r=>r?.id)).size!==value.length)fail();
  for(const room of value as PartyRoom[]){
-  keys(room,['version','id','kind','name','style','members','invitations','inviteReplies','inviteNotes','rounds','drunk','endedAt','endReason','endTriggers','afterparty','bankerOrder','bankerIndex']);
-  if(room.version!==1||!actorId(room.id)||!['eleven','truth','liar'].includes(room.kind)||!text(room.name,60,false)||!text(room.style,40)||!ids(room.members,3,8)||room.members[0]!=='player'||!obj(room.invitations)||Object.keys(room.invitations).length!==room.members.length-1||room.members.slice(1).some(id=>!['accepted','declined','pending'].includes(room.invitations[id]))||Object.keys(room.invitations).some(id=>!room.members.includes(id)||id==='player')||!obj(room.inviteReplies)||Object.entries(room.inviteReplies).some(([id,t])=>!room.members.includes(id)||id==='player'||!text(t,3000))||room.inviteNotes!==undefined&&(!obj(room.inviteNotes)||Object.entries(room.inviteNotes).some(([id,note])=>!room.members.includes(id)||id==='player'||!text(note,2000)))||!obj(room.drunk)||Object.entries(room.drunk).some(([id,n])=>!room.members.includes(id)||!Number.isInteger(n)||n<0||n>999)||!Array.isArray(room.rounds)||room.rounds.length>500||room.endedAt!==undefined&&!iso(room.endedAt)||room.endReason!==undefined&&!['drunk','manual','round-limit','bankers-complete'].includes(room.endReason)||!!room.endedAt!==!!room.endReason||room.endTriggers!==undefined&&(!ids(room.endTriggers,1,8)||room.endTriggers.some(id=>!partyParticipants(room).includes(id))))fail();
-  const participants=partyParticipants(room),active=activeRounds(room);if(room.kind==='truth'&&active.length>10)fail();
+  keys(room,['version','id','kind','name','style','members','invitations','inviteReplies','inviteNotes','rounds','drunk','endedAt','endReason','endTriggers','afterparty','bankerOrder','bankerIndex','scores','landlordStyles']);
+  if(room.version!==1||!actorId(room.id)||!['eleven','truth','liar','landlord'].includes(room.kind)||!text(room.name,60,false)||!text(room.style,40)||!ids(room.members,3,8)||room.members[0]!=='player'||!obj(room.invitations)||Object.keys(room.invitations).length!==room.members.length-1||room.members.slice(1).some(id=>!['accepted','declined','pending'].includes(room.invitations[id]))||Object.keys(room.invitations).some(id=>!room.members.includes(id)||id==='player')||!obj(room.inviteReplies)||Object.entries(room.inviteReplies).some(([id,t])=>!room.members.includes(id)||id==='player'||!text(t,3000))||room.inviteNotes!==undefined&&(!obj(room.inviteNotes)||Object.entries(room.inviteNotes).some(([id,note])=>!room.members.includes(id)||id==='player'||!text(note,2000)))||!obj(room.drunk)||Object.entries(room.drunk).some(([id,n])=>!room.members.includes(id)||!Number.isInteger(n)||n<0||n>999)||!Array.isArray(room.rounds)||room.rounds.length>500||room.endedAt!==undefined&&!iso(room.endedAt)||room.endReason!==undefined&&!['drunk','manual','round-limit','bankers-complete'].includes(room.endReason)||!!room.endedAt!==!!room.endReason||room.endTriggers!==undefined&&(!ids(room.endTriggers,1,8)||room.endTriggers.some(id=>!partyParticipants(room).includes(id))))fail();
+  const participants=partyParticipants(room),active=activeRounds(room);if(room.kind==='landlord'){if(room.rounds.length&&!room.landlordStyles)fail();const bankrupt=room.members.filter(id=>room.scores?.[id]===0);if(bankrupt.length&&(!room.endedAt||room.endReason!=='drunk'||bankrupt.some(id=>(room.drunk[id]||0)<1))||room.endReason==='drunk'&&(!bankrupt.length||!room.endTriggers||room.endTriggers.length!==bankrupt.length||bankrupt.some(id=>!room.endTriggers!.includes(id))))fail();if(room.members.length!==3||!obj(room.scores)||Object.keys(room.scores).length!==3||room.members.some(id=>!Number.isInteger(room.scores![id])||room.scores![id]<0||room.scores![id]>30000))fail();if(room.landlordStyles!==undefined&&(!obj(room.landlordStyles)||Object.keys(room.landlordStyles).length!==2||room.members.slice(1).some(id=>!validLandlordStyle(room.landlordStyles![id]))))fail();if(room.endReason==='manual'&&(room.afterparty!==undefined||room.endTriggers!==undefined))fail();if(room.members.some(id=>(room.drunk[id]||0)>0&&room.scores![id]!==0))fail();}else if(room.scores!==undefined||room.landlordStyles!==undefined)fail();if(room.kind==='truth'&&active.length>10)fail();
   if(room.bankerOrder!==undefined&&(!ids(room.bankerOrder,3,8)||room.bankerOrder.some(id=>!participants.includes(id)))||room.bankerIndex!==undefined&&(!Number.isInteger(room.bankerIndex)||room.bankerIndex<0||room.bankerIndex>(room.bankerOrder?.length||0))||room.kind!=='eleven'&&(room.bankerOrder!==undefined||room.bankerIndex!==undefined)||room.kind==='eleven'&&active.length&&(!room.bankerOrder||room.bankerIndex===undefined))fail();
   if(active.length&&participants.length<3||room.endReason==='round-limit'&&(room.kind!=='truth'||active.length!==10)||room.endReason==='bankers-complete'&&(room.kind!=='eleven'||room.bankerIndex!==room.bankerOrder?.length)||room.endReason==='drunk'&&(!room.endTriggers?.length||!room.afterparty))fail();
-  const usedTruth=new Set<string>();let lastNumber=0;
+  const usedTruth=new Set<string>();let lastNumber=0;let scoreLedger=landlordOpeningScores(room.members);
   for(const round of room.rounds){
+    if(round.kind==='landlord'){if(room.kind!=='landlord'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLandlordRound(round,participants,scoreLedger);scoreLedger=landlordScores(round);continue;}
     if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);if(round.dialogueVersion!==undefined)validateRoundReplies(round,participants);continue;}
    keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch','rulesVersion','outcome']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
@@ -344,7 +351,8 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
      validateElevenResult(round);
    }
   }
-  for(const id of participants){const voidCups=active.filter(r=>r.kind==='eleven'&&r.rulesVersion!==undefined&&r.phase==='complete'&&r.outcome==='all-bust'&&Object.hasOwn(r.hands,id)).length;if((room.drunk[id]||0)<voidCups)fail();}
+  if(room.kind==='landlord'&&room.members.some(id=>room.scores![id]!==scoreLedger[id]))fail();
+   for(const id of participants){const voidCups=active.filter(r=>r.kind==='eleven'&&r.rulesVersion!==undefined&&r.phase==='complete'&&r.outcome==='all-bust'&&Object.hasOwn(r.hands,id)).length;if((room.drunk[id]||0)<voidCups)fail();}
    if(active.slice(0,-1).some(r=>r.phase!=='complete'))fail();if(room.afterparty!==undefined){if(room.endReason!=='drunk')fail();afterparty(room.afterparty,room);validateAfterpartyCallback?.(room.afterparty,room);}
  }
  return value as PartyRoom[];

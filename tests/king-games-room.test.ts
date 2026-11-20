@@ -51,7 +51,7 @@ it('games list opens two party games and keeps the three remaining locked games 
  try{
   u.go('games');const html=await renderToString(createSSRApp(PersonalTerminal,{w}));
   for(const name of ['国王游戏','真心话大冒险','狼人杀','日麻','斗地主','十点半'])expect(html).toContain(name);
-  expect((html.match(/暂未开放/g)||[])).toHaveLength(3);
+  expect((html.match(/暂未开放/g)||[])).toHaveLength(2);
   expect(html).toContain('每日占卜');
   expect(html).toContain('创建房间');expect(html).toContain('回看记录');expect(html).toContain('游戏室房间');
  }finally{spy.mockRestore();}
@@ -306,7 +306,7 @@ it('renders accessible drunk progress bars for participants only and disables lo
   u.go('games');const gamesHtml=await renderToString(createSSRApp(PersonalTerminal,{w}));
   expect(gamesHtml).not.toContain('aria-disabled');
   const locked=(gamesHtml.match(/<button[^>]*disabled[^>]*>/g)||[]).length;
-  expect(locked).toBeGreaterThanOrEqual(3);// 聚会游戏已开放；仍锁定的其余游戏保持禁用
+  expect(locked).toBeGreaterThanOrEqual(2);// 聚会游戏已开放；仍锁定的其余游戏保持禁用
   for(const g of ['真心话大冒险','十点半'])expect(gamesHtml).toContain(g);
  }finally{spy.mockRestore();}
 });

@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-import {createSSRApp,defineComponent,h,ref} from 'vue';
+import {createSSRApp,defineComponent,h,reactive,ref} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {defaults,newSession} from '../src/domain/story';
 import {emptyTerminal} from '../src/domain/personalTerminal';
@@ -79,3 +79,5 @@ it('offers atmosphere presets without submitting and keeps manual edits',async()
  const Harness=defineComponent({setup(){state=(PartyGameRoom as any).setup({w:workspace(),kind:'truth',active:true},{expose(){},emit(){}});return ()=>h('div');}});await renderToString(createSSRApp(Harness));
  for(const preset of ['搞笑','休闲','欢乐','暧昧']){state.selectAtmosphere(preset);expect(stub.style.value).toBe(preset);}expect(stub.create).not.toHaveBeenCalled();stub.style.value='欢乐，带一点暧昧';const html=await renderParty('truth');expect(html).toContain('欢乐，带一点暧昧');expect(html).toContain('maxlength="40"');for(const preset of ['搞笑','休闲','欢乐','暧昧'])expect(html).toMatch(new RegExp('<button[^>]*type="button"[^>]*>'+preset+'</button>'));stub.working.value=true;state.selectAtmosphere('搞笑');expect(stub.style.value).toBe('欢乐，带一点暧昧');
 });
+
+it('landlord table emits landscape only while an active unfinished hand is shown and restores on leave/end/hide',async()=>{const current=room('landlord','斗地主');current.rounds=[{kind:'landlord',phase:'playing',turn:'player',number:1} as any];const stub=partyStub([current],current,'play');controllers.party.mockReturnValue(stub);const props=reactive({w:workspace(),kind:'landlord' as const,active:true}),events:boolean[]=[];let state:any;const Harness=defineComponent({setup(){state=(PartyGameRoom as any).setup(props,{expose(){},emit:(event:string,value:boolean)=>{if(event==='landscape')events.push(value);}});return ()=>h('div');}});await renderToString(createSSRApp(Harness));expect(events).toContain(true);expect(state.isLandlordLandscape.value).toBe(true);stub.page.value='room';expect(state.isLandlordLandscape.value).toBe(false);stub.page.value='play';expect(state.isLandlordLandscape.value).toBe(true);stub.round.value!.phase='complete';expect(state.isLandlordLandscape.value).toBe(false);stub.round.value!.phase='playing';props.active=false;expect(state.isLandlordLandscape.value).toBe(false);});

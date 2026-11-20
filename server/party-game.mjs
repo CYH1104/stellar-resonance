@@ -1,3 +1,4 @@
+import {landlordProfilePlan,parseLandlordProfile} from './landlord-profile.mjs';
 import {createGameDialoguePlan,parseGameDialogue,GAME_DIALOGUE_PROMPT} from './game-dialogue.mjs';
 import {elevenBatchPlan,parseElevenBatchResult} from './eleven-batch.mjs';
 import {liarPlan,parseLiarResult} from './liar-dice.mjs';
@@ -46,7 +47,8 @@ const instructions={
 
 /** Independent terminal request. Never imports personal-terminal, avoiding a dispatch cycle. */
 export function partyPlan(card,data,privateBooks=[]){
- if(data?.task==='party-eleven-batch')return elevenBatchPlan(card,data,privateBooks);
+ if(data?.task==='party-landlord-style')return landlordProfilePlan(card,data,privateBooks);
+  if(data?.task==='party-eleven-batch')return elevenBatchPlan(card,data,privateBooks);
  if(['party-liar-turn','party-liar-reply'].includes(data.task))return liarPlan(card,data,privateBooks);
  const plan=partyPlanWithinContext(card,data),ids=plan.dialogueIds||plan.ids;const augmented=appendTerminalCharacterContext({...plan,ids},card,{...data,actorIds:ids},privateBooks);return {...augmented,ids:plan.ids};
 }
@@ -60,7 +62,7 @@ function partyPlanWithinContext(card,data){
   const audience=context.audience;if(!Array.isArray(audience)||audience.length!==ids.length+1||new Set(audience).size!==audience.length||!audience.includes('player')||ids.some(id=>!audience.includes(id)))fail();
   if(context.memories!==undefined&&(!Array.isArray(context.memories)||context.memories.length>32||context.memories.some(m=>!text(m,6000,true))))fail();
   if(context.story!==undefined&&(!Array.isArray(context.story)||context.story.length>12||context.story.some(s=>!object(s)||Object.keys(s).some(k=>!['input','text'].includes(k))||!text(s.input,2000,true)||!text(s.text,16000,true))))fail();
-  const p=context.party;if(!object(p)||!['eleven','truth','liar'].includes(p.kind))fail();
+  const p=context.party;if(!object(p)||!['eleven','truth','liar','landlord'].includes(p.kind))fail();
   let party;
   if(data.task==='party-invite'){
    keys(p,['kind','participants']);party={kind:p.kind,participants:canonicalParticipants(p.participants,roster,data.persona,ids)};
@@ -100,7 +102,8 @@ function partyPlanWithinContext(card,data){
 }
 
 export function parsePartyResult(content,plan){
- if(plan?.task==='party-eleven-batch')return parseElevenBatchResult(content,plan);
+ if(plan?.task==='party-landlord-style')return parseLandlordProfile(content,plan);
+  if(plan?.task==='party-eleven-batch')return parseElevenBatchResult(content,plan);
  if(['party-liar-turn','party-liar-reply'].includes(plan.task))return parseLiarResult(content,plan);
  try{
   if(typeof content!=='string'||content.length>partyContextMax||!tasks.includes(plan?.task))fail(502);
