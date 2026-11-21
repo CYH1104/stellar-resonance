@@ -12,7 +12,7 @@ export interface ElevenWave {number:number;choices:Record<string,'hit'|'stand'>;
 export interface ElevenBatch {version:1;pending:boolean;wave:number;playerInput:string;finalReplies?:PartyReply[];dialogueVersion?:1}
 export interface ElevenRound extends RoundBase {kind:'eleven';rulesVersion?:'eleven-v2'|'ten-half-v1';outcome?:'all-bust';banker:string;deck:string[];hands:Record<string,string[]>;stopped:string[];turn:string;phase:'playing'|'complete';winner?:string;flow?:'waves-v1';waves?:ElevenWave[];batch?:ElevenBatch}
 export interface TruthCard {id:string;truth:string;dare:string}
-export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;choiceDialogue?:GameDialogue;dialogue?:GameDialogue;phase:'choose'|'respond'|'complete'}
+export interface TruthRound extends RoundBase {kind:'truth';target:string;card:TruthCard;choice?:'truth'|'dare';text?:string;refused?:boolean;choiceDialogue?:GameDialogue;dialogue?:GameDialogue;choiceReplyOffset?:number;answerReplyOffset?:number;phase:'choose'|'respond'|'complete'}
 export type PartyRound=ElevenRound|TruthRound|LiarRound|LandlordRound;
 export interface PartyRoom {version:1;id:string;kind:PartyKind;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;inviteReplies:Record<string,string>;inviteNotes?:Record<string,string>;rounds:PartyRound[];drunk:Record<string,number>;endedAt?:string;endReason?:'drunk'|'manual'|'round-limit'|'bankers-complete';endTriggers?:string[];afterparty?:KingAfterparty;bankerOrder?:string[];bankerIndex?:number;scores?:Record<string,number>;landlordStyles?:Record<string,LandlordStyle>}
 export type PartyRandom=(n:number)=>number;
@@ -201,10 +201,10 @@ export function advanceElevenWave(room:PartyRoom):ElevenRound{
 }
 
 export function chooseTruth(room:PartyRoom,actor:string,choice:'truth'|'dare'):TruthRound{
- const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='choose'||round.target!==actor||!['truth','dare'].includes(choice))throw Error('不能改写已选题目');round.choice=choice;round.phase='respond';return round;
+ const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='choose'||round.target!==actor||!['truth','dare'].includes(choice))throw Error('不能改写已选题目');round.choiceReplyOffset=round.replies?.length||0;round.choice=choice;round.phase='respond';return round;
 }
 export function finishTruth(room:PartyRoom,actor:string,text:string,refused:boolean):TruthRound{
- const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='respond'||round.target!==actor||typeof text!=='string'||!text.trim()||text.length>3000||typeof refused!=='boolean')throw Error('请完成本轮回应');round.text=text.trim();round.refused=refused;round.phase='complete';if(refused)room.drunk[actor]=(room.drunk[actor]||0)+1;
+ const round=current(room);if(room.endedAt||round.kind!=='truth'||round.phase!=='respond'||round.target!==actor||typeof text!=='string'||!text.trim()||text.length>3000||typeof refused!=='boolean')throw Error('请完成本轮回应');round.answerReplyOffset=round.replies?.length||0;round.text=text.trim();round.refused=refused;round.phase='complete';if(refused)room.drunk[actor]=(room.drunk[actor]||0)+1;
  if(activeRounds(room).length>=10){room.endedAt=new Date().toISOString();room.endReason='round-limit';}return round;
 }
 export function applyPartyLandlordAction(room:PartyRoom,actor:string,action:LandlordAction,text?:string){const round=current(room);if(room.endedAt||room.kind!=='landlord'||round.kind!=='landlord')throw Error('当前不能进行斗地主操作');applyLandlordAction(round,actor,action,text);room.scores=landlordScores(round);return round;}
@@ -333,10 +333,12 @@ export function validatePartyRooms(value:unknown,validateAfterpartyCallback?:(af
   for(const round of room.rounds){
     if(round.kind==='landlord'){if(room.kind!=='landlord'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLandlordRound(round,participants,scoreLedger);scoreLedger=landlordScores(round);continue;}
     if(round.kind==='liar'){if(room.kind!=='liar'||round.number<=lastNumber)fail();lastNumber=round.number;if(round.anchor)anchor(round.anchor);validateLiarRound(round,participants);if(round.dialogueVersion!==undefined)validateRoundReplies(round,participants);continue;}
-   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch','rulesVersion','outcome']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','target','card','choice','text','refused','phase']);
+   keys(round,round.kind==='eleven'?['kind','number','anchor','archived','replies','dialogueVersion','banker','deck','hands','stopped','turn','phase','winner','flow','waves','batch','rulesVersion','outcome']:['kind','number','anchor','archived','replies','dialogueVersion','dialogue','choiceDialogue','choiceReplyOffset','answerReplyOffset','target','card','choice','text','refused','phase']);
    if(round.kind!==room.kind||!Number.isInteger(round.number)||round.number<=lastNumber||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean')fail();lastNumber=round.number;if(round.anchor!==undefined)anchor(round.anchor);
    validateRoundReplies(round,participants);
    if(round.kind==='truth'){
+     for(const offset of [round.choiceReplyOffset,round.answerReplyOffset])if(offset!==undefined&&(!Number.isInteger(offset)||offset<0||offset>(round.replies?.length||0)))fail();
+     if(round.choiceReplyOffset!==undefined&&round.phase==='choose'||round.answerReplyOffset!==undefined&&round.phase!=='complete'||round.choiceReplyOffset!==undefined&&round.answerReplyOffset!==undefined&&round.choiceReplyOffset>round.answerReplyOffset)fail();
      if(round.choiceDialogue!==undefined){if(round.phase==='choose')fail();validateGameDialogue(round.choiceDialogue,participants.filter(id=>id!=='player'));}
      if(round.dialogue!==undefined){if(round.phase!=='complete')fail();validateGameDialogue(round.dialogue,participants.filter(id=>id!=='player'));}
     keys(round.card,['id','truth','dare']);if(!participants.includes(round.target)||!actorId(round.card.id)||!text(round.card.truth,1000,false)||!text(round.card.dare,1000,false)||!['choose','respond','complete'].includes(round.phase)||round.choice!==undefined&&!['truth','dare'].includes(round.choice)||round.text!==undefined&&!text(round.text,3000,false)||round.refused!==undefined&&typeof round.refused!=='boolean'||round.phase==='choose'&&(round.choice!==undefined||round.text!==undefined||round.refused!==undefined)||round.phase==='respond'&&(round.choice===undefined||round.text!==undefined||round.refused!==undefined)||round.phase==='complete'&&(round.choice===undefined||round.text===undefined||round.refused===undefined))fail();if(!round.archived){if(usedTruth.has(round.card.id))fail();usedTruth.add(round.card.id);}

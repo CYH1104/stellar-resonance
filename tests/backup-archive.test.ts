@@ -118,3 +118,17 @@ it('roundtrips independent long-text drafts through cloud, append import and ove
  await w.saveEditorDraft('preset:prompt-a','新的本地草稿');await w.restoreCloudSave(cloud);expect(await w.readEditorDraft('preset:prompt-a')).toContain('未确认预设');
  await w.undoCloudRestore();expect(await w.readEditorDraft('preset:prompt-a')).toBe('新的本地草稿');expect(w.sessions.value).toHaveLength(value.sessions.length*2);
 });
+
+it('truth chronology survives full local/cloud replace, import remapping and recovery; legacy rounds still load',async()=>{
+ const {createPartyRoom,startPartyRound,chooseTruth,finishTruth}=await import('../src/domain/partyGames');const {partyDialogueLines}=await import('../src/domain/partyDialogueView');
+ await seed();const w=await workspace(),s=w.sessions.value[0];s.terminal=emptyTerminal();s.initial.characters=[{id:'a',name:'甲',present:true},{id:'b',name:'乙',present:true}];const room=createPartyRoom('truth',['a','b'],'顺序','轻松','chronology');room.invitations={a:'accepted',b:'accepted'};s.terminal.partyRooms=[room];
+ const rr=startPartyRound(room,undefined,()=>0);if(rr.kind!=='truth')throw Error();chooseTruth(room,'player','truth');rr.dialogueVersion=1;rr.replies=[{id:'player',text:'先想想'},{id:'a',text:'等你'}];finishTruth(room,'player','答案',false);rr.replies.push({id:'b',text:'明白了'});await w.save();
+ const expected=['先想想','等你','答案','明白了'],local=backup((await new IndexedDbRepository().read())!),cloud=await w.createCloudWorkspaceBackup();
+ const order=()=>partyDialogueLines(w.sessions.value.find(s=>s.terminal?.partyRooms?.length)!.terminal!.partyRooms![0].rounds[0]).map(x=>x.text);
+ for(const file of [local,cloud]){expect(partyDialogueLines(parseWorkspaceBackup(file).snapshot.sessions[0].terminal!.partyRooms![0].rounds[0]).map(x=>x.text)).toEqual(expected);}
+ w.sessions.value[0].terminal=emptyTerminal();await w.save();expect(await w.importBackup(local,true)).toBe(true);expect(order()).toEqual(expected);await w.undoCloudRestore();expect(w.sessions.value[0].terminal!.partyRooms||[]).toEqual([]);
+ await w.restoreCloudSave(cloud);expect(order()).toEqual(expected);await w.undoCloudRestore();expect(w.sessions.value[0].terminal!.partyRooms||[]).toEqual([]);
+ expect(await w.importBackup(local)).toBe(true);expect(order()).toEqual(expected);await w.undoCloudRestore();
+ const legacy=JSON.parse(local);delete legacy.sessions[0].terminal.partyRooms[0].rounds[0].choiceReplyOffset;delete legacy.sessions[0].terminal.partyRooms[0].rounds[0].answerReplyOffset;expect(()=>parseBackup(JSON.stringify(legacy))).not.toThrow();
+ const broken=JSON.parse(local);broken.sessions[0].terminal.partyRooms[0].rounds[0].answerReplyOffset=999;expect(()=>parseBackup(JSON.stringify(broken))).toThrow();
+});

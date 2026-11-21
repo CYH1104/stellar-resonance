@@ -14,10 +14,12 @@ import {emptyTerminal,terminalId,afterpartyMinChars,afterpartyMaxChars,type Pers
 import {createPartyRoom,applyPartyLandlordAction,partyParticipants,startPartyRound,isElevenAllBust,elevenLimitHalf,elevenHandRank,ensureElevenWaves,elevenWaveChoice,advanceElevenWave,markElevenBatch,applyElevenBatchResult,elevenBatchPrepared,chooseTruth,finishTruth,settlePartyEnd,endPartyRoom,handRank,cardLabel,type PartyRoom,type PartyKind,type TruthRound,type ElevenRound} from '../domain/partyGames';
 import {terminalAnchor,terminalAnchorActive,recordTerminalChat,syncTerminalMemoryNotes,terminalBucket,isTerminalMemoryNote,type TerminalAnchor} from '../domain/terminalLedger';
 
+class RetryBindingChanged extends Error {}
+
 /** Separate game controller: all random draws and penalties are committed before model prose. */
 export function usePartyGames(w:ViewModel){
  const page=ref<'list'|'create'|'room'|'play'|'history'>('list'),currentKind=ref<PartyKind>('eleven'),roomId=ref(''),picked=ref<string[]>([]),title=ref(''),style=ref('轻松聚会'),draft=ref(''),error=ref(''),working=ref(false),inviteTarget=ref<string|null>(null),inviteNote=ref(''),retryActionLabel=ref('');
- let retryAction:(()=>Promise<void>)|undefined;let landlordPaused=false,landlordViewActive=true;
+ let retryAction:(()=>Promise<void>)|undefined,retryOperation:(()=>Promise<void>)|undefined;let landlordPaused=false,landlordViewActive=true;
  const pendingInvite=ref<{roomId:string;ids:string[];names:string[]}|undefined>();
   const pendingInvites=computed(()=>room.value?.members.filter(id=>id!=='player'&&room.value!.invitations[id]==='pending')||[]),declinedInvites=computed(()=>room.value?.members.filter(id=>id!=='player'&&room.value!.invitations[id]==='declined')||[]);
  const terminal=computed(()=>w.active?.terminal||emptyTerminal());
@@ -38,7 +40,7 @@ export function usePartyGames(w:ViewModel){
  function cancel(){cancelled=true;controller?.abort();}
  watch(()=>[w.active?.id,w.terminalEpoch,signature()],cancel);onScopeDispose(cancel);
  async function run(action:()=>Promise<void>,label='重试本次操作',retry=action){if(working.value||w.busy||w.terminalBusy||w.backupWorking)return;if(w.restoreInterrupted){error.value='请先恢复覆盖前的完整副本。';return;}if(!w.active){error.value='请先打开存档。';return;}
-  working.value=true;w.terminalBusy=true;cancelled=false;activeSid=w.active.id;epoch=w.terminalEpoch;anchor=terminalAnchor(w.active);error.value='';retryAction=undefined;retryActionLabel.value='';try{await action();}catch(e){error.value=e instanceof Error?e.message:'操作失败，原记录已保留。';if(!cancelled){const failedSid=activeSid,failedRoom=roomId.value,failedEpoch=epoch,failedSignature=signature(),failedState=JSON.stringify(room.value);retryAction=async()=>{if(w.active?.id!==failedSid||roomId.value!==failedRoom||w.terminalEpoch!==failedEpoch||signature()!==failedSignature||JSON.stringify(room.value)!==failedState)throw Error('房间或接口已改变，请使用当前页面的操作按钮。');await retry();};retryActionLabel.value=label;}}finally{working.value=false;w.terminalBusy=false;controller=undefined;activeSid='';anchor=undefined;}}
+  working.value=true;w.terminalBusy=true;cancelled=false;activeSid=w.active.id;epoch=w.terminalEpoch;anchor=terminalAnchor(w.active);error.value='';retryAction=undefined;retryOperation=undefined;retryActionLabel.value='';try{await action();}catch(e){error.value=e instanceof Error?e.message:'操作失败，原记录已保留。';if(!cancelled&&!(e instanceof RetryBindingChanged)){const failedSid=activeSid,failedRoom=roomId.value,failedEpoch=epoch,failedSignature=signature(),failedState=JSON.stringify(room.value);retryOperation=retry;retryAction=async()=>{if(w.active?.id!==failedSid||roomId.value!==failedRoom||w.terminalEpoch!==failedEpoch||signature()!==failedSignature||JSON.stringify(room.value)!==failedState)throw new RetryBindingChanged('房间或接口已改变，请使用当前页面的操作按钮。');await retry();};retryActionLabel.value=label;}}finally{working.value=false;w.terminalBusy=false;controller=undefined;activeSid='';anchor=undefined;}}
  function activeRoom(){const r=room.value;if(!r||r.endedAt)throw Error('游戏已结束，只能回看。');if(history.value.length!==r.rounds.filter(x=>!x.archived).length)throw Error('游戏记录属于其他剧情分支，请返回原分支或新建房间。');return r;}
  function gameName(kind:PartyKind){return kind==='eleven'?'十点半':kind==='liar'?'大话骰':kind==='landlord'?'斗地主':'真心话大冒险';}
  function landlordSummary(r:LandlordRound){
@@ -77,7 +79,7 @@ export function usePartyGames(w:ViewModel){
   }
   const invite=()=>{const r=room.value;if(!r)return;const c=captureInvite(r,r.members.filter(id=>id!=='player'&&r.invitations[id]!=='accepted'),'');return run(()=>requestInvites(c),'重试邀请请求');};
   const retryInvites=()=>{const r=room.value;if(!r)return;const c=captureInvite(r,[...pendingInvites.value],'');return run(()=>requestInvites(c),'重试邀请请求');};
-  function retryRequest(){const action=retryAction,label=retryActionLabel.value;if(action)return run(action,label);}
+  function retryRequest(){const action=retryAction,retry=retryOperation,label=retryActionLabel.value;if(action)return run(action,label,retry);}
   function beginInvite(id?:string){if(working.value||!room.value||room.value.rounds.length||room.value.endedAt||id&&!declinedInvites.value.includes(id)||!id&&!declinedInvites.value.length)return;inviteTarget.value=id||'*';inviteNote.value=id?room.value.inviteNotes?.[id]||'':'';error.value='';}
   function sendInvite(){if(working.value||w.busy||w.terminalBusy||w.backupWorking||inviteTarget.value===null)return;const r=room.value;if(!r)return;const ids=inviteTarget.value==='*'?[...declinedInvites.value]:declinedInvites.value.includes(inviteTarget.value)?[inviteTarget.value]:[];if(!ids.length){inviteTarget.value=null;return;}const capture=captureInvite(r,ids,inviteNote.value);inviteTarget.value=null;inviteNote.value='';error.value='';return run(()=>requestInvites(capture),'重试邀请请求',()=>requestInvites(capture));}
 function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)return;roomId.value=id;draft.value='';if(!working.value){error.value='';retryAction=undefined;retryActionLabel.value='';}inviteTarget.value=null;inviteNote.value='';page.value=room.value?.endedAt?'history':'room';}
@@ -127,8 +129,8 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
   function setLandlordActive(value:boolean){landlordViewActive=value;if(!value)landlordPaused=true;}
   async function advanceLandlord(){
    for(let steps=0;steps<3;steps++){
-    guard();const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='landlord')throw Error('请先开始斗地主');if(rm.endedAt){await afterEnd();return;}if(rr.phase==='complete'||rr.turn==='player'||landlordPaused||page.value!=='play')return;
-    const actor=rr.turn,fp=JSON.stringify(rr),style=rm.landlordStyles?.[actor];if(!style)throw Error('角色牌风尚未配置');await new Promise(resolve=>setTimeout(resolve,450));guard();if(landlordPaused||page.value!=='play')return;if(JSON.stringify(round.value)!==fp)throw Error('斗地主牌局已改变');const action=chooseLandlordAction(landlordPublicContext(rr,actor),style);
+    guard();const rm=room.value,rr=round.value;if(!rm||rr?.kind!=='landlord')throw Error('请先开始斗地主');if(rm.endedAt){await afterEnd();return;}if(rr.phase==='complete'||rr.turn==='player'||landlordPaused||!landlordViewActive||page.value!=='play')return;
+    const actor=rr.turn,fp=JSON.stringify(rr),style=rm.landlordStyles?.[actor];if(!style)throw Error('角色牌风尚未配置');await new Promise(resolve=>setTimeout(resolve,450));guard();if(landlordPaused||!landlordViewActive||page.value!=='play')return;if(JSON.stringify(round.value)!==fp)throw Error('斗地主牌局已改变');const action=chooseLandlordAction(landlordPublicContext(rr,actor),style);
     await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyPartyLandlordAction(r,actor,action);settlePartyEnd(r,t.tolerances||{});});if(room.value?.endedAt){await afterEnd();return;}
    }
   }
@@ -138,7 +140,14 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
    if(!r.landlordStyles||missing.length){const fp=JSON.stringify(r),result=await request('party-landlord-style',ids.filter(id=>id!=='player'),r.style,{party:{...partyContext(r),missingTolerances:missing,...(r.landlordStyles?{knownStyles:r.landlordStyles}:{})}});if(JSON.stringify(room.value)!==fp)throw Error('房间已改变，牌风未写入');await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;if(!rm.landlordStyles)rm.landlordStyles=Object.fromEntries(result.styles.map(({id,...style}:any)=>[id,style]));t.tolerances||={};for(const a of result.tolerances||[])if(missing.includes(a.id)&&t.tolerances[a.id]===undefined)t.tolerances[a.id]=a.value;if(ids.some(id=>t.tolerances![id]===undefined))throw Error('酒量资料不完整');});}
    if(!landlordViewActive||roomId.value!==r.id||page.value!==startPage)return;await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;settlePartyEnd(rm,t.tolerances||{});if(!rm.endedAt)startPartyRound(rm,anchor);});if(!landlordViewActive||roomId.value!==r.id||page.value!==startPage)return;draft.value='';page.value=room.value?.endedAt?'history':'play';landlordPaused=false;if(room.value?.endedAt){await afterEnd();return;}await advanceLandlord();
   }
-  function landlordStep(action:import('../domain/landlord').LandlordAction){return run(async()=>{const rm=activeRoom(),rr=round.value;if(rr?.kind!=='landlord'||rr.turn!=='player')throw Error('尚未轮到你出牌');await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyPartyLandlordAction(r,'player',action);settlePartyEnd(r,t.tolerances||{});});landlordPaused=false;if(room.value?.endedAt){await afterEnd();return;}await advanceLandlord();},'继续角色出牌',advanceLandlord);}
+  function landlordStep(action:import('../domain/landlord').LandlordAction){
+   const selected=copy(action);let committed=false;
+   const step=async()=>{
+    if(!committed){const rm=activeRoom(),rr=round.value;if(rr?.kind!=='landlord'||rr.turn!=='player')throw Error('尚未轮到你出牌');await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyPartyLandlordAction(r,'player',selected);settlePartyEnd(r,t.tolerances||{});});committed=true;}
+    if(room.value?.endedAt){await afterEnd();return;}await advanceLandlord();
+   };
+   return run(step,'继续角色出牌');
+  }
   const landlordBid=(score:number)=>landlordStep({kind:'bid',score}),landlordPlay=(cards:string[])=>landlordStep(cards.length?{kind:'play',cards}:{kind:'pass'});
 const start=()=>room.value?.kind==='landlord'?run(startLandlord,'继续斗地主',()=>round.value?.kind==='landlord'&&round.value.phase!=='complete'?advanceLandlord():startLandlord()):room.value?.kind==='eleven'?run(startEleven,'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():startEleven()):room.value?.kind==='liar'?run(startLiar,'重试本轮角色行动',()=>round.value?.kind==='liar'&&(round.value.phase!=='complete'||round.value.moves.at(-1)?.pending)?advanceLiarChain():startLiar()):startOther();
  function liarPublicMoves(rr:LiarRound){return rr.moves.slice(-12).map(m=>({id:m.id,action:m.action,...(m.bid?{bid:m.bid}:{}),text:m.text,replies:m.replies,...(m.targets?{targets:[...m.targets]}:{}),...(m.dialogueVersion===1?{dialogueVersion:1}:{})}));}
@@ -176,16 +185,20 @@ const start=()=>room.value?.kind==='landlord'?run(startLandlord,'继续斗地主
   await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;settlePartyEnd(rm,t.tolerances||{});if(!rm.endedAt)startPartyRound(rm,anchor);});
   draft.value='';page.value=room.value?.endedAt?'history':'play';if(room.value?.endedAt){await afterEnd();return;}await advanceLiarChain();
  }
- const liarBid=(bid:LiarBid)=>run(async()=>{
-  if(round.value?.kind==='liar'&&round.value.moves.at(-1)?.pending){await advanceLiarChain();return;}
-  const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.turn!=='player')throw Error('尚未轮到你叫号。');const text=draft.value.trim().slice(0,500);
-  await write(t=>{applyLiarMove(t.partyRooms!.find(x=>x.id===rm.id)!,'player','bid',bid,text);});draft.value='';await advanceLiarChain();
- },'重试本轮角色行动',advanceLiarChain);
- function challengeLiar(action:'open'|'split',targets?:string[]){return run(async()=>{
-  if(round.value?.kind==='liar'&&round.value.moves.at(-1)?.pending){await advanceLiarChain();return;}
-  const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.phase!=='playing'||rr.turn!=='player')throw Error('尚未轮到你开骰。');const text=draft.value.trim().slice(0,500);
-  await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyLiarMove(r,'player',action,undefined,text,[],undefined,targets);settlePartyEnd(r,t.tolerances||{});});draft.value='';if(room.value?.endedAt)page.value='history';await advanceLiarChain();
- },'重试本次开劈回应',advanceLiarChain);}
+ function liarPlayerMove(action:'bid'|'open'|'split',bid?:LiarBid,targets?:string[]){
+  const selectedBid=bid?copy(bid):undefined,selectedTargets=targets?[...targets]:undefined,text=draft.value.trim().slice(0,500);let committed=false;
+  return run(async()=>{
+   if(!committed){
+    if(round.value?.kind==='liar'&&round.value.moves.at(-1)?.pending){await advanceLiarChain();return;}
+    const rm=activeRoom(),rr=round.value;if(rr?.kind!=='liar'||rr.phase!=='playing'||rr.turn!=='player')throw Error(action==='bid'?'尚未轮到你叫号。':'尚未轮到你开骰。');
+    await write(t=>{const r=t.partyRooms!.find(x=>x.id===rm.id)!;applyLiarMove(r,'player',action,selectedBid,text,[],undefined,selectedTargets);if(action!=='bid')settlePartyEnd(r,t.tolerances||{});});committed=true;draft.value='';
+    if(room.value?.endedAt)page.value='history';
+   }
+   await advanceLiarChain();
+  },action==='bid'?'重试本轮角色行动':'重试本次开劈回应');
+ }
+ const liarBid=(bid:LiarBid)=>liarPlayerMove('bid',bid);
+ const challengeLiar=(action:'open'|'split',targets?:string[])=>liarPlayerMove(action,undefined,targets);
  const liarOpen=(targets?:string[])=>challengeLiar('open',targets),liarSplit=(targets:string[])=>challengeLiar('split',targets);
  const liarReroll=()=>run(async()=>{const rm=activeRoom();await write(t=>{rerollLiar(t.partyRooms!.find(x=>x.id===rm.id)!);});await advanceLiarChain();},'恢复重摇后的游戏',advanceLiarChain);
  const liarConfirmRoll=()=>run(async()=>{const rm=activeRoom();await write(t=>{confirmLiarRoll(t.partyRooms!.find(x=>x.id===rm.id)!);});await advanceLiarChain();},'恢复已封杯的游戏',advanceLiarChain);

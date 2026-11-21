@@ -23,3 +23,12 @@ it('escapes injected variable data and keeps bridge read-only',()=>{
  expect(rendered).toContain('\\u003c/script>');expect(rendered).not.toContain('</script><script>bad()');expect(rendered).toContain('window.getVariables');expect(rendered).not.toContain('window.replaceVariables');expect(rendered).not.toContain('localStorage');
 });
 
+
+it('blocks external resource classes while preserving bundled libraries and local scripting',()=>{
+ const html=htmlRenderDocument('<button onclick="this.textContent=1">点我</button>','c',{},false,'http://127.0.0.1:9000');
+ const policy=html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)![1];
+ expect(policy).toContain("img-src data: blob:");expect(policy).toContain("media-src data: blob:");expect(policy).toContain("style-src 'unsafe-inline';");expect(policy).toContain("font-src data:");expect(policy).toContain("worker-src 'none'");expect(policy).not.toMatch(/(?:^|[ ;])https?:[ ;]/);expect(policy).toContain('/assets/academy-render-jquery.js');expect(policy).toContain('/assets/academy-render-lodash.js');
+});
+it.each(['<html><!-- <head> --><head><script>attack()</script></head><body>x</body></html>','<html><script>attack()</script><head></head><body>x</body></html>'])('places effective policy before all supplied document content',source=>{
+ const html=htmlRenderDocument(source,'c');expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.indexOf('attack()'));expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.includes('<!--')?html.indexOf('<!--'):Infinity);
+});

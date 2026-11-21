@@ -310,11 +310,11 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         const boot=bootHead;
         const composed=terminal.replace('<html ','<html data-academy-boot ').replace('</head>',boot+'</head>').replace(/<body\b[^>]*>/i,body=>body+bootScreen).replace('</body>',assets+'\n</body>');
         const html=account?accountHtml(composed):composed;
-        response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:html);return;
+        response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"frame-src 'none'; object-src 'none'"});response.end(request.method==='HEAD'?undefined:html);return;
       }
       if(!['/','/index.html','/favicon.svg'].includes(path)&&!/^\/assets\/[A-Za-z0-9_.-]+$/.test(path))throw modelError(404,'NOT_FOUND');
       const candidate=resolve(dist,path==='/'?'index.html':'.'+path),file=await realpath(candidate).catch(()=>null);if(!file||!file.startsWith(dist+sep))throw modelError(404,'NOT_FOUND');
-      let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});response.end(request.method==='HEAD'?undefined:bytes);
+      let bytes=await readFile(file);if(account&&extname(file)==='.html')bytes=Buffer.from(accountHtml(bytes.toString('utf8')));response.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store',...(extname(file)==='.html'?{'Content-Security-Policy':"frame-src 'none'; object-src 'none'"}:{})});response.end(request.method==='HEAD'?undefined:bytes);
     }catch(error){
       // Disconnects abort upstream work with a DOMException whose code is numeric.
       // A closed response needs no error body; never let error formatting reject

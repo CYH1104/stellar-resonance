@@ -99,3 +99,9 @@ test('the two channels keep separate account stores and sessions',async()=>{
     await rm(base,{recursive:true,force:true});
   }
 });
+
+test('game HTML entrypoints prohibit iframe navigation while retaining srcdoc rendering support',async()=>{
+ const {app,base}=await start('test');
+ try{for(const path of ['/','/index.html','/terminal']){const response=await fetch(base+path);assert.equal(response.status,200);assert.equal(response.headers.get('content-security-policy'),"frame-src 'none'; object-src 'none'");}}
+ finally{await close(app.server);}
+});

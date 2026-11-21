@@ -47,3 +47,16 @@ it('parser settings stay isolated on save failure; preset clone/delete preserve 
  expect(await draft.save()).toBe(true);expect(base.preferences.presetOutputParsing![id].tags).toContain('other');
  draft.view.removePresetSet();expect(draft.view.preferences.presetOutputParsing![id]).toBeUndefined();expect(draft.view.preferences.presetOutputParsing!.legacy).toEqual(config);
 });
+
+it('profile save leaves route draft pending with explicit feedback; full save applies B',async()=>{
+ const {base,draft}=setup();const selected=base.preferences.terminalProfile===base.preferences.mainProfile?base.preferences.auxiliaryProfiles![0]:base.preferences.mainProfile;draft.view.preferences.terminalProfile=selected;
+ expect(await draft.view.connectProfile(draft.view.preferences.profiles[0])).toBe(true);expect(base.preferences.terminalProfile).not.toBe(selected);expect(draft.dirty.value).toBe(true);expect(base.notice).toContain('保存全部设置并应用');
+ expect(await draft.save()).toBe(true);expect(base.preferences.terminalProfile).toBe(selected);expect(draft.dirty.value).toBe(false);
+});
+
+it('discard removes a newly selected optional terminal API and later saves do not revive it',async()=>{
+ const {base,draft}=setup();expect(base.preferences).not.toHaveProperty('terminalProfile');
+ draft.view.preferences.terminalProfile=base.preferences.mainProfile;expect(draft.dirty.value).toBe(true);
+ await draft.discard();expect(draft.view.preferences).not.toHaveProperty('terminalProfile');expect(draft.dirty.value).toBe(false);expect(base.commitConfiguration).not.toHaveBeenCalled();
+ draft.view.preferences.vectorEnabled=!base.preferences.vectorEnabled;expect(await draft.save()).toBe(true);expect(base.preferences).not.toHaveProperty('terminalProfile');expect(draft.dirty.value).toBe(false);
+});

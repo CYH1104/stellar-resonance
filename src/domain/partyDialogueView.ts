@@ -24,7 +24,16 @@ export function truthDialogueLines(round:TruthRound):DialogueLine[]{
  const main=round.text&&round.target?{id:round.target,text:round.text}:undefined;
  const mainInDialogue=!!main&&modern.some(line=>line.id===main.id&&line.text===main.text);
  const primary=modern.length? [...(main&&!mainInDialogue?[main]:[]),...modern] : main?[main]:[];
- return [...choice,...primary,...copy(round.replies)];
+ const replies=copy(round.replies),lines:DialogueLine[]=[];
+ // Optional offsets anchor each event in the append-only public conversation.
+ // Older saves lack this chronology; keep their established display order.
+ const choiceAt=round.choiceReplyOffset??0,answerAt=round.answerReplyOffset??0;
+ for(let i=0;i<=replies.length;i++){
+  if(i===choiceAt)lines.push(...choice);
+  if(i===answerAt)lines.push(...primary);
+  if(i<replies.length)lines.push(replies[i]);
+ }
+ return lines;
 }
 export function liarDialogueLines(round:Extract<PartyRound,{kind:'liar'}>):DialogueLine[]{
  const lines:DialogueLine[]=[];

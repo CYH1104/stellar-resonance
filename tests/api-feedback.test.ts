@@ -12,14 +12,14 @@ it('文字与向量表单均保留获取模型、测试与保存，说明默认�
   const p=defaults().profiles[0],w={credentials:{},connectionReady:()=>false} as unknown as ViewModel;
   for(const embedding of [false,true]){
     const html=await renderToString(createSSRApp(ApiProfileEditor,{w,p,title:'测试 API',embedding}));
-    expect(html).toContain('连接测试');expect(html).toContain('获取模型');expect(html).toContain('保存 API');expect(html).toContain('role="combobox"');expect(html).toContain('aria-label="模型列表"');expect(html).not.toContain('class="model-search"');expect(html).toContain('测试 API说明');expect(html).not.toContain('可能计费');expect(html).not.toContain('Temperature');
+    expect(html).toContain('连接测试');expect(html).toContain('获取模型');expect(html).toContain('保存当前接口');expect(html).toContain('role="combobox"');expect(html).toContain('aria-label="模型列表"');expect(html).not.toContain('class="model-search"');expect(html).toContain('测试 API说明');expect(html).not.toContain('可能计费');expect(html).not.toContain('Temperature');
   }
 });
 it('副接口下拉显示全部选项但只展开一份，新增表单和详细设置默认收起，向量攻略简短',async()=>{
   const preferences=defaults();preferences.vectorEnabled=true;const auxiliaryProfiles=preferences.profiles.filter(p=>![preferences.mainProfile,preferences.embeddingProfile].includes(p.id));
   auxiliaryProfiles.push({...auxiliaryProfiles[0],id:'extra',name:'另一副 API'});
   const w={preferences,auxiliaryProfiles,credentials:{},connectionReady:()=>false,apiSelectable:()=>false,apiReady:false} as unknown as ViewModel;
-  const html=await renderToString(createSSRApp(ApiSettings,{w}));expect(html).toContain('另一副 API');expect(html.match(/class="api-card compact-api-card"/g)).toHaveLength(3);expect(html).toContain('增加副 API');expect(html).not.toContain('<dialog');expect(html).not.toContain('<details open');expect(html).toContain('BAAI/bge-m3');expect(html).toContain('Pro/BAAI/bge-m3');expect(html).not.toContain('<table');
+  const html=await renderToString(createSSRApp(ApiSettings,{w}));expect(html).toContain('另一副 API');expect(html.match(/class="api-card compact-api-card"/g)).toHaveLength(3);expect(html).toContain('增加副 API');expect(html).toContain('保存全部设置并应用');expect(html).toContain('只保存该卡片');expect(html).not.toContain('<dialog');expect(html).not.toContain('<details open');expect(html).toContain('BAAI/bge-m3');expect(html).toContain('Pro/BAAI/bge-m3');expect(html).not.toContain('<table');
 });
 it('正文为空时仍展示生成浮层，失败原因由外层提示避免在输入区重复占位',async()=>{
   const active=newSession('测试',{name:'玩家',appearance:'',personality:'',background:''},'');
