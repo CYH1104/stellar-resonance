@@ -9,7 +9,7 @@ export interface LandlordResult {
  winner:'landlord'|'farmers'|'redeal'; deltas:Record<string,number>; spring:boolean;
 }
 export interface LandlordRound {
- kind:'landlord'; rulesVersion:1; number:number; anchor?:TerminalAnchor; archived?:boolean; replies?:{id:string;text:string}[]; dialogueVersion?:1;
+ kind:'landlord'; rulesVersion:1|2; number:number; anchor?:TerminalAnchor; archived?:boolean; replies?:{id:string;text:string}[]; dialogueVersion?:1;
  participants:string[]; starter:string; initialHands:Record<string,string[]>; hands:Record<string,string[]>; bottom:string[];
  openingScores:Record<string,number>; phase:'bidding'|'playing'|'complete'; turn:string; landlord?:string; highestBid:number;
  moves:LandlordMove[]; lead?:{id:string;cards:string[]}; passes:number; multiplier:number; result?:LandlordResult;
@@ -21,11 +21,11 @@ function matchesKeys(v:unknown,ids:string[]):v is Record<string,unknown>{return 
 export function landlordOpeningScores(ids:readonly string[]){return Object.fromEntries(ids.map(id=>[id,LANDLORD_START_SCORE]));}
 export function landlordScores(round:LandlordRound){return Object.fromEntries(round.participants.map(id=>[id,round.openingScores[id]+(round.result?.deltas[id]??0)]));}
 function nextSeat(round:LandlordRound,id:string){return round.participants[(round.participants.indexOf(id)+1)%3]!;}
-function makeRound(participants:string[],number:number,starter:string,initialHands:Record<string,string[]>,bottom:string[],openingScores:Record<string,number>):LandlordRound{
- return {kind:'landlord',rulesVersion:1,number,participants:[...participants],starter,initialHands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),hands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),bottom:[...bottom],openingScores:{...openingScores},phase:'bidding',turn:starter,highestBid:0,moves:[],passes:0,multiplier:1};
+function makeRound(participants:string[],number:number,starter:string,initialHands:Record<string,string[]>,bottom:string[],openingScores:Record<string,number>,rulesVersion:1|2=2):LandlordRound{
+ return {kind:'landlord',rulesVersion,number,participants:[...participants],starter,initialHands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),hands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),bottom:[...bottom],openingScores:{...openingScores},phase:'bidding',turn:starter,highestBid:0,moves:[],passes:0,multiplier:1};
 }
 export function startLandlordRound(ids:string[],number:number,scores:Record<string,number>,random:(n:number)=>number,anchor?:TerminalAnchor){
- if(ids.length!==3||new Set(ids).size!==3||!ids.includes('player')||!ids.every(id=>Number.isInteger(scores[id])&&scores[id]>0))fail();
+ if(ids.length!==3||new Set(ids).size!==3||!ids.includes('player')||!ids.every(id=>Number.isSafeInteger(scores[id])&&scores[id]>=0))fail();
  const pick=(n:number)=>{const v=random(n);if(!Number.isInteger(v)||v<0||v>=n)fail();return v;};
  const deck=[...landlordDeck];for(let i=deck.length-1;i>0;i--){const j=pick(i+1);[deck[i],deck[j]]=[deck[j],deck[i]];}
  const starter=ids[pick(3)]!,initial=Object.fromEntries(ids.map((id,i)=>[id,sortLandlordCards(deck.slice(17*i,17*i+17))]));
@@ -41,9 +41,9 @@ function settle(round:LandlordRound,finisher:string){
  if(spring)round.multiplier*=2;
  const stake=LANDLORD_BASE*round.highestBid*round.multiplier,deltas=Object.fromEntries(round.participants.map(id=>[id,0]));
  if(landlordWins){
-  for(const farmer of farmers){const paid=Math.min(stake,round.openingScores[farmer]);deltas[farmer]=-paid;deltas[landlord]+=paid;}
+  for(const farmer of farmers){const paid=round.rulesVersion===1?Math.min(stake,round.openingScores[farmer]):stake;deltas[farmer]=-paid;deltas[landlord]+=paid;}
  }else{
-  const paid=Math.min(2*stake,round.openingScores[landlord]);
+  const paid=round.rulesVersion===1?Math.min(2*stake,round.openingScores[landlord]):2*stake;
   deltas[landlord]=-paid;deltas[farmers[0]]=Math.ceil(paid/2);deltas[farmers[1]]=Math.floor(paid/2);
  }
  round.result={winner:landlordWins?'landlord':'farmers',deltas,spring};round.phase='complete';round.turn='';
@@ -83,9 +83,9 @@ function equal(left:unknown,right:unknown):boolean{
 }
 /** Replay imported moves from the original deal and compare all derived state. */
 export function validateLandlordRound(round:LandlordRound,ids:string[],scores:Record<string,number>){
- if(!record(round)||round.kind!=='landlord'||round.rulesVersion!==1||!Number.isInteger(round.number)||round.number<1||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean'||!equal(round.participants,ids)||ids.length!==3||!ids.includes(round.starter)||!equal(round.openingScores,scores)||!ids.every(id=>Number.isInteger(scores[id])&&scores[id]>0)||!matchesKeys(round.initialHands,ids)||!validCards(round.bottom,3)||!Array.isArray(round.moves)||round.moves.length>165)return fail();
+ if(!record(round)||round.kind!=='landlord'||![1,2].includes(round.rulesVersion)||!Number.isInteger(round.number)||round.number<1||round.number>500||round.archived!==undefined&&typeof round.archived!=='boolean'||!equal(round.participants,ids)||ids.length!==3||!ids.includes(round.starter)||!equal(round.openingScores,scores)||!ids.every(id=>Number.isSafeInteger(scores[id])&&(round.rulesVersion===1?scores[id]>0:scores[id]>=0))||!matchesKeys(round.initialHands,ids)||!validCards(round.bottom,3)||!Array.isArray(round.moves)||round.moves.length>165)return fail();
  const initial=round.initialHands;if(!ids.every(id=>validCards(initial[id],17))||new Set([...ids.flatMap(id=>initial[id]),...round.bottom]).size!==54)return fail();
- const replay=makeRound(ids,round.number,round.starter,initial,round.bottom,scores);
+ const replay=makeRound(ids,round.number,round.starter,initial,round.bottom,scores,round.rulesVersion);
  for(const move of round.moves){
   if(!record(move)||typeof move.id!=='string'||!['bid','play','pass'].includes(move.kind)||Object.keys(move).some(k=>!['id','kind','text',...(move.kind==='bid'?['score']:move.kind==='play'?['cards']:[])].includes(k)))return fail();
   applyLandlordAction(replay,move.id,move,move.text);

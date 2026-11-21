@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { ViewModel } from '../app/useWorkspace';
 import { classifyLandlord, beatsLandlord, enumerateLandlordPlays, landlordCardLabel, landlordPatternLabel } from '../domain/landlordCards';
 import type { LandlordRound } from '../domain/landlord';
+import {LandlordBubbleDirector,type LandlordPhrases,type LandlordBubble} from '../domain/landlordSpeech';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 
 type Props = {
@@ -12,8 +13,10 @@ type Props = {
   name: (id: string) => string;
   busy: boolean;
   readOnly?: boolean;
+  active?: boolean;
+  phrases?: Record<string,LandlordPhrases>;
 };
-const props = withDefaults(defineProps<Props>(), { readOnly: false });
+const props = withDefaults(defineProps<Props>(), { readOnly: false, active: true });
 const emit = defineEmits<{
   bid: [score: number];
   play: [cards: string[]];
@@ -22,6 +25,11 @@ const emit = defineEmits<{
   end: [];
 }>();
 
+const bubble=ref<LandlordBubble>();const bubbleDirector=new LandlordBubbleDirector();let bubbleTimer:ReturnType<typeof setInterval>|undefined;
+function updateBubble(){bubble.value=bubbleDirector.update(props.round,props.phrases,Date.now(),props.active&&!props.readOnly&&typeof document!=='undefined'&&!document.hidden,props.busy);}
+watch(()=>[props.round.number,props.round.moves.length,props.round.phase,props.round.turn,props.active,props.readOnly,props.busy],updateBubble);
+onMounted(()=>{updateBubble();bubbleTimer=setInterval(updateBubble,1000);document.addEventListener('visibilitychange',updateBubble);});
+onBeforeUnmount(()=>{clearInterval(bubbleTimer);document.removeEventListener('visibilitychange',updateBubble);});
 const selected = ref<string[]>([]);
 watch(() => [props.round.number, props.round.phase, props.round.turn, props.round.hands.player?.join('|')], () => { selected.value = []; });
 const ownTurn = computed(() => props.round.phase !== 'complete' && props.round.turn === 'player');
@@ -86,21 +94,17 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
       <button v-if="!readOnly" class="leave-link" type="button" @click="emit('leave')">离开牌桌</button>
     </header>
 
-    <div class="table-surface">
+    <div v-if="round.phase!=='complete'" class="table-surface">
       <div class="opponents">
-        <article v-for="seat in seats" :key="seat.id" class="opponent" :class="[`seat-${seat.side}`, { active: round.turn === seat.id && round.phase !== 'complete' }]">
-          <TerminalActorAvatar class="avatar" :w="w" :id="seat.id" />
+        <article v-for="seat in seats" :key="seat.id" class="opponent" :class="[`seat-${seat.side}`, { active: round.turn === seat.id }]">
+          <TerminalActorAvatar class="avatar" :w="w" :id="seat.id" /><span v-if="bubble?.id===seat.id" class="speech-bubble" role="status">{{bubble.text}}</span>
           <div class="identity">
             <strong>{{ name(seat.id) }}</strong>
             <span class="role-badge" :class="{ landlord: seat.role === '地主' }">{{ seat.role }}</span>
             <small>积分 {{ scores[seat.id] ?? round.openingScores[seat.id] }}</small><small>{{ seat.thinking ? '思考中…' : `${seat.count} 张` }}</small>
           </div>
-          <b v-if="lastAction(seat.id)" class="last-seat-action">{{lastAction(seat.id)}}</b><div v-if="round.phase !== 'complete'" class="back-stack" aria-hidden="true">
+          <b v-if="lastAction(seat.id)" class="last-seat-action">{{lastAction(seat.id)}}</b><div class="back-stack" aria-hidden="true">
             <span v-for="n in Math.min(3, seat.count)" :key="n" class="card-back"></span>
-          </div>
-          <div v-else class="revealed-hand" :aria-label="name(seat.id) + '剩余手牌'">
-            <span v-for="card in round.hands[seat.id] || []" :key="card" class="mini-card" :class="{ red: isRed(card) }">{{ cardText(card) }}</span>
-            <small v-if="!seat.count">已出完</small>
           </div>
         </article>
       </div>
@@ -132,14 +136,10 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
         </div>
       </div>
 
-      <div class="player-seat" :class="{ active: round.turn === 'player' && round.phase !== 'complete' }">
+      <div class="player-seat" :class="{ active: round.turn === 'player' }">
         <div class="player-identity">
           <TerminalActorAvatar class="avatar" :w="w" id="player" />
           <div><strong>{{ name('player') }}</strong><span class="role-badge" :class="{ landlord: round.landlord === 'player' }">{{ roleOf('player') }}</span><small>余额 {{ scores.player ?? round.openingScores.player }}</small></div>
-        </div>
-        <div v-if="round.phase === 'complete'" class="player-result">
-          <span>本局 {{ signed(round.result?.deltas.player ?? 0) }}</span>
-          <span>余额 {{ scores.player ?? ((round.openingScores.player || 0) + (round.result?.deltas.player ?? 0)) }}</span>
         </div>
         <div class="hand" :class="{ 'hand-disabled': !canAct || round.phase !== 'playing' }" aria-label="你的手牌">
           <template v-if="!readOnly">
@@ -152,7 +152,7 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
           <template v-else>
             <span v-for="(card, index) in ownHand" :key="card" class="hand-card" :class="{ red: isRed(card) }" :style="{ '--card-index': index, '--card-count': ownHand.length }"><span>{{ cardText(card) }}</span></span>
           </template>
-          <span v-if="!ownHand.length" class="empty-hand">{{ round.phase === 'complete' ? '本局结束' : '等待发牌' }}</span>
+          <span v-if="!ownHand.length" class="empty-hand">等待发牌</span>
         </div>
       </div>
     </div>
@@ -164,11 +164,12 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
       </div>
       <div class="score-summary">
         <div v-for="id in round.participants" :key="id" class="score-line">
-          <span>{{ name(id) }} <small>{{ roleOf(id) }}</small></span>
-          <strong>{{ signed(round.result?.deltas[id] ?? 0) }}</strong>
+          <span class="settlement-player"><TerminalActorAvatar class="avatar" :w="w" :id="id" /><span>{{ name(id) }} <small>{{ roleOf(id) }}</small><span v-if="bubble?.id===id" class="settlement-bubble" role="status">{{bubble.text}}</span></span></span>
+          <strong>本局 {{ signed(round.result?.deltas[id] ?? 0) }}</strong>
           <span>余额 {{ scores[id] ?? ((round.openingScores[id] || 0) + (round.result?.deltas[id] ?? 0)) }}</span>
         </div>
       </div>
+      <details class="settlement-cards"><summary>查看底牌和剩余手牌</summary><div class="remaining-hand"><small>底牌</small><span v-for="card in round.bottom" :key="card" class="mini-card" :class="{red:isRed(card)}">{{cardText(card)}}</span></div><div v-for="id in round.participants" :key="id" class="remaining-hand"><small>{{name(id)}}</small><span v-for="card in round.hands[id]" :key="card" class="mini-card" :class="{red:isRed(card)}">{{cardText(card)}}</span><small v-if="!round.hands[id]?.length">已出完</small></div></details>
       <p v-if="round.result?.winner === 'redeal'" class="redeal-note">三家均未叫地主，本局不计分。</p>
       <div v-if="!readOnly" class="settlement-actions">
         <button type="button" class="primary" :disabled="busy" @click="emit('start')">下一局</button>
@@ -212,4 +213,8 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
 #academy-workspace .pt .landlord-table .table-surface{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(58px,1fr) auto;justify-content:stretch;gap:3px;border-radius:26px}#academy-workspace .pt .landlord-table .opponents{position:static;inset:auto;min-height:52px}#academy-workspace .pt .landlord-table .center-table{position:static;inset:auto;transform:none;min-height:58px;margin:0 12%}#academy-workspace .pt .landlord-table .player-seat{position:static;inset:auto;display:grid;grid-template-columns:108px minmax(0,1fr);align-items:center;gap:6px;padding:3px 2px}#academy-workspace .pt .landlord-table .player-identity{gap:4px}#academy-workspace .pt .landlord-table .player-identity .avatar{width:30px;height:30px}#academy-workspace .pt .landlord-table .player-identity>div{font-size:11px}#academy-workspace .pt .landlord-table .hand{min-height:62px;padding:8px 0 0}#academy-workspace .pt .landlord-table .hand-card{flex:0 1 44px;width:44px;min-width:0;min-height:0!important;height:60px;margin-left:-16px;padding:3px 1px!important;border:1px solid #d2c7af!important;border-radius:6px!important;background:#fffaf0!important;color:#18252c!important;box-shadow:0 2px 5px #06192299!important;font-size:12px!important;font-weight:750!important;line-height:1!important;text-align:left!important;opacity:1!important;display:flex;align-items:flex-start;justify-content:flex-start}#academy-workspace .pt .landlord-table .hand-card:first-child{margin-left:0}#academy-workspace .pt .landlord-table .hand-card.red{color:#ae3033!important}#academy-workspace .pt .landlord-table .hand-card.selected{border-color:#ffe28a!important;box-shadow:0 0 0 2px #f3c965,0 4px 9px #06192299!important}#academy-workspace .pt .landlord-table .hand-card span{padding-left:1px}#academy-workspace .pt .landlord-table.is-complete{height:auto;max-height:none}#academy-workspace .pt .landlord-table.is-complete .table-surface{min-height:330px}
 #academy-workspace .pt .landlord-table .last-seat-action{position:absolute;right:8px;bottom:-14px;padding:1px 6px;border-radius:7px;background:#133e33;color:#ffe49c;font-size:10px;line-height:14px;white-space:nowrap;z-index:1}
 #academy-workspace .terminal-device-landscape .pt .landlord-table .table-surface{padding:8px 10px}#academy-workspace .terminal-device-landscape .pt .landlord-table .opponent{padding:4px 8px;gap:5px}#academy-workspace .terminal-device-landscape .pt .landlord-table .opponent .avatar{width:30px;height:30px}#academy-workspace .terminal-device-landscape .pt .landlord-table .identity{grid-template-columns:auto auto;align-items:center;gap:2px 6px}#academy-workspace .terminal-device-landscape .pt .landlord-table .identity strong{font-size:12px}#academy-workspace .terminal-device-landscape .pt .landlord-table .identity small{font-size:10px}#academy-workspace .terminal-device-landscape .pt .landlord-table .center-table{min-height:46px;margin:0 10%}#academy-workspace .terminal-device-landscape .pt .landlord-table .multiplier{display:flex;flex-direction:row;align-items:center;gap:5px;padding:4px 7px}#academy-workspace .terminal-device-landscape .pt .landlord-table .multiplier strong{font-size:20px;line-height:1.1}#academy-workspace .terminal-device-landscape .pt .landlord-table .last-play{max-height:52px;overflow:auto}#academy-workspace .terminal-device-landscape .pt .landlord-table .played-cards{max-height:38px}#academy-workspace .terminal-device-landscape .pt .landlord-table .player-seat{grid-template-columns:100px minmax(0,1fr)}#academy-workspace .terminal-device-landscape .pt .landlord-table .hand{min-height:58px}#academy-workspace .terminal-device-landscape .pt .landlord-table .hand-card{height:50px}#academy-workspace .terminal-device-landscape .pt .landlord-table .controls button{padding:5px 10px!important;min-height:32px!important;font-size:12px!important;line-height:1.2!important}#academy-workspace .terminal-device-landscape .pt .landlord-table .leave-link{padding:4px 8px!important;min-height:28px!important;font-size:11px!important;line-height:1.2!important}
+.is-complete .settlement{flex:1;max-height:none;min-height:0}.settlement-player{display:flex;align-items:center;gap:8px;min-width:0}.settlement-player>span{overflow-wrap:anywhere}.settlement-player .avatar{width:32px;height:32px;flex:none}.settlement-cards{margin-top:8px}.settlement-cards summary{cursor:pointer;color:#c4d9d5;font-size:12px}.remaining-hand{display:flex;flex-wrap:wrap;align-items:center;gap:3px;margin:8px 0}.remaining-hand>small{flex-basis:100%}.is-complete .settlement-actions{position:sticky;bottom:0;background:#153a32;padding:8px 0}.is-complete .score-line{padding:8px 0}
+.speech-bubble{position:absolute;top:calc(100% + 5px);left:0;z-index:3;max-width:180px;min-width:80px;padding:7px 9px;border-radius:10px;background:#fff8e7;color:#263a3a;box-shadow:0 3px 8px #0004;font-size:12px;line-height:1.4;overflow-wrap:anywhere;text-align:left;pointer-events:none}.speech-bubble:before{content:'';position:absolute;top:-5px;left:19px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:5px solid #fff8e7}.seat-right .speech-bubble{left:auto;right:0}.seat-right .speech-bubble:before{left:auto;right:19px}.settlement-bubble{display:block;color:#ffdf9d;font-size:11px;font-weight:400;margin-top:3px}
+#academy-workspace .pt .landlord-table.is-complete .settlement{padding:8px 12px}#academy-workspace .pt .landlord-table.is-complete .settlement h2{margin:0!important;padding:0!important;font-size:18px!important;line-height:1.3}#academy-workspace .pt .landlord-table.is-complete .settlement-heading{margin:0 0 6px;min-height:27px}#academy-workspace .pt .landlord-table.is-complete .score-summary{width:100%}#academy-workspace .pt .landlord-table.is-complete .score-line{grid-template-columns:minmax(0,1fr) max-content minmax(90px,1fr);padding:4px 0;min-height:30px;font-size:12px;gap:10px}#academy-workspace .pt .landlord-table.is-complete .settlement-player .avatar{width:28px!important;height:28px!important;min-width:28px!important;min-height:28px!important;margin:0!important}#academy-workspace .pt .landlord-table.is-complete .settlement-actions{padding:4px 0;margin-top:5px;min-height:30px}#academy-workspace .pt .landlord-table.is-complete .settlement-actions button{padding:5px 10px!important;min-height:30px!important;line-height:1.2!important;font-size:12px!important}
+@media (max-height:500px),(orientation:portrait) and (max-width:700px){#academy-workspace .pt .landlord-table.is-complete .settlement{padding:4px 8px}#academy-workspace .pt .landlord-table.is-complete .settlement-heading{min-height:23px;margin-bottom:2px}#academy-workspace .pt .landlord-table.is-complete .settlement h2{font-size:16px!important}#academy-workspace .pt .landlord-table.is-complete .score-line{min-height:26px;padding:2px 0}#academy-workspace .pt .landlord-table.is-complete .settlement-player .avatar{width:24px!important;height:24px!important;min-width:24px!important;min-height:24px!important}#academy-workspace .pt .landlord-table.is-complete .settlement-actions{position:static;padding:2px 0;margin-top:2px}#academy-workspace .pt .landlord-table.is-complete .settlement-cards{margin-top:3px}#academy-workspace .pt .landlord-table .settlement-bubble{display:inline;margin-left:6px}#academy-workspace .terminal-device-landscape .pt .landlord-table .opponents{min-height:44px}#academy-workspace .terminal-device-landscape .pt .landlord-table .center-table{min-height:32px}#academy-workspace .terminal-device-landscape .pt .landlord-table .table-surface{grid-template-rows:auto minmax(32px,1fr) auto;padding:5px 8px}#academy-workspace .terminal-device-landscape .pt .landlord-table .hand{min-height:44px;padding-top:4px}#academy-workspace .terminal-device-landscape .pt .landlord-table .hand-card{height:40px}#academy-workspace .terminal-device-landscape .pt .landlord-table .player-seat{padding:0 2px}#academy-workspace .terminal-device-landscape .pt .landlord-table .bottom-backs i{height:25px}}
 </style>

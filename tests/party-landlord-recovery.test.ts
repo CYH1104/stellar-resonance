@@ -1,3 +1,4 @@
+import {fallbackLandlordPhrases} from '../src/domain/landlordSpeech';
 import PartyGameRoom from '../src/components/PartyGameRoom.vue';
 import { expect, it, vi, afterEach } from 'vitest';
 import { effectScope, reactive, nextTick, createRenderer, defineComponent, h, ssrContextKey } from 'vue';
@@ -19,6 +20,7 @@ function fixture() {
     const room = createPartyRoom('landlord', ['a', 'b'], '审查牌局', '轻松', 'audit-room');
     room.invitations = { a: 'accepted', b: 'accepted' };
     room.landlordStyles = styles;
+    room.landlordPhrases = {a:fallbackLandlordPhrases(),b:fallbackLandlordPhrases()};
     session.terminal.partyRooms = [room];
     session.initial.characters = [{ id: 'a', name: '甲', present: true }, { id: 'b', name: '乙', present: true }];
     const preferences = defaults();
@@ -145,7 +147,7 @@ it('bankruptcy settles both losers once; failed scene retry does not regenerate 
     const last = prepareBankruptcy(u), api = vi.mocked(HttpGateway.prototype.terminal);
     api.mockRejectedValueOnce(Error('scene a unavailable')).mockResolvedValue({ text: '合成场景内容。'.repeat(200), summary: '合成场景' } as any);
     await u.landlordPlay(last);
-    expect(u.room.value!.scores).toEqual({ player: 30000, a: 0, b: 0 });
+    expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     expect(u.room.value!.drunk).toEqual({ player: 0, a: 5, b: 6 });
     expect(u.room.value!.endTriggers).toEqual(['a', 'b']);
     expect(api).toHaveBeenCalledTimes(2);
@@ -157,8 +159,8 @@ it('bankruptcy settles both losers once; failed scene retry does not regenerate 
     expect((api.mock.calls[2]![0] as {actorIds:string[]}).actorIds).toEqual(['a']);
     expect(u.room.value!.afterparty!.scenes![1]!.text).toBe(ready);
     expect(JSON.stringify(u.round.value)).toBe(gameBefore);
-    expect(u.room.value!.scores).toEqual({ player: 30000, a: 0, b: 0 });
-    expect(persisted().partyRooms[0].scores).toEqual({ player: 30000, a: 0, b: 0 });
+    expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
+    expect(persisted().partyRooms[0].scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     validatePartyRooms([u.room.value!]);
     await u.retryAfterparty();
     expect(api).toHaveBeenCalledTimes(3);
@@ -172,11 +174,11 @@ it('stopping a pending afterparty keeps the committed settlement and permits ret
     for (let i = 0; i < 20 && !release; i++)
         await Promise.resolve();
     expect(release).toBeTypeOf('function');
-    expect(u.room.value!.scores).toEqual({ player: 30000, a: 0, b: 0 });
+    expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     u.stop();
     release({ text: '合成内容。'.repeat(300), summary: '不会写入' });
     await pending;
-    expect(u.room.value!.scores).toEqual({ player: 30000, a: 0, b: 0 });
+    expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     expect(u.room.value!.afterparty!.scenes![0]!.status).toBe('pending');
     api.mockResolvedValue({ text: '恢复后合成内容。'.repeat(200), summary: '恢复' } as any);
     await u.retryAfterparty('a');
