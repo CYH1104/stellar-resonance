@@ -12,6 +12,8 @@ import CharacterAvatar from './CharacterAvatar.vue';
 const props=withDefaults(defineProps<{w:ViewModel;active?:boolean;kind?:'eleven'|'truth'|'liar'|'landlord'}>(),{active:true});
 const emit=defineEmits<{back:[];landscape:[value:boolean]}>();
 const u=reactive(usePartyGames(props.w));
+const activeApi=computed(()=>props.w.terminalProfile);
+const activeApiOrigin=computed(()=>{try{return new URL(activeApi.value?.apiBaseUrl||'').origin;}catch{return '未配置地址';}});
 const kinds={eleven:'十点半',truth:'真心话大冒险',liar:'大话骰',landlord:'斗地主'} as const;
 const selectionLimit=computed(()=>u.currentKind==='landlord'?2:7);
 const isLandlordLandscape=computed(()=>props.active&&u.page==='play'&&u.round?.kind==='landlord'&&u.round.phase!=='complete'&&!u.room?.endedAt);
@@ -48,6 +50,7 @@ function ending(reason:string|undefined){return reason==='drunk'?'有人达到�
 <template>
  <section class="party-game-room" aria-label="终端聚会游戏"><div v-if="u.inviteTarget!==null" class="party-invite-overlay" @click.self="u.inviteTarget=null"><form class="party-invite-dialog" role="dialog" aria-modal="true" aria-label="重新邀请留言" @submit.prevent="u.sendInvite()" @keydown.esc.prevent="u.inviteTarget=null"><h3>再次邀请{{inviteName}}</h3><p>想对角色说些什么？发送后可返回列表等候回信。</p><label>邀请留言<textarea v-model="u.inviteNote" maxlength="2000" rows="4" :disabled="u.working" placeholder="写给角色的话…" /></label><div class="party-actions"><button type="submit" class="party-primary" :disabled="u.working">发送邀请</button><button type="button" @click="u.inviteTarget=null">取消</button></div></form></div>
   <header v-show="!isLandlordLandscape" class="party-heading"><h2>{{u.room&&['room','play','history'].includes(u.page)?displayName(u.room):kinds[props.kind||'eleven']}}</h2></header>
+  <p class="party-muted" role="status">当前终端 API：{{activeApi?`${activeApi.name} · ${activeApi.model} · ${activeApiOrigin}`:'未配置'}}</p>
   <div v-if="u.error&&!u.inviteTarget" class="party-error" role="alert"><p>{{u.error}}</p><button v-if="u.retryActionLabel&&!(u.room?.kind==='liar'&&u.page==='play')&&!(u.elevenBatchPending&&u.room&&['room','play','history'].includes(u.page))" type="button" :disabled="u.working" @click="u.retryRequest()">{{u.retryActionLabel}}</button></div>
   <p v-if="u.working&&!isLandlordLandscape" class="party-working" role="status"><template v-if="u.pendingInvite">正在等待{{u.pendingInvite.names.join('、')}}回信，可返回列表查看。</template><template v-else>正在处理，请稍候…</template> <button type="button" @click="u.stop()">停止请求</button></p>
   <template v-if="u.page==='list'">

@@ -15,6 +15,7 @@ const emit=defineEmits<{saved:[]}>();
 const main=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.preferences.mainProfile));
 const embedding=computed(()=>props.w.preferences.profiles.find(p=>p.id===props.w.preferences.embeddingProfile));
 const disabled=computed(()=>props.w.busy||props.w.workingMemory||props.w.configuringApis);
+const appliedTerminalOrigin=computed(()=>{try{return new URL(props.w.terminalProfile?.apiBaseUrl||'').origin;}catch{return '未配置地址';}});
 const applying=ref(false),applyResult=ref(''),applyFailed=ref(false);
 async function applySettings(){if(disabled.value||applying.value)return;applying.value=true;applyResult.value='';applyFailed.value=false;try{await props.w.save();applyResult.value='全部设置已保存，终端后续新请求将使用所选接口。';emit('saved');}catch(e){applyFailed.value=true;applyResult.value=e instanceof Error?e.message:'设置未保存，请重试。';}finally{applying.value=false;}}
 const selectedAux=ref(''),draft=ref<Profile>(),adding=ref(false),removeOpen=ref(false);
@@ -55,6 +56,7 @@ function remove(){if(auxiliary.value)props.w.removeProfile(auxiliary.value.id);r
       <label>随机事件<select v-model="w.preferences.randomEventProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
       <label>论坛 AI 回复<select v-model="w.preferences.forumReplyProfile" :disabled="disabled"><option :value="w.preferences.mainProfile">主 API · {{main?.name}}</option><option v-for="p in w.auxiliaryProfiles" :key="p.id" :value="p.id" :disabled="!w.apiSelectable(p)">副 API · {{p.name}}</option></select></label>
     </div>
+    <p class="rail-note" role="status">已保存的终端 API：{{w.terminalProfile?`${w.terminalProfile.name} · ${w.terminalProfile.model} · ${appliedTerminalOrigin}`:'未配置'}}</p>
     <p class="rail-note">更改上方功能接口后，请点击“保存全部设置并应用”；接口卡片的保存按钮只保存该卡片。</p><button type="button" :disabled="disabled||applying" @click="applySettings">{{applying?'保存中…':'保存全部设置并应用'}}</button><DismissibleNotice :message="applyResult" :error="applyFailed" />
     <p class="rail-note">自动群聊、角色主动私聊和课表随正文由主 API 一起生成。玩家在终端内回复、申请好友和进行国王游戏时，使用此处的终端 API；可选择主 API 或单独配置的副 API。</p>
     <p v-if="w.storyProfile" class="rail-note">剧情：{{w.storyProfile.model||'未选模型'}} · 最大输出 {{w.storyProfile.maxTokens}} Token（在“预设”中修改）。</p>

@@ -58,7 +58,7 @@ describe('gateway reports HTTP status without guessing',()=>{
  });
  it('keeps the run-log line free of credentials',async()=>{
   vi.spyOn(globalThis,'fetch').mockResolvedValue(jsonResponse(429,{code:'UPSTREAM_RATE_LIMIT'}));
-  await expect(new HttpGateway().models(profile.apiBaseUrl!,'sk-secret','x' as never)).rejects.toThrow();
+  await expect(new HttpGateway().models(profile.apiBaseUrl!,'sk-secret',new AbortController().signal)).rejects.toThrow();
   const line=httpFailureLog(seen[0]!);
   expect(line).toContain('429');
   expect(line).not.toContain('sk-secret');
