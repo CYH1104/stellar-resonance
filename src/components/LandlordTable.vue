@@ -4,6 +4,7 @@ import type { ViewModel } from '../app/useWorkspace';
 import { classifyLandlord, beatsLandlord, enumerateLandlordPlays, landlordCardLabel, landlordPatternLabel } from '../domain/landlordCards';
 import type { LandlordRound } from '../domain/landlord';
 import {LandlordBubbleDirector,type LandlordPhrases,type LandlordBubble} from '../domain/landlordSpeech';
+import SettlementVoices from './SettlementVoices.vue';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 
 type Props = {
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   start: [];
   leave: [];
   end: [];
+  retrySettlement: [];
 }>();
 
 const bubble=ref<LandlordBubble>();const bubbleDirector=new LandlordBubbleDirector();let bubbleTimer:ReturnType<typeof setInterval>|undefined;
@@ -169,6 +171,7 @@ function isRed(card: string) { return card.startsWith('H-') || card.startsWith('
           <span>余额 {{ scores[id] ?? ((round.openingScores[id] || 0) + (round.result?.deltas[id] ?? 0)) }}</span>
         </div>
       </div>
+      <SettlementVoices :w="w" :talk="round.settlementTalk" :name="name" :busy="busy" :read-only="readOnly" @retry="emit('retrySettlement')"/>
       <details class="settlement-cards"><summary>查看底牌和剩余手牌</summary><div class="remaining-hand"><small>底牌</small><span v-for="card in round.bottom" :key="card" class="mini-card" :class="{red:isRed(card)}">{{cardText(card)}}</span></div><div v-for="id in round.participants" :key="id" class="remaining-hand"><small>{{name(id)}}</small><span v-for="card in round.hands[id]" :key="card" class="mini-card" :class="{red:isRed(card)}">{{cardText(card)}}</span><small v-if="!round.hands[id]?.length">已出完</small></div></details>
       <p v-if="round.result?.winner === 'redeal'" class="redeal-note">三家均未叫地主，本局不计分。</p>
       <div v-if="!readOnly" class="settlement-actions">

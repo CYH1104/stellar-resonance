@@ -1,3 +1,5 @@
+> 2026-11-23 当前交接：四人日麻与斗地主每小局结算发言，仅9000发布、8807不动。详见 [本轮交接](handoffs/2026-11-23-mahjong-settlement.md) 与 [日麻说明](MAHJONG.md)。
+
 > 2026-11-21 当前授权：9000 测试版单独修复发布，8807 稳定版不动。此前双端共同发布描述不适用于本轮。见 [审计交接](handoffs/2026-11-21-terminal-audit-fixes.md) 与 [终端 API 切换补充](handoffs/2026-11-21-terminal-api-switch.md) 与 [斗地主结算/气泡补充](handoffs/2026-11-21-landlord-settlement-bubbles.md)。
 
 # 跨会话工作交接

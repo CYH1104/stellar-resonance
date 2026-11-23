@@ -1,3 +1,4 @@
+import {validateSettlementTalk,type SettlementTalk} from './settlementTalk.ts';
 import {beatsLandlord, classifyLandlord, landlordDeck, sortLandlordCards} from './landlordCards.ts';
 import type {TerminalAnchor} from './terminalLedger';
 
@@ -9,7 +10,7 @@ export interface LandlordResult {
  winner:'landlord'|'farmers'|'redeal'; deltas:Record<string,number>; spring:boolean;
 }
 export interface LandlordRound {
- kind:'landlord'; rulesVersion:1|2; number:number; anchor?:TerminalAnchor; archived?:boolean; replies?:{id:string;text:string}[]; dialogueVersion?:1;
+ kind:'landlord'; settlementTalk?:SettlementTalk; rulesVersion:1|2; number:number; anchor?:TerminalAnchor; archived?:boolean; replies?:{id:string;text:string}[]; dialogueVersion?:1;
  participants:string[]; starter:string; initialHands:Record<string,string[]>; hands:Record<string,string[]>; bottom:string[];
  openingScores:Record<string,number>; phase:'bidding'|'playing'|'complete'; turn:string; landlord?:string; highestBid:number;
  moves:LandlordMove[]; lead?:{id:string;cards:string[]}; passes:number; multiplier:number; result?:LandlordResult;
@@ -90,7 +91,8 @@ export function validateLandlordRound(round:LandlordRound,ids:string[],scores:Re
   if(!record(move)||typeof move.id!=='string'||!['bid','play','pass'].includes(move.kind)||Object.keys(move).some(k=>!['id','kind','text',...(move.kind==='bid'?['score']:move.kind==='play'?['cards']:[])].includes(k)))return fail();
   applyLandlordAction(replay,move.id,move,move.text);
  }
- const {anchor,archived,replies,dialogueVersion,...saved}=round;void anchor;void archived;if(replies!==undefined||dialogueVersion!==undefined){if(dialogueVersion!==1||!Array.isArray(replies)||replies.length>256||replies.some(line=>!record(line)||Object.keys(line).some(k=>k!=='id'&&k!=='text')||!ids.includes(line.id)||typeof line.text!=='string'||!line.text.trim()||line.text.length>3000))return fail();}
+ validateSettlementTalk(round.settlementTalk,ids,round.phase==='complete');
+ const {anchor,archived,replies,dialogueVersion,settlementTalk,...saved}=round;void settlementTalk;void anchor;void archived;if(replies!==undefined||dialogueVersion!==undefined){if(dialogueVersion!==1||!Array.isArray(replies)||replies.length>256||replies.some(line=>!record(line)||Object.keys(line).some(k=>k!=='id'&&k!=='text')||!ids.includes(line.id)||typeof line.text!=='string'||!line.text.trim()||line.text.length>3000))return fail();}
  if(!equal(saved,replay))return fail();
 }
 export function landlordPublicContext(round:LandlordRound,actor:string){

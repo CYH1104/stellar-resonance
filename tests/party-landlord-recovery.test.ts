@@ -145,25 +145,25 @@ function prepareBankruptcy(u: any) {
 it('bankruptcy settles both losers once; failed scene retry does not regenerate a successful scene', async () => {
     const { u, w, persisted } = fixture();
     const last = prepareBankruptcy(u), api = vi.mocked(HttpGateway.prototype.terminal);
-    api.mockRejectedValueOnce(Error('scene a unavailable')).mockResolvedValue({ text: '合成场景内容。'.repeat(200), summary: '合成场景' } as any);
+    api.mockResolvedValueOnce({lines:[{id:'a',text:'认输，再练练。'},{id:'b',text:'输得心服口服。'}]} as any).mockRejectedValueOnce(Error('scene a unavailable')).mockResolvedValue({ text: '合成场景内容。'.repeat(200), summary: '合成场景' } as any);
     await u.landlordPlay(last);
     expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     expect(u.room.value!.drunk).toEqual({ player: 0, a: 5, b: 6 });
     expect(u.room.value!.endTriggers).toEqual(['a', 'b']);
-    expect(api).toHaveBeenCalledTimes(2);
+    expect(api).toHaveBeenCalledTimes(3);
     expect(u.room.value!.afterparty!.scenes!.map(s => s.status)).toEqual(['failed', 'ready']);
     const ready = u.room.value!.afterparty!.scenes![1]!.text;
     const gameBefore = JSON.stringify(u.round.value);
     await u.retryAfterparty('a');
-    expect(api).toHaveBeenCalledTimes(3);
-    expect((api.mock.calls[2]![0] as {actorIds:string[]}).actorIds).toEqual(['a']);
+    expect(api).toHaveBeenCalledTimes(4);
+    expect((api.mock.calls[3]![0] as {actorIds:string[]}).actorIds).toEqual(['a']);
     expect(u.room.value!.afterparty!.scenes![1]!.text).toBe(ready);
     expect(JSON.stringify(u.round.value)).toBe(gameBefore);
     expect(u.room.value!.scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     expect(persisted().partyRooms[0].scores).toEqual({ player: 48400, a: -9200, b: -9200 });
     validatePartyRooms([u.room.value!]);
     await u.retryAfterparty();
-    expect(api).toHaveBeenCalledTimes(3);
+    expect(api).toHaveBeenCalledTimes(4);
 });
 it('stopping a pending afterparty keeps the committed settlement and permits retrying only that scene', async () => {
     const { u } = fixture();

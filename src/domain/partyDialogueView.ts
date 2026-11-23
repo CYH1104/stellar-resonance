@@ -7,7 +7,7 @@ const copy=(lines:readonly PartyReply[]|undefined)=>Array.isArray(lines)?lines.f
 export function partyDialogueLines(round:PartyRound):DialogueLine[]{
  if(round.kind==='eleven')return elevenDialogueLines(round);
  if(round.kind==='truth')return truthDialogueLines(round);
- if(round.kind==='landlord')return copy(round.replies);
+ if(round.kind==='landlord'||round.kind==='mahjong')return [...copy(round.replies),...copy(round.settlementTalk?.lines)];
  return liarDialogueLines(round);
 }
 export function elevenDialogueLines(round:ElevenRound):DialogueLine[]{

@@ -198,7 +198,7 @@ export async function createLocalServer({projectRoot,port=5173,fetchImpl=fetch,c
         }
         if(path==='/api/personal-terminal'){
           if(!terminalEnabled)throw modelError(403,'TERMINAL_DISABLED');
-          const plan=terminalPlan(source,data,privateBooks),selected=await connection(current,data),privateCards=['party-eleven','party-eleven-talk','party-eleven-batch','party-liar-turn','party-liar-reply','party-landlord-style'].includes(plan.task);
+          const plan=terminalPlan(source,data,privateBooks),selected=await connection(current,data),privateCards=['party-eleven','party-eleven-talk','party-eleven-batch','party-liar-turn','party-liar-reply','party-landlord-style','party-mahjong-style','party-settlement'].includes(plan.task);
           const controller=new AbortController();response.on('close',()=>controller.abort());
           const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]);
           const clipRaw=(value,limit=48000)=>{if(typeof value!=='string')return '';if(value.length<=limit)return value;const marker=`\n…[已截断，原长度 ${value.length} 字符]`;return value.slice(0,Math.max(0,limit-marker.length))+marker;};
