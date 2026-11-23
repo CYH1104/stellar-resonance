@@ -4,6 +4,7 @@ import type {ViewModel} from '../app/useWorkspace';
 import {mahjongView,mahjongOwnShanten,mahjongTileLabel,mahjongMeldTiles,mahjongPublicContext,chooseMahjongReply,type MahjongRound,type MahjongReply,type MahjongPhrases,type MahjongStyle} from '../domain/mahjong';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 import SettlementVoices from './SettlementVoices.vue';
+import MahjongTile from './MahjongTile.vue';
 const props=withDefaults(defineProps<{w:ViewModel;round:MahjongRound;name:(id:string)=>string;busy:boolean;active?:boolean;readOnly?:boolean;phrases?:Record<string,MahjongPhrases>;styles?:Record<string,MahjongStyle>}>(),{active:true,readOnly:false});
 const emit=defineEmits<{action:[reply:MahjongReply];start:[];leave:[];end:[];retrySettlement:[]}>();
 const view=computed(()=>mahjongView(props.round));
@@ -38,20 +39,20 @@ function signed(n:number){return n>0?'+'+n:String(n);}
    <div class="mj-felt">
     <article v-for="seat in opponents" :key="seat.id" class="mj-seat" :class="['mj-'+seat.position,{thinking:seat.id===view.actor}]">
      <div class="mj-identity"><TerminalActorAvatar class="mj-avatar" :w="w" :id="seat.id"/><div><strong>{{name(seat.id)}}</strong><small>{{seat.wind}} · {{seat.score}}点 <b v-if="seat.riichi">立直</b></small><small>{{seat.count}} 张 · {{styles?.[seat.id]?.caption||'正在对局'}}</small></div><p v-if="bubble?.id===seat.id" class="mj-bubble" role="status">{{bubble.text}}</p></div>
-     <div class="mj-backs" aria-label="暗牌"><i v-for="n in Math.min(seat.count,13)" :key="n"/></div>
-     <div class="mj-melds"><span v-for="(meld,i) in seat.melds" :key="i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile">{{mahjongTileLabel(p)}}</b></span></div>
-     <div class="mj-river" :aria-label="name(seat.id)+'的牌河'"><span v-for="(p,i) in seat.river" :key="i" class="mj-tile mj-discard" :class="{riichi:p.includes('*'),called:/[+=-]/.test(p)}">{{mahjongTileLabel(p)}}</span></div>
+     <div class="mj-backs" aria-label="暗牌"><i v-for="n in Math.min(seat.count,14)" :key="n"><MahjongTile tile="back" decorative/></i></div>
+     <div class="mj-melds"><span v-for="(meld,i) in seat.melds" :key="i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile"><MahjongTile :tile="p"/></b></span></div>
+     <div class="mj-river" :aria-label="name(seat.id)+'的牌河'"><span v-for="(p,i) in seat.river" :key="i" class="mj-tile mj-discard" :class="{riichi:p.includes('*'),called:/[+=-]/.test(p)}"><MahjongTile :tile="p"/></span></div>
     </article>
-    <div class="mj-center"><strong>{{view.remaining}}</strong><small>余牌 · 供托 {{view.sticks}} 根</small><div class="mj-dora"><small>宝牌指示</small><span v-for="(p,i) in view.dora" :key="i" class="mj-tile">{{mahjongTileLabel(p)}}</span></div><small v-if="view.status==='dapai'&&view.lastDiscard">{{name(view.actor)}} 打出 {{mahjongTileLabel(view.lastDiscard)}}</small></div>
-    <div class="mj-own-river mj-river" aria-label="你的牌河"><span v-for="(p,i) in own.river" :key="i" class="mj-tile mj-discard" :class="{riichi:p.includes('*'),called:/[+=-]/.test(p)}">{{mahjongTileLabel(p)}}</span></div>
+    <div class="mj-center"><strong>{{view.remaining}}</strong><small>余牌 · 供托 {{view.sticks}} 根</small><div class="mj-dora"><small>宝牌指示</small><span v-for="(p,i) in view.dora" :key="i" class="mj-tile"><MahjongTile :tile="p"/></span></div><small v-if="view.status==='dapai'&&view.lastDiscard">{{name(view.actor)}} 打出 <span class="mj-action-tile"><MahjongTile :tile="view.lastDiscard"/></span></small></div>
+    <div class="mj-own-river mj-river" aria-label="你的牌河"><span v-for="(p,i) in own.river" :key="i" class="mj-tile mj-discard" :class="{riichi:p.includes('*'),called:/[+=-]/.test(p)}"><MahjongTile :tile="p"/></span></div>
    </div>
-   <div class="mj-player"><div class="mj-player-info"><strong>{{name('player')}}</strong><small>{{own.wind}} · {{own.score}}点 <b v-if="own.riichi">立直</b></small></div><div class="mj-hand" aria-label="你的日麻手牌"><button v-for="(p,i) in own.hand" :key="i" class="mj-tile mj-hand-tile" :class="{selected:selected===p,red:p[1]==='0',drawn:i===own.hand.length-1&&own.draw}" type="button" :aria-label="mahjongTileLabel(p)" :aria-pressed="selected===p" :disabled="!canAct||!choices.some(o=>o.reply.dapai?.slice(0,2)===p)" @click="selected=p">{{mahjongTileLabel(p)}}</button><span v-for="(meld,i) in own.melds" :key="'m'+i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile">{{mahjongTileLabel(p)}}</b></span></div></div>
-   <footer v-if="!readOnly" class="mj-controls"><template v-if="discards.length"><button type="button" :disabled="!canAct" @click="hint">提示</button><button v-if="riichiOptions.length" type="button" :aria-pressed="riichi" :disabled="!canAct" @click="riichi=!riichi;selected=''">{{riichi?'取消立直':'立直'}}</button><button class="mj-primary" type="button" :disabled="!canAct||!chosen" @click="play">{{riichi?'立直并打牌':'出牌'}}{{chosen?' · '+mahjongTileLabel(selected):''}}</button></template><button v-for="o in calls" :key="o.key" type="button" :disabled="!canAct" :class="{'mj-primary':o.kind==='win'}" @click="emit('action',o.reply)">{{o.label}} <span v-if="o.reply.fulou||o.reply.gang">{{mahjongMeldTiles(o.reply.fulou||o.reply.gang!).map(mahjongTileLabel).join(' ')}}</span></button><small v-if="!view.options.length">等待其他人出牌…</small></footer>
+   <div class="mj-player"><div class="mj-player-info"><strong>{{name('player')}}</strong><small>{{own.wind}} · {{own.score}}点 <b v-if="own.riichi">立直</b></small></div><div class="mj-hand" aria-label="你的日麻手牌"><button v-for="(p,i) in own.hand" :key="i" class="mj-tile mj-hand-tile" :class="{selected:selected===p,red:p[1]==='0',drawn:i===own.hand.length-1&&own.draw}" type="button" :aria-label="mahjongTileLabel(p)" :aria-pressed="selected===p" :disabled="!canAct||!choices.some(o=>o.reply.dapai?.slice(0,2)===p)" @click="selected=p"><MahjongTile :tile="p" decorative/></button><span v-for="(meld,i) in own.melds" :key="'m'+i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile"><MahjongTile :tile="p"/></b></span></div></div>
+   <footer v-if="!readOnly" class="mj-controls"><template v-if="discards.length"><button type="button" :disabled="!canAct" @click="hint">提示</button><button v-if="riichiOptions.length" type="button" :aria-pressed="riichi" :disabled="!canAct" @click="riichi=!riichi;selected=''">{{riichi?'取消立直':'立直'}}</button><button class="mj-primary" type="button" :disabled="!canAct||!chosen" @click="play">{{riichi?'立直并打牌':'出牌'}}<span v-if="chosen" class="mj-action-tile"><MahjongTile :tile="selected"/></span></button></template><button v-for="o in calls" :key="o.key" type="button" :disabled="!canAct" :class="{'mj-primary':o.kind==='win'}" @click="emit('action',o.reply)">{{o.label}} <span v-if="o.reply.fulou||o.reply.gang" class="mj-action-tiles"><span v-for="(p,j) in mahjongMeldTiles(o.reply.fulou||o.reply.gang!)" :key="j" class="mj-action-tile"><MahjongTile :tile="p"/></span></span></button><small v-if="!view.options.length">等待其他人出牌…</small></footer>
   </template>
-  <section v-else class="mj-settlement" aria-label="日麻本局结算"><h3>{{round.result?.reason}}</h3><div v-for="win in round.result?.wins" :key="win.id" class="mj-win"><strong>{{name(win.id)}} · {{win.from?name(win.from)+'放铳':'自摸'}}</strong><p>{{win.yaku.map(y=>y.name+' '+(typeof y.han==='string'?'役满':y.han+'番')).join(' · ')}} · {{win.yakuman?win.yakuman+'倍役满':win.han+'番 '+win.fu+'符'}} · {{win.points}}点</p><div v-if="win.ura.length" class="mj-dora"><small>里宝牌指示</small><span v-for="(p,i) in win.ura" :key="i" class="mj-tile">{{mahjongTileLabel(p)}}</span></div></div>
+  <section v-else class="mj-settlement" aria-label="日麻本局结算"><h3>{{round.result?.reason}}</h3><div v-for="win in round.result?.wins" :key="win.id" class="mj-win"><strong>{{name(win.id)}} · {{win.from?name(win.from)+'放铳':'自摸'}}</strong><p>{{win.yaku.map(y=>y.name+' '+(typeof y.han==='string'?'役满':y.han+'番')).join(' · ')}} · {{win.yakuman?win.yakuman+'倍役满':win.han+'番 '+win.fu+'符'}} · {{win.points}}点</p><div v-if="win.ura.length" class="mj-dora"><small>里宝牌指示</small><span v-for="(p,i) in win.ura" :key="i" class="mj-tile"><MahjongTile :tile="p"/></span></div></div>
    <div class="mj-score-grid"><article v-for="id in round.participants" :key="id"><TerminalActorAvatar class="mj-avatar" :w="w" :id="id"/><div><strong>{{name(id)}}</strong><b>{{signed(round.result?.deltas[id]||0)}}</b><small>现有 {{round.result?.scores[id]}}点</small></div></article></div>
    <SettlementVoices :w="w" :talk="round.settlementTalk" :name="name" :busy="busy" :read-only="readOnly" @retry="emit('retrySettlement')"/>
-   <details><summary>本局公开牌况</summary><div v-for="seat in view.seats" :key="seat.id"><strong>{{name(seat.id)}}</strong><div v-if="seat.revealed||seat.id==='player'" class="mj-revealed"><span v-for="(p,i) in seat.hand" :key="i" class="mj-tile">{{mahjongTileLabel(p)}}</span></div><span v-else> 未公开手牌</span><small v-for="(meld,i) in seat.melds" :key="i">{{mahjongMeldTiles(meld).map(mahjongTileLabel).join(' ')}}</small></div></details>
+   <details><summary>本局公开牌况</summary><div v-for="seat in view.seats" :key="seat.id"><strong>{{name(seat.id)}}</strong><div v-if="seat.revealed||seat.id==='player'" class="mj-revealed"><span v-for="(p,i) in seat.hand" :key="i" class="mj-tile"><MahjongTile :tile="p"/></span></div><span v-else> 未公开手牌</span><span v-for="(meld,i) in seat.melds" :key="i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile"><MahjongTile :tile="p"/></b></span></div></details>
    <div v-if="!readOnly" class="mj-controls"><button class="mj-primary" type="button" :disabled="busy" @click="emit('start')">下一局</button><button type="button" :disabled="busy" @click="emit('leave')">回房间</button><button type="button" :disabled="busy" @click="emit('end')">主动结束</button></div>
   </section>
  </section>
@@ -78,4 +79,29 @@ function signed(n:number){return n>0?'+'+n:String(n);}
 #academy-workspace .pt .mahjong-table .mj-win p{margin:3px 0;font-size:11px}
 #academy-workspace .pt .mahjong-table small{font-size:10px}
 @media(max-height:500px),(orientation:portrait) and (max-width:700px){#academy-workspace .pt .mahjong-table button{min-height:26px;padding:3px 8px!important;font-size:11px!important}#academy-workspace .pt .mahjong-table button.mj-hand-tile{font-size:11px!important}#academy-workspace .pt .mahjong-table small{font-size:9px}}
+</style>
+
+<style>
+#academy-workspace .pt .mahjong-table .mj-tile{background:transparent!important;border:0!important;border-radius:3px;box-shadow:0 1px 2px #0005;padding:0!important;overflow:visible}
+#academy-workspace .pt .mahjong-table button.mj-hand-tile{background:transparent!important;border:0!important;border-bottom:0!important;padding:0!important;flex:0 1 36px;aspect-ratio:3/4;min-width:0;max-width:36px;height:auto!important;min-height:0!important;line-height:0!important;box-shadow:0 2px 3px #0006;border-radius:4px!important;overflow:visible}
+#academy-workspace .pt .mahjong-table button.mj-hand-tile:disabled{filter:brightness(.84)}
+#academy-workspace .pt .mahjong-table button.mj-hand-tile.selected{transform:translateY(-6px);outline:2px solid #ecd483;box-shadow:0 3px 8px #0008}
+#academy-workspace .pt .mahjong-table .mj-discard{width:21px;height:28px;min-width:0;flex:0 0 21px}
+#academy-workspace .pt .mahjong-table .mj-melds .mj-tile{width:20px;height:27px}
+#academy-workspace .pt .mahjong-table .mj-dora .mj-tile{width:23px;height:31px}
+#academy-workspace .pt .mahjong-table .mj-backs{display:flex;gap:1px}
+#academy-workspace .pt .mahjong-table .mj-backs i{width:12px;height:16px;background:none;border:0;border-radius:0}
+#academy-workspace .pt .mahjong-table .mj-action-tiles{display:inline-flex;gap:2px;margin-left:5px;vertical-align:middle}
+#academy-workspace .pt .mahjong-table .mj-action-tile{display:inline-block;width:18px;height:24px;vertical-align:middle;margin-left:2px}
+#academy-workspace .pt .mahjong-table .mj-revealed .mj-tile,#academy-workspace .pt .mahjong-table .mj-hand .mj-meld .mj-tile{width:25px;height:34px}
+#academy-workspace .pt .mahjong-table .mj-hand-tile .mj-tile-art{display:block}
+@media(max-height:500px),(orientation:portrait) and (max-width:700px){
+ #academy-workspace .pt .mahjong-table button.mj-hand-tile{max-width:27px;flex-basis:27px}
+ #academy-workspace .pt .mahjong-table .mj-discard{width:16px;height:22px;flex-basis:16px}
+ #academy-workspace .pt .mahjong-table .mj-melds .mj-tile{width:16px;height:22px}
+ #academy-workspace .pt .mahjong-table .mj-dora .mj-tile{width:17px;height:23px}
+ #academy-workspace .pt .mahjong-table .mj-backs i{width:9px;height:12px}
+ #academy-workspace .pt .mahjong-table .mj-action-tile{width:15px;height:20px}
+ #academy-workspace .pt .mahjong-table .mj-revealed .mj-tile,#academy-workspace .pt .mahjong-table .mj-hand .mj-meld .mj-tile{width:21px;height:28px}
+}
 </style>

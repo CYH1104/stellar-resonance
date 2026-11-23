@@ -5,6 +5,7 @@ import {newSession,defaults} from '../src/domain/story';
 import {emptyTerminal,validateTerminal} from '../src/domain/personalTerminal';
 import {mergeCloudSession} from '../src/domain/cloudBackup';
 import {usePersonalTerminal} from '../src/app/usePersonalTerminal';
+import PersonalTerminal from '../src/components/PersonalTerminal.vue';
 import type {ViewModel} from '../src/app/useWorkspace';
 afterEach(()=>vi.unstubAllGlobals());
 function fixture(){const s=newSession('群管理',{name:'玩家',appearance:'',personality:'',background:''},'');s.initial.characters=[{id:'a',name:'甲',present:true},{id:'b',name:'乙',present:true}];s.terminal=emptyTerminal();s.terminal.conversations=[{id:'g1',title:'待确认群',group:true,members:['a','b'],ownerId:'',adminIds:[],announcement:'',messages:[],unread:0,origin:'story',joined:true,managementReady:false},{id:'g2',title:'确认群',group:true,members:['a','b'],ownerId:'b',adminIds:[],announcement:'',messages:[],unread:0,origin:'story',joined:true,managementReady:true}];const preferences=defaults();preferences.terminalProfile=preferences.profiles[0].id;const w=reactive({active:s,state:s.initial,preferences,credentials:{},loading:false,busy:false,workingMemory:false,terminalBusy:false,theaters:[],storageStatus:'saved',save:vi.fn(async()=>{}),connectionReady:()=>true,connectProfile:async()=>true,scopedRecall:async()=>[],indexTerminalNotes:()=>{},formatErrors:{record:vi.fn(async()=>{}),entries:[]}}) as unknown as ViewModel;let u!:ReturnType<typeof usePersonalTerminal>;return renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}})).then(()=>({w,u}));}
@@ -45,4 +46,38 @@ it('rechecks avatar permission after asynchronous image decoding',async()=>{
  const pending=u.uploadGroupAvatar(new File(['fake'],'test.png',{type:'image/png'}));
  await vi.waitFor(()=>expect(resolve).toBeTypeOf('function'));w.active!.terminal!.conversations[1].adminIds=[];
  resolve('data:image/png;base64,AAAA');await pending;expect(u.error.value).toContain('权限');expect(w.active!.terminal!.conversations[1].avatar).toBeUndefined();vi.restoreAllMocks();
+});
+
+
+it('removes a left group from the actual home notification and updates to remaining conversations without erasing history',async()=>{
+ const {w,u}=await fixture();
+ const left=w.active!.terminal!.conversations[1];left.unread=3;left.messages=[{id:'old',sender:'a',text:'退出群独有的旧消息',at:'2026-11-23T09:00:00Z'}];
+ w.active!.terminal!.conversations.push({id:'private',group:false,title:'甲',members:['a'],announcement:'',unread:1,messages:[{id:'keep',sender:'a',text:'保留私聊消息',at:'2026-11-23T08:00:00Z'}]});
+ const home=()=>renderToString(createSSRApp({render:()=>h(PersonalTerminal,{w})}));
+ expect(await home()).toContain('退出群独有的旧消息');
+ u.conversationId.value=left.id;await u.leaveGroup();
+ expect(u.error.value).toBe('');
+ expect(u.unread.value).toBe(1);
+ expect(w.active!.terminal!.conversations.find(c=>c.id===left.id)?.messages).toHaveLength(1);
+ const after=await home();expect(after).not.toContain('退出群独有的旧消息');expect(after).toContain('保留私聊消息');
+ w.active!.terminal!.conversations.find(c=>c.id==='private')!.unread=0;
+ expect(await home()).toContain('暂时没有新消息');
+});
+
+it('home previews the newest visible unread message rather than the first stored conversation',async()=>{
+ const {w}=await fixture();
+ for(const [i,g]of w.active!.terminal!.conversations.entries()){g.unread=1;g.messages=[{id:'new'+i,sender:'a',text:i?'刚到的新群消息':'列表前面的旧消息',at:'2026-11-23T0'+(8+i)+':00:00Z'}];}
+ const html=await renderToString(createSSRApp({render:()=>h(PersonalTerminal,{w})}));
+ expect(html).toContain('刚到的新群消息');expect(html).not.toContain('列表前面的旧消息');
+});
+
+it('old saved left groups stay out of home notifications even with residual unread counts',async()=>{
+ const {w}=await fixture(),group=w.active!.terminal!.conversations[1];group.joined=false;group.unread=9;group.messages=[{id:'old',sender:'a',text:'旧存档退群消息',at:'2026-11-23T10:00:00Z'}];
+ const html=await renderToString(createSSRApp({render:()=>h(PersonalTerminal,{w})}));expect(html).not.toContain('旧存档退群消息');expect(html).toContain('暂时没有新消息');expect(group.messages).toHaveLength(1);
+});
+it('failed leave preserves membership and home preview along with the retained message',async()=>{
+ const {w,u}=await fixture(),group=w.active!.terminal!.conversations[1];group.unread=1;group.messages=[{id:'old',sender:'a',text:'尚未退出的群消息',at:'2026-11-23T10:00:00Z'}];
+ vi.mocked(w.save).mockRejectedValueOnce(Error('保存失败'));u.conversationId.value=group.id;await u.leaveGroup();
+ expect(u.error.value).toContain('保存失败');expect(w.active!.terminal!.conversations[1].joined).toBe(true);
+ expect(await renderToString(createSSRApp({render:()=>h(PersonalTerminal,{w})}))).toContain('尚未退出的群消息');
 });

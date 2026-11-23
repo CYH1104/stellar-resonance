@@ -38,3 +38,14 @@ test('betrayal rule allows own secrets but still blocks mixed or other people ob
 test('king targets keep more than two revealed targets for react without exposing numbers',()=>{const p=terminalPlan(card,{...data,task:'react',actorIds:['a','b'],context:{maxNumber:3,targets:[1,2,3],king:'b',revealedTargets:[{id:'a',number:1},{id:'b',number:2}],replies:[],interactions:[]}});const model=JSON.parse(p.messages.at(-1).content);assert.deepEqual(model.context.targets,[1,2,3]);assert.deepEqual(model.context.revealedTargets,[{id:'a',number:1},{id:'b',number:2}]);});
 test('custom contacts are valid terminal actors when their identity is passed even without story state',()=>{const contact={id:'contact-friend',name:'旧友',identity:'校外朋友',relationship:'朋友',present:false};const p=terminalPlan(card,{...data,task:'chat',actorIds:[contact.id],context:{state:{characters:[contact]},conversation:{group:false,members:[contact.id]}}});assert.equal(parseTerminalResult('{"messages":[{"id":"contact-friend","text":"好久不见。"}]}',p).messages[0].id,contact.id);assert.throws(()=>terminalPlan(card,{...data,task:'chat',actorIds:[contact.id],context:{conversation:{group:false,members:[contact.id]}}}));});
 test('a schedule can be empty and must have valid times and known teachers',()=>{const p=terminalPlan(card,{...data,task:'schedule'});assert.deepEqual(parseTerminalResult('{"courses":[]}',p),{courses:[],generated:false});assert.throws(()=>parseTerminalResult('{"courses":[{"title":"战术","day":1,"time":"29:00","end":"30:00","place":"A203","teacherId":"a","preparation":""}]}',p));});
+
+
+test('manual teaching schedule accepts the player as teacher and preserves the supplied course details',()=>{
+ const courses=[{title:'星舰编队基础推演',day:3,time:'09:00',end:'11:00',place:'领航系推演厅',teacherId:'player',preparation:'查阅往年学生评估档案；重点阅读教学档案第三部分对抗模块；对抗模块需与破军系协同，提前两天向卫锋报送带课人数与分组'},{title:'领航系实战指挥研讨',day:5,time:'14:00',end:'16:00',place:'领航系指挥模拟舱',teacherId:'player',preparation:'结合帝国军部保送生实战经验不足的情况，准备分层推演课目；场地人数由破军系对接'}];
+ const plan=terminalPlan(card,{...data,task:'schedule',actorIds:['a','b'],persona:{name:'玩家',identity:'领航系教官'}});
+ const result=parseTerminalResult(JSON.stringify({courses}),plan);
+ assert.deepEqual(result.courses,courses.map((c,i)=>({id:'course-'+i,generated:false,...c})));
+ for(const teacherId of ['a','b',''])assert.equal(parseTerminalResult(JSON.stringify({courses:[{...courses[0],teacherId}]}),plan).courses[0].teacherId,teacherId);
+ assert.throws(()=>parseTerminalResult(JSON.stringify({courses:[{...courses[0],teacherId:'unknown'}]}),plan));
+ assert.throws(()=>parseTerminalResult(JSON.stringify({courses:[{...courses[0],end:'08:00'}]}),plan));
+});
