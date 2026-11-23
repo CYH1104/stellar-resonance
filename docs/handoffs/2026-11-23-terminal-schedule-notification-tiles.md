@@ -27,4 +27,16 @@
 发布前已实时确认：9000 为 b7e7ef8bffcafe14 / PID 156217；服务器 checkout e927fbe8cde8cb116bec1a5d2f3733c9d24fc63d 且干净。
 受保护 8807：release 2714ea237e363c84；PID 2955979；instance 3523bfac9402aab5678d61a0b402ca69；PersonalTerminal-MEjwXoLc.js SHA256 58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a。
 
-下一步：完成后端最终回归，重新核对 main，提交推送；使用单实例环境变量部署 9000，验证源码/牌图/HTTP 资源与稳定版指纹；删除临时 SSH 私钥；写回发布收据。禁止直接运行默认双端 update-server.sh。
+发布已完成，详情见下方收据。后续仍仅发布 9000，禁止直接运行默认双端 update-server.sh。
+
+## 2026-11-23 发布收据
+
+- 功能提交：0c2c2330f46754eae44b160f2041d0d58e27e9d8，已正常推送 GitHub main。
+- 9000 运行 release 0b8aaa75f1d111f3；PID 168584；instance 523de6fb185f14de006372c6909711e5。
+- 实际运行快照与提交的 392 个 src/server/package 文件逐项一致；无 pending-release，last-deployed-main 与功能提交一致，服务器工作树干净。
+- 公网 9000 健康检查、终端脚本、40 张 SVG 均 HTTP 200，图片字节哈希全部一致。终端脚本 PersonalTerminal-xjDcj0xQ.js SHA256 315ab2683de30f0f585b29aba4f945d4b99aaae36d873d923b818e9e2bba5426。
+- 8807 健康信息（包括 PID、release、instance）与终端资源 SHA256 发布前后完全一致。
+- 更新前备份：/home/ubuntu/.stellar-resonance-backups/update-20261123-184044-ghd87z。部署使用 STELLAR_SINGLE_INSTANCE_UPDATE=1、TERMINAL_INSTANCE=test、PORT=9000；未运行默认双端发布。
+- 服务器 authorized_keys 只保留用户指定的新密钥指纹；本次本地临时私钥已删除并确认不存在，5199 浏览器验证服务已停止。
+- 真实付费模型未调用；用户原始 JSON 在真实校验入口通过，交互验证使用隔离存档与模拟模型。重新加载 9000 页面后点击更新安排可重新生成课表；旧失败返回没有自动写入用户存档。
+- 下一步：用户在 9000 复查实际存档的课表与退群通知；若仍报错，按新错误与原始输出进一步定位。当前无待发布代码。
