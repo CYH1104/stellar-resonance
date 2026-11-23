@@ -32,3 +32,16 @@
 - 发布前服务器9000为0c2c233，release 0b8aaa75f1d111f3；8807 release 2714ea237e363c84、PID2955979，终端资源SHA256 58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a。
 - 仅使用STELLAR_SINGLE_INSTANCE_UPDATE=1与test/9000环境、固定预期提交及稳定端指纹防护。默认update-server.sh会更新双端，禁止裸执行。
 - 待本提交发布后追加实测收据；后续先核对本文收据与线上health，不把文档HEAD直接当作运行版本。
+
+## 发布收据（2026-11-23）
+
+- 功能提交：c7ab924402f7930b6aceaa0e80cfe175405f3a57，已正常推送main并部署到9000。
+- 9000 release：67b1cd9c60c49b18；PID：178128；终端资源：PersonalTerminal-BKDKn6E_.js；SHA256：b6659b20ea36f6df80c1ec69d66190140efa11788e5b1736e4e2dcebd051abff。
+- 发布快照的399个受检源文件逐个与Git提交匹配；test/9000标识正确，last-deployed-main匹配，无pending release，服务器工作区干净。
+- 40张麻将SVG和4张动作PNG从服务器及公网均返回200，MIME及字节摘要匹配；4张动作图已实际打包到终端资源引用。
+- 登录重定向及登录页CSP保持正常。新SSH密钥仍为唯一授权指纹；本轮未修改authorized_keys。
+- 8807的health、PID2955979、release 2714ea237e363c84、实例ID与终端JS SHA256均与更新前完全一致；公网也已独立确认。
+- 更新前恢复副本：/home/ubuntu/.stellar-resonance-backups/update-20261123-191441-lINe4i。
+- 补充浏览器实测：四种尺寸均验证吃、碰、杠、胡同时出现的最宽操作区，取消选牌及荣和点击通过；共20个操作布局、44次真实合法动作点击。最终预览位于 .integration/mahjong-actions-20261123/1000-all-actions.png。
+- 上述证据为隔离合成牌局的真实浏览器交互及线上静态资源/运行快照核验，未登录读取用户存档或调用付费模型。
+- 本收据属于文档补充，不需要再次部署。后续如有反馈，先核对9000 release再定位；8807继续保留稳定快照。
