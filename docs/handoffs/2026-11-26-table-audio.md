@@ -25,3 +25,10 @@
 - Server read-only baseline: HEAD e5c755001fb9f5da497b009a575d0b2d609a017d, clean. 9000 release b5fb0fce1fe84ea5 / PID 1016015. 8807 release 2714ea237e363c84 / PID 2955979, terminal SHA256 58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a.
 - Deploy only 9000 with the guarded single-instance updater, reviewed target commit, backup and stable baseline assertions. Never run the default paired updater.
 - Next: append verified release receipt, public asset checks, stable comparison and temporary-key cleanup result after deployment.
+
+## Deployment recovery
+
+- First target 5297d244501f93db6660fdef905dd5270908a85f produced snapshot 17c83b9e99d3e20d, which failed native Node startup. The updater automatically restored healthy test release b5fb0fce1fe84ea5. Stable remained unchanged. Backup: /home/ubuntu/.stellar-resonance-backups/update-20261126-023700-9Zcax1.
+- Reproduced on the server snapshot and locally: ERR_MODULE_NOT_FOUND for tableSoundEvents, because Mahjong and its new sound module used extensionless runtime imports. Vite resolves these, native Node does not. Both runtime imports now include .ts.
+- Added native Node server-import regression: observed failure before the fix, then passed after. Seven native server import/channel/HTTP tests passed, plus 15 audio/Mahjong tests and a fresh production build.
+- Next: redeploy the corrected commit to test only, verify its active snapshot and public assets, record stable comparison and remove the temporary SSH private key.

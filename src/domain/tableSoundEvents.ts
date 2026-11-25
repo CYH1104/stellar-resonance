@@ -1,4 +1,4 @@
-import {classifyLandlord} from './landlordCards';
+import {classifyLandlord} from './landlordCards.ts';
 import type {LandlordRound} from './landlord';
 export interface TableSoundEvent {key:string;sounds:string[]}
 export interface TableSoundSnapshot {roundKey:string;events:TableSoundEvent[];waitingKey?:string}

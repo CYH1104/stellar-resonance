@@ -1,5 +1,5 @@
 import Majiang from '../vendor/majiang/core.js';
-import {mahjongSoundEvents} from './tableSoundEvents';
+import {mahjongSoundEvents} from './tableSoundEvents.ts';
 import type {TerminalAnchor} from './terminalLedger';
 import {pendingSettlementTalk,validateSettlementTalk,type ScoredRoundBase} from './settlementTalk.ts';
 
