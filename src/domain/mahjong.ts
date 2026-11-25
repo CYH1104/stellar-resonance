@@ -43,7 +43,7 @@ class HandEngine extends Majiang.Game {
   this._model.qijia=0;this._model.jushu=round.opening.hand%4;this._model.zhuangfeng=Math.floor(round.opening.hand/4)%4;
   this._model.changbang=round.opening.honba;this._model.lizhibang=round.opening.sticks;
   this._model.defen=round.participants.map(id=>round.openingScores[id]);
-  this._paipu={title:'星际日麻',player:round.participants,qijia:0,log:[],defen:[],point:[],rank:[]};
+  this._paipu={title:'星际日麻',player:[...round.participants],qijia:0,log:[],defen:[],point:[],rank:[]};
   // Avoid a random shuffle while replaying. Shan methods only need these fields.
   const shan=Object.create(Majiang.Shan.prototype);
   Object.assign(shan,{_rule:this._rule,_pai:[...round.wall],_baopai:[round.wall[4]],_fubaopai:[round.wall[9]],_weikaigang:false,_closed:false});
@@ -89,10 +89,24 @@ function advance(g:HandEngine,choices:MahjongReply[]){
  if(['zimo','gangzimo'].includes(g._status))g.reply_zimo();else if(g._status==='dapai')g.reply_dapai();else if(g._status==='fulou')g.reply_fulou();else if(g._status==='gang')g.reply_gang();else fail();
  g.settle();
 }
-function engine(round:MahjongRound){const g=new HandEngine(round);for(const step of round.steps)advance(g,step.choices);return g;}
+// Bounded exact-content cache survives immutable terminal copies. Only fully replayed,
+// legal choices enter it. Derived results, phase and schema are still checked on each save.
+const replayCache=new Map<string,HandEngine>();let replayBytes=0;
+function replayKey(r:MahjongRound){return JSON.stringify([r.rulesVersion,r.participants,r.openingScores,r.opening,r.wall,r.steps]);}
+function dropReplay(key:string){if(replayCache.delete(key))replayBytes-=key.length;}
+function rememberReplay(key:string,g:HandEngine){
+ dropReplay(key);if(key.length>100000)return;replayCache.set(key,g);replayBytes+=key.length;
+ while(replayCache.size>64||replayBytes>1000000)dropReplay(replayCache.keys().next().value!);
+}
+function engine(round:MahjongRound,consume=false){
+ const key=replayKey(round);let g=replayCache.get(key);
+ if(g){dropReplay(key);if(!consume)rememberReplay(key,g);return g;}
+ g=new HandEngine(round);for(const step of round.steps)advance(g,step.choices);
+ if(!consume)rememberReplay(key,g);return g;
+}
 function resultOf(g:HandEngine,round:MahjongRound):MahjongResult|undefined{
  if(!g.done)return;const m=g._model,log=g._paipu.log[0],seat=(l:number)=>round.participants[m.player_id[l]],scores=Object.fromEntries(round.participants.map((id,i)=>[id,m.defen[i]]));
- const wins:MahjongWin[]=log.filter((e:any)=>e.hule).map(({hule:h}:any)=>({id:seat(h.l),...(h.baojia===null?{}:{from:seat(h.baojia)}),hand:h.shoupai,fu:h.fu||0,han:h.fanshu||0,yakuman:h.damanguan||0,points:h.defen,yaku:h.hupai.map((y:any)=>({name:y.name,han:y.fanshu})),ura:h.fubaopai||[]}));
+ const wins:MahjongWin[]=log.filter((e:any)=>e.hule).map(({hule:h}:any)=>({id:seat(h.l),...(h.baojia===null?{}:{from:seat(h.baojia)}),hand:h.shoupai,fu:h.fu||0,han:h.fanshu||0,yakuman:h.damanguan||0,points:h.defen,yaku:h.hupai.map((y:any)=>({name:y.name,han:y.fanshu})),ura:[...h.fubaopai||[]]}));
  const draw=log.find((e:any)=>e.pingju)?.pingju;
  const revealed=Object.fromEntries(wins.map(w=>[w.id,w.hand]));if(draw)draw.shoupai.forEach((h:string,l:number)=>{if(h)revealed[seat(l)]=h;});
  return {reason:draw?.name||wins.map(w=>w.from?'荣和':'自摸').join(' / '),wins,deltas:Object.fromEntries(round.participants.map(id=>[id,scores[id]-round.openingScores[id]])),scores,revealed,next:{hand:round.opening.hand+(g._lianzhuang?0:1),honba:m.changbang,sticks:m.lizhibang}};
@@ -114,7 +128,10 @@ export function mahjongView(round:MahjongRound){
 // NPC strategy receives only its own hand, public rivers/melds/riichi and legal options.
 // It never receives opponents' hands or the hidden wall, even when choosing a discard.
 export function mahjongPublicContext(round:MahjongRound,id:string){
- const g=engine(round),m=g._model,index=round.participants.indexOf(id),l=m.player_id.indexOf(index);if(l<0)fail();
+ return publicContextAt(engine(round),round,id);
+}
+function publicContextAt(g:HandEngine,round:MahjongRound,id:string){
+ const m=g._model,index=round.participants.indexOf(id),l=m.player_id.indexOf(index);if(l<0)fail();
  return {id,own:m.shoupai[l].toString(),wind:l,roundWind:m.zhuangfeng,options:optionsAt(g,index),dora:[...m.shan.baopai] as string[],discard:g._dapai?tile(g._dapai):undefined,
   table:[0,1,2,3].map(i=>({id:round.participants[m.player_id[i]],riichi:!!m.shoupai[i].lizhi,river:[...m.he[i]._pai] as string[],melds:[...m.shoupai[i]._fulou] as string[]}))};
 }
@@ -139,9 +156,9 @@ export function chooseMahjongReply(ctx:ReturnType<typeof mahjongPublicContext>,s
  return {};
 }
 export function applyMahjongStep(round:MahjongRound,player:MahjongReply|undefined,styles:Record<string,MahjongStyle>){
- if(round.phase!=='playing')fail();const g=engine(round),required=optionsAt(g,0);if(required.length&&!player||!required.length&&player&&Object.keys(player).length)fail();
- const choices=round.participants.map((id,i)=>i===0?(player||{}):chooseMahjongReply(mahjongPublicContext(round,id),styles[id]||{skill:3,aggression:3,caption:'稳健'}));
- advance(g,choices);round.steps.push({choices});updateRound(round,g);if(round.phase==='complete')round.settlementTalk=pendingSettlementTalk();return round;
+ if(round.phase!=='playing')fail();const g=engine(round,true),required=optionsAt(g,0);if(required.length&&!player||!required.length&&player&&Object.keys(player).length)fail();
+ const choices=round.participants.map((id,i)=>i===0?(player||{}):chooseMahjongReply(publicContextAt(g,round,id),styles[id]||{skill:3,aggression:3,caption:'稳健'}));
+ advance(g,choices);round.steps.push({choices});updateRound(round,g);rememberReplay(replayKey(round),g);if(round.phase==='complete')round.settlementTalk=pendingSettlementTalk();return round;
 }
 export function validateMahjongRound(round:MahjongRound,ids:string[],scores:Record<string,number>,meta:MahjongMeta){
  keys(round,['kind','rulesVersion','number','anchor','archived','replies','dialogueVersion','settlementTalk','participants','openingScores','opening','wall','steps','phase','turn','result']);
@@ -149,7 +166,7 @@ export function validateMahjongRound(round:MahjongRound,ids:string[],scores:Reco
  keys(round.opening,['hand','honba','sticks']);if(['hand','honba','sticks'].some(k=>!Number.isInteger(round.opening[k as keyof MahjongMeta])||round.opening[k as keyof MahjongMeta]<0||round.opening[k as keyof MahjongMeta]>2000)||JSON.stringify(round.opening)!==JSON.stringify(meta))fail();
  if(!object(round.openingScores)||Object.keys(round.openingScores).length!==4||ids.some(id=>!Number.isSafeInteger(round.openingScores[id])||round.openingScores[id]!==scores[id]||scores[id]<0))fail();
  if(!Array.isArray(round.wall)||round.wall.length!==136||[...round.wall].sort().join(',')!==[...mahjongDeck].sort().join(',')||!Array.isArray(round.steps)||round.steps.length>600)fail();
- for(const step of round.steps)keys(step,['choices']);
+ for(const step of round.steps){keys(step,['choices']);if(!Array.isArray(step.choices)||step.choices.length!==4)fail();for(const choice of step.choices)keys(choice,['dapai','fulou','gang','hule','daopai']);}
  const g=engine(round),expected=clone(round);updateRound(expected,g);
  if(round.phase!==expected.phase||round.turn!==expected.turn||JSON.stringify(round.result)!==JSON.stringify(expected.result)||round.archived!==undefined&&typeof round.archived!=='boolean'||round.dialogueVersion!==undefined&&round.dialogueVersion!==1)fail();
  if(Array.isArray(round.replies))for(const line of round.replies)keys(line,['id','text']);

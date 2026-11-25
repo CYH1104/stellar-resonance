@@ -88,3 +88,26 @@ it('the test channel still indexes the same legacy phone note, proving the gate 
   await vi.waitFor(()=>expect(canaryRequests().length).toBeGreaterThan(0));
   await expect(w.scopedRecall(w.active.value!,'旧私聊',['player','a'])).resolves.toBeDefined();
 });
+it('rapid terminal writes share one background index run while an embedding request is pending',async()=>{
+ capabilities={continue:true,keyRequired:true,embeddings:true,terminal:true,channel:'test'};
+ const w=await seededArchive();let release!:(values:number[][])=>void;
+ const embed=vi.mocked(HttpGateway.prototype.embed);embed.mockClear();
+ embed.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+ w.indexTerminalNotes();await vi.waitFor(()=>expect(embed).toHaveBeenCalledTimes(1));
+ w.indexTerminalNotes();w.indexTerminalNotes();w.indexTerminalNotes();
+ await new Promise(resolve=>setTimeout(resolve,500));
+ try{expect(embed).toHaveBeenCalledTimes(1);}finally{release(embed.mock.calls[0][0].map(()=>[1,0.5]));}
+ await vi.waitFor(()=>expect(w.active.value!.memories.filter(isTerminalMemoryNote).every(m=>m.factVectors?.length)).toBe(true));
+});
+it('updates arriving during indexing are indexed once afterward, and disposing cancels the pending request',async()=>{
+ capabilities={continue:true,keyRequired:true,embeddings:true,terminal:true,channel:'test'};
+ const w=await seededArchive(),s=w.active.value!,embed=vi.mocked(HttpGateway.prototype.embed);let release!:(values:number[][])=>void;
+ embed.mockClear();embed.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+ w.indexTerminalNotes();await vi.waitFor(()=>expect(embed).toHaveBeenCalledTimes(1));
+ recordTerminalChat(s.terminal!,terminalAnchor(s),{id:'legacy-phone',title:'旧私聊',group:false},['玩家','甲'],'UPDATED_GAME_RESULT',[],['player','a']);syncTerminalMemoryNotes(s);w.indexTerminalNotes();
+ release(embed.mock.calls[0][0].map(()=>[1,0.5]));
+ await vi.waitFor(()=>expect(s.memories.filter(isTerminalMemoryNote).some(m=>m.vector?.text.includes('UPDATED_GAME_RESULT'))).toBe(true),{timeout:2000});
+ expect(embed.mock.calls.filter(([texts])=>texts.some(t=>t.startsWith('小手机记忆')&&t.includes('UPDATED_GAME_RESULT')))).toHaveLength(1);
+ let signal:AbortSignal|undefined;embed.mockImplementationOnce((_t,_p,_k,sig)=>{signal=sig;return new Promise((_resolve,reject)=>sig.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))));});
+ for(const m of s.memories)delete m.vector;w.indexTerminalNotes();await vi.waitFor(()=>expect(signal).toBeDefined());scope.stop();expect(signal?.aborted).toBe(true);
+});

@@ -1,3 +1,4 @@
+import {terminalAnchor,terminalBucket,recordTerminalChat} from '../src/domain/terminalLedger';
 // 正文与手机通讯彻底分开：独立配置、独立请求、两种顺序、每阶段恰好一次、迟到写回保护。
 // 这里用真实的 useWorkspace 与真实的请求组装，只把网关调用换成记录器。
 vi.mock('../src/memory/retrieval',()=>({retrieve:async(items:unknown[])=>items.slice(0,6)}));
@@ -81,4 +82,14 @@ it('changing the triggering input creates a fresh terminal-first stage instead o
  await w.edit(0,'user','完全不同的新行动');await w.generate(undefined,0);
  expect(calls).toHaveLength(2);
  expect(calls[1].input).toBe('完全不同的新行动');
+});
+
+it('real prose request keeps a previous game result after a newer chat bucket exists',async()=>{
+ const {w,session}=await workspace();session.initial.variables={时间地点:{日期:'星历578年09月01日',时间:'14:20',地点:'宿舍'}};
+ const b=terminalBucket(session.terminal!,terminalAnchor(session));b.games.push({id:'game:1',kind:'landlord',name:'牌局',round:1,king:'甲',command:'农民胜，甲 -200分',penalties:'',complete:true,knownBy:['player','a']});
+ session.turns.push({id:'later',input:'上课',selected:0,variants:[{id:'v',text:'随后回教室',createdAt:'now',status:'complete'}]});
+ recordTerminalChat(session.terminal!,terminalAnchor(session),{id:'later-chat',title:'新群聊',group:true},['甲'],'上课',[],['player','a','b']);
+ const prose:GenerateRequest[]=[];recordCalls([],[],prose);await w.generate('继续');
+ expect(prose).toHaveLength(1);expect(prose[0].memories.join('\n')).toContain('农民胜');expect(prose[0].memories.join('\n')).toContain('14:20');expect(prose[0].memories.join('\n')).toContain('知情：player、a');
+ await vi.waitFor(()=>expect(w.workingMemory.value).toBe(false));
 });

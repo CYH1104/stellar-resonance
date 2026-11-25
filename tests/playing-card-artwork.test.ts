@@ -1,3 +1,4 @@
+import mahjongBack from '../src/assets/mahjong/TileBack.png?url';
 import { expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
@@ -19,12 +20,12 @@ it('all 54 playable cards resolve to distinct local faces, with separate red and
   expect(sources.size).toBe(54);
   for (const card of ['S-1', 'RJ-extra', '../../back', 'H-11']) expect(() => playingCardArtworkName(card)).toThrow();
 });
-it('concealed Mahjong and poker use the same bundled patterned back, preserving accessible names', async () => {
+it('concealed Mahjong uses its own tile back while poker retains the patterned card back', async () => {
   const back = assets['../src/assets/playing-cards/Back.webp'];
   expect(back).toBeTypeOf('string');
-  for (const [component, props, label] of [[PlayingCard, { card: 'back' }, '扑克牌背'], [MahjongTile, { tile: 'back' }, '暗牌']] as const) {
+  for (const [component, props, label, source] of [[PlayingCard, { card: 'back' }, '扑克牌背', back], [MahjongTile, { tile: 'back' }, '暗牌', mahjongBack]] as const) {
     const html = await renderToString(createSSRApp({ render: () => h(component as any, props) }));
-    expect(html).toContain('src="' + back + '"');
+    expect(html).toContain('src="' + source + '"');
     expect(html).toContain('alt="' + label + '"');
   }
 });

@@ -11,7 +11,7 @@ import {answerGroupInvitation as answerGroupInvitationEntry} from '../domain/ter
 import {isTerminalMemoryNote} from '../domain/terminalLedger';
 import {terminalStoryClock} from '../domain/storyScene';
 import {visibleMemories} from '../domain/story';
-import {terminalStoryExcerpt,terminalStoryFacts} from '../domain/terminalStoryContext';
+import {terminalStoryExcerpt,terminalStoryFacts,terminalGameFacts} from '../domain/terminalStoryContext';
 import {factAudienceCovers} from '../domain/knowledge';
 import {terminalAnchor,terminalAnchorActive,terminalOriginActive,terminalMessageVisible,terminalVisibility,terminalBucket,recordTerminalChat,audienceSnapshot,findChatSegment,syncTerminalMemoryNotes,type TerminalAnchor,type TerminalJob} from '../domain/terminalLedger';
 import {computed,ref,watch,onMounted,onBeforeUnmount,toRaw} from 'vue';
@@ -104,7 +104,7 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
   // user input, not the most recent prose, so an old-event question is not drowned out.
   const story=scoped?[]:s?.turns.filter(turn=>turn.variants[turn.selected]?.status==='complete').slice(-6).map(turn=>({input:terminalStoryExcerpt(turn.input,1200),text:terminalStoryExcerpt(turn.variants[turn.selected].text,4000)}));
   const lastTurn=s?.turns.at(-1),lastText=lastTurn?lastTurn.variants[lastTurn.selected]?.text?.slice(-1200)||'':'';
-  const recent=scoped&&s?terminalStoryFacts(s,s.turns.length,audience).map(f=>f.text):[];
+  const recent=scoped&&s?[...terminalGameFacts(s,s.turns.length,audience),...terminalStoryFacts(s,s.turns.length,audience)].map(f=>f.text):[];
   let retrieved:string[]=[];
   if(scoped&&s){try{retrieved=(await w.scopedRecall(s,query&&query.trim()||((lastTurn?.input||'')+' '+lastText),audience)).map(m=>terminalStoryExcerpt(m.text,700));}catch(e){if(controller?.signal.aborted||operationCancelled)throw e;logTerminalActivity('终端记忆检索降级','检索未完成，保留最近已确认且符合知情范围的剧情事实。');}}
   const memories=scoped?[...new Set([...recent,...retrieved])].slice(0,16):s?visibleMemories(s).filter(m=>m.status!=='pending'&&m.status!=='failed').slice(-12).map(m=>terminalStoryExcerpt(m.text,700)):[];

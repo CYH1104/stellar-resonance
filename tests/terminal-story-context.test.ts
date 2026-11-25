@@ -7,6 +7,7 @@ import {terminalStoryExcerpt,terminalStoryFacts} from '../src/domain/terminalSto
 import {terminalMainContext,cleanTerminalMainContext} from '../src/domain/terminalMain';
 import {emptyTerminal} from '../src/domain/personalTerminal';
 import {usePersonalTerminal} from '../src/app/usePersonalTerminal';
+import {terminalAnchor,terminalBucket} from '../src/domain/terminalLedger';
 import type {Memory} from '../src/domain/contracts';
 import type {ViewModel} from '../src/app/useWorkspace';
 
@@ -61,11 +62,15 @@ for(const fails of [false,true])it(`real private chat sends recent scoped story 
  const s=fixture();s.memories=[memory('recent',[{text:'甲已经答应明天带书',knownBy:['a']},{text:'乙的秘密',knownBy:['b']}])];
  s.terminal!.conversations=[{id:'p1',title:'甲',group:false,members:['a'],messages:[],announcement:'',unread:0,joined:true}];
  const preferences=defaults();preferences.terminalProfile=preferences.profiles[0].id;
+ s.initial.variables||={};s.initial.variables.时间地点={日期:'星历578年09月01日',时间:'14:20',地点:'宿舍'};
+ const b=terminalBucket(s.terminal!,terminalAnchor(s));
+ b.games.push({id:'table:1',kind:'landlord',name:'午后牌局',round:1,king:'甲',command:'农民胜，玩家 +2分，甲 -4分',penalties:'',complete:true,knownBy:['player','a']});
+ b.games.push({id:'secret:1',kind:'mahjong',name:'乙的私局',round:1,king:'乙',command:'乙自摸的私密结果',penalties:'',complete:true,knownBy:['player','b']});
  const calls:any[]=[];vi.stubGlobal('fetch',vi.fn(async(_path,options)=>{const body=JSON.parse(options.body);calls.push(body);return Response.json({messages:[{id:'a',text:'记得，我们约好了。'}],topic:'带书'});}));
  const w=reactive({active:s,state:s.initial,preferences,credentials:{},loading:false,busy:false,workingMemory:true,terminalBusy:false,terminalEpoch:0,storageStatus:'saved',theaters:[],save:async()=>{},connectionReady:()=>true,scopedRecall:vi.fn(async()=>{if(fails)throw Error('模拟检索超时');return [];}),indexTerminalNotes:()=>{}}) as unknown as ViewModel;
  let u!:ReturnType<typeof usePersonalTerminal>;await renderToString(createSSRApp({setup(){u=usePersonalTerminal(w);return()=>h('div');}}));
  u.conversationId.value='p1';u.draft.value='继续';await u.sendChat();
- const sent=calls.find(c=>c.task==='chat');expect(sent.context.memories).toContain('甲已经答应明天带书');expect(JSON.stringify(sent)).not.toContain('乙的秘密');expect(JSON.stringify(sent)).not.toContain('NARRATOR_SECRET');expect(u.error.value).toBe('');expect(u.working.value).toBe(false);
+ const sent=calls.find(c=>c.task==='chat');expect(sent.context.memories).toContain('甲已经答应明天带书');expect(JSON.stringify(sent.context.memories)).toContain('农民胜');expect(JSON.stringify(sent.context.memories)).toContain('14:20');expect(JSON.stringify(sent.context.memories)).toContain('578年09月01日');expect(JSON.stringify(sent)).not.toContain('乙自摸的私密结果');expect(JSON.stringify(sent)).not.toContain('乙的秘密');expect(JSON.stringify(sent)).not.toContain('NARRATOR_SECRET');expect(u.error.value).toBe('');expect(u.working.value).toBe(false);
 });
 
 it('a session switch while recall is slow prevents sending the late request and releases the task',async()=>{
