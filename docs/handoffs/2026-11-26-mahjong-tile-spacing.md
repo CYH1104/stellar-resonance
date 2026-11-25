@@ -19,3 +19,12 @@
 - 仅9000更新；8807不动。使用单实例test环境、固定目标提交和稳定端状态前后比较。禁止裸调用默认双端更新脚本。
 - 发布前服务器HEAD ef1cdc5c1835a56f53c3fbe34da414ff001d763d，9000 release 4eb2de924e1ae68c；8807 release 2714ea237e363c84、PID 2955979。
 - 完成后追加发布收据；后续反馈应以运行release及牌面截图定位。
+
+## 发布收据（2026-11-26）
+
+- 功能提交eb86aa494d6b733c32bd12cd84c56f1aaad63812，已推送main并部署9000；release f45cae381a049ad4，PID 1004627。
+- 发布快照的MahjongTile.vue与该Git提交逐字节一致，last-deployed-main匹配，无pending release。
+- 公网CSS PersonalTerminal-DrOThwma.css，SHA256 d2527efdd84f26705fdc0d123043d2e2d850d0dcb5066025fd3f109e7d2094af；已检查牌面scale(.8)、牌背不缩放、吃碰杠胡70/52px规则与快照一致。
+- 8807完整health、PID2955979、release2714ea237e363c84及终端资源摘要前后一致，并通过公网独立检查。
+- 恢复副本：/home/ubuntu/.stellar-resonance-backups/update-20261126-011522-F7Ygg7。
+- 本收据为文档补充，无需重发；本地合成牌局与公网资源验收完成，用户可刷新9000查看实际牌局。
