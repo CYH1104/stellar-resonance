@@ -33,7 +33,12 @@ export function normalizeMemoryResult(raw:unknown,input:MemoryRequest,diagnostic
  for(const a of input.after.characters){const before=input.before.characters.find(c=>c.id===a.id)?.affinity;if(a.affinity===undefined||a.affinity===before)continue;affinityChanges.push({id:a.id,name:a.name,...(before!==undefined?{before,delta:a.affinity-before}:{}),after:a.affinity,reason:text((reasons as any[]).find(c=>c?.id===a.id)?.reason||'本轮互动后状态更新',500)});}
  const stateChanges:StateChange[]=[];for(const a of [input.after.player,...input.after.characters]){const old=[input.before.player,...input.before.characters].find(c=>c.id===a.id);for(const field of ['identity','ability','mentalPowerLevel','energy','focus'] as const)if(a[field]!==undefined&&a[field]!==old?.[field])stateChanges.push({id:a.id,name:a.name,field:{identity:'身份',ability:'异能',mentalPowerLevel:'精神力等级',energy:'体力',focus:'专注'}[field],before:old?.[field]===undefined?'未明确':String(old[field]).trim()||'无',after:String(a[field]).trim()||'无'});}
  if(!Array.isArray(v.commitments))throw Error('缺少约定记录');
- const commitments=(v.commitments as any[]).map((c,i)=>({...c,id:input.priorCommitments.some(p=>p.id===c?.id)?c.id:input.variantId+'/promise-'+i}));
+ const reserved=new Set(input.priorCommitments.map(p=>p.id));
+ const commitments=(v.commitments as any[]).map((c,i)=>{
+  if(input.priorCommitments.some(p=>p.id===c?.id))return {...c};
+  let n=i,id=input.variantId+'/promise-'+n;while(reserved.has(id))id=input.variantId+'/promise-'+(++n);reserved.add(id);
+  return {...c,id};
+ });
  // Fact audiences: stable ids win, unique names resolve, same-name ambiguity becomes
  // unknown — the last duplicate must never win the map and receive someone's secret.
  const allIds=new Set<string>(),byName=new Map<string,string[]>();

@@ -1,6 +1,7 @@
 import type {Session} from './contracts';
-import {stateAt,visibleMemories} from './story.ts';
+import {stateAt} from './story.ts';
 import {memoryReady} from './memories.ts';
+import {orderedMemoryRecords,latestCommitmentEntries,commitmentLine} from './memoryCommitments.ts';
 import {factAudienceCovers} from './knowledge.ts';
 import {isTerminalMemoryNote,terminalVisibility,terminalRecall,formatTerminalSegment} from './terminalLedger.ts';
 import {terminalStoryClock} from './storyScene.ts';
@@ -32,15 +33,20 @@ export function terminalStoryFacts(s:Session,before=s.turns.length,audience?:str
   if(seen.has(key)||out.length>=8||used+bounded.length>3000)return;
   seen.add(key);out.push({text:bounded,knownBy:[...knownBy]});used+=bounded.length;
  };
- const ranks=new Map(s.turns.map((t,i)=>[t.id,i]));
- const memories=visibleMemories(s,before).slice().sort((a,b)=>(ranks.get(b.sourceTurn||'')??-1)-(ranks.get(a.sourceTurn||'')??-1));
+ const ordered=orderedMemoryRecords(s,before),entries=latestCommitmentEntries(ordered).reverse();
+ // Current commitments get a reserved budget, independent of keyword matches.
+ for(const {commitment:c} of [...entries.filter(e=>e.commitment.status==='open'),...entries.filter(e=>e.commitment.status!=='open')]){
+  if(out.length>=4)break;
+  const ids=c.participants.map(resolve),line=commitmentLine(c);
+  if(ids.length&&ids.every((id):id is string=>!!id)&&used+line.length<=1400)add('当前'+line,ids);
+ }
+ const memories=ordered.slice().reverse();
  for(const m of memories){
   if(m.kind!=='event'||!memoryReady(m)||isTerminalMemoryNote(m)||!m.record)continue;
   for(const f of m.record.facts||[])add(f.text,f.knownBy);
   // Legacy structured memories still prove a character's own actions and commitments.
   // Unknown/ambiguous names never gain a wider audience.
   for(const c of m.record.charActions||[]){const id=resolve(c.name);if(id)for(const action of c.actions){if(action.length>=8&&m.record.facts?.some(f=>f.text.length>=2&&(f.text.includes(action)||action.includes(f.text))))continue;add(c.name+'的行动：'+action,[id]);}}
-  for(const c of m.record.commitments||[]){if(c.status!=='open')continue;const ids=c.participants.map(resolve);if(ids.length&&ids.every((id):id is string=>!!id))add('约定（'+c.participants.join('、')+'）：'+c.content+'；期限：'+c.deadline,ids);}
   if(out.length>=8||used>=3000)break;
  }
  return out;

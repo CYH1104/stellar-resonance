@@ -1,3 +1,4 @@
+import {terminalMemoryInjection} from '../domain/memoryInjection';
 import {kingRoundLimitReached,afterpartyScenes} from "../domain/personalTerminal";
 import {renderKingCommand} from '../domain/kingCommand';
 import {normalizeActorName} from '../domain/dynamicActors';
@@ -107,7 +108,7 @@ function openRoom(id:string){const current=t.value.rooms.find(r=>r.id===id);if(!
   const recent=scoped&&s?[...terminalGameFacts(s,s.turns.length,audience),...terminalStoryFacts(s,s.turns.length,audience)].map(f=>f.text):[];
   let retrieved:string[]=[];
   if(scoped&&s){try{retrieved=(await w.scopedRecall(s,query&&query.trim()||((lastTurn?.input||'')+' '+lastText),audience)).map(m=>terminalStoryExcerpt(m.text,700));}catch(e){if(controller?.signal.aborted||operationCancelled)throw e;logTerminalActivity('终端记忆检索降级','检索未完成，保留最近已确认且符合知情范围的剧情事实。');}}
-  const memories=scoped?[...new Set([...recent,...retrieved])].slice(0,16):s?visibleMemories(s).filter(m=>m.status!=='pending'&&m.status!=='failed').slice(-12).map(m=>terminalStoryExcerpt(m.text,700)):[];
+  const memories=scoped&&s?terminalMemoryInjection(s,audience,retrieved.map((text,i)=>({id:String(i),text,kind:'note',createdAt:''}))):s?visibleMemories(s).filter(m=>m.status!=='pending'&&m.status!=='failed').slice(-12).map(m=>terminalStoryExcerpt(m.text,700)):[];
   if(scoped)logTerminalActivity('终端正文记忆','近期已确认知情事实：'+recent.length+' 条；检索结果：'+retrieved.length+' 条。未完成、无知情范围及其他分支的记忆不发送。');
   return {state:terminalContextState(w.state,boundCodes.value,actors.value),story,memories,...(scoped?{audience}:{})};
  }
