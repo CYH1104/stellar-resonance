@@ -1,4 +1,5 @@
 import Majiang from '../vendor/majiang/core.js';
+import {mahjongSoundEvents} from './tableSoundEvents';
 import type {TerminalAnchor} from './terminalLedger';
 import {pendingSettlementTalk,validateSettlementTalk,type ScoredRoundBase} from './settlementTalk.ts';
 
@@ -106,7 +107,7 @@ export function mahjongScores(round:MahjongRound){const g=engine(round);return O
 export function mahjongOptions(round:MahjongRound,id='player'){return optionsAt(engine(round),round.participants.indexOf(id));}
 export function mahjongView(round:MahjongRound){
  const g=engine(round),m=g._model,seat=(l:number)=>round.participants[m.player_id[l]],log=g._paipu.log[0];
- return {phase:round.phase,label:mahjongRoundLabel(round.opening),remaining:m.shan.paishu,sticks:m.lizhibang,dora:[...m.shan.baopai],status:g._status,actor:seat(m.lunban),lastDiscard:g._dapai?tile(g._dapai):undefined,options:optionsAt(g,0),
+ return {soundEvents:mahjongSoundEvents(log),phase:round.phase,label:mahjongRoundLabel(round.opening),remaining:m.shan.paishu,sticks:m.lizhibang,dora:[...m.shan.baopai],status:g._status,actor:seat(m.lunban),lastDiscard:g._dapai?tile(g._dapai):undefined,options:optionsAt(g,0),
   seats:[0,1,2,3].map(l=>{const id=seat(l),h=m.shoupai[l],exposed=round.result?.revealed[id];return {id,wind:['东','南','西','北'][l],score:m.defen[m.player_id[l]],count:mahjongTiles(h.toString()).length,hand:id==='player'?mahjongTiles(h.toString()):exposed?mahjongTiles(exposed):[],melds:[...h._fulou],river:[...m.he[l]._pai] as string[],riichi:!!h.lizhi,draw:id==='player'&&h._zimo?.length===2?h._zimo:undefined,revealed:!!exposed};}),
   events:log.slice(1).flatMap((event:any)=>event.dapai?[{id:seat(event.dapai.l),text:'打出 '+mahjongTileLabel(event.dapai.p)+(event.dapai.p.includes('*')?'（立直）':'')}]:event.fulou?[{id:seat(event.fulou.l),text:'副露 '+mahjongMeldTiles(event.fulou.m).map(mahjongTileLabel).join(' ')}]:event.gang?[{id:seat(event.gang.l),text:'杠 '+mahjongMeldTiles(event.gang.m).map(mahjongTileLabel).join(' ')}]:[]).slice(-12),result:round.result};
 }

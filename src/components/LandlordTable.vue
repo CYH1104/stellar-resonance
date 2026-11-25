@@ -7,6 +7,9 @@ import {LandlordBubbleDirector,type LandlordPhrases,type LandlordBubble} from '.
 import SettlementVoices from './SettlementVoices.vue';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 import PlayingCard from './PlayingCard.vue';
+import TableSoundToggle from './TableSoundToggle.vue';
+import {useTableSounds} from '../app/useTableSounds';
+import {landlordSoundSnapshot} from '../domain/tableSoundEvents';
 
 type Props = {
   w: ViewModel;
@@ -28,6 +31,8 @@ const emit = defineEmits<{
   retrySettlement: [];
 }>();
 
+const soundSnapshot=computed(()=>landlordSoundSnapshot(props.round));
+const {soundsEnabled,toggleSound}=useTableSounds(()=>soundSnapshot.value,()=>props.active&&!props.readOnly,()=>props.busy,true);
 const bubble=ref<LandlordBubble>();const bubbleDirector=new LandlordBubbleDirector();let bubbleTimer:ReturnType<typeof setInterval>|undefined;
 function updateBubble(){bubble.value=bubbleDirector.update(props.round,props.phrases,Date.now(),props.active&&!props.readOnly&&typeof document!=='undefined'&&!document.hidden,props.busy);}
 watch(()=>[props.round.number,props.round.moves.length,props.round.phase,props.round.turn,props.active,props.readOnly,props.busy],updateBubble);
@@ -87,6 +92,7 @@ function cardText(card: string) { return landlordCardLabel(card); }
 <template>
   <section class="landlord-table" :class="{ 'is-complete': round.phase === 'complete' }" aria-label="斗地主牌桌">
     <header class="table-header">
+      <TableSoundToggle v-if="!readOnly" :enabled="soundsEnabled" @toggle="toggleSound"/>
       <div><strong>斗地主</strong><span>第 {{ round.number }} 局</span></div>
       <span class="turn-status" role="status">
         <template v-if="round.phase === 'complete'">本局已结束</template>

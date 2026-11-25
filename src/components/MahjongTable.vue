@@ -6,9 +6,13 @@ import TerminalActorAvatar from './TerminalActorAvatar.vue';
 import SettlementVoices from './SettlementVoices.vue';
 import MahjongTile from './MahjongTile.vue';
 import MahjongActions from './MahjongActions.vue';
+import TableSoundToggle from './TableSoundToggle.vue';
+import {useTableSounds} from '../app/useTableSounds';
 const props=withDefaults(defineProps<{w:ViewModel;round:MahjongRound;name:(id:string)=>string;busy:boolean;active?:boolean;readOnly?:boolean;phrases?:Record<string,MahjongPhrases>;styles?:Record<string,MahjongStyle>}>(),{active:true,readOnly:false});
 const emit=defineEmits<{action:[reply:MahjongReply];start:[];leave:[];end:[];retrySettlement:[]}>();
 const view=computed(()=>mahjongView(props.round));
+const soundSnapshot=computed(()=>({roundKey:JSON.stringify([props.round.number,props.round.participants,props.round.wall]),events:view.value.soundEvents}));
+const {soundsEnabled,toggleSound}=useTableSounds(()=>soundSnapshot.value,()=>props.active&&!props.readOnly,()=>props.busy);
 const selected=ref(''),riichi=ref(false);
 watch(()=>[props.round.number,props.round.steps.length],()=>{selected.value='';riichi.value=false;});
 const own=computed(()=>view.value.seats.find(s=>s.id==='player')!);
@@ -35,7 +39,7 @@ function signed(n:number){return n>0?'+'+n:String(n);}
 </script>
 <template>
  <section class="mahjong-table" aria-label="日麻牌桌">
-  <header class="mj-header"><strong>日麻 · {{view.label}}</strong><span>{{round.phase==='complete'?'本局结算':view.options.length?'轮到你':name(view.actor)+' · 思考中…'}}</span><button v-if="!readOnly" type="button" @click="emit('leave')">回房间</button></header>
+  <header class="mj-header"><TableSoundToggle v-if="!readOnly" :enabled="soundsEnabled" @toggle="toggleSound"/><strong>日麻 · {{view.label}}</strong><span>{{round.phase==='complete'?'本局结算':view.options.length?'轮到你':name(view.actor)+' · 思考中…'}}</span><button v-if="!readOnly" type="button" @click="emit('leave')">回房间</button></header>
   <template v-if="round.phase==='playing'">
    <div class="mj-felt">
     <article v-for="seat in opponents" :key="seat.id" class="mj-seat" :class="['mj-'+seat.position,{thinking:seat.id===view.actor}]">

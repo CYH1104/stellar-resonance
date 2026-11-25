@@ -1,0 +1,286 @@
+{
+  "voices": {
+    "engine": "Microsoft Edge online TTS via edge-tts 7.3.1",
+    "voice": "zh-CN-YunxiNeural",
+    "rate": "+12%",
+    "volume": "-8%",
+    "created": "2026-11-26",
+    "lines": {
+      "rocket": "王炸！",
+      "bomb": "炸弹！",
+      "triple": "三个！",
+      "triple-single": "三带一！",
+      "triple-pair": "三带二！",
+      "straight": "顺子！",
+      "pair-straight": "连对！",
+      "airplane": "飞机！",
+      "airplane-single": "飞机带单！",
+      "airplane-pair": "飞机带对！",
+      "four-single": "四带二！",
+      "four-pair": "四带两对！",
+      "beat": "压死！",
+      "pass": "不要。",
+      "waiting": "我等的花都谢了！",
+      "bid-0": "不叫。",
+      "bid-1": "一分！",
+      "bid-2": "两分！",
+      "bid-3": "三分！",
+      "chi": "吃！",
+      "pon": "碰！",
+      "kan": "杠！",
+      "ron": "胡！",
+      "tsumo": "自摸！",
+      "riichi": "立直！",
+      "single-3": "三！",
+      "pair-3": "对三！",
+      "single-4": "四！",
+      "pair-4": "对四！",
+      "single-5": "五！",
+      "pair-5": "对五！",
+      "single-6": "六！",
+      "pair-6": "对六！",
+      "single-7": "七！",
+      "pair-7": "对七！",
+      "single-8": "八！",
+      "pair-8": "对八！",
+      "single-9": "九！",
+      "pair-9": "对九！",
+      "single-10": "十！",
+      "pair-10": "对十！",
+      "single-11": "勾！",
+      "pair-11": "对勾！",
+      "single-12": "圈！",
+      "pair-12": "对圈！",
+      "single-13": "凯！",
+      "pair-13": "对凯！",
+      "single-14": "尖！",
+      "pair-14": "对尖！",
+      "single-15": "二！",
+      "pair-15": "对二！",
+      "single-16": "小王！",
+      "single-17": "大王！"
+    }
+  },
+  "files": {
+    "airplane-pair.mp3": {
+      "bytes": 5709,
+      "sha256": "4271d9b4fe53688c146e9f78fd80568f4a09eb9ba943faca7225f4f2db7112da"
+    },
+    "airplane-single.mp3": {
+      "bytes": 6573,
+      "sha256": "14ac3337b3c10245d8be679ae4e1de2c86edc482bf1dabe30df96365090fd3ff"
+    },
+    "airplane.mp3": {
+      "bytes": 3885,
+      "sha256": "0080bcf2398f1bf9cc99af13c106257720f4ae56a8098c3bcf1981ae3059e675"
+    },
+    "beat.mp3": {
+      "bytes": 5349,
+      "sha256": "2ef6a5a627fd027d31462047982bfd4876e46ae555def01af5ab08c62e6cd374"
+    },
+    "bid-0.mp3": {
+      "bytes": 4365,
+      "sha256": "05acc20927b2adaf5c2cc66c0e25b2d6ca2e6dd1adcfcaf6dd3037a28b4ddc7d"
+    },
+    "bid-1.mp3": {
+      "bytes": 3645,
+      "sha256": "d5f33ea931ab507a038646ef40ef459db0858cccac5ef585eff920a0a840e006"
+    },
+    "bid-2.mp3": {
+      "bytes": 4293,
+      "sha256": "41b99faae02b5b76b8855e18ef858d6632dd67684737ef8e68a3e1708c0ef0fe"
+    },
+    "bid-3.mp3": {
+      "bytes": 4053,
+      "sha256": "8e0656a15c26e78410ff8e6a10b0e49dcb6a711735a5b7a398453bad9fb130e4"
+    },
+    "bomb.mp3": {
+      "bytes": 4149,
+      "sha256": "82dd9709930fc1cac0d876db1dbf0ac3e26b3b3b7134b35094d22da591c1c8d5"
+    },
+    "card-drop.mp3": {
+      "bytes": 5397,
+      "sha256": "22348278d47cbcc5126cfbb4c9aaf0d0953df0bcc36823db7b92354543bac32c"
+    },
+    "chi.mp3": {
+      "bytes": 3333,
+      "sha256": "819eaa651ded44166e9d278737e00610ed6a4fb9b1d08a3444526a473d72e983"
+    },
+    "four-pair.mp3": {
+      "bytes": 6645,
+      "sha256": "33af050268c4a71e473c60a3da45014a8078558b7aed7cfc348214d2150b2022"
+    },
+    "four-single.mp3": {
+      "bytes": 5805,
+      "sha256": "da974fa293b4827eeeeae4cc480e9db15576428fcad3d44279d8d573fa7cde61"
+    },
+    "kan.mp3": {
+      "bytes": 3957,
+      "sha256": "acafe5c48fce5aca44d318e7e506ed61d07ea9541d3969309224b959a533cfde"
+    },
+    "pair-10.mp3": {
+      "bytes": 3909,
+      "sha256": "a6d6aa438ab9be0cc55d5659922b1a567c5a464eec5f54d7ccc28dec0db70313"
+    },
+    "pair-11.mp3": {
+      "bytes": 4053,
+      "sha256": "adea9575787ccb6530c095256e942131228263c13e31bed664af4f5f5bed0ede"
+    },
+    "pair-12.mp3": {
+      "bytes": 3885,
+      "sha256": "4170c11e136250daa0c0818ad478fd4ca8960f121391c4adf16275f3887b2f66"
+    },
+    "pair-13.mp3": {
+      "bytes": 3765,
+      "sha256": "bf495da2eb6206376554f962f6ceb44590d46a02610d8d32cf57250731dec064"
+    },
+    "pair-14.mp3": {
+      "bytes": 3933,
+      "sha256": "48eb4aa9f398e1e2f1df65e7dde8b54d09509921e1f6068d5d0f10cdf6523450"
+    },
+    "pair-15.mp3": {
+      "bytes": 3405,
+      "sha256": "520d25409025b7d453d7c08c85241e66227c8b50086622fefae0ff468e42355b"
+    },
+    "pair-3.mp3": {
+      "bytes": 3477,
+      "sha256": "e83e7088b7822b405fed75e56bdf86e56d144047895d3db77b9e97038a3130cf"
+    },
+    "pair-4.mp3": {
+      "bytes": 3981,
+      "sha256": "c4d66481a2a2ffac044c40f08b3da3155f084db7488d14f9fc2504a32d9ab9b8"
+    },
+    "pair-5.mp3": {
+      "bytes": 4077,
+      "sha256": "c3995487781290c3b8902ecb7332e9e2c70ad6b63e10c748b0199540624ed2fd"
+    },
+    "pair-6.mp3": {
+      "bytes": 4245,
+      "sha256": "ca6d1262494371272b824ad01023d7456d52fdcef9b8d182716abc79a9afe27e"
+    },
+    "pair-7.mp3": {
+      "bytes": 4653,
+      "sha256": "6b2193f808f7373f45d23636c9f4b15c3d259f83f9f5ebe1b88435a110c535e2"
+    },
+    "pair-8.mp3": {
+      "bytes": 4053,
+      "sha256": "19ab8434c1004628a108fb6123d6bf1a31f74b0d0cbb6a4f3e1ecc43baa70a18"
+    },
+    "pair-9.mp3": {
+      "bytes": 3861,
+      "sha256": "299b9e677caeb3fa373a50221133149dfe930d30b121aceb8e6abae9adc430fe"
+    },
+    "pair-straight.mp3": {
+      "bytes": 4005,
+      "sha256": "4ab2fb8a2981ef180cf1aaa6790686d9d8b0dda8c8d3ca0ff08e120953f96143"
+    },
+    "pass.mp3": {
+      "bytes": 3453,
+      "sha256": "61db0b8af3717cbcf4343318c44a61cca4c47781751d69383792797921a11b22"
+    },
+    "pon.mp3": {
+      "bytes": 3693,
+      "sha256": "030c1f1d46b0d9a0358f084787c3f7d3ca60cc81186cbfcdfd8e2f6a7370176f"
+    },
+    "riichi.mp3": {
+      "bytes": 4173,
+      "sha256": "8067fb70073a421501be6df53d44838ed25bd7c840d6f211e0ebff4987144b33"
+    },
+    "rocket.mp3": {
+      "bytes": 4629,
+      "sha256": "6ab3c14db5c570cb27222660a39b1d332473756c2f0d9431c24b5aefffe859e9"
+    },
+    "ron.mp3": {
+      "bytes": 3309,
+      "sha256": "da7893a32b235839a9de19258096752ac621824e4fa82a1261715bfc3b810052"
+    },
+    "single-10.mp3": {
+      "bytes": 3405,
+      "sha256": "29bf5ff237c95ec8e81145ee9597cad00928623076994600910d068804c4af85"
+    },
+    "single-11.mp3": {
+      "bytes": 3069,
+      "sha256": "bdb592461477f7db590b810c445f545e2f908f0b2b4b08a46811e4a0099c9f6a"
+    },
+    "single-12.mp3": {
+      "bytes": 3549,
+      "sha256": "3b1d3ba1b3b67566024a8225a4af47e7629719fd7e3cbaff2ad98756c59314c6"
+    },
+    "single-13.mp3": {
+      "bytes": 4677,
+      "sha256": "7e35033d2a76d9354a7a4195da0245a1735cbb4e49329aa485a119db178cef07"
+    },
+    "single-14.mp3": {
+      "bytes": 3237,
+      "sha256": "5f11f695ef0beb50fa0240896ddad92d9f2cee533140f6ff343343376f3853c0"
+    },
+    "single-15.mp3": {
+      "bytes": 3309,
+      "sha256": "d6a012dfbadbe88fa67403ac55a1c19492eecc73ee7c5f65a35fada06f4d4b45"
+    },
+    "single-16.mp3": {
+      "bytes": 4533,
+      "sha256": "9791c19c26afaa0b115d1fbf69a98ea92cc1ee9117d529ab7b5bc2abfa58d9eb"
+    },
+    "single-17.mp3": {
+      "bytes": 3885,
+      "sha256": "010750b952ea298be39ae86a2dd9aaa658ecf66c4b81c43974a747e3f0a254db"
+    },
+    "single-3.mp3": {
+      "bytes": 3549,
+      "sha256": "099c376c5341f3e6437d59926c57a151554fe1b2e5cd4441943df73930e5dc36"
+    },
+    "single-4.mp3": {
+      "bytes": 3621,
+      "sha256": "77a9fdf1d82aaf79187c808c5fc916aa88b7da81a3e815525537878fd64debe7"
+    },
+    "single-5.mp3": {
+      "bytes": 3165,
+      "sha256": "3d1977b6080a10beb4468bcbf06461cc9bb764417d5e0552757352ceb3097c27"
+    },
+    "single-6.mp3": {
+      "bytes": 4245,
+      "sha256": "d7fbf54e89dc491db4ce6bc701aae3d7e69892d12570d9914a8876d746ad8bb5"
+    },
+    "single-7.mp3": {
+      "bytes": 3381,
+      "sha256": "c51bd0a98203ea583ef75f1bab8871371e5fda0c5e18d6f3c4fb62a04605e887"
+    },
+    "single-8.mp3": {
+      "bytes": 4485,
+      "sha256": "369fb8cf6ed6793212ec96485453dd8f3e19f8d3730533b169d28da687265f95"
+    },
+    "single-9.mp3": {
+      "bytes": 3669,
+      "sha256": "41f904d9e7431c5b554dd1d0f23d433fe6a53cea69e9729cf5de6bed819a3133"
+    },
+    "straight.mp3": {
+      "bytes": 4317,
+      "sha256": "7a7d5faf19f9f6bb17decd611cbdeb0473678db799526d217321075ab12f5b4b"
+    },
+    "tile-drop.wav": {
+      "bytes": 57130,
+      "sha256": "d34ff64d67ec2bfa789f2c3e9be5041231e56b4fe971d8826ee2d57da7ab62f8"
+    },
+    "triple-pair.mp3": {
+      "bytes": 6213,
+      "sha256": "7c668c771245058090f779490d1ab33df5837b618ff3687448b96869ff8ddd26"
+    },
+    "triple-single.mp3": {
+      "bytes": 6189,
+      "sha256": "d71696d01ad9ed10a508b3528b9e0347ba3db9ff5674b6c0a8b7180d91c64768"
+    },
+    "triple.mp3": {
+      "bytes": 4749,
+      "sha256": "6c1454c38eee014e9bb436a8285ff81d275ee13d62ff89ef21903091fd6492f6"
+    },
+    "tsumo.mp3": {
+      "bytes": 4053,
+      "sha256": "007d76d7f3288b02f333d12131cf02ae50ae78f2916e20f5ae47b118f33a6dde"
+    },
+    "waiting.mp3": {
+      "bytes": 8085,
+      "sha256": "9c278e6b623d4fec830cbdeab1a54b7241e461ac59f1b7e76bf941043523c171"
+    }
+  }
+}
