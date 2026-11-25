@@ -47,13 +47,13 @@ async function activate(group:{kind:ArtKind;options:MahjongOption[]}){
 <style scoped>
 .mj-call-dock{position:relative;display:flex;align-items:end;justify-content:flex-end;gap:8px;flex:0 0 auto;margin-left:auto;isolation:isolate}
 .mj-call-dock.choosing>.mj-call-button,.mj-call-dock.choosing>.mj-call-other{visibility:hidden}
-.mj-call-art{display:block;width:100%;height:70px;object-fit:contain;filter:drop-shadow(0 3px 3px #0007);pointer-events:none}
+.mj-call-art{display:block;width:80%;height:56px;object-fit:contain;filter:drop-shadow(0 3px 3px #0007);pointer-events:none}
 .mj-call-tiles{display:flex;align-items:center;justify-content:center;gap:2px}
 .mj-call-tile{display:block;width:17px;height:23px}
 .mj-call-choices{position:absolute;z-index:6;bottom:0;right:0;box-sizing:border-box;min-width:max(220px,100%);max-width:min(480px,70vw);padding:10px;border:1px solid #d5bd75;border-radius:12px;background:#102b2bf5;box-shadow:0 6px 24px #0008;color:#fff4d3}
 .mj-choice-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:6px;font-size:13px}
 .mj-choice-list{display:flex;gap:8px;overflow-x:auto;padding:3px}
-@media(max-height:500px),(orientation:portrait) and (max-width:700px){.mj-call-dock{gap:5px}.mj-call-art{height:52px}.mj-call-tile{width:15px;height:20px}.mj-call-choices{padding:7px;max-width:400px}.mj-choice-heading{font-size:12px;margin-bottom:3px}}
+@media(max-height:500px),(orientation:portrait) and (max-width:700px){.mj-call-dock{gap:5px}.mj-call-art{height:40px}.mj-call-tile{width:15px;height:20px}.mj-call-choices{padding:7px;max-width:400px}.mj-choice-heading{font-size:12px;margin-bottom:3px}}
 </style>
 <style>
 /* The terminal skin has global button rules; keep the artwork and touch targets intact. */
