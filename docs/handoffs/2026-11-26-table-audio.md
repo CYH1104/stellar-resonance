@@ -24,11 +24,21 @@
 - Required four agent-hub reads attempted; D:/QQ/QQ文件/agent-hub/hub.mjs is absent (MODULE_NOT_FOUND), as in the preceding run. No hub ownership claim was made. This document is the handoff fallback.
 - Server read-only baseline: HEAD e5c755001fb9f5da497b009a575d0b2d609a017d, clean. 9000 release b5fb0fce1fe84ea5 / PID 1016015. 8807 release 2714ea237e363c84 / PID 2955979, terminal SHA256 58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a.
 - Deploy only 9000 with the guarded single-instance updater, reviewed target commit, backup and stable baseline assertions. Never run the default paired updater.
-- Next: append verified release receipt, public asset checks, stable comparison and temporary-key cleanup result after deployment.
+- Final receipt is recorded below.
 
 ## Deployment recovery
 
 - First target 5297d244501f93db6660fdef905dd5270908a85f produced snapshot 17c83b9e99d3e20d, which failed native Node startup. The updater automatically restored healthy test release b5fb0fce1fe84ea5. Stable remained unchanged. Backup: /home/ubuntu/.stellar-resonance-backups/update-20261126-023700-9Zcax1.
 - Reproduced on the server snapshot and locally: ERR_MODULE_NOT_FOUND for tableSoundEvents, because Mahjong and its new sound module used extensionless runtime imports. Vite resolves these, native Node does not. Both runtime imports now include .ts.
 - Added native Node server-import regression: observed failure before the fix, then passed after. Seven native server import/channel/HTTP tests passed, plus 15 audio/Mahjong tests and a fresh production build.
-- Next: redeploy the corrected commit to test only, verify its active snapshot and public assets, record stable comparison and remove the temporary SSH private key.
+- Corrected runtime deployed successfully; final receipt below.
+
+## Final deployment receipt
+
+- Runtime commit: `8ce72c951c34b2013c8088946594c18ed2b24777`. Test release: `0eb817669134c729`, PID `1029922`. Health confirms test channel, test instance, port 9000 and required accounts. Pending-release file is absent.
+- Recovery backup: `/home/ubuntu/.stellar-resonance-backups/update-20261126-024858-B0PC4n`. Native Node import preflight passed before restarting test.
+- Verified running snapshot source against the runtime commit, all 55 audio file SHA256 hashes, the separate Mahjong tile back, and unchanged 80% face-art scale.
+- Public port 9000: 25 served files fetched and SHA256 checked; 33 small audio/back assets verified through exact embedded bytes and the served terminal bundle digest.
+- Port 8807 is byte-for-byte identical to its pre-deploy snapshot record: release `2714ea237e363c84`, PID `2955979`, instance `3523bfac9402aab5678d61a0b402ca69`, terminal JS SHA256 `58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a`. It was not restarted or deployed.
+- No remaining implementation/deployment work for this request. Real phone hardware/listening acceptance has not been performed.
+- Cleanup verified: this run's temporary SSH private-key file was deleted; the owned 5199 preview process was stopped. agent-hub remains absent, so this document carries completed work, validation and the remaining real-phone acceptance boundary.
