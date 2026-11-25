@@ -40,12 +40,21 @@
 
 ## 发布状态
 
-待提交并执行9000单实例更新；完成后在本文件追加真实收据。
+已完成正常推送和9000单实例更新，发布与公网核验成功。
 
 8807保护基线：release `2714ea237e363c84`，PID `2955979`，instance `3523bfac9402aab5678d61a0b402ca69`，PersonalTerminal资源SHA256 `58bc6cc9976e1d8d4d375ce6b2d642862a434945e5fe136780d559bcd7f2518a`。
 
+## 发布收据
+
+- 代码提交：`d792fdf21fb3aca4a7ce97d31549321928af3688`。
+- 9000 release：`5b14e87412c11181`，PID `1048585`；实例test、端口9000、账号校验启用。
+- 6个修改的运行源码与该提交逐字节一致，last-deployed-main正确，无pending release。
+- 公网39个JS/CSS资源SHA256与部署快照一致。
+- 8807 release、PID、instance和终端bundle SHA256均与上述基线完全一致，公网也核对通过。
+- 更新前备份：`/home/ubuntu/.stellar-resonance-backups/update-20261126-034809-LJ6wko`。
+- 本地5199测试preview已停止；临时SSH私钥文件已删除（仅清理本轮本机副本，不更改服务器authorized_keys）。
+- 收工agent-hub handoff再次返回MODULE_NOT_FOUND；接力记录保存在本文件，未发送给其他agent。
+
 ## 下一步
 
-1. 正常推送已核对的main，不强推。
-2. 使用带目标提交和8807基线保护的9000单实例更新脚本。
-3. 核对线上源码、构建资源、公网hash及8807基线，清理本轮临时SSH私钥和preview。
+用户刷新9000后用现有存档验证角色实际回应和操作流畅度。如仍有卡顿，需区分首次加载、具体界面操作和等待API阶段继续采样。本轮文档收据提交不需要再次部署。
