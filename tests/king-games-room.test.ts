@@ -42,7 +42,7 @@ it('saves membership and valid welcome messages before retrying only the missing
  await u.retryGroupWelcome('invite');expect(requests[1].context.welcomeMissing).toBe(1);expect(requests[1].context.conversation.messages).toHaveLength(3);expect(u.t.value.conversations[0].messages).toHaveLength(4);expect(u.t.value.groupInvitations![0].welcome!.status).toBe('ready');await u.retryGroupWelcome('invite');expect(requests).toHaveLength(2);
 });
 
-it('games list opens two party games and keeps the remaining locked game and rooms reachable',async()=>{
+it('games list opens all implemented games including werewolf and keeps rooms reachable',async()=>{
  const {w,u}=await fixture();
  u.t.value.rooms[0].rounds.push({...respondRound,phase:'complete' as const,replies:[{id:'a',text:'好',refused:false,penalty:''}]});
  const ended={...u.t.value.rooms[0],id:'old',name:'旧房间',endedAt:new Date().toISOString()};
@@ -51,7 +51,7 @@ it('games list opens two party games and keeps the remaining locked game and roo
  try{
   u.go('games');const html=await renderToString(createSSRApp(PersonalTerminal,{w}));
   for(const name of ['国王游戏','真心话大冒险','狼人杀','日麻','斗地主','十点半'])expect(html).toContain(name);
-  expect((html.match(/暂未开放/g)||[])).toHaveLength(1);
+  expect(html).not.toContain('暂未开放');expect(html).toContain('六人暗牌');
   expect(html).toContain('每日占卜');
   expect(html).toContain('创建房间');expect(html).toContain('回看记录');expect(html).toContain('游戏室房间');
  }finally{spy.mockRestore();}
@@ -291,7 +291,7 @@ it('domain threshold helper counts odd and even crossings only after the fixed t
  expect(kingOverLimit(room,{a:5,b:10})).toEqual(['a']);// 4→6 crossing counts after settling; 5<10 stays under
 });
 
-it('renders accessible drunk progress bars for participants only and disables locked game buttons',async()=>{
+it('renders accessible drunk progress bars for participants only and enables implemented game buttons',async()=>{
  const {w,u}=await fixture();
  u.t.value.tolerances={player:2,a:5,b:9};
  u.t.value.rooms[0].drunk={player:1,a:2};
@@ -306,7 +306,7 @@ it('renders accessible drunk progress bars for participants only and disables lo
   u.go('games');const gamesHtml=await renderToString(createSSRApp(PersonalTerminal,{w}));
   expect(gamesHtml).not.toContain('aria-disabled');
   const locked=(gamesHtml.match(/<button[^>]*disabled[^>]*>/g)||[]).length;
-  expect(locked).toBeGreaterThanOrEqual(1);// 聚会游戏已开放；仍锁定的其余游戏保持禁用
+  expect(locked).toBe(0);// 狼人杀已开放，游戏入口不再有锁定按钮
   for(const g of ['真心话大冒险','十点半'])expect(gamesHtml).toContain(g);
  }finally{spy.mockRestore();}
 });

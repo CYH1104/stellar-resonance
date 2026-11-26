@@ -152,3 +152,27 @@ it('mahjong replay, presets, deposits and both games settlement voices round-tri
  const write=IndexedDbRepository.prototype.write;let fail=true;vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async function(this:IndexedDbRepository,value,recovery){if(fail&&(value.sessions.find(s=>s.id==='local-session')?.terminal?.partyRooms?.[0].rounds[0] as import('../src/domain/mahjong').MahjongRound)?.settlementTalk?.lines[0].text==='这局服气。'){fail=false;throw Error('mahjong-write-failed');}return write.call(this,value,recovery);});await expect(w.restoreCloudSave(cloud)).rejects.toThrow('mahjong-write-failed');expect(current()).toEqual(before);expect((await new IndexedDbRepository().readCloudRecovery('workspace'))!.sessions.find(s=>s.id==='local-session')!.terminal!.partyRooms).toEqual(before);
  const future=JSON.parse(local);future.sessions.find((s:any)=>s.id==='local-session').terminal.partyRooms[0].rounds[0].rulesVersion=2;expect(()=>parseBackup(JSON.stringify(future))).toThrow();
 });
+
+it('werewolf partial nights survive full archive restore, remapping and recovery, with atomic failure protection',async()=>{
+ const {createWerewolf,actWerewolf,wolfRole}=await import('../src/domain/werewolf');const {terminalAnchor}=await import('../src/domain/terminalLedger');
+ await seed();const w=await workspace(),s=w.sessions.value[0];s.terminal=emptyTerminal();
+ let g=createWerewolf(['player','a','b','c','d','e'].map(id=>({id,name:id})),terminalAnchor(s),'星历578年9月1日');g.roles=['villager','wolf','wolf','seer','witch','villager'];
+ g=actWerewolf(g,[{type:'council',opinions:[{id:'a',target:'e',reason:'怀疑他是神职'},{id:'b',target:'a',reason:'讨论自刀'}],target:'e'},{type:'inspect',actor:'c',target:'d'}]);s.terminal.werewolfGames=[g];s.terminal.avatar='data:image/png;base64,AAAA';await w.save();
+ const local=backup((await new IndexedDbRepository().read())!),cloud=await w.createCloudWorkspaceBackup();expect(parseCloudSave(cloud).snapshot.sessions[0].terminal!.avatar).toBe('');
+ const current=()=>w.sessions.value.find(s=>s.terminal?.werewolfGames?.length)?.terminal!.werewolfGames![0];
+ for(const text of [local,cloud])expect(parseWorkspaceBackup(text).snapshot.sessions[0].terminal!.werewolfGames![0]).toEqual(g);
+ w.sessions.value[0].terminal=emptyTerminal();await w.save();expect(await w.importBackup(local,true)).toBe(true);expect(current()).toEqual(g);await w.undoCloudRestore();expect(current()).toBeUndefined();
+ await w.restoreCloudSave(cloud);expect(current()).toEqual(g);expect(wolfRole(current()!,'c')).toBe('seer');await w.undoCloudRestore();expect(current()).toBeUndefined();
+ expect(await w.importBackup(local)).toBe(true);expect(current()).toEqual(g);expect(w.sessions.value.find(x=>x.terminal?.werewolfGames?.length)!.id).not.toBe(s.id);await w.undoCloudRestore();
+ const write=IndexedDbRepository.prototype.write;let failed=false;vi.spyOn(IndexedDbRepository.prototype,'write').mockImplementation(async function(this:IndexedDbRepository,value,recovery){if(!failed&&value.sessions.some(s=>s.terminal?.werewolfGames?.length)){failed=true;throw Error('werewolf-write-failed');}return write.call(this,value,recovery);});
+ await expect(w.restoreCloudSave(cloud)).rejects.toThrow('werewolf-write-failed');expect(current()).toBeUndefined();expect((await new IndexedDbRepository().read())!.sessions.some(s=>s.terminal?.werewolfGames?.length)).toBe(false);
+ const malformed=JSON.parse(cloud);malformed.snapshot.sessions[0].terminal.werewolfGames[0].unrecognizedField=true;await expect(w.restoreCloudSave(JSON.stringify(malformed))).rejects.toThrow();expect(current()).toBeUndefined();
+});
+
+it('rejects stale cross-page terminal writes without dropping an already saved werewolf action',async()=>{
+ const {createWerewolf,actWerewolf}=await import('../src/domain/werewolf');const {terminalAnchor}=await import('../src/domain/terminalLedger');
+ await seed();const w=await workspace(),s=w.sessions.value[0];s.terminal=emptyTerminal();const g=createWerewolf(['player','a','b','c','d','e'].map(id=>({id,name:id})),terminalAnchor(s),'星历578');g.roles=['villager','wolf','wolf','seer','witch','villager'];s.terminal.werewolfGames=[g];await w.save();
+ const first=new IndexedDbRepository(),second=new IndexedDbRepository(),a=(await first.read())!,b=(await second.read())!;
+ a.sessions[0].terminal!.werewolfGames![0]=actWerewolf(g,[{type:'inspect',actor:'c',target:'a'}]);await first.writeTerminalSession(a.sessions[0]);
+ b.sessions[0].terminal!.werewolfGames![0]=actWerewolf(g,[{type:'inspect',actor:'c',target:'b'}]);await expect(second.writeTerminalSession(b.sessions[0])).rejects.toThrow();expect((await new IndexedDbRepository().read())!.sessions[0].terminal!.werewolfGames![0].actions).toEqual([{type:'inspect',actor:'c',target:'a'}]);
+});

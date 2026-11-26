@@ -1,3 +1,4 @@
+import {createWerewolf} from '../src/domain/werewolf';
 import {createCloudSave,parseCloudSave} from '../src/domain/cloudBackup';
 import {expect,it} from 'vitest';
 import {newSession,backup,parseBackup,defaults} from '../src/domain/story';
@@ -45,4 +46,15 @@ it('king game retains the participants actual response, not only the command',()
  const s=fixture();s.terminal!.partyRooms=[];s.terminal!.rooms=[{id:'king',name:'国王游戏',style:'轻松',members:['player','a','b'],invitations:{a:'accepted',b:'accepted'},drunk:{},rounds:[{number:1,king:'a',numbers:{player:1,b:2},command:'分享趣事',targets:[2],replies:[{id:'b',text:'讲了昨天在食堂迷路的事',refused:false,penalty:''}],phase:'complete',anchor:terminalAnchor(s)}]}];
  s.terminal!.memories![0].games=[{id:'king:1',name:'国王游戏',round:1,king:'a',command:'分享趣事',penalties:'',complete:true,knownBy:['player','a','b']}];
  expect(terminalGameFacts(s,0,['a'])[0].text).toContain('讲了昨天在食堂迷路的事');
+});
+
+it('werewolf history cannot crowd out newer card results or all card results on the same anchor',()=>{
+ const s=fixture(),seats=['player','a','b','c','d','e'].map(id=>({id,name:id}));
+ s.terminal!.werewolfGames=Array.from({length:4},()=>createWerewolf(seats,terminalAnchor(s),'星历578年9月1日'));
+ expect(terminalGameFacts(s).some(f=>f.text.includes('自摸'))).toBe(true);
+ expect(terminalGameFacts(s).some(f=>f.text.includes('六人狼人杀'))).toBe(true);
+ s.turns.push({id:'later',input:'再打日麻',selected:0,variants:[{id:'v2',text:'打牌',status:'complete',createdAt:'now'}]});
+ const anchor=terminalAnchor(s);s.terminal!.memories![0].anchor=anchor;s.terminal!.partyRooms![0].rounds[0].anchor=anchor;
+ expect(terminalGameFacts(s)[0].text).toContain('自摸');
+ expect(terminalGameFacts(s,undefined,['outsider'])).toEqual([]);
 });

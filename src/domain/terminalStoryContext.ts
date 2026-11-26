@@ -1,3 +1,4 @@
+import {replayWerewolf} from './werewolf.ts';
 import type {Session} from './contracts';
 import {stateAt} from './story.ts';
 import {memoryReady} from './memories.ts';
@@ -69,8 +70,15 @@ export function terminalGameFacts(s:Session,before=s.turns.length,audience?:stri
  const buckets=[...(s.terminal?.memories||[])].filter(b=>visible.anchor(b.anchor)).sort((a,b)=>(ranks.get(b.anchor.turnId)??-1)-(ranks.get(a.anchor.turnId)??-1));
  const rounds=new Map((s.terminal?.partyRooms||[]).flatMap(room=>room.rounds.map(round=>[room.id+':'+round.number,{round,ended:!!room.endedAt}] as const)));
  const kings=new Map((s.terminal?.rooms||[]).flatMap(room=>room.rounds.map(round=>[room.id+':'+round.number,round] as const)));
- const out:{text:string;knownBy:string[]}[]=[],seen=new Set<string>();
- for(const b of buckets){
+ const out:{text:string;knownBy:string[];rank:number;order:number}[]=[],seen=new Set<string>();
+ let wolfOrder=0,partyOrder=0;
+ // Prefer newer story anchors; interleave game families within one anchor because legacy rounds have no wall-clock timestamps.
+ for(const game of [...(s.terminal?.werewolfGames||[])].reverse().sort((a,b)=>(ranks.get(b.anchor.turnId)??-1)-(ranks.get(a.anchor.turnId)??-1))){
+  const knownBy=game.seats.map(p=>p.id);if(!visible.anchor(game.anchor)||audience&&!factAudienceCovers(knownBy,audience))continue;
+  const state=replayWerewolf(game);
+  out.push({rank:ranks.get(game.anchor.turnId)??-1,order:wolfOrder++,knownBy,text:game.storyDate+'（现实时间'+game.at+'）；参与者：'+game.seats.map(p=>p.name).join('、')+'；六人狼人杀：'+(state.phase==='complete'?(state.winner==='wolf'?'狼人':'好人')+'阵营获胜，整场游戏已结束。':'进行到第'+state.day+'天。')+'身份和夜间私密行动未公开。'});if(wolfOrder===3)break;
+ }
+ party:for(const b of buckets){
   const games=[...b.games].reverse().filter(game=>{
    if(seen.has(game.id)||!visible.origin(game.origin)||!game.knownBy?.length||audience&&!factAudienceCovers(game.knownBy,audience))return false;
    const round=rounds.get(game.id)?.round||kings.get(game.id);return !round||!round.archived&&(!round.anchor||visible.anchor(round.anchor));
@@ -86,10 +94,10 @@ export function terminalGameFacts(s:Session,before=s.turns.length,audience?:stri
    const result=saved?terminalGameResult(saved.round,name):king?[king.command,...king.replies.map(r=>name(r.id)+'：'+(r.refused?'拒绝，罚酒：'+r.penalty:r.text).slice(0,180))].join('；'):'';
    const entry=result?{...game,command:result,complete:(saved?.round||king)!.phase==='complete'}:game;
    const text=when+'；参与者：'+game.knownBy!.map(name).join('、')+'；'+formatTerminalSegment(entry)+(game.endedAt||saved?.ended?'；整场游戏已结束':'');
-   out.push({text:terminalStoryExcerpt(text,800),knownBy:[...game.knownBy!]});if(out.length===3)return out;
+   out.push({rank:ranks.get(b.anchor.turnId)??-1,order:partyOrder++,text:terminalStoryExcerpt(text,800),knownBy:[...game.knownBy!]});if(partyOrder===3)break party;
   }
  }
- return out;
+ return out.sort((a,b)=>b.rank-a.rank||a.order-b.order).slice(0,3).map(({text,knownBy})=>({text,knownBy}));
 }
 /** Narration must retain recent game results even if a later chat creates another bucket. */
 export function terminalNarrativeRecall(s:Session,before=s.turns.length){
