@@ -13,8 +13,9 @@ const emit=defineEmits<{action:[reply:MahjongReply];start:[];leave:[];end:[];ret
 const view=computed(()=>mahjongView(props.round));
 const soundSnapshot=computed(()=>({roundKey:JSON.stringify([props.round.number,props.round.participants,props.round.wall]),events:view.value.soundEvents}));
 const {soundsEnabled,toggleSound}=useTableSounds(()=>soundSnapshot.value,()=>props.active&&!props.readOnly,()=>props.busy);
-const selected=ref(''),riichi=ref(false);
-watch(()=>[props.round.number,props.round.steps.length],()=>{selected.value='';riichi.value=false;});
+// Selection is a physical hand position; identical tile faces are not identities.
+const selected=ref<number|null>(null),riichi=ref(false);
+watch(()=>[props.round.number,props.round.steps.length],()=>{selected.value=null;riichi.value=false;});
 const own=computed(()=>view.value.seats.find(s=>s.id==='player')!);
 const opponents=computed(()=>props.round.participants.slice(1).map((id,i)=>({...view.value.seats.find(s=>s.id===id)!,position:['right','top','left'][i]})));
 const canAct=computed(()=>props.active&&!props.readOnly&&!props.busy&&props.round.phase==='playing');
@@ -22,9 +23,16 @@ const discards=computed(()=>view.value.options.filter(o=>o.kind==='discard'));
 const riichiOptions=computed(()=>view.value.options.filter(o=>o.kind==='riichi'));
 const calls=computed(()=>view.value.options.filter(o=>!['discard','riichi'].includes(o.kind)));
 const choices=computed(()=>riichi.value?riichiOptions.value:discards.value);
-const chosen=computed(()=>choices.value.find(o=>o.reply.dapai?.slice(0,2)===selected.value));
+const selectedTile=computed(()=>selected.value===null?'':own.value.hand[selected.value]||'');
+function discardAt(index:number){
+ const tile=own.value.hand[index];
+ if(!tile)return;
+ const drawn=!!own.value.draw&&index===own.value.hand.length-1;
+ return choices.value.find(o=>o.reply.dapai?.replace('*','')===tile+(drawn?'_':''));
+}
+const chosen=computed(()=>selected.value===null?undefined:discardAt(selected.value));
 function play(){if(canAct.value&&chosen.value)emit('action',chosen.value.reply);}
-function hint(){const ctx=mahjongPublicContext(props.round,'player'),r=chooseMahjongReply(ctx,{skill:5,aggression:3,caption:'提示'});if(r.dapai){riichi.value=r.dapai.includes('*');selected.value=r.dapai.slice(0,2);}}
+function hint(){const ctx=mahjongPublicContext(props.round,'player'),r=chooseMahjongReply(ctx,{skill:5,aggression:3,caption:'提示'});if(r.dapai){riichi.value=r.dapai.includes('*');const index=own.value.hand.findIndex((_p,i)=>discardAt(i)?.reply.dapai===r.dapai);selected.value=index<0?null:index;}}
 const bubble=ref<{id:string;text:string;until:number}>();let timer:ReturnType<typeof setInterval>|undefined,waitKey='',waitSince=0,lastAt=0,waitCount=0,lastEvent=-1;
 function tick(){const now=Date.now();if(!props.active||props.readOnly||document.hidden||props.round.phase==='complete'){bubble.value=undefined;waitSince=now;return;}if(bubble.value&&now>bubble.value.until)bubble.value=undefined;
  const key=props.round.number+':'+props.round.steps.length;if(waitKey!==key){waitKey=key;waitSince=now;waitCount=0;}
@@ -51,8 +59,8 @@ function signed(n:number){return n>0?'+'+n:String(n);}
     <div class="mj-center"><strong>{{view.remaining}}</strong><small>余牌 · 供托 {{view.sticks}} 根</small><div class="mj-dora"><small>宝牌指示</small><span v-for="(p,i) in view.dora" :key="i" class="mj-tile"><MahjongTile :tile="p"/></span></div><small v-if="view.status==='dapai'&&view.lastDiscard">{{name(view.actor)}} 打出 <span class="mj-action-tile"><MahjongTile :tile="view.lastDiscard"/></span></small></div>
     <div class="mj-table-bottom"><div class="mj-own-river mj-river" aria-label="你的牌河"><span v-for="(p,i) in own.river" :key="i" class="mj-tile mj-discard" :class="{riichi:p.includes('*'),called:/[+=-]/.test(p)}"><MahjongTile :tile="p"/></span></div><MahjongActions v-if="!readOnly&&calls.length" :options="calls" :enabled="canAct" @action="emit('action',$event)"/></div>
    </div>
-   <div class="mj-player-row"><div class="mj-player"><div class="mj-player-info"><strong>{{name('player')}}</strong><small>{{own.wind}} · {{own.score}}点 <b v-if="own.riichi">立直</b></small></div><div class="mj-hand" aria-label="你的日麻手牌"><button v-for="(p,i) in own.hand" :key="i" class="mj-tile mj-hand-tile" :class="{selected:selected===p,red:p[1]==='0',drawn:i===own.hand.length-1&&own.draw}" type="button" :aria-label="mahjongTileLabel(p)" :aria-pressed="selected===p" :disabled="!canAct||!choices.some(o=>o.reply.dapai?.slice(0,2)===p)" @click="selected=p"><MahjongTile :tile="p" decorative/></button><span v-for="(meld,i) in own.melds" :key="'m'+i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile"><MahjongTile :tile="p"/></b></span></div></div>
-   <footer v-if="!readOnly" class="mj-controls"><template v-if="discards.length"><button type="button" :disabled="!canAct" @click="hint">提示</button><button v-if="riichiOptions.length" type="button" :aria-pressed="riichi" :disabled="!canAct" @click="riichi=!riichi;selected=''">{{riichi?'取消立直':'立直'}}</button><button class="mj-primary" type="button" :disabled="!canAct||!chosen" @click="play">{{riichi?'立直并打牌':'出牌'}}<span v-if="chosen" class="mj-action-tile"><MahjongTile :tile="selected"/></span></button></template><small v-if="!view.options.length">等待其他人出牌…</small></footer></div>
+   <div class="mj-player-row"><div class="mj-player"><div class="mj-player-info"><strong>{{name('player')}}</strong><small>{{own.wind}} · {{own.score}}点 <b v-if="own.riichi">立直</b></small></div><div class="mj-hand" aria-label="你的日麻手牌"><button v-for="(p,i) in own.hand" :key="i" class="mj-tile mj-hand-tile" :class="{selected:selected===i,red:p[1]==='0',drawn:i===own.hand.length-1&&own.draw}" type="button" :aria-label="mahjongTileLabel(p)" :aria-pressed="selected===i" :disabled="!canAct||!discardAt(i)" @click="selected=i"><MahjongTile :tile="p" decorative/></button><span v-for="(meld,i) in own.melds" :key="'m'+i" class="mj-meld"><b v-for="(p,j) in mahjongMeldTiles(meld)" :key="j" class="mj-tile"><MahjongTile :tile="p"/></b></span></div></div>
+   <footer v-if="!readOnly" class="mj-controls"><template v-if="discards.length"><button type="button" :disabled="!canAct" @click="hint">提示</button><button v-if="riichiOptions.length" type="button" :aria-pressed="riichi" :disabled="!canAct" @click="riichi=!riichi;selected=null">{{riichi?'取消立直':'立直'}}</button><button class="mj-primary" type="button" :disabled="!canAct||!chosen" @click="play">{{riichi?'立直并打牌':'出牌'}}<span v-if="chosen" class="mj-action-tile"><MahjongTile :tile="selectedTile"/></span></button></template><small v-if="!view.options.length">等待其他人出牌…</small></footer></div>
   </template>
   <section v-else class="mj-settlement" aria-label="日麻本局结算"><h3>{{round.result?.reason}}</h3><div v-for="win in round.result?.wins" :key="win.id" class="mj-win"><strong>{{name(win.id)}} · {{win.from?name(win.from)+'放铳':'自摸'}}</strong><p>{{win.yaku.map(y=>y.name+' '+(typeof y.han==='string'?'役满':y.han+'番')).join(' · ')}} · {{win.yakuman?win.yakuman+'倍役满':win.han+'番 '+win.fu+'符'}} · {{win.points}}点</p><div v-if="win.ura.length" class="mj-dora"><small>里宝牌指示</small><span v-for="(p,i) in win.ura" :key="i" class="mj-tile"><MahjongTile :tile="p"/></span></div></div>
    <div class="mj-score-grid"><article v-for="id in round.participants" :key="id"><TerminalActorAvatar class="mj-avatar" :w="w" :id="id"/><div><strong>{{name(id)}}</strong><b>{{signed(round.result?.deltas[id]||0)}}</b><small>现有 {{round.result?.scores[id]}}点</small></div></article></div>
