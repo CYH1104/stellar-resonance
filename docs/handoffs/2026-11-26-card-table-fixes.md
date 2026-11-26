@@ -24,4 +24,18 @@
 
 接力：用户指定 agent-hub 路径不存在，status/read 返回 MODULE_NOT_FOUND；无法声称持棒或在线交接成功。此文记录完成项、验证和后续事项。
 
-下一步：按各端独立快照发布并核对健康、资源哈希与狼人杀边界，补写最终收据。后续音频需使用用户提供的可用素材包或核实来源后另行替换。
+下一步：用户刷新9000/8807复测重复牌与新一轮牌桌。后续音频需使用用户提供的可用素材包或核实来源后另行替换；原版音频需求仍未完成。
+
+## 最终发布收据
+
+- 9000：源码 e2e6282fbd14f75297c9af5a2a5563d074aebbe6，release 2e4887801cea86ea，PID 1217922，instance 56c55d745dce6a433154fc8039bf3c56。
+- 8807：独立稳定分支 codex/stable-card-fixes-20261126，源码 17b667db8c653bacde65ffe585f2437baaadad30，release 3186c22b4b14d340，PID 1217979，instance 761e2277c88b6f8454aa6e6717ca7b11。稳定提交仅改变本次三个组件，未提升狼人杀。
+- Windows 与 Linux 两套源码生产构建通过；两端的三个修复组件均与审查过的源码 SHA-256 一致。
+- 两端健康检查、账户系统启用、current 指针、last-deployed-main、pending 清理和三个更新锁均核验通过。自动双实例更新 timer 保持 inactive。
+- 公网两端各39个JS/CSS资源逐项哈希通过，8807含斗地主/日麻而无狼人杀，9000保留三者。未登录访问/terminal跳转/login并返回200；不将此当作真实账号内完整对局验收。
+- 8807资源摘要 76e0ce0fda7aa30cdea880f402a096fcfc7e791d33ecfa967c3cd41ad2508050；9000摘要 ef37f97767bce7d165522871efd4b3b526ca54d16cce0654cb812b02cb377fee。
+- 发布前备份及收据保留在 /home/ubuntu/.stellar-resonance-backups/card-fixes-20261126-x2nzU9；原已确认运行快照保留用于恢复。此轮没有数据库迁移。
+- 本轮服务器隔离构建目录已删除；本地5199预览已停止；临时SSH私钥已删除且核验不存在。
+- 收工再次调用agent-hub handoff仍为MODULE_NOT_FOUND；在线交接未完成，本文件替代记录完成项、验证和下一步。
+
+本地证据：.integration/card-fixes-20261126 下的 browser-results.json、public-results.json、release-after.json、source-commits.json、expected-components.json、build.log、test-build.log、stable-build.log、regression-red.log 及截图。文档收据更新不需要再次重启服务。
