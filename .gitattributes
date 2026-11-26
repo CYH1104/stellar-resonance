@@ -1,0 +1,2 @@
+# Shell scripts must remain executable by bash after Windows checkout and git archive.
+*.sh text eol=lf
