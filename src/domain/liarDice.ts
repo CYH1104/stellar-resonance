@@ -28,10 +28,10 @@ function cryptoIndex(n:number){const a=new Uint32Array(1),limit=Math.floor(0x100
 function randomIndex(n:number,random:(n:number)=>number){const v=random(n);if(!integer(v,0,n-1))fail();return v;}
 function rollFive(random:(n:number)=>number){return Array.from({length:5},()=>randomIndex(6,random)+1);}
 export function startLiarRound(ids:string[],number:number,starter?:string,anchor?:TerminalAnchor,random:(n:number)=>number=cryptoIndex):LiarRound{
- if(!Array.isArray(ids)||ids.length<3||ids.length>8||new Set(ids).size!==ids.length||ids.some(id=>!idValid(id))||!ids.includes('player')||!integer(number,1,500))fail();
+ if(!Array.isArray(ids)||ids.length<3||ids.length>8||new Set(ids).size!==ids.length||ids.some(id=>!idValid(id))||!integer(number,1,500))fail();
  const first=starter||ids[randomIndex(ids.length,random)];if(!ids.includes(first))fail();const dice:Record<string,number[]>={},initial:Record<string,number[]>={},counts:Record<string,number>={},lastScatter:Record<string,number[]>={};
  for(const id of ids){let hand=rollFive(random),count=0;initial[id]=[...hand];if(id!=='player'){while(isScatterDice(hand)&&count<64){lastScatter[id]=[...hand];hand=rollFive(random);count++;}if(isScatterDice(hand))throw Error('连续散点过多，请重试开局。');}dice[id]=hand;counts[id]=count;}
- const waiting=isScatterDice(dice.player);return {kind:'liar',number,rulesVersion:'liar-v2',seatOrder:[...ids],dice,starter:first,turn:waiting?'player':first,phase:waiting?'rolling':'playing',moves:[],rolls:{initial,counts,lastScatter,confirmed:!waiting},...(anchor?{anchor:structuredClone(anchor)}:{})};
+ const waiting=!!dice.player&&isScatterDice(dice.player);return {kind:'liar',number,rulesVersion:'liar-v2',seatOrder:[...ids],dice,starter:first,turn:waiting?'player':first,phase:waiting?'rolling':'playing',moves:[],rolls:{initial,counts,lastScatter,confirmed:!waiting},...(anchor?{anchor:structuredClone(anchor)}:{})};
 }
 function current(room:PartyRoom):LiarRound{const r=room.rounds.filter(r=>!r.archived).at(-1);if(r?.kind!=='liar')throw Error('当前不是大话骰');return r;}
 export function canRerollLiar(r:LiarRound,id='player'){return r.rulesVersion==='liar-v2'&&r.phase==='rolling'&&id==='player'&&r.moves.length===0&&r.rolls?.confirmed===false&&isScatterDice(r.dice.player);}

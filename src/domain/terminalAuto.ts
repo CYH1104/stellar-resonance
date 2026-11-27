@@ -1,3 +1,4 @@
+import {applyStoryGameInvites,storyGameSignal} from './storyGameInvites.ts';
 import type {Session} from './contracts';
 import type {TerminalMainBatch} from './terminalMain';
 import {cleanTerminalBatch,terminalMainContext} from './terminalMain.ts';
@@ -81,7 +82,7 @@ export function terminalAutoJobId(s:Session,index:number,mode:TerminalAutoMode,s
 export function terminalSocialSignal(s:Session,index:number){
  const v=s.turns[index]?.variants[s.turns[index].selected];
  if(v?.status!=='complete')return false;
- if(terminalClaimNeedsReview(s,index))return true;
+ if(terminalClaimNeedsReview(s,index)||storyGameSignal(v.text))return true;
  return /(?:好友申请|群邀请|加(?:个|上)?好友|添加好友|交换.{0,6}(?:号码|联系方式|终端码)|(?:给我|留下|记下|存了|存下|发来|收到|通过|同意|接受|告知).{0,10}(?:终端码|号码|手机号|联系方式|好友申请)|(?:邀请|拉).{0,8}(?:进群|加入.{0,6}群|入群))/u.test(v.text);
 }
 /** Rebuild the committed facts of a finished stage. The stored copy is what the stage really
@@ -150,7 +151,7 @@ export function planTerminalAuto(s:Session,index:number,mode:TerminalAutoMode,op
  // committed prose already claimed it. The pre-prose order cannot emit actions at all.
  const social=socialOnly||mode==='story-first';
  const socialRequired=social&&terminalClaimNeedsReview(s,index);
- if(!socialOnly&&!groups.length&&!initialize&&!socialRequired)return undefined;
+ if(!socialOnly&&!groups.length&&!initialize&&!socialRequired&&!(social&&storyGameSignal(variant?.text||'')))return undefined;
  const plan:TerminalAutoPlan={jobId,anchor,turnId:turn.id,variantId:variant?.id||'',origin:terminalOrigin(s,index)!,mode:socialOnly?'story-first':mode,socialOnly,socialRequired,initialize,newGroupIds:context.newGroupIds,groups,social,privateRecipientIds:[...(context.privateRecipientIds||[])],context};
  if(!terminalAutoJob(s,jobId))(t.jobs||=[]).push({id:jobId,kind:'messages',target:'auto',anchor,status:'failed',turnId:turn.id,variantId:variant?.id||'',mode:socialOnly?'social-review':mode} as TerminalJob);
  return {plan,context};
@@ -205,6 +206,8 @@ export function applyTerminalAuto(s:Session,plan:TerminalAutoPlan,raw:TerminalMa
  }
  let actionResults:ReturnType<typeof applySocialActions>=[];
  if(plan.social){
+  const story=s.turns[turnIndex]?.variants[s.turns[turnIndex].selected]?.text||'';
+  for(const invite of applyStoryGameInvites(s,batch.gameInvitations||[],story,plan.anchor,origin,actors))facts.push('游戏邀请：'+invite.message);
   actionResults=applySocialActions(s,boundary-1,batch.groupActions||[]);
   for(const f of batch.friendRequests){const old=t.friends.find(o=>o.id===f.id);if(old&&(!old.anchor||terminalAnchorActive(s,old.anchor))&&(old.status!=='declined'||terminalCooldownBlocked(old.declinedRound,completedStoryRounds(s,boundary))))continue;const entry={id:f.id,status:'pending' as const,direction:'incoming' as const,requestReason:f.reason,reply:f.reason,note:old?.note||'',source:f.source||'',at:new Date().toISOString(),anchor:plan.anchor};if(old)Object.assign(old,entry);else t.friends.push(entry);facts.push(`好友申请·${names.get(f.id)||f.id}：${f.reason.slice(0,160)}`);}
  }

@@ -111,17 +111,17 @@ function resultOf(g:HandEngine,round:MahjongRound):MahjongResult|undefined{
  const revealed=Object.fromEntries(wins.map(w=>[w.id,w.hand]));if(draw)draw.shoupai.forEach((h:string,l:number)=>{if(h)revealed[seat(l)]=h;});
  return {reason:draw?.name||wins.map(w=>w.from?'荣和':'自摸').join(' / '),wins,deltas:Object.fromEntries(round.participants.map(id=>[id,scores[id]-round.openingScores[id]])),scores,revealed,next:{hand:round.opening.hand+(g._lianzhuang?0:1),honba:m.changbang,sticks:m.lizhibang}};
 }
-function updateRound(round:MahjongRound,g:HandEngine){round.phase=g.done?'complete':'playing';const playerOptions=optionsAt(g,round.participants.indexOf('player'));round.turn=g.done?'':playerOptions.length?'player':round.participants[g._model.player_id[g._model.lunban]];const result=resultOf(g,round);if(result)round.result=result;else delete round.result;}
+function updateRound(round:MahjongRound,g:HandEngine){round.phase=g.done?'complete':'playing';const playerOptions=round.participants.includes('player')?optionsAt(g,round.participants.indexOf('player')):[];round.turn=g.done?'':playerOptions.length?'player':round.participants[g._model.player_id[g._model.lunban]];const result=resultOf(g,round);if(result)round.result=result;else delete round.result;}
 export function startMahjongRound(ids:string[],number:number,scores:Record<string,number>,meta:MahjongMeta,random:(n:number)=>number,anchor?:TerminalAnchor):MahjongRound{
- if(ids.length!==4||ids[0]!=='player'||new Set(ids).size!==4||ids.some(id=>!Number.isSafeInteger(scores[id])||scores[id]<0))fail();
+ if(ids.length!==4||(ids.includes('player')&&ids[0]!=='player')||new Set(ids).size!==4||ids.some(id=>!Number.isSafeInteger(scores[id])||scores[id]<0))fail();
  const wall=[...mahjongDeck];for(let i=wall.length-1;i>0;i--){const j=random(i+1);if(!Number.isInteger(j)||j<0||j>i)fail();[wall[i],wall[j]]=[wall[j],wall[i]];}
  const round:MahjongRound={kind:'mahjong',rulesVersion:1,number,participants:[...ids],openingScores:{...scores},opening:{...meta},wall,steps:[],phase:'playing',turn:'player',...(anchor?{anchor:clone(anchor)}:{})};updateRound(round,engine(round));return round;
 }
 export function mahjongScores(round:MahjongRound){const g=engine(round);return Object.fromEntries(round.participants.map((id,i)=>[id,g._model.defen[i]]));}
-export function mahjongOptions(round:MahjongRound,id='player'){return optionsAt(engine(round),round.participants.indexOf(id));}
+export function mahjongOptions(round:MahjongRound,id='player'){return round.participants.includes(id)?optionsAt(engine(round),round.participants.indexOf(id)):[];}
 export function mahjongView(round:MahjongRound){
  const g=engine(round),m=g._model,seat=(l:number)=>round.participants[m.player_id[l]],log=g._paipu.log[0];
- return {soundEvents:mahjongSoundEvents(log),phase:round.phase,label:mahjongRoundLabel(round.opening),remaining:m.shan.paishu,sticks:m.lizhibang,dora:[...m.shan.baopai],status:g._status,actor:seat(m.lunban),lastDiscard:g._dapai?tile(g._dapai):undefined,options:optionsAt(g,0),
+ return {soundEvents:mahjongSoundEvents(log),phase:round.phase,label:mahjongRoundLabel(round.opening),remaining:m.shan.paishu,sticks:m.lizhibang,dora:[...m.shan.baopai],status:g._status,actor:seat(m.lunban),lastDiscard:g._dapai?tile(g._dapai):undefined,options:round.participants.includes('player')?optionsAt(g,0):[],
   seats:[0,1,2,3].map(l=>{const id=seat(l),h=m.shoupai[l],exposed=round.result?.revealed[id];return {id,wind:['东','南','西','北'][l],score:m.defen[m.player_id[l]],count:mahjongTiles(h.toString()).length,hand:id==='player'?mahjongTiles(h.toString()):exposed?mahjongTiles(exposed):[],melds:[...h._fulou],river:[...m.he[l]._pai] as string[],riichi:!!h.lizhi,draw:id==='player'&&h._zimo?.length===2?h._zimo:undefined,revealed:!!exposed};}),
   events:log.slice(1).flatMap((event:any)=>event.dapai?[{id:seat(event.dapai.l),text:'打出 '+mahjongTileLabel(event.dapai.p)+(event.dapai.p.includes('*')?'（立直）':'')}]:event.fulou?[{id:seat(event.fulou.l),text:'副露 '+mahjongMeldTiles(event.fulou.m).map(mahjongTileLabel).join(' ')}]:event.gang?[{id:seat(event.gang.l),text:'杠 '+mahjongMeldTiles(event.gang.m).map(mahjongTileLabel).join(' ')}]:[]).slice(-12),result:round.result};
 }
@@ -156,13 +156,13 @@ export function chooseMahjongReply(ctx:ReturnType<typeof mahjongPublicContext>,s
  return {};
 }
 export function applyMahjongStep(round:MahjongRound,player:MahjongReply|undefined,styles:Record<string,MahjongStyle>){
- if(round.phase!=='playing')fail();const g=engine(round,true),required=optionsAt(g,0);if(required.length&&!player||!required.length&&player&&Object.keys(player).length)fail();
- const choices=round.participants.map((id,i)=>i===0?(player||{}):chooseMahjongReply(publicContextAt(g,round,id),styles[id]||{skill:3,aggression:3,caption:'稳健'}));
+ if(round.phase!=='playing')fail();const g=engine(round,true),required=round.participants.includes('player')?optionsAt(g,0):[];if(required.length&&!player||!required.length&&player&&Object.keys(player).length)fail();
+ const choices=round.participants.map(id=>id==='player'?(player||{}):chooseMahjongReply(publicContextAt(g,round,id),styles[id]||{skill:3,aggression:3,caption:'稳健'}));
  advance(g,choices);round.steps.push({choices});updateRound(round,g);rememberReplay(replayKey(round),g);if(round.phase==='complete')round.settlementTalk=pendingSettlementTalk();return round;
 }
 export function validateMahjongRound(round:MahjongRound,ids:string[],scores:Record<string,number>,meta:MahjongMeta){
  keys(round,['kind','rulesVersion','number','anchor','archived','replies','dialogueVersion','settlementTalk','participants','openingScores','opening','wall','steps','phase','turn','result']);
- if(round.kind!=='mahjong'||round.rulesVersion!==1||!Number.isInteger(round.number)||round.number<1||round.number>500||!Array.isArray(round.participants)||JSON.stringify(round.participants)!==JSON.stringify(ids)||ids.length!==4||ids[0]!=='player')fail();
+ if(round.kind!=='mahjong'||round.rulesVersion!==1||!Number.isInteger(round.number)||round.number<1||round.number>500||!Array.isArray(round.participants)||JSON.stringify(round.participants)!==JSON.stringify(ids)||ids.length!==4||(ids.includes('player')&&ids[0]!=='player'))fail();
  keys(round.opening,['hand','honba','sticks']);if(['hand','honba','sticks'].some(k=>!Number.isInteger(round.opening[k as keyof MahjongMeta])||round.opening[k as keyof MahjongMeta]<0||round.opening[k as keyof MahjongMeta]>2000)||JSON.stringify(round.opening)!==JSON.stringify(meta))fail();
  if(!object(round.openingScores)||Object.keys(round.openingScores).length!==4||ids.some(id=>!Number.isSafeInteger(round.openingScores[id])||round.openingScores[id]!==scores[id]||scores[id]<0))fail();
  if(!Array.isArray(round.wall)||round.wall.length!==136||[...round.wall].sort().join(',')!==[...mahjongDeck].sort().join(',')||!Array.isArray(round.steps)||round.steps.length>600)fail();

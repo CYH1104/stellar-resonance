@@ -13,7 +13,7 @@ export type WolfAction=
  |{type:'speak';actor:string;text:string}
  |{type:'vote';actor:string;target:string|null}
  |{type:'tally'};
-export interface WerewolfGame {version:1;id:string;at:string;storyDate:string;anchor:TerminalAnchor;seats:WolfSeat[];roles:WolfRole[];actions:WolfAction[]}
+export interface WerewolfGame {hostId?:string;invitationId?:string;version:1;id:string;at:string;storyDate:string;anchor:TerminalAnchor;seats:WolfSeat[];roles:WolfRole[];actions:WolfAction[]}
 export interface WolfLine {speaker:string;text:string}
 export interface WolfState {
  day:number;phase:'night'|'speech'|'lastwords'|'vote'|'complete';alive:string[];
@@ -31,11 +31,11 @@ const str=(v:unknown,max=2000):v is string=>typeof v==='string'&&!!v.trim()&&v.l
 const id=(v:unknown):v is string=>str(v,128)&&!['host','__proto__','constructor','prototype'].includes(v);
 export const wolfRole=(g:WerewolfGame,who:string):WolfRole=>g.roles[g.seats.findIndex(s=>s.id===who)];
 const roles:WolfRole[]=['wolf','wolf','villager','villager','seer','witch'];
-export function createWerewolf(seats:WolfSeat[],anchor:TerminalAnchor,storyDate:string):WerewolfGame {
- if(seats.length!==6||seats[0]?.id!=='player'||new Set(seats.map(s=>s.id)).size!==6)fail();
+export function createWerewolf(seats:WolfSeat[],anchor:TerminalAnchor,storyDate:string,hosted?:{hostId:string;invitationId:string}):WerewolfGame {
+ if(seats.length!==6||(seats.some(p=>p.id==='player')?seats[0]?.id!=='player':!hosted?.hostId)||new Set(seats.map(s=>s.id)).size!==6)fail();
  const shuffled=[...roles];
  for(let i=shuffled.length-1;i>0;i--){const range=i+1,limit=0x100000000-0x100000000%range;let n;do{n=crypto.getRandomValues(new Uint32Array(1))[0];}while(n>=limit);const j=n%range;[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
- const g:WerewolfGame={version:1,id:crypto.randomUUID(),at:new Date().toISOString(),storyDate:storyDate||'剧情当前时间',anchor:clone(anchor),seats:clone(seats),roles:shuffled,actions:[]};validateWerewolf(g);return g;
+ const g:WerewolfGame={...hosted,version:1,id:crypto.randomUUID(),at:new Date().toISOString(),storyDate:storyDate||'剧情当前时间',anchor:clone(anchor),seats:clone(seats),roles:shuffled,actions:[]};validateWerewolf(g);return g;
 }
 function initial(g:WerewolfGame):WolfState{return {day:1,phase:'night',alive:g.seats.map(s=>s.id),log:[{speaker:'host',text:'六人局开始。身份已私下发放，天黑请闭眼。'}],night:{},inspections:{},antidote:true,poison:true,order:[],index:0,votes:{},pk:[],afterWords:'speech'};}
 function name(g:WerewolfGame,who:string){return g.seats.find(s=>s.id===who)?.name||who;}
@@ -91,11 +91,12 @@ function apply(g:WerewolfGame,s:WolfState,a:WolfAction){
 export function replayWerewolf(g:WerewolfGame):WolfState {const s=initial(g);for(const a of g.actions)apply(g,s,a);return s;}
 export function actWerewolf(g:WerewolfGame,actions:WolfAction[]):WerewolfGame {const next=clone(g),s=replayWerewolf(next);for(const a of actions){apply(next,s,a);next.actions.push(clone(a));}return next;}
 export function validateWerewolf(g:WerewolfGame){
- keys(g,['version','id','at','storyDate','anchor','seats','roles','actions']);
+ keys(g,['version','id','at','storyDate','anchor','seats','roles','actions'],['hostId','invitationId']);
  if(g.version!==1||!id(g.id)||!str(g.at,60)||!Number.isFinite(Date.parse(g.at))||!str(g.storyDate,200)||!Array.isArray(g.seats)||g.seats.length!==6||!Array.isArray(g.roles)||[...g.roles].sort().join()!==[...roles].sort().join()||!Array.isArray(g.actions)||g.actions.length>20000)fail();
  keys(g.anchor,['key','turnId','variantId','path']);if(!str(g.anchor.key,200)||typeof g.anchor.turnId!=='string'||typeof g.anchor.variantId!=='string'||!Array.isArray(g.anchor.path)||g.anchor.path.some(p=>!str(p,200)))fail();
  for(const p of g.seats){keys(p,['id','name']);if(!id(p.id)||!str(p.name,100))fail();}
- if(g.seats[0].id!=='player'||new Set(g.seats.map(p=>p.id)).size!==6)fail();for(const a of g.actions)if(!obj(a))fail();replayWerewolf(g);
+ if(g.hostId!==undefined&&(!id(g.hostId)||g.hostId==='player'||!g.seats.some(p=>p.id===g.hostId)||!id(g.invitationId))||g.invitationId!==undefined&&g.hostId===undefined)fail();
+ if((g.seats.some(p=>p.id==='player')?g.seats[0].id!=='player':!g.hostId)||new Set(g.seats.map(p=>p.id)).size!==6)fail();for(const a of g.actions)if(!obj(a))fail();replayWerewolf(g);
 }
 export function validateWerewolfGames(v:WerewolfGame[]){if(!Array.isArray(v)||v.length>1000||new Set(v.map(g=>g?.id)).size!==v.length)fail();v.forEach(validateWerewolf);}
 export interface WolfView {gameId:string;day:number;phase:WolfState['phase'];selfId:string;selfRole:WolfRole;players:(WolfSeat&{alive:boolean})[];publicLog:WolfLine[];wolfIds?:string[];inspections?:{day:number;target:string;result:'wolf'|'good'}[];medicine?:{antidote:boolean;poison:boolean};victim?:string;opinions?:WolfOpinion[];speaking:string|null;voteTargets:string[];winner?:'wolf'|'good'}
@@ -106,6 +107,10 @@ export function wolfView(g:WerewolfGame,who:string):WolfView {
  ...(role==='wolf'?{wolfIds:g.seats.filter(p=>wolfRole(g,p.id)==='wolf').map(p=>p.id),...(s.phase==='night'&&s.alive.includes(who)&&s.night.opinions?{opinions:clone(s.night.opinions)}:{})}:{}),
  ...(role==='seer'?{inspections:clone(s.inspections[who]||[])}:{}),
  ...(role==='witch'?{medicine:{antidote:s.antidote,poison:s.poison},...(s.phase==='night'&&s.alive.includes(who)&&s.antidote&&s.night.target?{victim:s.night.target}:{})}:{})};
+}
+/** Public observation never exposes roles, night actions, votes in progress, or private results. */
+export function wolfSpectatorView(g:WerewolfGame):Omit<WolfView,'selfRole'>&{selfRole?:WolfRole}{
+ const s=replayWerewolf(g);return {gameId:g.id,day:s.day,phase:s.phase,selfId:'spectator',players:g.seats.map(p=>({...p,alive:s.alive.includes(p.id)})),publicLog:clone(s.log),speaking:['speech','lastwords'].includes(s.phase)?s.order[s.index]||null:null,voteTargets:[],...(s.phase==='complete'?{winner:s.winner}:{})};
 }
 export type WolfTask='werewolf-council'|'werewolf-inspect'|'werewolf-medicine'|'werewolf-speak'|'werewolf-vote';
 export interface WolfRequest {task:WolfTask;actorIds:string[];view:WolfView;choices:string[];humanWolf:boolean}
@@ -131,7 +136,7 @@ export function validateWolfRequest(r:WolfRequest){
  if(!id(v.gameId)||!Number.isInteger(v.day)||v.day<1||!roles.includes(v.selfRole)||!['night','speech','lastwords','vote','complete'].includes(v.phase)||!id(v.selfId)||!Array.isArray(v.players)||v.players.length!==6)fail();
  for(const p of v.players){keys(p,['id','name','alive']);if(!id(p.id)||!str(p.name,100)||typeof p.alive!=='boolean')fail();}
  const all=v.players.map(p=>p.id),alive=v.players.filter(p=>p.alive).map(p=>p.id);
- if(new Set(all).size!==6||!all.includes('player')||!r.actorIds.includes(v.selfId)||r.actorIds.some(w=>!all.includes(w)))fail();
+ if(new Set(all).size!==6||!r.actorIds.includes(v.selfId)||r.actorIds.some(w=>!all.includes(w)))fail();
  if(!Array.isArray(v.publicLog)||v.publicLog.length>20000)fail();for(const l of v.publicLog){keys(l,['speaker','text']);if(l.speaker!=='host'&&!all.includes(l.speaker)||!str(l.text,2000))fail();}
  for(const xs of [r.choices,v.voteTargets])if(!Array.isArray(xs)||new Set(xs).size!==xs.length||xs.some(w=>!alive.includes(w)))fail();
  if(v.speaking!==null&&!all.includes(v.speaking)||v.winner!==undefined&&!['good','wolf'].includes(v.winner))fail();

@@ -15,7 +15,7 @@ const phase=computed(()=>({night:'夜间行动',speech:'依次发言',lastwords:
 const name=(id:string)=>u.view?.players.find(p=>p.id===id)?.name||id;
 const canSave=computed(()=>u.view?.medicine?.antidote&&u.view.victim&&(u.view.day===1||u.view.victim!=='player'));
 const targetHint=computed(()=>({knife:'选择今晚的最终刀口（可自刀或刀队友）',inspect:'选择一位存活玩家查验',vote:'选择投票对象',medicine:'如需用毒，选择一位存活玩家',speak:'', '':''}[u.humanAction]||''));
-defineExpose({handleBack:()=>u.back()});
+defineExpose({handleBack:()=>u.back(),open:(id:string)=>u.open(id)});
 </script>
 <template>
 <section class="wolf-room" aria-label="六人狼人杀">
@@ -30,8 +30,8 @@ defineExpose({handleBack:()=>u.back()});
   <h3 v-if="u.games.length">对局记录</h3><button v-for="g in [...u.games].reverse()" :key="g.id" type="button" class="wolf-history" :disabled="u.working" @click="u.open(g.id)">{{new Date(g.at).toLocaleString('zh-CN')}} · 继续 / 回看 ›</button>
  </div>
  <template v-else>
-  <header class="wolf-status"><div><span class="wolf-kicker">MOONLIGHT</span><strong>第 {{u.view.day}} {{u.view.phase==='night'?'夜':'天'}} · {{phase}}</strong></div><button type="button" :aria-expanded="showRole" @click="showRole=!showRole">{{showRole?'收起身份':'我的身份'}}</button></header>
-  <div v-if="showRole" class="wolf-private" aria-label="仅自己可见的身份"><strong>{{wolfRoleNames[u.view.selfRole]}}</strong><p v-if="u.view.wolfIds">狼队：{{u.view.wolfIds.map(name).join('、')}}</p><p v-for="i in u.view.inspections" :key="i.day">第{{i.day}}夜查验 {{name(i.target)}}：{{i.result==='wolf'?'狼人':'好人'}}</p><p v-if="u.view.medicine">解药{{u.view.medicine.antidote?'剩余1瓶':'已用完'}} · 毒药{{u.view.medicine.poison?'剩余1瓶':'已用完'}}</p><small>只在你的视角展示</small></div>
+  <header class="wolf-status"><div><span class="wolf-kicker">MOONLIGHT</span><strong>第 {{u.view.day}} {{u.view.phase==='night'?'夜':'天'}} · {{phase}}</strong></div><span v-if="u.spectating" class="wolf-muted">观战位 · 身份保密</span><button v-else type="button" :aria-expanded="showRole" @click="showRole=!showRole">{{showRole?'收起身份':'我的身份'}}</button></header>
+  <div v-if="showRole&&!u.spectating" class="wolf-private" aria-label="仅自己可见的身份"><strong>{{u.view.selfRole?wolfRoleNames[u.view.selfRole]:'观战'}}</strong><p v-if="u.view.wolfIds">狼队：{{u.view.wolfIds.map(name).join('、')}}</p><p v-for="i in u.view.inspections" :key="i.day">第{{i.day}}夜查验 {{name(i.target)}}：{{i.result==='wolf'?'狼人':'好人'}}</p><p v-if="u.view.medicine">解药{{u.view.medicine.antidote?'剩余1瓶':'已用完'}} · 毒药{{u.view.medicine.poison?'剩余1瓶':'已用完'}}</p><small>只在你的视角展示</small></div>
   <div class="wolf-table">
    <aside v-for="side in [0,1]" :key="side" class="wolf-seats" :class="side?'wolf-right':'wolf-left'" :aria-label="side?'右侧座位':'左侧座位'">
     <div v-for="p in u.view.players.filter((_,i)=>i%2===side)" :key="p.id" class="wolf-seat" :class="{'wolf-dead':!p.alive,'wolf-speaking':u.view.speaking===p.id}">

@@ -1,3 +1,4 @@
+import {visibleStoryGameInvites} from '../domain/storyGameInvites';
 import {terminalGameFacts,terminalGameResult} from '../domain/terminalStoryContext';
 import {applyMahjongStep,mahjongOptions,mahjongScores,mahjongView,mahjongRoundLabel,mahjongTileLabel,validMahjongPhrases,fallbackMahjongPhrases,type MahjongRound,type MahjongReply} from '../domain/mahjong';
 import {validateSettlementTalk,pendingSettlementTalk,type SettlementTalk} from '../domain/settlementTalk';
@@ -31,10 +32,12 @@ export function usePartyGames(w:ViewModel){
  const name=(id:string)=>id==='player'?w.active?.persona.name||'我':actors.value.find(a=>a.id===id)?.name||'未知角色';
  const friends=computed(()=>terminal.value.friends.filter(f=>f.status==='accepted'&&(!f.anchor||!!w.active&&terminalAnchorActive(w.active,f.anchor))).map(f=>({id:f.id,name:name(f.id)})));
  const visible=(r:{anchor?:TerminalAnchor;archived?:boolean})=>!r.archived&&(!r.anchor||!!w.active&&terminalAnchorActive(w.active,r.anchor));
- const rooms=computed(()=>terminal.value.partyRooms||[]),room=computed(()=>rooms.value.find(r=>r.id===roomId.value)),history=computed(()=>room.value?.rounds.filter(visible)||[]),round=computed(()=>history.value.at(-1));
+ const rooms=computed(()=>(terminal.value.partyRooms||[]).filter(r=>!r.invitationId||!!w.active&&visibleStoryGameInvites(w.active).some(i=>i.id===r.invitationId))),room=computed(()=>rooms.value.find(r=>r.id===roomId.value)),history=computed(()=>room.value?.rounds.filter(visible)||[]),round=computed(()=>history.value.at(-1));
+ const spectating=computed(()=>!!room.value&&!room.value.members.includes('player'));
+ function requirePlayer(){if(spectating.value)throw Error('观战位不能替角色出牌或发言。');}
  const wave=computed(()=>round.value?.kind==='eleven'?round.value.waves?.at(-1):undefined);
  const elevenBatchPending=computed(()=>round.value?.kind==='eleven'&&round.value.batch?.pending===true),elevenPrepared=computed(()=>round.value?.kind==='eleven'&&elevenBatchPrepared(round.value));
- const playerNeedsChoice=computed(()=>round.value?.kind==='eleven'&&round.value.phase==='playing'&&!round.value.stopped.includes('player')&&!wave.value?.choices.player);
+ const playerNeedsChoice=computed(()=>round.value?.kind==='eleven'&&round.value.phase==='playing'&&!!round.value.hands.player&&!round.value.stopped.includes('player')&&!wave.value?.choices.player);
  const participants=computed(()=>room.value?partyParticipants(room.value):[]),tolerance=(id:string)=>terminal.value.tolerances?.[id];
  const profile=computed(()=>taskApi(w.preferences,'terminal'));
  let controller:AbortController|undefined,activeSid='',epoch=0,anchor:TerminalAnchor|undefined,cancelled=false;
@@ -61,9 +64,9 @@ export function usePartyGames(w:ViewModel){
  function summary(r:PartyRoom){const last=r.rounds.filter(visible).at(-1);if(!last)return gameName(r.kind)+'尚未开始';if(last.kind==='mahjong')return mahjongSummary(last);if(last.kind==='landlord')return landlordSummary(last);if(last.kind==='eleven')return `第${last.number}局，庄家${name(last.banker)}；`+(last.phase==='complete'?(isElevenAllBust(last)?'全员爆牌，无胜负，全员各喝一杯；':`赢家${name(last.winner!)}；`)+Object.entries(last.hands).map(([id,hand])=>name(id)+'：'+hand.map(cardLabel).join(' ')).join('；'):'正在要牌，暗牌尚未揭晓');if(last.kind==='liar'&&last.phase==='rolling')return '正在准备骰子，尚未开始叫号。';if(last.kind==='liar'&&last.challenge)return '第'+last.number+'局，'+(last.challenge.action==='split'?'劈':'开')+'多家逐一结算：'+last.challenge.duels.map(d=>name(d.target)+'叫'+liarBidLabel(d.bid)+'，实际'+d.actual+'个，'+name(d.loser)+'喝'+d.cups+'杯').join('；')+'；下局'+name(last.challenge.nextStarter)+'先叫';if(last.kind==='liar')return `第${last.number}局：`+last.moves.map(m=>name(m.id)+(m.bid?'叫'+liarBidLabel(m.bid):'开骰')+(m.text?'：「'+m.text+'」':'')+(m.replies.length?'；'+m.replies.map(x=>name(x.id)+'说「'+x.text+'」').join('、'):'')).join('；')+(last.phase==='complete'?`。赢家${name(last.winner!)}，${name(last.loser!)}罚酒。`:'');return `第${last.number}轮，${name(last.target)}抽到：真心话「${last.card.truth}」/大冒险「${last.card.dare}」；选择${last.choice||'未选'}；${last.text||'等待回应'}${last.refused?'；拒绝并罚酒一次':''}`;}
  async function write(update:(t:PersonalTerminal)=>void,allowEnded=false){guard();const session=w.active!,before=session.terminal,next=copy(before||emptyTerminal()),priorNotes=copy(session.memories.filter(isTerminalMemoryNote));update(next);
   if(!allowEnded)for(const old of before?.partyRooms||[])if(old.endedAt&&JSON.stringify(old)!==JSON.stringify(next.partyRooms?.find(r=>r.id===old.id)))throw Error('已结束的房间不能修改。');
-  for(const r of next.partyRooms||[]){if(JSON.stringify(before?.partyRooms?.find(old=>old.id===r.id))===JSON.stringify(r))continue;const last=r.rounds.filter(visible).at(-1);if(!last?.anchor)continue;const b=terminalBucket(next,last.anchor),entry={id:r.id+':'+last.number,name:r.name,kind:r.kind,round:last.number,king:last.kind==='mahjong'?name(last.participants[last.opening.hand%4]):last.kind==='landlord'?(last.landlord?name(last.landlord):'待叫分'):last.kind==='eleven'?name(last.banker):last.kind==='liar'?name(last.starter):name(last.target),command:summary(r).slice(0,1000),penalties:Object.entries(r.drunk).filter(([,n])=>n).map(([id,n])=>name(id)+'累计'+n+'杯').join('；'),complete:last.phase==='complete',knownBy:partyParticipants(r),...(r.endedAt?{endedAt:r.endedAt}:{})};const i=b.games.findIndex(x=>x.id===entry.id);if(i<0)b.games.push(entry);else b.games[i]=entry;}
+  for(const r of next.partyRooms||[]){if(JSON.stringify(before?.partyRooms?.find(old=>old.id===r.id))===JSON.stringify(r))continue;const last=r.rounds.filter(visible).at(-1);if(!last?.anchor)continue;const b=terminalBucket(next,last.anchor),entry={id:r.id+':'+last.number,name:r.name,kind:r.kind,round:last.number,king:last.kind==='mahjong'?name(last.participants[last.opening.hand%4]):last.kind==='landlord'?(last.landlord?name(last.landlord):'待叫分'):last.kind==='eleven'?name(last.banker):last.kind==='liar'?name(last.starter):name(last.target),command:((r.hostId&&!r.members.includes('player')?'玩家在观战位；':'')+summary(r)).slice(0,1000),penalties:Object.entries(r.drunk).filter(([,n])=>n).map(([id,n])=>name(id)+'累计'+n+'杯').join('；'),complete:last.phase==='complete',knownBy:[...new Set([...partyParticipants(r),...(r.hostId&&!r.members.includes('player')?['player']:[])])],...(r.endedAt?{endedAt:r.endedAt}:{})};const i=b.games.findIndex(x=>x.id===entry.id);if(i<0)b.games.push(entry);else b.games[i]=entry;}
   session.terminal=next;syncTerminalMemoryNotes(session);try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('游戏未保存，请先导出备份。');}catch(e){session.terminal=before;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];throw e;}guard();w.indexTerminalNotes?.();}
- async function request(task:string,ids:string[],input:string,extra:object={},timeoutMs=MODEL_REQUEST_TIMEOUT_MS){guard();const p=profile.value;if(!p)throw Error('请先配置终端 API。');const sig=signature();if(!w.connectionReady(p)&&!await w.connectProfile(p))throw Error('请先确认终端 API。');guard();controller=new AbortController();const signal=controller.signal,audience=[...new Set(['player',...ids])];let memories:string[]=[];
+ async function request(task:string,ids:string[],input:string,extra:object={},timeoutMs=MODEL_REQUEST_TIMEOUT_MS){guard();const p=profile.value;if(!p)throw Error('请先配置终端 API。');const sig=signature();if(!w.connectionReady(p)&&!await w.connectProfile(p))throw Error('请先确认终端 API。');guard();controller=new AbortController();const signal=controller.signal,audience=[...new Set([...(Array.isArray((extra as any).party?.participants)&&!(extra as any).party.participants.some((p:any)=>p.id==='player')?[]:['player']),...ids])];let memories:string[]=[];
   if(w.scopedRecall&&!['party-eleven','party-eleven-talk','party-eleven-batch','party-truth','party-liar-turn','party-liar-reply','party-landlord-style','party-mahjong-style','party-settlement'].includes(task))memories=(await w.scopedRecall(w.active!,input,audience)).map(m=>m.text).slice(0,12);
   memories=[...terminalGameFacts(w.active!,w.active!.turns.length,audience).map(f=>f.text),...memories].slice(0,12);
   guard();signal.throwIfAborted();const timeout=AbortSignal.timeout(timeoutMs),requestSignal=AbortSignal.any([signal,timeout]);const result=await new HttpGateway().terminal({task,sessionId:activeSid,actorIds:ids,input:input.slice(0,2000),persona:w.active!.persona,context:{state:{characters:actors.value},memories,audience,...extra}},p,w.credentials[p.id]||'',requestSignal);guard();signal.throwIfAborted();if(signature()!==sig)throw Error('终端接口已改变，回复未应用。');return result;}
@@ -142,14 +145,14 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
   }
   const input=draft.value.trim().slice(0,500);
   await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!,rr=ensureElevenWaves(rm),wave=rr.waves!.at(-1)!;
-   if(!rr.stopped.includes('player')&&!wave.choices.player){if(!choice)throw Error('请先选择要牌或停牌。');wave.playerText=input;if(input)wave.speeches.push({id:'player',text:input});elevenWaveChoice(rm,'player',choice);}
-   else if(!wave.playerText){wave.playerText=input;if(input&&!wave.speeches.some(s=>s.id==='player'))wave.speeches.push({id:'player',text:input});}
+   if(Object.hasOwn(rr.hands,'player')&&!rr.stopped.includes('player')&&!wave.choices.player){if(!choice)throw Error('请先选择要牌或停牌。');wave.playerText=input;if(input)wave.speeches.push({id:'player',text:input});elevenWaveChoice(rm,'player',choice);}
+   else if(Object.hasOwn(rr.hands,'player')&&!wave.playerText){wave.playerText=input;if(input&&!wave.speeches.some(s=>s.id==='player'))wave.speeches.push({id:'player',text:input});}
    advanceElevenWave(rm);markElevenBatch(rm,input);settlePartyEnd(rm,t.tolerances||{});
   });
   draft.value='';page.value=room.value?.endedAt?'history':'play';await syncElevenBatch();
  }
- const hit=()=>run(()=>stepEleven('hit'),'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():stepEleven('hit'));
- const stand=()=>run(()=>stepEleven('stand'),'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():stepEleven('stand'));
+ const hit=()=>run(()=>{requirePlayer();return stepEleven('hit');},'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():stepEleven('hit'));
+ const stand=()=>run(()=>{requirePlayer();return stepEleven('stand');},'重试本轮角色回应',()=>round.value?.kind==='eleven'&&round.value.batch?.pending?syncElevenBatch():stepEleven('stand'));
  // Kept only as a controller compatibility alias; no separate deal button remains in the UI.
  const dealWave=()=>run(()=>stepEleven(),'重试本轮角色回应');
 
@@ -200,14 +203,14 @@ function open(id:string){if(working.value&&id!==pendingInvite.value?.roomId)retu
   const resumeMahjong=()=>run(async()=>{landlordPaused=false;await advanceMahjong();},'继续日麻',advanceMahjong);
   async function startMahjong(){
    const startPage=page.value,rm=activeRoom(),ids=partyParticipants(rm);if(ids.length!==4)throw Error('日麻需要三位好友接受邀请');
-   if(!rm.mahjongStyles){const fp=JSON.stringify(rm),result=await request('party-mahjong-style',ids.slice(1),rm.style,{party:partyContext(rm)});if(JSON.stringify(room.value)!==fp)throw Error('房间已改变');
-    await write(t=>{const r=t.partyRooms!.find(r=>r.id===rm.id)!;r.mahjongStyles=Object.fromEntries(result.styles.map(({id,...style}:any)=>[id,style]));r.mahjongPhrases=Object.fromEntries(ids.slice(1).map(id=>{const lines=result.phrases?.find((p:any)=>p.id===id)?.lines;return [id,validMahjongPhrases(lines)?lines:fallbackMahjongPhrases()];}));});
+   if(!rm.mahjongStyles){const fp=JSON.stringify(rm),result=await request('party-mahjong-style',ids.filter(id=>id!=='player'),rm.style,{party:partyContext(rm)});if(JSON.stringify(room.value)!==fp)throw Error('房间已改变');
+    await write(t=>{const r=t.partyRooms!.find(r=>r.id===rm.id)!;r.mahjongStyles=Object.fromEntries(result.styles.map(({id,...style}:any)=>[id,style]));r.mahjongPhrases=Object.fromEntries(ids.filter(id=>id!=='player').map(id=>{const lines=result.phrases?.find((p:any)=>p.id===id)?.lines;return [id,validMahjongPhrases(lines)?lines:fallbackMahjongPhrases()];}));});
    }
    if(!landlordViewActive||roomId.value!==rm.id||page.value!==startPage)return;
    await write(t=>startPartyRound(t.partyRooms!.find(r=>r.id===rm.id)!,anchor));
    page.value='play';landlordPaused=false;await advanceMahjong();
   }
-  function mahjongStep(reply:MahjongReply){const selected=copy(reply);let committed=false;return run(async()=>{
+  function mahjongStep(reply:MahjongReply){if(spectating.value)return;const selected=copy(reply);let committed=false;return run(async()=>{
    if(!committed){const rm=activeRoom();await write(t=>{const r=t.partyRooms!.find(r=>r.id===rm.id)!,hand=r.rounds.at(-1)!;if(hand.kind!=='mahjong')throw Error('不是日麻牌局');applyMahjongStep(hand,selected,r.mahjongStyles!);r.scores=mahjongScores(hand);settlePartyEnd(r,{});});committed=true;}
    await advanceMahjong();
   },'继续日麻');}
@@ -275,7 +278,7 @@ const start=()=>room.value?.kind==='mahjong'?run(startMahjong,'继续日麻',()=
 
    {if(rr.target==='player'||rr.phase==='complete')throw Error('当前不需要角色行动。');const result=await request('party-truth',[rr.target],rr.phase==='choose'?'看到双选题卡后选择真心话或大冒险，不提前执行。':'按人设完成已选题目，或明确拒绝并接受罚酒。',{party:{...partyContext(r),round:rr.number,stage:rr.phase==='choose'?'choose':'respond',target:rr.target,card:rr.card,...(rr.choice?{choice:rr.choice}:{})}});if(JSON.stringify(round.value)!==fingerprint)throw Error('挑战已改变，回复未应用。');if(rr.phase==='choose')await write(t=>{const rm=t.partyRooms!.find(x=>x.id===r.id)!;chooseTruth(rm,rr.target,result.choice);const target=rm.rounds.at(-1)!;if(target.kind==='truth')target.choiceDialogue=choiceTalk(rr.target,result.text,result.dialogue);});else await completeTruth(rr.target,result.text,result.refused,result.dialogue);}
  });
- const reactions=()=>run(async()=>{
+ const reactions=()=>run(async()=>{requirePlayer();
   const r=activeRoom(),text=draft.value.trim();if(!text)throw Error('请填写你的发言或动作。');if(text.length>2000)throw Error('发言最多2000字。');const ids=partyParticipants(r).filter(id=>id!=='player'),rr=round.value;if(!rr)throw Error('请先开始游戏。');if(rr.kind==='liar'){await advanceLiarChain();return;}if(rr.kind==='eleven'&&rr.phase==='playing'){await stepEleven();return;}
   if((rr.replies?.length||0)>223)throw Error('本轮聊天记录已达上限，请开始下一轮；已有记录完整保留。');
   const fingerprint=JSON.stringify(rr),result=await request('party-reactions',ids,text,{party:{...partyContext(r),round:rr.number,summary:summary(r).slice(0,5000),playerInput:text}});if(JSON.stringify(round.value)!==fingerprint)throw Error('当前轮已改变。');
@@ -291,5 +294,5 @@ const start=()=>room.value?.kind==='mahjong'?run(startMahjong,'继续日麻',()=
  const retryAfterparty=(actorId?:string)=>run(()=>afterparty(actorId));
  function back(){inviteTarget.value=null;inviteNote.value='';draft.value='';if(page.value==='list')return;page.value=page.value==='create'||page.value==='room'||page.value==='history'?'list':'room';}
   function enter(kind:PartyKind){currentKind.value=kind;page.value='list';inviteTarget.value=null;inviteNote.value='';draft.value='';}
- return {retrySettlement,mahjongStep,resumeMahjong,setLandlordActive,landlordBid,landlordPlay,resumeLandlord,pauseLandlord,rooms,room,round,wave,elevenPrepared,elevenBatchPending,playerNeedsChoice,dealWave,resumeLiar,liarBid,liarOpen,liarSplit,liarReroll,liarConfirmRoll,history,currentKind,page,picked,title,style,draft,error,working,inviteTarget,inviteNote,pendingInvite,pendingInvites,declinedInvites,retryActionLabel,retryRequest,retryInvites,friends,name,tolerance,participants,create,open,invite,beginInvite,sendInvite,start,hit,stand,npcAction,choose,answer,reactions,end,retryAfterparty,back,enter,stop:cancel};
+ return {spectating,retrySettlement,mahjongStep,resumeMahjong,setLandlordActive,landlordBid,landlordPlay,resumeLandlord,pauseLandlord,rooms,room,round,wave,elevenPrepared,elevenBatchPending,playerNeedsChoice,dealWave,resumeLiar,liarBid,liarOpen,liarSplit,liarReroll,liarConfirmRoll,history,currentKind,page,picked,title,style,draft,error,working,inviteTarget,inviteNote,pendingInvite,pendingInvites,declinedInvites,retryActionLabel,retryRequest,retryInvites,friends,name,tolerance,participants,create,open,invite,beginInvite,sendInvite,start,hit,stand,npcAction,choose,answer,reactions,end,retryAfterparty,back,enter,stop:cancel};
 }

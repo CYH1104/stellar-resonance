@@ -22,6 +22,8 @@ import {divinationPositions,suitName,suitGlyph,type TerminalDivination} from '..
 import {messagePage,terminalMessageVisible,terminalAnchorActive} from '../domain/terminalLedger';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 import TerminalIcon from './TerminalIcon.vue';
+import StoryGameInvites from './StoryGameInvites.vue';
+import type {StoryGameInvite} from '../domain/storyGameInvites';
 import PartyGameRoom from './PartyGameRoom.vue';
 import WerewolfRoom from './WerewolfRoom.vue';
 import GameChat from './GameChat.vue';
@@ -101,12 +103,13 @@ const nextCourse=computed(()=>nextTerminalCourse(u.courses,u.storyClock));
 const nav=computed(()=>['messages','chat','group-info','new-group','invite-group','legacy'].includes(u.page)?'messages':['friends','add','profile'].includes(u.page)?'friends':u.page==='home'?'home':['account','apps'].includes(u.page)?'account':'');
 function profile(id:string){u.friendId=id;u.note=u.t.friends.find(f=>f.id===id)?.note||'';u.go('profile');}
 function startRoom(){u.title='';u.picked=[];u.inviteNote='';u.go('new-room');}
-const werewolfVisited=ref(false),werewolfView=ref<{handleBack:()=>boolean}>();
+const werewolfVisited=ref(false),werewolfView=ref<{handleBack:()=>boolean;open:(id:string)=>void}>();
 function openWerewolf(){werewolfVisited.value=true;u.go('werewolf');}
 // runtime binding: static src would be rewritten by the SFC asset pipeline and break SSR tests
 const divinationCatImage='/assets/divination-cat.png';
 const divTab=ref<'mine'|'peek'>('mine'),partyKind=ref<'eleven'|'truth'|'liar'|'landlord'|'mahjong'>('eleven');
-const partyVisited=ref(false),partyView=ref<{handleBack:()=>boolean;enter:(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong')=>void}>();
+const partyVisited=ref(false),partyView=ref<{handleBack:()=>boolean;open:(id:string)=>void;enter:(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong')=>void}>();
+async function openStoryGame(invite:StoryGameInvite){if(!invite.targetId)return;if(invite.kind==='werewolf'){openWerewolf();await nextTick();werewolfView.value?.open(invite.targetId);}else{openParty(invite.kind);await nextTick();partyView.value?.open(invite.targetId);}}
 function openParty(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){partyKind.value=kind;partyVisited.value=true;u.go('party');void nextTick(()=>partyView.value?.enter(kind));}
 const reversedLabel=(reversed:boolean)=>reversed?'逆位':'正位';
 const readingBlocks=(record:TerminalDivination|undefined|null):[string,string|undefined][]=>record&&record.reading.status==='ready'?[['今日基调',record.reading.overall],['感情',record.reading.love],['事业／学业',record.reading.career],['注意事项',record.reading.caution]]:[];
@@ -126,6 +129,7 @@ const weekNames=['周一','周二','周三','周四','周五','周六','周日']
   <template v-if="u.page==='home'">
    <div class="pt-clock"><small>PERSONAL TERMINAL</small><b>{{u.clock.time}}</b><span>{{u.clock.label}}</span><small v-if="u.storyClock.location">{{u.storyClock.location}}</small><button class="pt-own" type="button" aria-label="设置终端头像" @click="u.go('account')"><img v-if="u.t.avatar&&!homeAvatarFailed" :src="avatarDisplay" :style="u.avatarStyle" alt="我的终端头像" @error="homeAvatarFailed=true"><TerminalIcon v-else name="user"/></button></div>
    <button class="pt-card pt-notification" type="button" @click="u.go('messages')"><TerminalIcon name="chat"/><div><strong>未读消息 <em v-if="u.unread">{{u.unread}}</em></strong><p>{{u.unreadPreview?.text||'暂时没有新消息'}}</p></div><span>›</span></button>
+   <StoryGameInvites :w="w" @open="openStoryGame"/>
    <div class="pt-launch-grid"><button v-for="app in [{id:'messages',icon:'chat',name:'通讯',hint:'私聊与群聊'},{id:'friends',icon:'friends',name:'好友',hint:'好友列表 · 添加好友'},{id:'courses',icon:'calendar',name:'课程表',hint:'课程 · 授课安排'},{id:'games',icon:'crown',name:'游戏室',hint:'国王游戏'}]" :key="app.id" type="button" class="pt-app" :class="{gold:app.id==='games'}" @click="u.go(app.id)"><TerminalIcon :name="app.icon"/><strong>{{app.name}}<em v-if="app.id==='friends'&&u.incoming.length"> {{u.incoming.length}}</em></strong><small>{{app.hint}}</small></button></div>
    <button class="pt-card pt-next" type="button" @click="u.go('courses')"><TerminalIcon name="calendar"/><div><small>下一节课</small><strong>{{nextCourse?.title||'暂无已知课程'}}</strong><p>{{nextCourse?`${nextCourse.time} · ${nextCourse.place}`:'打开课程表，读取剧情中的安排'}}</p></div><span>›</span></button>
   </template>

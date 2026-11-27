@@ -26,7 +26,7 @@ function safeActor(c){return {id:c.id,name:c.name,...Object.fromEntries(['identi
 function canonicalParticipants(raw,roster,persona,ids){
  if(!Array.isArray(raw)||raw.length<2||raw.length>8||new Set(raw.map(p=>p?.id)).size!==raw.length)fail();
  const participants=raw.map(p=>{keys(p,['id','name']);if(!text(p.id,128)||!text(p.name,80))fail();const actor=p.id==='player'?{id:'player',name:persona.name}:roster.find(a=>a.id===p.id);if(!actor)fail();return{id:actor.id,name:actor.name};});
- if(!participants.some(p=>p.id==='player')||ids.some(id=>!participants.some(p=>p.id===id)))fail();return participants;
+ if(ids.some(id=>!participants.some(p=>p.id===id)))fail();return participants;
 }
 function handCards(raw){
  if(!Array.isArray(raw)||!raw.length||raw.length>5||new Set(raw).size!==raw.length)fail();
@@ -61,7 +61,7 @@ function partyPlanWithinContext(card,data){
   if(context.state!==undefined)keys(context.state,['player','characters','variables']);
   const roster=rosterFor(card,context.state),ids=[...data.actorIds];if(ids.some(id=>!roster.some(a=>a.id===id)))fail();
   if(['party-eleven','party-truth'].includes(data.task)&&ids.length!==1)fail();
-  const audience=context.audience;if(!Array.isArray(audience)||audience.length!==ids.length+1||new Set(audience).size!==audience.length||!audience.includes('player')||ids.some(id=>!audience.includes(id)))fail();
+  const audience=context.audience;if(!Array.isArray(audience)||audience.length!==ids.length+(context.party?.participants?.some(p=>p.id==='player')?1:0)||new Set(audience).size!==audience.length||(context.party?.participants?.some(p=>p.id==='player')&&!audience.includes('player'))||ids.some(id=>!audience.includes(id)))fail();
   if(context.memories!==undefined&&(!Array.isArray(context.memories)||context.memories.length>32||context.memories.some(m=>!text(m,6000,true))))fail();
   if(context.story!==undefined&&(!Array.isArray(context.story)||context.story.length>12||context.story.some(s=>!object(s)||Object.keys(s).some(k=>!['input','text'].includes(k))||!text(s.input,2000,true)||!text(s.text,16000,true))))fail();
   const p=context.party;if(!object(p)||!['eleven','truth','liar','landlord','mahjong'].includes(p.kind))fail();

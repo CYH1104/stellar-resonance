@@ -1,3 +1,4 @@
+import {visibleStoryGameInvites} from '../domain/storyGameInvites';
 import {computed,ref,watch,onScopeDispose,toRaw} from 'vue';
 import type {ViewModel} from './useWorkspace';
 import {HttpGateway} from '../gateway/http';
@@ -6,7 +7,7 @@ import {taskApi} from '../domain/apis';
 import {MODEL_REQUEST_TIMEOUT_MS} from '../domain/requestTimeout';
 import {emptyTerminal} from '../domain/personalTerminal';
 import {terminalAnchor,terminalAnchorActive,recordTerminalChat,syncTerminalMemoryNotes,isTerminalMemoryNote} from '../domain/terminalLedger';
-import {createWerewolf,replayWerewolf,wolfView,wolfRequest,wolfActionFromResult,actWerewolf,wolfRole,wolfNightReady,type WerewolfGame,type WolfAction,type WolfTask} from '../domain/werewolf';
+import {createWerewolf,replayWerewolf,wolfView,wolfSpectatorView,wolfRequest,wolfActionFromResult,actWerewolf,wolfRole,wolfNightReady,type WerewolfGame,type WolfAction,type WolfTask} from '../domain/werewolf';
 
 const copy=<T>(v:T):T=>JSON.parse(JSON.stringify(v));
 export function useWerewolf(w:ViewModel){
@@ -15,10 +16,11 @@ export function useWerewolf(w:ViewModel){
  const actors=computed(()=>[...(w.state?.characters||w.active?.initial.characters||[]),...(terminal.value.contacts||[]).filter(c=>!w.state?.characters.some(a=>a.id===c.id))]);
  const name=(id:string)=>id==='player'?w.active?.persona.name||'我':actors.value.find(a=>a.id===id)?.name||id;
  const friends=computed(()=>terminal.value.friends.filter(f=>f.status==='accepted'&&(!f.anchor||!!w.active&&terminalAnchorActive(w.active,f.anchor))).map(f=>({id:f.id,name:name(f.id)})));
- const games=computed(()=>(terminal.value.werewolfGames||[]).filter(g=>!!w.active&&terminalAnchorActive(w.active,g.anchor)));
+ const games=computed(()=>(terminal.value.werewolfGames||[]).filter(g=>!!w.active&&terminalAnchorActive(w.active,g.anchor)&&(!g.invitationId||visibleStoryGameInvites(w.active).some(i=>i.id===g.invitationId))));
  const game=computed(()=>games.value.find(g=>g.id===gameId.value));
  const state=computed(()=>game.value?replayWerewolf(game.value):undefined);
- const view=computed(()=>game.value?wolfView(game.value,'player'):undefined);
+ const spectating=computed(()=>!!game.value&&!game.value.seats.some(p=>p.id==='player'));
+ const view=computed(()=>game.value?(spectating.value?wolfSpectatorView(game.value):wolfView(game.value,'player')):undefined);
  const profile=computed(()=>taskApi(w.preferences,'terminal'));
  const signature=()=>JSON.stringify([profile.value,w.credentials[profile.value?.id||'']]);
  let abort:AbortController|undefined;
@@ -58,7 +60,7 @@ export function useWerewolf(w:ViewModel){
   if(at<0){if(list.length>=1000)throw Error('狼人杀记录已达1000局，请先备份整理。');list.push(nextGame);}else list[at]=nextGame;
   // Only public participation/result goes to shared recall. Secret roles remain in the game and per-request projections.
   const s=replayWerewolf(nextGame),summary=`${nextGame.storyDate}（现实时间${nextGame.at}），${nextGame.seats.map(p=>p.name).join('、')}一起玩六人狼人杀。${s.phase==='complete'?(s.winner==='wolf'?'狼人':'好人')+'阵营获胜；本局已结束，身份不公开。':'对局进行中，身份保密。'}`;
-  recordTerminalChat(next,nextGame.anchor,{id:'werewolf:'+nextGame.id,title:'狼人杀',group:true},nextGame.seats.map(p=>p.id),summary,[],nextGame.seats.map(p=>p.id));
+  recordTerminalChat(next,nextGame.anchor,{id:'werewolf:'+nextGame.id,title:'狼人杀',group:true},nextGame.seats.map(p=>p.id),summary+(nextGame.seats.some(p=>p.id==='player')?'':'玩家仅观战。'),[],[...new Set([...nextGame.seats.map(p=>p.id),'player'])]);
   session.terminal=next;syncTerminalMemoryNotes(session);
   try{await (w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('存档写入失败，行动未提交，请检查存储后重试。');}
   catch(e){if(toRaw(session.terminal)===next){session.terminal=before;session.memories=[...session.memories.filter(m=>!isTerminalMemoryNote(m)),...priorNotes];}throw e;}
@@ -115,7 +117,7 @@ export function useWerewolf(w:ViewModel){
   const g=createWerewolf(['player',...picked.value].map(id=>({id,name:name(id)})),terminalAnchor(w.active!),[terminalStoryClock(w.state,w.active!.opening).label,terminalStoryClock(w.state,w.active!.opening).time].join(' '));
   await save(g,undefined,check);gameId.value=g.id;draft.value='';await advance(check,signal);
  });}
- function submit(kind:string){return run(async(check,signal)=>{
+ function submit(kind:string){return run(async(check,signal)=>{if(spectating.value)throw Error('观战位不能代替角色行动。');
   const mode=humanAction.value;if(!mode)throw Error('尚未轮到你行动。');let action:WolfAction;
   if(mode==='speak'){if(!draft.value.trim())throw Error('请先输入发言。');action={type:'speak',actor:'player',text:draft.value.trim()};}
   else if(mode==='knife')action={type:'knife',target:target.value};
@@ -126,5 +128,5 @@ export function useWerewolf(w:ViewModel){
  });}
  function open(id:string){if(working.value)return;gameId.value=id;target.value='';draft.value='';error.value='';}
  function back(){cancel();if(gameId.value){gameId.value='';return true;}return false;}
- return {gameId,picked,draft,target,error,working,view,friends,games,humanAction,targets,blocked,toggle,start,resume,submit,open,back,setActive:(v:boolean)=>{active.value=v;},cancel};
+ return {spectating,gameId,picked,draft,target,error,working,view,friends,games,humanAction,targets,blocked,toggle,start,resume,submit,open,back,setActive:(v:boolean)=>{active.value=v;},cancel};
 }

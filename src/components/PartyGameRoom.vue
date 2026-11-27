@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import {computed,reactive,watch,onBeforeUnmount} from 'vue';
+import {computed,reactive,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePartyGames} from '../app/usePartyGames';
 import {cardLabel,handRank,elevenLimitHalf,elevenHandRank,elevenHandVisible,isElevenAllBust,elevenWinnerReason,type PartyRound,type PartyRoom} from '../domain/partyGames';
+import PartySpectator from './PartySpectator.vue';
+import {partySpectatorView} from '../domain/partySpectator';
 import LiarDiceTable from './LiarDiceTable.vue';
 import MahjongTable from './MahjongTable.vue';
 import SettlementVoices from './SettlementVoices.vue';
@@ -19,12 +21,16 @@ const activeApi=computed(()=>props.w.terminalProfile);
 const activeApiOrigin=computed(()=>{try{return new URL(activeApi.value?.apiBaseUrl||'').origin;}catch{return '未配置地址';}});
 const kinds={eleven:'十点半',truth:'真心话大冒险',liar:'大话骰',landlord:'斗地主',mahjong:'日麻'} as const;
 const selectionLimit=computed(()=>u.currentKind==='landlord'?2:u.currentKind==='mahjong'?3:7);
+const viewingPast=ref(false),spectatorRound=ref(0);
+watch(()=>u.room?.id,()=>{viewingPast.value=false;spectatorRound.value=0;});
+const spectatorRounds=computed(()=>u.spectating?u.history.map(r=>({number:r.number,complete:r.phase==='complete'})):[]);
+const spectatorView=computed(()=>u.spectating&&u.room?partySpectatorView(u.room,u.history.find(r=>r.number===spectatorRound.value)||u.round,u.name):undefined);
 const isLandlordLandscape=computed(()=>props.active&&u.page==='play'&&(u.round?.kind==='landlord'||u.round?.kind==='mahjong')&&!u.room?.endedAt);
 watch(isLandlordLandscape,value=>emit('landscape',value),{immediate:true});
 onBeforeUnmount(()=>emit('landscape',false));
-watch(()=>[props.active,u.page,u.round?.kind==='landlord'?u.round.turn:'',u.working,u.error,u.room?.endedAt],()=>{u.setLandlordActive?.(props.active);if(!props.active||u.page!=='play'){u.pauseLandlord?.();return;}if(!u.working&&!u.error&&!u.room?.endedAt&&u.round?.kind==='landlord'&&u.round.phase!=='complete'&&u.round.turn!=='player')void u.resumeLandlord?.();},{immediate:true});
-watch(()=>[props.active,u.page,u.round?.kind==='mahjong'?u.round.steps.length:-1,u.working,u.error,u.room?.endedAt],()=>{
- u.setLandlordActive?.(props.active);if(!props.active||u.page!=='play'){u.pauseLandlord?.();return;}
+watch(()=>[props.active,viewingPast.value,u.page,u.round?.kind==='landlord'?u.round.turn:'',u.working,u.error,u.room?.endedAt],()=>{u.setLandlordActive?.(props.active&&!viewingPast.value);if(!props.active||viewingPast.value||u.page!=='play'){u.pauseLandlord?.();return;}if(!u.working&&!u.error&&!u.room?.endedAt&&u.round?.kind==='landlord'&&u.round.phase!=='complete'&&u.round.turn!=='player')void u.resumeLandlord?.();},{immediate:true});
+watch(()=>[props.active,viewingPast.value,u.page,u.round?.kind==='mahjong'?u.round.steps.length:-1,u.working,u.error,u.room?.endedAt],()=>{
+ u.setLandlordActive?.(props.active&&!viewingPast.value);if(!props.active||viewingPast.value||u.page!=='play'){u.pauseLandlord?.();return;}
  if(!u.working&&!u.error&&!u.room?.endedAt&&u.round?.kind==='mahjong'&&u.round.phase==='playing'&&!mahjongOptions(u.round).length)void u.resumeMahjong?.();
 },{immediate:true});
 const invitationLabels={accepted:'已接受',declined:'未参加',pending:'等待回应'} as const;
@@ -44,10 +50,10 @@ function prepare(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){u.currentKin
 function handleBack(){if(u.inviteTarget!==null){u.inviteTarget=null;u.inviteNote='';return true;}if(u.page==='list')return false;u.back();return true;}
 function enter(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){u.enter(kind);}
 watch(()=>props.kind,kind=>{if(kind)enter(kind);});
-watch(()=>[props.active,u.page,u.room?.id,u.round?.number,u.round?.kind==='liar'?u.round.turn:'',u.round?.kind==='liar'?u.round.moves.at(-1)?.pending:false,u.working,u.error],()=>{
+watch(()=>[props.active,viewingPast.value,u.page,u.room?.id,u.round?.number,u.round?.kind==='liar'?u.round.turn:'',u.round?.kind==='liar'?u.round.moves.at(-1)?.pending:false,u.working,u.error],()=>{
  if(props.active&&u.page==='play'&&!u.working&&!u.error&&!u.room?.endedAt&&u.round?.kind==='liar'&&((u.round.phase==='playing'&&u.round.turn!=='player')||u.round.moves.at(-1)?.pending)&&typeof u.resumeLiar==='function')void u.resumeLiar();
 },{immediate:true});
-defineExpose({handleBack,enter});
+defineExpose({open:(id:string)=>u.open(id),handleBack,enter});
 function initial(id:string){return Array.from(u.name(id)||'我')[0];}
 function points(cards:Parameters<typeof handRank>[0]){return cards.length?handRank(cards).halfPoints/2:'—';}
 function rankLabel(cards:Parameters<typeof handRank>[0],round?:Extract<PartyRound,{kind:'eleven'}>){return cards.length?{bust:'爆牌',ordinary:'普通牌',eleven:round&&elevenLimitHalf(round)===21?'十点半':'十一点半',five:'五张不过',flowers:'五花牌'}[(round?elevenHandRank(round,cards):handRank(cards)).kind]:'尚未发牌';}
@@ -79,6 +85,7 @@ function ending(reason:string|undefined){return reason==='bankrupt'?'有人积�
     <button type="submit" class="party-primary" :disabled="u.working||u.picked.length<(u.currentKind==='mahjong'?3:2)||u.picked.length>selectionLimit">创建并邀请</button>
    </form>
   </template>
+  <PartySpectator v-else-if="u.spectating&&spectatorView" :key="u.room?.id" :w="w" :view="spectatorView" :rounds="spectatorRounds" @select="spectatorRound=$event" :busy="u.working" :running="u.page==='play'" :name="u.name" @resume="u.page='play'" @pause="u.page='room'" @start="u.start()" @step="u.npcAction()" @leave="u.back()" @end="u.end()" @history="viewingPast=$event"/>
   <template v-else-if="u.room&&u.page==='play'&&u.round?.kind==='mahjong'&&!u.room.endedAt"><MahjongTable :w="w" :key="u.room.id" :active="active" :round="u.round" :name="u.name" :busy="u.working" :phrases="u.room.mahjongPhrases" :styles="u.room.mahjongStyles" @action="u.mahjongStep" @start="u.start()" @leave="u.back()" @end="u.end()" @retry-settlement="u.retrySettlement()"/></template>
   <template v-else-if="u.room&&u.page==='play'&&u.round?.kind==='landlord'&&!u.room.endedAt"><LandlordTable :w="w" :key="u.room.id" :active="active" :phrases="u.room.landlordPhrases" :round="u.round" :scores="u.room.scores||{}" :name="u.name" :busy="u.working" @retry-settlement="u.retrySettlement()" @bid="u.landlordBid" @play="u.landlordPlay" @start="u.start" @leave="u.back" @end="u.end"/><details class="landlord-chat"><summary>桌上聊天</summary><GameChat :lines="currentDialogueLines" :name="u.name" label="斗地主对话"/><form class="party-chat" @submit.prevent="u.reactions()"><label>说句话（不推进出牌）<textarea v-model="u.draft" rows="2" maxlength="2000" :disabled="u.working"/></label><button type="submit" :disabled="u.working||!u.draft.trim()">发送互动</button></form></details></template><template v-else-if="u.room">
    <p class="party-muted">{{kinds[u.room.kind]}}<span v-if="u.room.style"> · {{u.room.style}}</span></p>

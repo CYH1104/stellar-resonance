@@ -26,7 +26,7 @@ function makeRound(participants:string[],number:number,starter:string,initialHan
  return {kind:'landlord',rulesVersion,number,participants:[...participants],starter,initialHands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),hands:Object.fromEntries(participants.map(id=>[id,[...initialHands[id]]])),bottom:[...bottom],openingScores:{...openingScores},phase:'bidding',turn:starter,highestBid:0,moves:[],passes:0,multiplier:1};
 }
 export function startLandlordRound(ids:string[],number:number,scores:Record<string,number>,random:(n:number)=>number,anchor?:TerminalAnchor){
- if(ids.length!==3||new Set(ids).size!==3||!ids.includes('player')||!ids.every(id=>Number.isSafeInteger(scores[id])&&scores[id]>=0))fail();
+ if(ids.length!==3||new Set(ids).size!==3||!ids.every(id=>Number.isSafeInteger(scores[id])&&scores[id]>=0))fail();
  const pick=(n:number)=>{const v=random(n);if(!Number.isInteger(v)||v<0||v>=n)fail();return v;};
  const deck=[...landlordDeck];for(let i=deck.length-1;i>0;i--){const j=pick(i+1);[deck[i],deck[j]]=[deck[j],deck[i]];}
  const starter=ids[pick(3)]!,initial=Object.fromEntries(ids.map((id,i)=>[id,sortLandlordCards(deck.slice(17*i,17*i+17))]));
