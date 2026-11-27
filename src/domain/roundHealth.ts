@@ -1,5 +1,5 @@
 import {validAffinity} from './affinity.ts';
-import type {Outcome,Session,TheaterScene,TheaterSetting,WorldState} from './contracts.ts';
+import type {Outcome,Session,TheaterScene,TheaterSetting,WorldState,Variant} from './contracts.ts';
 import {selected,stateAt,validateOutcome} from './story.ts';
 import {cleanTheaters,cleanTheaterScenes} from './theaters.ts';
 import {isSpiritDiary,cleanSpiritDiary} from './spiritDiary.ts';
@@ -39,11 +39,17 @@ export function reconcileRepairScenes(outcome:Outcome,settings:TheaterSetting[]|
 /** Check the selected round itself; inherited values do not prove this round was updated. */
 export function needsStateRepair(session:Session,index:number,settings?:TheaterSetting[],stateEnabled=true):boolean {
   const v=session.turns[index]&&selected(session.turns[index]);if(v?.status!=='complete')return false;
+  if(!v.outcome)return true;
+  try{return needsStateRepairWithStates(v,stateAt(session,index),stateAt(session,index+1),settings,stateEnabled);}catch{return true;}
+}
+/** Reuse snapshots from the same synchronous replay when rendering multiple rounds. */
+export function needsStateRepairWithStates(v:Variant|undefined,before:WorldState,state:WorldState,settings?:TheaterSetting[],stateEnabled=true):boolean {
+  if(v?.status!=='complete')return false;
   if(v.generationRequirements){settings=v.generationRequirements.theaters;stateEnabled=v.generationRequirements.stateEnabled;}
   try{
     if(!v.outcome)return true;
-    validateOutcome(v.outcome,stateAt(session,index));
-    const state=stateAt(session,index+1),out=v.outcome;
+    validateOutcome(v.outcome,before);
+    const out=v.outcome;
     if(stateEnabled&&['retained','partial'].includes(out.stateUpdate?.status||''))return true;
     if(out.stateUpdate?.codes.some(code=>['STATE_SIDE_SCENE_RETAINED','STATE_STORY_MISSING',...(stateEnabled?['STATE_AFFINITY_RETAINED','STATE_MVU_OUTPUT_MISSING','STATE_ATTITUDE_INVALID','STATE_ATTITUDE_REVIEW_MISSING','STATE_ATTITUDE_ITEM_SKIPPED','STATE_SPIRIT_THOUGHT_RETAINED','STATE_PLAYER_THOUGHT_RETAINED','STATE_AUX_RETAINED']:[])].includes(code)))return true;
     if(stateEnabled&&state.player.spiritAnimal?.trim()&&!provided(out.player?.spiritThought))return true;
