@@ -24,4 +24,17 @@
 
 ## 发布状态
 
-待执行Linux构建/后端回归与9000单实例发布。发布前8807：release3186c22b4b14d340、PID1217979、instance761e2277c88b6f8454aa6e6717ca7b11；应保持性能更新后的完整dist和template摘要、current、部署标记不变。9000当前release629c47d1e26f1928、PID1819700。
+2026-11-28 00:53（Asia/Shanghai）公网验证完成。
+
+- 功能提交0634b5b5ee7fea0ff36504a91ee413e6134e09e5已正常快进推送main。
+- Linux独立生产构建成功，后端578项全部通过；额外9组旧牌局观战/历史/加入回归通过（浏览器共17组，无错误）。最后提示文案及旧邀约标识引用复查后，类型检查、65项邀请/备份回归和27项服务端聚焦复测通过。
+- 9000由629c47d1e26f1928切换到aad2142a16bdddb8，PID1870503，instance1d665ef2f9fa34244910f790df56e7b3；认证启用，test实例/通道正确。
+- 8807仍为3186c22b4b14d340，PID1217979，instance761e2277c88b6f8454aa6e6717ca7b11；性能更新后的完整dist摘要880ddff5366c1eaf8b9270c282c72a734a021a50e37d69779b313a4c92ed3d22、template摘要3f603dbead1b7fb5f183ed16f01e644224cdd672a92795abb796e497c156f38d、current和部署标记均未变化。
+- 9000公网40个、8807公网64个JS/CSS均与各自快照SHA256一致。
+- 发布持有更新树/全局/test锁，pending为空，双端自动更新timer未启用；只重启stellar-resonance-test。
+- 回退备份：/home/ubuntu/.stellar-resonance-backups/room-invitations-20261128-VMEWGA。原9000快照629c47d1e26f1928保留。
+- 收据与浏览器验收位于忽略的.integration/room-invitations-20261128；私钥不进入Git或文档。收尾删除本次临时密钥与服务器暂存目录。
+
+## 后续
+
+实现、验证和9000发布均已完成。角色具体话术及关系判断依赖用户配置的终端模型；验收使用合成回应，未调用用户收费模型。国王游戏沿用现有入口，未增加角色主持。agent-hub程序缺失，接力记录保存在本文件和SESSION_HANDOFF。
