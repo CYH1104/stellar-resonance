@@ -28,6 +28,7 @@ import ResizeHandle from './components/ResizeHandle.vue';
 import {useWorkspaceLayout} from './app/useWorkspaceLayout';
 import {installMvuBridge} from './app/mvuBridge';
 
+import {useStoryGameInvites} from './app/useStoryGameInvites';
 import { useWorkspace } from './app/useWorkspace';
 
 import type { Panel } from './domain/contracts';
@@ -81,6 +82,7 @@ async function beginFirstSetup(sequence:number){if(!needsFirstSetup())return;con
 
 
 const w = reactive(useWorkspace());
+useStoryGameInvites(w,{automatic:true});
 const configuration=useConfigurationDraft(w);
 provide(configurationEditorsKey,configuration.registerEditor);
 const pendingConfigurationPanel=ref<Panel>();let pendingConfigurationAction:(()=>void)|undefined;let allowConfigurationNavigation=false;

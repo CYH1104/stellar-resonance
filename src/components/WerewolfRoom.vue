@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import GameRoomLobby from './GameRoomLobby.vue';
+import {visibleGameLobbies} from '../domain/gameLobby';
 import {computed,reactive,ref,watch,nextTick} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {useWerewolf} from '../app/useWerewolf';
@@ -6,6 +8,10 @@ import {wolfRoleNames,wolfRules} from '../domain/werewolf';
 import TerminalActorAvatar from './TerminalActorAvatar.vue';
 const props=withDefaults(defineProps<{w:ViewModel;active?:boolean}>(),{active:true});
 const u=reactive(useWerewolf(props.w));
+const waiting=ref(false),waitingId=ref('');
+const waitingRooms=computed(()=>props.w.active?visibleGameLobbies(props.w.active).filter(l=>l.kind==='werewolf'&&!l.targetId):[]);
+function readyGame(id:string){waiting.value=false;u.open(id);}
+function back(){if(waiting.value){waiting.value=false;return true;}return u.back();}
 const feed=ref<HTMLElement>(),showRole=ref(false),showRules=ref(false);
 watch(()=>props.active,v=>u.setActive(v),{immediate:true});
 watch(()=>u.gameId,()=>showRole.value=false);
@@ -15,7 +21,7 @@ const phase=computed(()=>({night:'夜间行动',speech:'依次发言',lastwords:
 const name=(id:string)=>u.view?.players.find(p=>p.id===id)?.name||id;
 const canSave=computed(()=>u.view?.medicine?.antidote&&u.view.victim&&(u.view.day===1||u.view.victim!=='player'));
 const targetHint=computed(()=>({knife:'选择今晚的最终刀口（可自刀或刀队友）',inspect:'选择一位存活玩家查验',vote:'选择投票对象',medicine:'如需用毒，选择一位存活玩家',speak:'', '':''}[u.humanAction]||''));
-defineExpose({handleBack:()=>u.back(),open:(id:string)=>u.open(id)});
+defineExpose({handleBack:back,open:(id:string)=>u.open(id)});
 </script>
 <template>
 <section class="wolf-room" aria-label="六人狼人杀">
@@ -23,10 +29,8 @@ defineExpose({handleBack:()=>u.back(),open:(id:string)=>u.open(id)});
   <span class="wolf-kicker">MOONLIGHT · 06</span><h2>狼人杀</h2><p>你与五位好友，一场暗牌对局。</p>
   <div class="wolf-rule-chips"><span>2 狼人</span><span>2 村民</span><span>1 预言家</span><span>1 女巫</span></div>
   <p class="wolf-muted">身份随机发放 · 狼人互认 · 身份不公开</p>
-  <h3>邀请好友 <small>{{u.picked.length}} / 5</small></h3>
-  <p v-if="u.friends.length<5">需要先在终端添加至少5位好友。</p>
-  <div class="wolf-friends"><button v-for="f in u.friends" :key="f.id" type="button" :aria-pressed="u.picked.includes(f.id)" :disabled="u.blocked||u.picked.length===5&&!u.picked.includes(f.id)" @click="u.toggle(f.id)"><TerminalActorAvatar :w="w" :id="f.id"/><span>{{f.name}}</span><b>{{u.picked.includes(f.id)?'✓':'＋'}}</b></button></div>
-  <button type="button" class="wolf-primary" :disabled="u.blocked||u.picked.length!==5" @click="u.start">随机发身份 · 开始</button>
+  <GameRoomLobby v-if="waiting" :key="waitingId||'new'" :w="w" kind="werewolf" :lobby-id="waitingId" @created="waitingId=$event" @ready="readyGame" @back="waiting=false"/>
+  <template v-else><button type="button" class="wolf-primary" :disabled="u.blocked" @click="waitingId='';waiting=true">创建狼人杀房间</button><button v-for="l in waitingRooms" :key="l.id" type="button" class="wolf-history" @click="waitingId=l.id;waiting=true">{{l.name}} · 等候入座</button></template>
   <h3 v-if="u.games.length">对局记录</h3><button v-for="g in [...u.games].reverse()" :key="g.id" type="button" class="wolf-history" :disabled="u.working" @click="u.open(g.id)">{{new Date(g.at).toLocaleString('zh-CN')}} · 继续 / 回看 ›</button>
  </div>
  <template v-else>

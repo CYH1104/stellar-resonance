@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import GameRoomLobby from './GameRoomLobby.vue';
+import {visibleGameLobbies} from '../domain/gameLobby';
 import {computed,reactive,ref,watch,onBeforeUnmount} from 'vue';
 import type {ViewModel} from '../app/useWorkspace';
 import {usePartyGames} from '../app/usePartyGames';
@@ -46,7 +48,12 @@ const currentDialogueLines=computed(()=>u.round?partyDialogueLines(u.round):[]);
 function dialogueLines(round:PartyRound){return partyDialogueLines(round);}
 const invitePending=computed(()=>u.pendingInvite?.roomId===u.room?.id?u.pendingInvite:undefined);
 const inviteName=computed(()=>u.inviteTarget==='*'?'未接受邀请的好友':u.name(u.inviteTarget||''));
-function prepare(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){u.currentKind=kind;u.picked=[];u.page='create';}
+const waitingId=ref(''),existingWaitingRoom=ref('');
+const waitingRooms=computed(()=>props.w.active?visibleGameLobbies(props.w.active).filter(l=>!l.targetId&&l.kind===(props.kind||'eleven')):[]);
+function openWaiting(id:string){waitingId.value=id;existingWaitingRoom.value='';u.page='create';}
+function addGuests(){waitingId.value='';existingWaitingRoom.value=u.room!.id;u.page='create';}
+function readyRoom(id:string){waitingId.value='';existingWaitingRoom.value='';u.open(id);}
+function prepare(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){waitingId.value='';existingWaitingRoom.value='';u.currentKind=kind;u.picked=[];u.page='create';}
 function handleBack(){if(u.inviteTarget!==null){u.inviteTarget=null;u.inviteNote='';return true;}if(u.page==='list')return false;u.back();return true;}
 function enter(kind:'eleven'|'truth'|'liar'|'landlord'|'mahjong'){u.enter(kind);}
 watch(()=>props.kind,kind=>{if(kind)enter(kind);});
@@ -72,19 +79,11 @@ function ending(reason:string|undefined){return reason==='bankrupt'?'有人积�
   <template v-if="u.page==='list'">
    <p>邀请好友入座，一起玩一局。</p>
    <button type="button" class="party-entry" :disabled="u.working" @click="prepare(props.kind||'eleven')"><strong>创建{{kinds[props.kind||'eleven']}}房间</strong><small>{{props.kind==='truth'?'转酒瓶 · 双选题卡':props.kind==='liar'?'摇骰叫号 · 斋与非':'轮流坐庄 · 输家罚酒'}}</small><span aria-hidden="true">›</span></button>
+   <button v-for="l in waitingRooms" :key="l.id" type="button" class="party-entry" @click="openWaiting(l.id)"><strong>{{l.name}}</strong><small>等候入座 · 继续邀请</small></button>
    <h3 v-if="activeRooms.length">进行中的房间</h3><button v-for="r in activeRooms" :key="r.id" type="button" class="party-entry" :disabled="u.working" @click="u.open(r.id)"><strong>{{displayName(r)}}</strong><small>{{kinds[r.kind]}}</small><span aria-hidden="true">›</span></button>
    <h3 v-if="endedRooms.length">已结束的房间</h3><button v-for="r in endedRooms" :key="r.id" type="button" class="party-entry" :disabled="u.working" @click="u.open(r.id)"><strong>{{displayName(r)}}</strong><small>{{kinds[r.kind]}} · 回看记录</small><span aria-hidden="true">›</span></button>
   </template>
-  <template v-else-if="u.page==='create'">
-   <h3>创建{{kinds[u.currentKind]}}房间</h3>
-   <form @submit.prevent="u.create()">
-    <label>房间名称（可选）<input v-model="u.title" maxlength="60" :disabled="u.working" placeholder="留空使用游戏名称"></label><p class="party-muted">仅用于区分已保存的房间，留空使用游戏名称。</p>
-    <label>聚会氛围（可选）<textarea v-model="u.style" rows="3" maxlength="40" :disabled="u.working" placeholder="选择预设或自由填写，例如：轻松热闹，边玩边聊天。" /></label><div class="party-atmosphere-presets" role="group" aria-label="聚会氛围预设"><button v-for="preset in atmospherePresets" :key="preset" type="button" :disabled="u.working" :aria-pressed="u.style===preset" @click="selectAtmosphere(preset)">{{preset}}</button></div><p class="party-muted">影响角色邀请和互动的语气，不改变游戏规则。</p>
-    <fieldset :disabled="u.working"><legend>{{u.currentKind==='landlord'?'选择 2 位好友':u.currentKind==='mahjong'?'选择 3 位好友':'选择 2～7 位好友'}}</legend><label v-for="friend in u.friends" :key="friend.id" class="party-friend"><input v-model="u.picked" type="checkbox" :value="friend.id" :disabled="!u.picked.includes(friend.id)&&u.picked.length>=selectionLimit"><span class="party-avatar"><CharacterAvatar :w="w" :id="friend.id" :nickname="friend.name" /></span><span>{{friend.name}}</span></label></fieldset>
-    <p v-if="!u.friends.length" class="party-muted">先添加好友，再邀请他们参加游戏。</p><p>已选择 {{u.picked.length}} 位好友，连同你共 {{u.picked.length+1}} 人。</p>
-    <button type="submit" class="party-primary" :disabled="u.working||u.picked.length<(u.currentKind==='mahjong'?3:2)||u.picked.length>selectionLimit">创建并邀请</button>
-   </form>
-  </template>
+  <GameRoomLobby v-else-if="u.page==='create'" :key="waitingId||existingWaitingRoom||'new'" :w="w" :kind="props.kind||u.currentKind" :lobby-id="waitingId" :initial-title="u.title" :initial-style="u.style" :existing-room-id="existingWaitingRoom" @created="waitingId=$event" @ready="readyRoom" @back="u.page='list'"/>
   <PartySpectator v-else-if="u.spectating&&spectatorView" :key="u.room?.id" :w="w" :view="spectatorView" :rounds="spectatorRounds" @select="spectatorRound=$event" :busy="u.working" :running="u.page==='play'" :name="u.name" @resume="u.page='play'" @pause="u.page='room'" @start="u.start()" @step="u.npcAction()" @leave="u.back()" @end="u.end()" @history="viewingPast=$event"/>
   <template v-else-if="u.room&&u.page==='play'&&u.round?.kind==='mahjong'&&!u.room.endedAt"><MahjongTable :w="w" :key="u.room.id" :active="active" :round="u.round" :name="u.name" :busy="u.working" :phrases="u.room.mahjongPhrases" :styles="u.room.mahjongStyles" @action="u.mahjongStep" @start="u.start()" @leave="u.back()" @end="u.end()" @retry-settlement="u.retrySettlement()"/></template>
   <template v-else-if="u.room&&u.page==='play'&&u.round?.kind==='landlord'&&!u.room.endedAt"><LandlordTable :w="w" :key="u.room.id" :active="active" :phrases="u.room.landlordPhrases" :round="u.round" :scores="u.room.scores||{}" :name="u.name" :busy="u.working" @retry-settlement="u.retrySettlement()" @bid="u.landlordBid" @play="u.landlordPlay" @start="u.start" @leave="u.back" @end="u.end"/><details class="landlord-chat"><summary>桌上聊天</summary><GameChat :lines="currentDialogueLines" :name="u.name" label="斗地主对话"/><form class="party-chat" @submit.prevent="u.reactions()"><label>说句话（不推进出牌）<textarea v-model="u.draft" rows="2" maxlength="2000" :disabled="u.working"/></label><button type="submit" :disabled="u.working||!u.draft.trim()">发送互动</button></form></details></template><template v-else-if="u.room">
@@ -107,6 +106,7 @@ function ending(reason:string|undefined){return reason==='bankrupt'?'有人积�
    </template>
    <template v-if="u.page==='room'&&!u.room.endedAt">
     <p v-if="u.room.kind==='mahjong'" class="party-muted">四人立直日麻，每人25000点；有役才能和牌，含振听、赤宝牌、里宝牌、本场及供托。按庄家连庄规则续局，0点可继续，负分结束整场。</p><h3>房间成员</h3><article v-for="id in u.room.members" :key="id" class="party-member"><span class="party-avatar"><span v-if="id==='player'">{{initial(id)}}</span><CharacterAvatar v-else :w="w" :id="id" :nickname="u.name(id)" /></span><strong>{{u.name(id)}}</strong><small>{{id==='player'?'房主 · 已就绪':invitationLabels[u.room.invitations[id]]||'等待回应'}}</small><p v-if="u.room.inviteReplies?.[id]">{{u.room.inviteReplies[id]}}</p><p v-if="u.room.inviteNotes?.[id]" class="party-invite-note">你写给角色的话：{{u.room.inviteNotes[id]}}</p><button v-if="id!=='player'&&u.room.invitations[id]==='pending'&&!u.room.rounds.length" type="button" :disabled="u.working" @click="u.retryInvites()">重试邀请请求</button><button v-if="id!=='player'&&u.room.invitations[id]==='declined'&&!u.room.rounds.length" type="button" :disabled="u.working" @click="u.beginInvite(id)">写留言，再次邀请</button></article>
+    <button v-if="!u.room.rounds.length&&!u.room.invitationId&&acceptedCount<(u.room.kind==='mahjong'?4:u.room.kind==='landlord'?3:8)" type="button" :disabled="u.working" @click="addGuests">补充邀请 / 拜托好友代邀</button>
     <p>已接受 {{acceptedCount-1}} 位好友，连同你共 {{acceptedCount}} 人。</p><div class="party-actions"><button v-if="u.declinedInvites.length&&!u.room.rounds.length" type="button" :disabled="u.working" @click="u.beginInvite()">重新邀请被拒绝的好友</button><button v-if="u.round" type="button" :disabled="u.working" @click="u.page='play'">{{u.round.phase==='complete'?'回到本轮互动':'继续当前轮'}}</button><button v-if="!u.round||u.round.phase==='complete'" type="button" class="party-primary" :disabled="u.working||acceptedCount<(u.room.kind==='mahjong'?4:3)||u.elevenBatchPending" @click="u.start()">{{u.round?'开始下一轮':'开始游戏'}}</button><button type="button" :disabled="u.working" @click="u.page='history'">游戏记录</button><button type="button" :disabled="u.working" @click="u.end()">结束游戏</button></div>
    </template>
    <template v-else-if="u.page==='play'&&u.round&&!u.room.endedAt">

@@ -1,3 +1,4 @@
+import {validateGameLobbies,type GameLobby} from './gameLobby.ts';
 import {validateStoryGameInvites,type StoryGameInvite} from './storyGameInvites.ts';
 import {validateWerewolfGames,type WerewolfGame} from './werewolf.ts';
 import {validatePartyRooms,type PartyRoom} from './partyGames.ts';
@@ -59,7 +60,7 @@ export const visibleTextLength=(text:string)=>text.replace(/\s+/gu,'').length;
 export interface KingInteraction {id:string;kind:'chat'|'complete'|'refuse';text:string;replies:KingReply[];dialogue?:GameDialogue;status:'pending'|'ready'|'stopped';anchor?:TerminalAnchor}
 export interface KingRound {interactions?:KingInteraction[];dialogue?:GameDialogue;number:number;king:string;numbers:Record<string,number>;command:string;targets:number[];replies:KingReply[];phase:'command'|'respond'|'complete';betrayal?:boolean;anchor?:TerminalAnchor;archived?:boolean}
 export interface KingRoom {inviteReplies?:Record<string,string>;inviteNotes?:Record<string,string>;endedAt?:string;drunk?:Record<string,number>;drunkFrom?:number;penaltyEvents?:string[];afterparty?:KingAfterparty;endReason?:'drunk'|'manual'|'round-limit';endTriggers?:string[];id:string;name:string;style:string;members:string[];invitations:Record<string,'accepted'|'declined'|'pending'>;rounds:KingRound[]}
-export interface PersonalTerminal {gameInvitations?:StoryGameInvite[];werewolfGames?:WerewolfGame[];partyRooms?:PartyRoom[];groupInvitations?:TerminalGroupInvitation[];version:1;contacts?:ActorState[];avatar:string;bio?:string;avatarView?:{scale:number;x:number;y:number};ownCode?:string;memories?:TerminalRoundMemory[];jobs?:TerminalJob[];groupsReady?:boolean;scheduleKey?:string;scheduleOrigin?:TerminalOrigin;discoveredCodes?:{id:string;code:string}[];tolerances?:Record<string,number>;friends:TerminalFriend[];conversations:TerminalConversation[];courses:TerminalCourse[];scheduleDate:string;rooms:KingRoom[];divinations?:TerminalDivination[]}
+export interface PersonalTerminal {gameLobbies?:GameLobby[];gameInvitations?:StoryGameInvite[];werewolfGames?:WerewolfGame[];partyRooms?:PartyRoom[];groupInvitations?:TerminalGroupInvitation[];version:1;contacts?:ActorState[];avatar:string;bio?:string;avatarView?:{scale:number;x:number;y:number};ownCode?:string;memories?:TerminalRoundMemory[];jobs?:TerminalJob[];groupsReady?:boolean;scheduleKey?:string;scheduleOrigin?:TerminalOrigin;discoveredCodes?:{id:string;code:string}[];tolerances?:Record<string,number>;friends:TerminalFriend[];conversations:TerminalConversation[];courses:TerminalCourse[];scheduleDate:string;rooms:KingRoom[];divinations?:TerminalDivination[]}
 export const terminalId=()=>crypto.randomUUID();
 export const emptyTerminal=():PersonalTerminal=>({version:1,avatar:'',bio:'',memories:[],jobs:[],friends:[],conversations:[],courses:[],scheduleDate:'',rooms:[]});
 export function acceptedIds(t:PersonalTerminal){return t.friends.filter(f=>f.status==='accepted').map(f=>f.id);}
@@ -105,6 +106,7 @@ export function kingOverLimit(room:KingRoom,tolerances:Record<string,number>){re
 export function missingTolerances(t:PersonalTerminal,room:KingRoom){return room.members.filter(id=>!Number.isInteger(t.tolerances?.[id]));}
 // Imported saves are data, not executable markup. Unknown old saves simply have no terminal.
 export function validateTerminal(value:PersonalTerminal){
+ if(value.gameLobbies!==undefined)validateGameLobbies(value.gameLobbies);
  if(value.gameInvitations!==undefined)validateStoryGameInvites(value.gameInvitations);
  if(value.werewolfGames!==undefined)validateWerewolfGames(value.werewolfGames);
  validateGroupInvitations(value);

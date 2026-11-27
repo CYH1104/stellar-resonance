@@ -1,3 +1,4 @@
+import {visibleGameLobbies} from './gameLobby.ts';
 import {visibleStoryGameInvites} from './storyGameInvites.ts';
 import {replayWerewolf} from './werewolf.ts';
 import type {Session} from './contracts';
@@ -105,10 +106,20 @@ export function terminalGameFacts(s:Session,before=s.turns.length,audience?:stri
 }
 /** Invitation decisions are not proof of friendship or participation in a completed game. */
 export function terminalRecruitmentFacts(s:Session,before=s.turns.length,audience?:string[]){
- if(!s.terminal?.gameInvitations?.length)return [];
+ if(!s.terminal?.gameInvitations?.length&&!s.terminal?.gameLobbies?.some(l=>l.requests.length))return [];
  const visible=terminalVisibility(s,before),state=stateAt(s,before),names=new Map([...state.characters,...(s.terminal?.contacts||[])].map(a=>[a.id,a.name]));
  const name=(id:string)=>names.get(id)||id,out:{text:string;knownBy:string[]}[]=[];
  const add=(text:string,knownBy:string[])=>{if(!audience||factAudienceCovers(knownBy,audience))out.push({text,knownBy});};
+ for(const l of visibleGameLobbies(s).slice().reverse()){
+  if(!visible.anchor(l.anchor))continue;
+  for(const r of l.requests.slice().reverse()){
+   const helper=r.helperId==='player'?'玩家':name(r.helperId);
+   if(r.helperId!=='player')add('玩家在已有房间「'+l.name+'」拜托'+helper+'代邀'+(r.wantedId?name(r.wantedId):'他认识的朋友')+'；'+(r.host?(r.host.accepted?'愿意帮忙：':'婉拒：')+r.host.reply:'尚未答复')+'。这只是邀请，不代表已玩过游戏，也不确认推测的好友关系。',['player',r.helperId]);
+   for(const g of r.guests)add(name(g.id)+(g.accepted?'接受':'拒绝')+'了'+helper+'加入「'+l.name+'」的邀请：'+g.reply+'。实际参赛与胜负以对局记录为准。',[...new Set(['player',r.helperId,g.id])]);
+   if(out.length>=8)break;
+  }
+  if(out.length>=8)break;
+ }
  for(const i of visibleStoryGameInvites(s).slice().reverse()){
   const r=i.recruitment;if(!r||!visible.anchor(i.anchor)||!visible.origin(i.origin))continue;
   const host=name(i.hostId),kind={landlord:'斗地主',mahjong:'日麻',werewolf:'狼人杀',eleven:'十点半',liar:'大话骰',truth:'真心话大冒险'}[i.kind];

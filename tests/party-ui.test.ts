@@ -43,13 +43,13 @@ it.each(['eleven','truth'] as const)('shows only %s rooms and its create action 
  expect(text.some(value=>/返回|‹/.test(value))).toBe(false);
 });
 
-it('explains optional room name and atmosphere on creation and preserves friend selection',async()=>{
+it('keeps optional room settings and creates a waiting room before selecting friends',async()=>{
  const stub=partyStub([],undefined,'create');stub.currentKind.value='truth';controllers.party.mockReturnValue(stub);
  const html=await renderParty('truth');
  expect(html).toContain('房间名称（可选）');expect(html).toContain('仅用于区分已保存的房间，留空使用游戏名称。');
  expect(html).toContain('聚会氛围（可选）');expect(html).toContain('影响角色邀请和互动的语气，不改变游戏规则。');
- expect(html).toContain('选择 2～7 位好友');expect(html).toContain('value="a"');expect(html).toContain('value="b"');
- expect(labels(html)).toContain('创建并邀请');
+ expect(html).toContain('先建房，再邀请朋友');expect(html).not.toContain('type="checkbox"');
+ expect(labels(html)).toContain('创建等候房间');
 });
 
 it('distinguishes retrying a pending request from asking a declined character again',async()=>{
