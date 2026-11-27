@@ -1,7 +1,7 @@
 import type {Memory,Session} from './contracts';
 import {memoryContext} from './memories.ts';
 import {orderedMemoryRecords,latestCommitmentEntries,commitmentLine,currentCommitmentProjection} from './memoryCommitments.ts';
-import {terminalNarrativeRecall,terminalStoryFacts,terminalGameFacts,terminalStoryExcerpt} from './terminalStoryContext.ts';
+import {terminalNarrativeRecall,terminalRecruitmentFacts,terminalStoryFacts,terminalGameFacts,terminalStoryExcerpt} from './terminalStoryContext.ts';
 import {isTerminalMemoryNote,terminalLatestBucket,terminalNoteKey,memoryChunks} from './terminalLedger.ts';
 
 /** The preview and production prompt share this assembler and the same eight-block budget. */
@@ -17,6 +17,6 @@ export function storyMemoryInjection(s:Session,before:number,recalled:Memory[],p
  return [...chunks,...memoryContext(currentCommitmentProjection(recalled,entries).filter(m=>!isTerminalMemoryNote(m)),[])].slice(0,8);
 }
 export function terminalMemoryInjection(s:Session,audience:string[],retrieved:Memory[]){
- const recent=[...terminalGameFacts(s,s.turns.length,audience),...terminalStoryFacts(s,s.turns.length,audience)].map(f=>f.text);
+ const recent=[...terminalGameFacts(s,s.turns.length,audience),...terminalRecruitmentFacts(s,s.turns.length,audience),...terminalStoryFacts(s,s.turns.length,audience)].map(f=>f.text);
  return [...new Set([...recent,...retrieved.map(m=>terminalStoryExcerpt(m.text,700))])].slice(0,16);
 }

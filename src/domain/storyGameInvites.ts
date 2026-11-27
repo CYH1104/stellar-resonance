@@ -1,3 +1,4 @@
+import {gameSeatCount,validateGameRecruitment,recruitmentStatus,type GameRecruitment} from './gameRecruitment.ts';
 import type {Session} from './contracts';
 import type {TerminalAnchor,TerminalOrigin} from './terminalLedger';
 import {terminalAnchorActive,terminalOriginActive,terminalMessageId} from './terminalLedger.ts';
@@ -5,7 +6,7 @@ import {terminalAnchorActive,terminalOriginActive,terminalMessageId} from './ter
 export const storyGameNames={landlord:'斗地主',mahjong:'日麻',werewolf:'狼人杀',eleven:'十点半',liar:'大话骰',truth:'真心话大冒险'} as const;
 export type StoryGameKind=keyof typeof storyGameNames;
 export interface StoryGameProposal {kind:StoryGameKind;hostId:string;members:string[];quote:string;message:string}
-export interface StoryGameInvite extends StoryGameProposal {version:1;id:string;anchor:TerminalAnchor;origin:TerminalOrigin;at:string;status:'pending'|'joined'|'spectating'|'declined';targetId?:string}
+export interface StoryGameInvite extends StoryGameProposal {version:1|2;id:string;anchor:TerminalAnchor;origin?:TerminalOrigin;at:string;status:'negotiating'|'unfilled'|'refused'|'pending'|'joined'|'spectating'|'declined';targetId?:string;recruitment?:GameRecruitment}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown,n:number):v is string=>typeof v==='string'&&!!v.trim()&&v.length<=n;
 const actorId=(v:unknown):v is string=>text(v,128)&&!/[\s\u0000-\u001f]/u.test(v)&&!['player','__proto__','prototype','constructor'].includes(v);
@@ -17,10 +18,10 @@ export function cleanStoryGameProposals(raw:unknown,known?:Set<string>):StoryGam
  return raw.map(p=>{if(!object(p)||Object.keys(p).some(k=>!['kind','hostId','members','quote','message'].includes(k)))fail();
   if(!Object.hasOwn(storyGameNames,String(p.kind))||!actorId(p.hostId)||!Array.isArray(p.members)||p.members.some(id=>!actorId(id)||known&&!known.has(id))||new Set(p.members).size!==p.members.length||p.members[0]!==p.hostId||!text(p.quote,500)||!text(p.message,500))fail();
   const count=p.kind==='landlord'?3:p.kind==='mahjong'?4:p.kind==='werewolf'?6:3;
-  if(p.members.length!==count)fail();return {kind:p.kind as StoryGameKind,hostId:p.hostId,members:[...p.members] as string[],quote:p.quote,message:p.message};
+  if(p.members.length<1||p.members.length>count)fail();return {kind:p.kind as StoryGameKind,hostId:p.hostId,members:[...p.members] as string[],quote:p.quote,message:p.message};
  });
 }
-export function visibleStoryGameInvites(s:Session){return (s.terminal?.gameInvitations||[]).filter(i=>terminalAnchorActive(s,i.anchor)&&terminalOriginActive(s,i.origin));}
+export function visibleStoryGameInvites(s:Session){return (s.terminal?.gameInvitations||[]).filter(i=>terminalAnchorActive(s,i.anchor)&&(!i.origin||terminalOriginActive(s,i.origin)));}
 /** Only committed, verbatim story evidence can create a room invitation. No inferred player consent. */
 export function applyStoryGameInvites(s:Session,proposals:StoryGameProposal[],story:string,anchor:TerminalAnchor,origin:TerminalOrigin,actors:{id:string;name:string}[]){
  if(!s.terminal||!storyGameSignal(story))return [];
@@ -32,20 +33,30 @@ export function applyStoryGameInvites(s:Session,proposals:StoryGameProposal[],st
   if(!kindPattern.test(p.quote))continue;
   const id=terminalMessageId('game:'+anchor.key+':'+origin.input+':'+p.hostId+':'+p.kind);
   const invites=s.terminal.gameInvitations||=[];
-  if(invites.some(i=>i.id===id)||visibleStoryGameInvites(s).some(i=>i.hostId===p.hostId&&i.kind===p.kind&&i.status==='pending'))continue;
+  if(invites.some(i=>i.id===id)||visibleStoryGameInvites(s).some(i=>i.hostId===p.hostId&&i.kind===p.kind&&['pending','negotiating'].includes(i.status)))continue;
   if(invites.length>=200)throw Error('游戏邀请记录已满，请先导出存档。');
-  const invite:StoryGameInvite={...p,version:1,id,anchor:structuredClone(anchor),origin:{...origin},at:new Date().toISOString(),status:'pending'};
+  const invite:StoryGameInvite={...p,members:[p.hostId],version:2,id,anchor:structuredClone(anchor),origin:{...origin},at:new Date().toISOString(),status:'negotiating',recruitment:{source:'story',input:p.message,mode:'either',guests:[]}};
   invites.push(invite);created.push(invite);
  }
  return created;
 }
 export function validateStoryGameInvites(value:unknown){
  if(!Array.isArray(value)||value.length>200||new Set(value.map(v=>v?.id)).size!==value.length)fail();
- for(const i of value){if(!object(i)||Object.keys(i).some(k=>!['version','id','kind','hostId','members','quote','message','anchor','origin','at','status','targetId'].includes(k)))fail();
+ for(const i of value){if(!object(i)||Object.keys(i).some(k=>!['version','id','kind','hostId','members','quote','message','anchor','origin','at','status','targetId','recruitment'].includes(k)))fail();
   cleanStoryGameProposals([{kind:i.kind,hostId:i.hostId,members:i.members,quote:i.quote,message:i.message}]);
-  if(i.version!==1||!text(i.id,128)||!text(i.at,60)||!Number.isFinite(Date.parse(i.at))||!['pending','joined','spectating','declined'].includes(String(i.status))||(['joined','spectating'].includes(String(i.status))?!text(i.targetId,128):i.targetId!==undefined))fail();
-  const a=i.anchor,o=i.origin;if(!object(a)||Object.keys(a).some(k=>!['key','turnId','variantId','path'].includes(k))||!text(a.key,500)||typeof a.turnId!=='string'||typeof a.variantId!=='string'||!Array.isArray(a.path)||a.path.some(p=>!text(p,300))||!object(o)||Object.keys(o).some(k=>!['turnId','input'].includes(k))||!text(o.turnId,128)||!text(o.input,128))fail();
+  if((i.version!==1&&i.version!==2)||!text(i.id,128)||!text(i.at,60)||!Number.isFinite(Date.parse(i.at))||!['negotiating','unfilled','refused','pending','joined','spectating','declined'].includes(String(i.status))||(['joined','spectating'].includes(String(i.status))?!text(i.targetId,128):i.targetId!==undefined))fail();
+  if(i.version===1){if(i.recruitment!==undefined||!i.origin||!['pending','joined','spectating','declined'].includes(String(i.status))||(i.members as string[]).length!==gameSeatCount(i.kind as StoryGameKind))fail();}
+  else {
+   validateGameRecruitment(i.recruitment,i.kind as StoryGameKind,i.hostId as string);
+   const r=i.recruitment;if(r.source==='story'?!i.origin:i.origin!==undefined)fail();
+   const accepted=[i.hostId,...(r.host?.selectedIds||[]).filter(id=>r.guests.some(g=>g.id===id&&g.accepted))];
+   if(JSON.stringify(i.members)!==JSON.stringify(accepted))fail();
+   const state=recruitmentStatus(r,i.kind as StoryGameKind);
+   if(['joined','spectating'].includes(String(i.status))){if(state!=='pending'||r.mode!=='either'&&r.mode!==i.status)fail();}
+   else if(i.status!=='declined'&&i.status!==state)fail();
+  }
+  const a=i.anchor,o=i.origin;if(!object(a)||Object.keys(a).some(k=>!['key','turnId','variantId','path'].includes(k))||!text(a.key,500)||typeof a.turnId!=='string'||typeof a.variantId!=='string'||!Array.isArray(a.path)||a.path.some(p=>!text(p,300))||(o!==undefined&&(!object(o)||Object.keys(o).some(k=>!['turnId','input'].includes(k))||!text(o.turnId,128)||!text(o.input,128))))fail();
  }
 }
 /** The last NPC is a reserve seat, announced before the user joins. Host always stays. */
-export function storyGameSeats(i:StoryGameInvite,mode:'joined'|'spectating'){return mode==='joined'?['player',...i.members.slice(0,-1)]:[...i.members];}
+export function storyGameSeats(i:StoryGameInvite,mode:'joined'|'spectating'){if(i.recruitment&&i.recruitment.mode!=='either'&&mode!==i.recruitment.mode)throw Error('请按邀请时约定的席位加入');return mode==='joined'?['player',...(i.recruitment?.mode==='joined'?i.members:i.members.slice(0,-1))]:[...i.members];}

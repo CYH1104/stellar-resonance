@@ -1,3 +1,4 @@
+import {confirmGameInvite} from '../../helpers/confirm-game-invite';
 import {createApp,h,reactive,nextTick} from 'vue';
 import type {ViewModel} from '../../../src/app/useWorkspace';
 import FloatingGroupChat from '../../../src/components/FloatingGroupChat.vue';
@@ -13,6 +14,8 @@ const s=newSession('合成验收',{name:'测试玩家',appearance:'',personality
 s.initial.characters=['a','b','c','d','e','f'].map((id,i)=>({id,name:['卫锋','凌青','秦凛','陆离','白星','苏明'][i],present:true}));
 const story=Object.values(storyGameNames).map(name=>'卫锋想玩'+name+'，邀请朋友来一局。').join('');s.turns.push({id:'t1',input:'休息',selected:0,variants:[{id:'v1',text:story,status:'complete',outcome:{event:'休息'},createdAt:'now'}]});
 for(const kind of Object.keys(storyGameNames) as StoryGameKind[]){const members=s.initial.characters.map(a=>a.id).slice(0,kind==='mahjong'?4:kind==='werewolf'?6:3);applyStoryGameInvites(s,[{kind,hostId:'a',members,quote:'卫锋想玩'+storyGameNames[kind]+'，邀请朋友来一局。',message:'今晚和朋友玩一会儿，你来一起玩，或者坐旁边看看？'}],story,terminalAnchor(s),terminalOrigin(s,0)!,s.initial.characters);}
+for(const i of s.terminal.gameInvitations||[])confirmGameInvite(i,s.initial.characters.map(a=>a.id).slice(0,i.kind==='mahjong'?4:i.kind==='werewolf'?6:3));
+if(new URLSearchParams(location.search).has('recruitment')){s.terminal.gameInvitations=[];s.terminal.friends=[{id:'a',status:'accepted',reply:'朋友',note:''}];}
 s.terminal.tolerances=Object.fromEntries(['player',...s.initial.characters.map(a=>a.id)].map(id=>[id,10]));
 const preferences=defaults();preferences.terminalEnabled=true;preferences.terminalProfile='aux';preferences.profiles=preferences.profiles.map(p=>({...p,apiBaseUrl:'https://synthetic.example/v1',model:'fixture'}));
 const w=reactive({active:s,state:s.initial,preferences,credentials:{},terminalEpoch:0,busy:false,terminalBusy:false,backupWorking:false,storageStatus:'saved',loading:false,theaters:[],localService:{characters:[]},save:async()=>{},saveTerminal:async(s:any)=>validateTerminal(s.terminal),connectionReady:()=>true,connectProfile:async()=>true,indexTerminalNotes:()=>{},get terminalProfile(){return preferences.profiles.find(p=>p.id==='aux');}});

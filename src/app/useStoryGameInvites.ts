@@ -1,21 +1,83 @@
-import {computed,ref} from 'vue';
+import {computed,ref,watch,onScopeDispose} from 'vue';
+import {HttpGateway} from '../gateway/http';
+import {taskApi} from '../domain/apis';
+import {MODEL_REQUEST_TIMEOUT_MS} from '../domain/requestTimeout';
+import {cleanGameHostDecision,cleanGameGuestDecision,requiredGameNpcs,refreshGameRecruitment} from '../domain/gameRecruitment';
+import {terminalMemoryInjection} from '../domain/memoryInjection';
 import type {ViewModel} from './useWorkspace';
 import {emptyTerminal,terminalId,validateTerminal,type PersonalTerminal} from '../domain/personalTerminal';
-import {visibleStoryGameInvites,storyGameNames,storyGameSeats,type StoryGameInvite} from '../domain/storyGameInvites';
+import {visibleStoryGameInvites,storyGameNames,storyGameSeats,type StoryGameInvite,type StoryGameKind} from '../domain/storyGameInvites';
 import {createHostedPartyRoom} from '../domain/partyGames';
 import {createWerewolf} from '../domain/werewolf';
 import {terminalStoryClock} from '../domain/storyScene';
-import {terminalAnchor} from '../domain/terminalLedger';
+import {terminalAnchor,terminalAnchorActive} from '../domain/terminalLedger';
 
 export function useStoryGameInvites(w:ViewModel){
- const working=ref(false),error=ref('');
+ const working=ref(false),error=ref(''),progress=ref('');
  const invitations=computed(()=>w.active?visibleStoryGameInvites(w.active):[]);
- const actors=computed(()=>[...(w.state?.characters||w.active?.initial.characters||[]),...(w.active?.terminal?.contacts||[])]);
+ const actors=computed(()=>[...(w.state?.characters||w.active?.initial.characters||[]),...(w.active?.terminal?.contacts||[]).filter(a=>!w.state?.characters.some(c=>c.id===a.id))]);
  const name=(id:string)=>id==='player'?w.active?.persona.name||'我':actors.value.find(a=>a.id===id)?.name||id;
  const blocked=computed(()=>working.value||w.busy||w.terminalBusy||w.backupWorking||w.restoreInterrupted||!w.active);
+
+ const friends=computed(()=>actors.value.filter(a=>w.active?.terminal?.friends.some(f=>f.id===a.id&&f.status==='accepted'&&(!f.anchor||terminalAnchorActive(w.active!,f.anchor)))));
+ const profile=computed(()=>taskApi(w.preferences,'terminal'));
+ const signature=()=>JSON.stringify([profile.value,w.credentials[profile.value?.id||'']]);
+ let abort:AbortController|undefined;
+ const cancel=()=>abort?.abort();
+ watch(()=>[w.active?.id,w.terminalEpoch,signature()],cancel);onScopeDispose(cancel);
+ async function operation(fn:(save:(mutate:(t:PersonalTerminal)=>void)=>Promise<void>,check:()=>void,signal:AbortSignal)=>Promise<void>){
+  if(blocked.value)return;
+  const session=w.active!,epoch=w.terminalEpoch,sig=signature(),anchor=terminalAnchor(session);let baseline=JSON.stringify(session.terminal);
+  const controller=new AbortController();abort=controller;const signal=controller.signal;
+  const check=()=>{signal.throwIfAborted();if(w.active!==session||epoch!==w.terminalEpoch||sig!==signature()||!terminalAnchorActive(session,anchor)||w.restoreInterrupted||JSON.stringify(session.terminal)!==baseline)throw Error('存档、剧情、终端API或邀请记录已改变，本次回应未写入。');};
+  const save=async(mutate:(t:PersonalTerminal)=>void)=>{
+   check();const before=session.terminal,next:PersonalTerminal=JSON.parse(JSON.stringify(before||emptyTerminal()));mutate(next);validateTerminal(next);check();
+   session.terminal=next;const applied=session.terminal;
+   try{await(w.saveTerminal?w.saveTerminal(session):w.save());if(String(w.storageStatus)==='failed')throw Error('邀请未能保存，请重试。');}
+   catch(e){if(session.terminal===applied)session.terminal=before;throw e;}
+   baseline=JSON.stringify(next);check();
+  };
+  working.value=true;w.terminalBusy=true;error.value='';
+  try{await fn(save,check,signal);}catch(e){error.value=signal.aborted?'已停止。已保存的回应会保留，继续时只询问尚未答复的人。':e instanceof Error?e.message:'好友邀请失败，已保存记录保留。';}
+  finally{working.value=false;w.terminalBusy=false;progress.value='';abort=undefined;}
+ }
+ async function ask(i:StoryGameInvite,actorId:string,host:boolean,check:()=>void,signal:AbortSignal){
+  check();const p=profile.value;if(!p)throw Error('请先配置终端API。');
+  if(!w.connectionReady(p)&&!await w.connectProfile(p))throw Error('终端API连接失败。');check();
+  if(!actors.value.some(a=>a.id===actorId))throw Error('邀请中的角色已不在当前存档。');
+  const r=i.recruitment!,state={characters:actors.value.map(a=>({id:a.id,name:a.name,identity:(a.identity||'').slice(0,300),...(a.id===actorId?{relationship:(a.relationship||'').slice(0,3000)}:{})}))};
+  // Each guest receives only their own known facts, not the host's friend estimates or other guests' replies.
+  const input=host?r.input:name(i.hostId)+'邀请你玩'+storyGameNames[i.kind]+'，你愿意参加吗？';
+  const answer=await new HttpGateway().terminal({task:host?'game-friends-host':'game-friends-guest',sessionId:w.active!.id,actorIds:[actorId],input,persona:{name:w.active!.persona.name},context:{state,recruitment:{kind:i.kind,mode:r.mode,hostId:i.hostId},memories:terminalMemoryInjection(w.active!,[actorId],[]).map(m=>m.slice(0,3000))}},p,w.credentials[p.id]||'',AbortSignal.any([signal,AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)]));
+  check();return answer;
+ }
+ async function recruit(id:string,save:(mutate:(t:PersonalTerminal)=>void)=>Promise<void>,check:()=>void,signal:AbortSignal){
+  let i=invitations.value.find(i=>i.id===id);if(!i?.recruitment||i.status!=='negotiating')return;
+  if(!i.recruitment.host){
+   progress.value='正在请'+name(i.hostId)+'决定是否组局、邀请哪些朋友…';
+   const decision=cleanGameHostDecision(await ask(i,i.hostId,true,check,signal),i.hostId,requiredGameNpcs(i.kind,i.recruitment.mode)-1,new Set(actors.value.map(a=>a.id)));
+   await save(t=>{const x=t.gameInvitations!.find(x=>x.id===id)!;x.recruitment!.host=decision;refreshGameRecruitment(x);});
+  }
+  i=invitations.value.find(i=>i.id===id)!;
+  if(!i.recruitment!.host?.accepted)return;
+  for(const actorId of i.recruitment!.host.selectedIds){
+   i=invitations.value.find(i=>i.id===id)!;if(i.recruitment!.guests.some(g=>g.id===actorId))continue;
+   progress.value='正在等待'+name(actorId)+'答复'+name(i.hostId)+'的邀请…';
+   const decision=cleanGameGuestDecision(await ask(i,actorId,false,check,signal),actorId);
+   await save(t=>{const x=t.gameInvitations!.find(x=>x.id===id)!;x.recruitment!.guests.push(decision);refreshGameRecruitment(x);});
+  }
+ }
+ const continueRecruitment=(id:string)=>operation((save,check,signal)=>recruit(id,save,check,signal));
+ const requestFriends=(hostId:string,kind:StoryGameKind,input:string,mode:'joined'|'spectating')=>operation(async(save,check,signal)=>{
+  if(!friends.value.some(a=>a.id===hostId)||!Object.hasOwn(storyGameNames,kind)||!input.trim()||input.length>500||!['joined','spectating'].includes(mode))throw Error('请选择已有好友、游戏和席位，并填写500字以内的请求。');
+  if(invitations.value.some(i=>i.hostId===hostId&&i.kind===kind&&['pending','negotiating'].includes(i.status)))throw Error('已有这个角色的同类邀约，请先处理已有邀请。');
+  const invite:StoryGameInvite={version:2,id:terminalId(),kind,hostId,members:[hostId],quote:input.trim(),message:input.trim(),anchor:terminalAnchor(w.active!),at:new Date().toISOString(),status:'negotiating',recruitment:{source:'player',input:input.trim(),mode,guests:[]}};
+  await save(t=>{if((t.gameInvitations||[]).length>=200)throw Error('游戏邀请记录已满，请先备份。');(t.gameInvitations||=[]).push(invite);});
+  await recruit(invite.id,save,check,signal);
+ });
  async function respond(id:string,mode:'joined'|'spectating'|'declined'):Promise<StoryGameInvite|undefined>{
   if(blocked.value)return;const session=w.active!,before=session.terminal,epoch=w.terminalEpoch;
-  const invite=invitations.value.find(i=>i.id===id);if(!invite||invite.status!=='pending')return;
+  const invite=invitations.value.find(i=>i.id===id);if(!invite||(mode==='declined'?!['negotiating','unfilled','refused','pending'].includes(invite.status):invite.status!=='pending'))return;
   working.value=true;w.terminalBusy=true;error.value='';
   try{
    const next:PersonalTerminal=JSON.parse(JSON.stringify(before||emptyTerminal())),i=next.gameInvitations!.find((i:StoryGameInvite)=>i.id===id)!;
@@ -38,5 +100,5 @@ export function useStoryGameInvites(w:ViewModel){
   }catch(e){error.value=e instanceof Error?e.message:'邀请操作失败';return undefined;}
   finally{working.value=false;w.terminalBusy=false;}
  }
- return {invitations,working,error,blocked,name,respond};
+ return {invitations,friends,working,error,progress,blocked,name,respond,requestFriends,continueRecruitment,cancel};
 }

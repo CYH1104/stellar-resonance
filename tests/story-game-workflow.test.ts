@@ -1,3 +1,4 @@
+import {confirmGameInvite} from './helpers/confirm-game-invite';
 import {it,expect,vi,afterEach} from 'vitest';
 import {effectScope,reactive} from 'vue';
 import {usePartyGames} from '../src/app/usePartyGames';
@@ -20,6 +21,7 @@ function fixture(kind:StoryGameKind='truth'){
  const quote='A想玩'+storyGameNames[kind]+'，邀请朋友开局。';s.turns.push({id:'t1',input:'休息',selected:0,variants:[{id:'v1',text:quote,status:'complete',outcome:{event:'休息'},createdAt:'now'}]});
  const members=['a','b','c','d','e','f'].slice(0,kind==='mahjong'?4:kind==='werewolf'?6:3);
  const i=applyStoryGameInvites(s,[{kind,hostId:'a',members,quote,message:'一起来玩或观战。'}],quote,terminalAnchor(s),terminalOrigin(s,0)!,s.initial.characters)[0];
+ confirmGameInvite(i,members);
  s.terminal.tolerances=Object.fromEntries(['player',...members].map(id=>[id,10]));
  const preferences=defaults();preferences.terminalEnabled=true;preferences.terminalProfile='aux';
  const w=reactive({active:s,state:s.initial,preferences,credentials:{},terminalEpoch:0,busy:false,terminalBusy:false,backupWorking:false,storageStatus:'saved',save:vi.fn(async()=>{}),saveTerminal:vi.fn(async(s:any)=>validateTerminal(s.terminal)),connectionReady:()=>true,connectProfile:async()=>true,indexTerminalNotes:vi.fn()}) as unknown as ViewModel;

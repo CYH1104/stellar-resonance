@@ -103,8 +103,23 @@ export function terminalGameFacts(s:Session,before=s.turns.length,audience?:stri
  }
  return out.sort((a,b)=>b.rank-a.rank||a.order-b.order).slice(0,3).map(({text,knownBy})=>({text,knownBy}));
 }
+/** Invitation decisions are not proof of friendship or participation in a completed game. */
+export function terminalRecruitmentFacts(s:Session,before=s.turns.length,audience?:string[]){
+ if(!s.terminal?.gameInvitations?.length)return [];
+ const visible=terminalVisibility(s,before),state=stateAt(s,before),names=new Map([...state.characters,...(s.terminal?.contacts||[])].map(a=>[a.id,a.name]));
+ const name=(id:string)=>names.get(id)||id,out:{text:string;knownBy:string[]}[]=[];
+ const add=(text:string,knownBy:string[])=>{if(!audience||factAudienceCovers(knownBy,audience))out.push({text,knownBy});};
+ for(const i of visibleStoryGameInvites(s).slice().reverse()){
+  const r=i.recruitment;if(!r||!visible.anchor(i.anchor)||!visible.origin(i.origin))continue;
+  const host=name(i.hostId),kind={landlord:'斗地主',mahjong:'日麻',werewolf:'狼人杀',eleven:'十点半',liar:'大话骰',truth:'真心话大冒险'}[i.kind];
+  add((r.source==='player'?'玩家请求'+host+'邀请他自己的好友玩'+kind+'：'+r.input:host+'提出组局玩'+kind)+'；'+(r.host?(r.host.accepted?'发起者同意协助':'发起者拒绝')+'：'+r.host.reply:'尚未得到发起者答复')+'。这只是邀约协商，不是已玩过游戏的结果，也不确认任何推测的好友关系。',['player',i.hostId]);
+  for(const g of r.guests)add(name(g.id)+(g.accepted?'接受':'拒绝')+'了'+host+'的'+kind+'邀请：'+g.reply+'。只确认本次邀约答复，是否实际参赛及胜负以对局记录为准。',['player',i.hostId,g.id]);
+  if(out.length>=8)break;
+ }
+ return out.slice(0,8);
+}
 /** Narration must retain recent game results even if a later chat creates another bucket. */
 export function terminalNarrativeRecall(s:Session,before=s.turns.length){
- const games=terminalGameFacts(s,before);
- return [...(games.length?['近期小游戏（已确认的公开经过；仅知情者知道各条内容）\n'+games.map(g=>g.text+factLabel(g.knownBy)).join('\n')]:[]),...terminalRecall(s,before)];
+ const games=terminalGameFacts(s,before),invites=terminalRecruitmentFacts(s,before).slice(0,3);
+ return [...(invites.length?['近期组局协商（不是游戏结果）\n'+invites.map(i=>i.text+factLabel(i.knownBy)).join('\n')]:[]),...(games.length?['近期小游戏（已确认的公开经过；仅知情者知道各条内容）\n'+games.map(g=>g.text+factLabel(g.knownBy)).join('\n')]:[]),...terminalRecall(s,before)];
 }
