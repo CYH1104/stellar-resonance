@@ -127,7 +127,7 @@ export function validateOutcome(value: unknown, state: WorldState,legacy=false,t
   return out;
 }
 export function selected(turn: Turn): Variant | undefined { return turn.variants[turn.selected]; }
-export function stateAt(session: Session, before = session.turns.length,legacy=false): WorldState {
+function initialReplayState(session:Session):WorldState {
   let state = copy(session.initial);
   Object.assign(state.player,separateIdentityAbility(state.player));for(const actor of state.characters)Object.assign(actor,separateIdentityAbility(actor));
   if(state.player.ability===undefined&&session.persona.ability)state.player.ability=session.persona.ability;
@@ -136,8 +136,10 @@ export function stateAt(session: Session, before = session.turns.length,legacy=f
   if(state.player.identity===undefined&&session.persona.identity)state.player.identity=session.persona.identity;
   if(state.player.spiritAnimal===undefined&&session.persona.spiritAnimal)state.player.spiritAnimal=session.persona.spiritAnimal;
   state=projectCharacterFacts(session,state);
-  for (const turn of session.turns.slice(0, before)) {
-    const v = selected(turn); if (v?.status !== 'complete' || !v.outcome) continue;
+  return state;
+}
+function advanceReplayState(session:Session,turn:Turn,state:WorldState,legacy:boolean):WorldState {
+    const v = selected(turn); if (v?.status !== 'complete' || !v.outcome) return state;
     let stage='状态校验';
     try {
       const outcome = validateOutcome(v.outcome, state,legacy,session.terminal?.contacts);
@@ -149,8 +151,25 @@ export function stateAt(session: Session, before = session.turns.length,legacy=f
       stage='手动变量应用';if(v.mvuOverride)candidate=applyMvu(candidate,v.mvuOverride,legacy);
       state=candidate;clearReplayIssues(session,turn.id,v.id);
     } catch(error) { recordReplayIssue(session,turn,v,stage,error); }
-  }
   return state;
+}
+export function stateAt(session: Session, before = session.turns.length,legacy=false): WorldState {
+  let state=initialReplayState(session);
+  for(const turn of session.turns.slice(0,before))state=advanceReplayState(session,turn,state,legacy);
+  return state;
+}
+/** One validated replay for a render window. Snapshots are independent and scoped to
+ * this call: edits, branch changes and imports never reuse stale cached state. */
+export function statesAt(session:Session,boundaries:number[],legacy=false):Map<number,WorldState>{
+  const points=[...new Set(boundaries)].sort((a,b)=>a-b),states=new Map<number,WorldState>();
+  if(!points.length)return states;
+  if(points.some(n=>!Number.isInteger(n)||n<0||n>session.turns.length))throw Error('状态快照位置无效');
+  let state=initialReplayState(session),position=0;
+  for(const end of points){
+    while(position<end){state=advanceReplayState(session,session.turns[position]!,state,legacy);position++;}
+    states.set(end,copy(state));
+  }
+  return states;
 }
 export function encounteredCharacters(session:Session,before=session.turns.length){
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));

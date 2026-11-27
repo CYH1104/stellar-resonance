@@ -9598,6 +9598,27 @@ function mountWave3D(host,cls){
     const cvs=document.createElement('canvas');cvs.className='ah-waves ah-waves-3d '+(cls||'');cvs.setAttribute('aria-hidden','true');
     host.prepend(cvs);
     const ctx=cvs.getContext('2d');let w=0,h=0,t=Math.random()*10;
+    const mobile=matchMedia('(max-width: 700px), (pointer: coarse)'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+    let frame=0,timer=0,last=0;
+    function stop(){cancelAnimationFrame(frame);clearTimeout(timer);frame=timer=0;last=0;}
+    function visible(){
+        if(document.hidden||!host.isConnected||!host.getClientRects().length)return false;
+        const workspace=document.getElementById('academy-workspace'),gate=document.getElementById('gate');
+        if(workspace&&!workspace.hidden)return false;
+        return host.id==='gate'||!gate||gate.hidden;
+    }
+    function animate(now){frame=0;if(!visible()||mobile.matches||reduced.matches){stop();return;}
+        t+=Math.min(last?(now-last)/1000:0,0.1)*0.312;last=now;draw();
+        timer=setTimeout(()=>{timer=0;frame=requestAnimationFrame(animate);},1000/30);
+    }
+    function refresh(){stop();if(!visible())return;resize();draw();if(!mobile.matches&&!reduced.matches)timer=setTimeout(()=>{timer=0;frame=requestAnimationFrame(animate);},1000/30);}
+    // Decorative backgrounds only run while exposed. Phone/reduced-motion views
+    // keep one still frame, including when games or the story cover the home page.
+    const visibilityObserver=new MutationObserver(refresh);
+    for(const node of [root,host,document.getElementById('gate')])if(node)visibilityObserver.observe(node,{attributes:true,attributeFilter:['hidden','class','data-theme']});
+    const mountObserver=new MutationObserver(()=>{const workspace=document.getElementById('academy-workspace');if(workspace){visibilityObserver.observe(workspace,{attributes:true,attributeFilter:['hidden']});mountObserver.disconnect();refresh();}});
+    mountObserver.observe(root,{childList:true});
+    document.addEventListener('visibilitychange',refresh);mobile.addEventListener('change',refresh);reduced.addEventListener('change',refresh);
     function resize(){const r=host.getBoundingClientRect();w=cvs.width=Math.max(640,r.width||window.innerWidth);h=cvs.height=Math.max(480,r.height||window.innerHeight)}
     function accRgb(){const v=getComputedStyle(root).getPropertyValue('--s-acc-rgb').trim();return v||'140,120,83'}
     function project(x,y,z){const fov=620,cz=z+540,sc=fov/Math.max(70,cz);return[w*0.5+x*sc,h*0.48+y*sc,sc]}
@@ -9648,11 +9669,10 @@ function mountWave3D(host,cls){
             }
             ctx.stroke();
         }
-        t+=0.0052; /* 慢速优雅流动 */
-        requestAnimationFrame(draw);
+
     }
-    window.addEventListener('resize',resize);
-    setTimeout(()=>{resize();draw()},50);
+    window.addEventListener('resize',refresh);
+    setTimeout(refresh,50);
 }
 mountWave3D(homeEl,'ah-waves-home');
 const gateEl=$('#gate');

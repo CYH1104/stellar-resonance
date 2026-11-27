@@ -60,3 +60,10 @@ describe('stable state for streaming story rendering',()=>{
   expect(rows.value.get(1)!.context.variables).toEqual(dataFromState(stateAt(session,2)));
  });
 });
+
+it('replays a long visible story window once instead of replaying every prefix for every row',()=>{
+ const s=newSession('合成长存档',{name:'玩家',appearance:'',personality:'',background:''},'开场');let reads=0;
+ for(let i=0;i<60;i++)s.turns.push({id:'t'+i,input:'继续',selected:0,variants:[{id:'v'+i,text:'正文',status:'complete',createdAt:'now',outcome:{get event(){reads++;return '事件';}}}]});
+ const rows=storyRenderStates(s,Array.from({length:10},(_,i)=>50+i));
+ expect(rows.size).toBe(10);expect(reads).toBeLessThan(300);
+});
