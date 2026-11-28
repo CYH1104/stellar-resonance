@@ -32,8 +32,27 @@ agent-hub指定脚本不存在，启动status和三路read均失败；已告知�
 
 插件源码推送GitHub的自动审批两次超时，均未执行；独立源码提交仍待用户确认后推送。不得通过其他接口绕过该未通过的审批。
 
-## 发布状态与证据
+## 9000 现有界面的保护
 
-本提交阶段两个端口的热更新尚未执行，不能以构建通过宣称已上线。计划分别打包并验证当前线上完整资源清单，备份后原子替换入口、保留所有旧哈希资源，保持模板、进程、服务端和存档不变。完成后补记发布收据。
+发布前重新核对发现9000当前为5da31d0572937ba0，PID2131990，含朋友的图标导航、测试版手机CSS及现有游戏列表文案。不能直接用main构建覆盖。
 
-本地证据在.integration/history-performance-20261128和.integration/perf-8807-20261128。后续需核对真实公网资源、服务健康和回退位置。插件GitHub推送仍需单独完成。
+读取当前快照后，从本轮main性能提交9eba571建立独立构建分支codex/test-history-performance-20261128（e6a6656bfd7f5473a8d74e53b42a586a9dd4755c），保留上述已部署源码和@lucide/vue 1.82.0依赖，并保存锁文件。该分支中的server/app.mjs只是现有线上源码的留档，不部署服务端或重启进程。与9000的539个运行源码逐一对比，仅src/App.vue、src/domain/story.ts变化，并新增src/app/useRailVisibility.ts。
+
+这套9000实际构建类型检查和构建通过；完整202文件1292项中只有游戏介绍断言与线上文案不符，恢复与既有界面一致的原断言后对应文件25项全通过，其余1291项先前通过。包含当前手机CSS的生产浏览器验证通过，正文一致且无报错。最长任务进入正文741毫秒、设置返回151毫秒、追加一轮没有超过50毫秒的长任务；不同构建测量有噪声，不据此宣称真机温度效果。
+
+## 已完成发布
+
+- main性能提交9eba57117a297bee6686df2823421148052c25a0已推送，未混入插件开发提交。
+- 8807来源f5d3218acf158e5dc6fa79788b5614f58ffdf065，分支codex/stable-history-performance-20261128已推送，仍以ebdc01b为父提交。
+- 9000来源e6a6656bfd7f5473a8d74e53b42a586a9dd4755c及对应专用分支已推送，保留已有测试界面。
+- 已分别热更新两个端口，只替换dist/index.html并新增构建资源。8807新增58个资源，9000新增64个资源；所有旧哈希资源保留。
+- 两端进程、instance、release指针、部署标记、HTML模板、快照src/server/package及服务器根目录源码/朋友未提交修改逐项不变。8807仍为3186c22b4b14d340、PID2109925；9000仍为5da31d0572937ba0、PID2131990。
+- 服务器HTTP验证8807新构建37个JS/CSS、9000新构建38个JS/CSS通过。完整新旧资源清单与计划一致。
+- 回退目录/home/ubuntu/.stellar-resonance-backups/history-performance-20261128-asd2rbkq，含两个原入口、基线、清单、脚本和收据。热更新记录server/.local/frontend-fixes/history-performance-20261128.json。
+- 首次SSH连接超时，经只读检查确认未上传/未切换后重试成功。临时私钥已清理；没有修改authorized_keys或用户数据。
+
+本地证据在.integration/history-performance-20261128和.integration/perf-8807-20261128，含两个版本范围证明、测试日志、生产浏览器结果、完整发布收据。独立插件开发源码a7243ed仍为本地提交，GitHub推送因两次自动审批超时未执行，待用户确认；安装仓库原发布仍在。
+
+公网核验完成（2026-11-28T10:41:36.281Z）：9000现存65个JS/CSS、8807现存83个JS/CSS全部哈希一致；两端release、PID、instance仍与部署前相同。入口SHA256分别为9000 2136e1f67e034a177e3dd055eebaa59ddbffa4a2f200e35b1bc73b4e505a0f69、8807 ea45c2194185bd1eb115aecd836a37c7e68c31cdf05268c3b3b883950abdac3e。
+
+收工agent-hub handoff因指定脚本缺失再次返回MODULE_NOT_FOUND，本文件替代记录完成项、验证和下一步；没有宣称已写入接力棒。
