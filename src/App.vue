@@ -26,6 +26,8 @@ onUnmounted(disposeRegexWorker);
 
 import ResizeHandle from './components/ResizeHandle.vue';
 import {useWorkspaceLayout} from './app/useWorkspaceLayout';
+import {useRailVisibility} from './app/useRailVisibility';
+const rails=useRailVisibility();
 import {installMvuBridge} from './app/mvuBridge';
 
 import {useStoryGameInvites} from './app/useStoryGameInvites';
@@ -285,8 +287,8 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
     <DialogShell v-if="pendingConfigurationPanel" title="设置尚未保存" @close="cancelConfigurationLeave"><p>保存修改后再离开？</p><p v-if="configuration.error.value" role="alert">{{configuration.error.value}}</p><div class="actions"><button :disabled="configuration.saving.value" @click="leaveConfiguration(true)">保存并离开</button><button :disabled="configuration.saving.value" @click="leaveConfiguration(false)">放弃修改</button><button @click="cancelConfigurationLeave">继续编辑</button></div></DialogShell>
     <div ref="workspaceEl" class="workspace resizable-workspace" :style="layout.style.value" :class="{'game-layout':!!w.active&&!fullPage,'forum-focus':w.panel==='theaters','status-focus':w.panel==='status'}">
 
-      <aside v-if="w.active&&!fullPage" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
-      <ResizeHandle v-if="w.active&&!fullPage" class="column-resizer left-resizer" axis="x" label="调整左栏宽度" @resize="dx=>layout.resize('left',dx)" />
+      <aside v-if="w.active&&!fullPage&&rails.left.value" class="status-rail" aria-label="左侧人物状态"><StatusBar :w="w" /></aside>
+      <ResizeHandle v-if="w.active&&!fullPage&&rails.left.value" class="column-resizer left-resizer" axis="x" label="调整左栏宽度" @resize="dx=>layout.resize('left',dx)" />
       <main class="center-pane">
 
 
@@ -335,8 +337,8 @@ function usePersona(persona:Persona){setMasterPersona(persona);w.home();w.resetN
         </div>
 
       </main>
-      <ResizeHandle v-if="w.active&&!fullPage&&w.panel!=='theaters'" class="column-resizer right-resizer" axis="x" label="调整右栏宽度" @resize="dx=>layout.resize('right',dx)" />
-      <aside v-if="w.active && !fullPage && w.panel!=='theaters'" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
+      <ResizeHandle v-if="w.active&&!fullPage&&w.panel!=='theaters'&&rails.right.value" class="column-resizer right-resizer" axis="x" label="调整右栏宽度" @resize="dx=>layout.resize('right',dx)" />
+      <aside v-if="w.active && !fullPage && w.panel!=='theaters'&&rails.right.value" class="forum-rail" aria-label="右侧小剧场"><TheaterRail :w="w" /></aside>
 
     </div>
 

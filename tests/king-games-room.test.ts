@@ -51,7 +51,7 @@ it('games list opens all implemented games including werewolf and keeps rooms re
  try{
   u.go('games');const html=await renderToString(createSSRApp(PersonalTerminal,{w}));
   for(const name of ['国王游戏','真心话大冒险','狼人杀','日麻','斗地主','十点半'])expect(html).toContain(name);
-  expect(html).not.toContain('暂未开放');expect(html).toContain('六人暗牌');
+  expect(html).not.toContain('暂未开放');expect(html).not.toContain('六人暗牌');
   expect(html).toContain('每日占卜');
   expect(html).toContain('创建房间');expect(html).toContain('回看记录');expect(html).toContain('游戏室房间');
  }finally{spy.mockRestore();}

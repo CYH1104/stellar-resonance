@@ -172,9 +172,11 @@ export function statesAt(session:Session,boundaries:number[],legacy=false):Map<n
   return states;
 }
 export function encounteredCharacters(session:Session,before=session.turns.length){
+  const turns=session.turns.slice(0,before);
+  const snapshots=statesAt(session,Array.from({length:turns.length+1},(_,i)=>i));
   const ids=new Set(session.initial.characters.filter(c=>c.present).map(c=>c.id));
-  for(const [index,turn] of session.turns.slice(0,before).entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=stateAt(session,index),out=validateOutcome(v.outcome,prior,false,session.terminal?.contacts);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of stateAt(session,index+1).characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch(error){recordReplayIssue(session,turn,v,'已遇到角色',error);}}
-  return stateAt(session,before).characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
+  for(const [index,turn] of turns.entries()){const v=selected(turn);if(v?.status!=='complete'||!v.outcome)continue;try{const prior=snapshots.get(index)!,out=validateOutcome(v.outcome,prior,false,session.terminal?.contacts);assertDiceEventBinding(out.diceEvent,turn.dice);for(const c of out.characters||[])if(c.present===true||c.affinity!==undefined||c.relationship)ids.add(c.id);for(const actor of snapshots.get(index+1)!.characters){const old=prior.characters.find(c=>c.id===actor.id);if(actor.present||actor.relationship||actor.affinity!==old?.affinity)ids.add(actor.id);}}catch(error){recordReplayIssue(session,turn,v,'已遇到角色',error);}}
+  return snapshots.get(turns.length)!.characters.filter(c=>ids.has(c.id)||!!c.relationship||!session.initial.characters.some(a=>a.id===c.id));
 }
 export function visibleMemories(session: Session, before = session.turns.length): Memory[] {
   const active = new Map(session.turns.slice(0, before).map(t => [t.id, selected(t)]));
@@ -185,11 +187,13 @@ export function effectiveEvents(session: Session) {
   return session.turns.flatMap((turn, index) => { const v = selected(turn); return v?.status === 'complete' && v.outcome ? [{ turnId: turn.id, title: v.outcome.event, time: v.createdAt, index: index + 1 }] : []; });
 }
 export function visibleForum(session: Session, before = session.turns.length): ForumEntry[] {
-  return session.turns.slice(0, before).flatMap((turn, index) => {
+  const turns=session.turns.slice(0,before);
+  const snapshots=statesAt(session,turns.map((_,i)=>i));
+  return turns.flatMap((turn, index) => {
     const variant = selected(turn);
     if (variant?.status !== 'complete' || !variant.outcome) return [];
     try {
-      const outcome = validateOutcome(variant.outcome, stateAt(session,index),false,session.terminal?.contacts);
+      const outcome = validateOutcome(variant.outcome, snapshots.get(index)!,false,session.terminal?.contacts);
       return (outcome.forum || []).map(post => ({ ...post, key: `forum/${variant.id}/${post.id}`, turnId: turn.id, variantId: variant.id, round: index + 1, createdAt: variant.createdAt }));
     } catch { return []; }
   }).reverse();
